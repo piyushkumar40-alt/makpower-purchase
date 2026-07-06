@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Users, Building, Database, FileText, Plus, UserMinus, RefreshCw, Download, Upload, Eye, Truck, ChevronRight } from "lucide-react";
+import { Users, Building, Database, FileText, Plus, UserMinus, RefreshCw, Download, Upload, Eye, Truck, ChevronRight, Sliders } from "lucide-react";
 import TransferModal from "./TransferModal";
 import { getCurrencySymbol, CargoCompaniesPanel, VendorDetailModal, CargoCompanyDetailModal } from "./PurchaserDashboard";
 
@@ -19,10 +19,22 @@ export default function SuperAdminDashboard({
   onRemoveCargoCompany,
   onExportBackup,
   onImportBackup,
-  onUpdateUserInfo
+  onUpdateUserInfo,
+  settings = { isHidden: false, redirectUrl: "" },
+  onUpdateSettings
 }) {
   const [subTab, setSubTab] = useState("purchasers"); // "purchasers" | "vendors" | "audit" | "backup" | "cargocompanies"
   
+  // System Settings State
+  const [redirectUrlInput, setRedirectUrlInput] = useState(settings.redirectUrl || "https://www.instagram.com/makpowerofficial/");
+  const [settingsSuccessMsg, setSettingsSuccessMsg] = useState("");
+
+  React.useEffect(() => {
+    if (settings.redirectUrl) {
+      setRedirectUrlInput(settings.redirectUrl);
+    }
+  }, [settings.redirectUrl]);
+
   // Purchaser State
   const [pName, setPName] = useState("");
   const [pEmail, setPEmail] = useState("");
@@ -191,6 +203,13 @@ export default function SuperAdminDashboard({
           className={`sidebar-link ${subTab === "backup" ? "active" : ""}`}
         >
           <Database size={16} /> Database Backup
+        </button>
+
+        <button 
+          onClick={() => setSubTab("settings")}
+          className={`sidebar-link ${subTab === "settings" ? "active" : ""}`}
+        >
+          <Sliders size={16} /> System Settings
         </button>
       </aside>
 
@@ -693,6 +712,113 @@ export default function SuperAdminDashboard({
               onRemoveCargoCompany={onRemoveCargoCompany}
               onSelectCargoCompany={setSelectedCargoCompanyForDetail}
             />
+          </div>
+        )}
+
+        {/* SYSTEM SETTINGS TAB */}
+        {subTab === "settings" && (
+          <div className="card-fade-in">
+            <h2 style={{ fontSize: "1.8rem", marginBottom: "20px" }}>System Settings</h2>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))", gap: "30px", alignItems: "start" }}>
+              
+              {/* Visibility Controller Panel */}
+              <div className="glass-panel" style={{ padding: "24px" }}>
+                <h3 style={{ fontSize: "1.2rem", marginBottom: "16px", color: "var(--primary)" }}>System Visibility Mode</h3>
+                <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: "20px" }}>
+                  Toggling panic mode hides the entire application. Anyone trying to visit the website will be forced to redirect to the URL configured on the right.
+                </p>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px", alignItems: "center", justifyContent: "center", padding: "20px", background: "rgba(0,0,0,0.15)", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: settings.isHidden ? "var(--danger)" : "var(--success)", boxShadow: settings.isHidden ? "0 0 10px var(--danger)" : "0 0 10px var(--success)" }}></div>
+                    <span style={{ fontWeight: 600, fontSize: "1rem" }}>
+                      System Status: {settings.isHidden ? "HIDDEN (Panic Mode)" : "ACTIVE / VISIBLE"}
+                    </span>
+                  </div>
+
+                  <button 
+                    onClick={async () => {
+                      const updated = { ...settings, isHidden: !settings.isHidden };
+                      const res = await onUpdateSettings(updated);
+                      if (res && res.success) {
+                        setSettingsSuccessMsg(`System visibility updated to: ${updated.isHidden ? "Hidden" : "Visible"}`);
+                        setTimeout(() => setSettingsSuccessMsg(""), 3000);
+                      }
+                    }} 
+                    className={`btn ${settings.isHidden ? "btn-primary" : "btn-danger"}`}
+                    style={{ width: "100%", padding: "12px", fontSize: "0.95rem" }}
+                  >
+                    {settings.isHidden ? "Show Application (Turn Off Panic)" : "Hide App & Force Redirect Users"}
+                  </button>
+                </div>
+
+                {settingsSuccessMsg && (
+                  <div className="alert-strip alert-success" style={{ marginTop: "16px", marginBottom: 0 }}>
+                    {settingsSuccessMsg}
+                  </div>
+                )}
+              </div>
+
+              {/* Redirect Settings Panel */}
+              <div className="glass-panel" style={{ padding: "24px" }}>
+                <h3 style={{ fontSize: "1.2rem", marginBottom: "16px", color: "var(--primary)" }}>Panic Redirect Settings</h3>
+                
+                <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Redirect Target URL</label>
+                    <input 
+                      type="url" 
+                      className="form-control" 
+                      placeholder="https://www.instagram.com/makpowerofficial/"
+                      value={redirectUrlInput}
+                      onChange={e => setRedirectUrlInput(e.target.value)}
+                    />
+                  </div>
+
+                  <button 
+                    onClick={async () => {
+                      if (!redirectUrlInput.trim()) return;
+                      const updated = { ...settings, redirectUrl: redirectUrlInput.trim() };
+                      const res = await onUpdateSettings(updated);
+                      if (res && res.success) {
+                        setSettingsSuccessMsg("Redirect URL updated successfully!");
+                        setTimeout(() => setSettingsSuccessMsg(""), 3000);
+                      }
+                    }} 
+                    className="btn btn-secondary"
+                    style={{ width: "100%" }}
+                  >
+                    Save Redirect URL
+                  </button>
+
+                  <div style={{ borderTop: "1px solid var(--border-glass)", paddingTop: "14px", marginTop: "6px" }}>
+                    <label className="form-label" style={{ color: "var(--primary)", fontSize: "0.85rem", marginBottom: "4px" }}>
+                      Instant Panic Trigger Link (/web):
+                    </label>
+                    <div style={{ display: "flex", background: "rgba(0,0,0,0.3)", padding: "10px", borderRadius: "6px", fontSize: "0.8rem", wordBreak: "break-all", justifyContent: "space-between", alignItems: "center" }}>
+                      <code>{window.location.origin}/web</code>
+                    </div>
+                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "block", marginTop: "6px" }}>
+                      Share this link with trusted team members. Opening this link in any browser will immediately lock the app and redirect them to your Instagram page.
+                    </span>
+                  </div>
+
+                  <div style={{ borderTop: "1px solid var(--border-glass)", paddingTop: "14px", marginTop: "6px" }}>
+                    <label className="form-label" style={{ color: "var(--primary)", fontSize: "0.85rem", marginBottom: "4px" }}>
+                      Bypass Code Link (?bypass=true):
+                    </label>
+                    <div style={{ display: "flex", background: "rgba(0,0,0,0.3)", padding: "10px", borderRadius: "6px", fontSize: "0.8rem", wordBreak: "break-all", justifyContent: "space-between", alignItems: "center" }}>
+                      <code>{window.location.origin}/?bypass=true</code>
+                    </div>
+                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "block", marginTop: "6px" }}>
+                      Use this bypass link to access the app and log back in as Super Admin when panic mode is active.
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
           </div>
         )}
 

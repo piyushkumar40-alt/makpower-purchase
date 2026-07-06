@@ -46,13 +46,24 @@ function readLocalJson() {
       vendors: initialVendors,
       requests: initialRequests,
       cargos: initialCargoShipments,
-      cargoCompanies: initialCargoCompanies
+      cargoCompanies: initialCargoCompanies,
+      settings: {
+        isHidden: false,
+        redirectUrl: "https://www.instagram.com/makpowerofficial/"
+      }
     };
     fs.writeFileSync(DB_FILE, JSON.stringify(defaultData, null, 2));
     return defaultData;
   }
   try {
-    return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+    const data = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+    if (!data.settings) {
+      data.settings = {
+        isHidden: false,
+        redirectUrl: "https://www.instagram.com/makpowerofficial/"
+      };
+    }
+    return data;
   } catch (e) {
     console.error("Error reading db.json, returning default mock data:", e.message);
     return {
@@ -60,7 +71,11 @@ function readLocalJson() {
       vendors: initialVendors,
       requests: initialRequests,
       cargos: initialCargoShipments,
-      cargoCompanies: initialCargoCompanies
+      cargoCompanies: initialCargoCompanies,
+      settings: {
+        isHidden: false,
+        redirectUrl: "https://www.instagram.com/makpowerofficial/"
+      }
     };
   }
 }
@@ -75,6 +90,13 @@ async function setupPgDatabase() {
 
   try {
     // 1. Create tables
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS settings (
+        "key" TEXT PRIMARY KEY,
+        "value" TEXT
+      );
+    `);
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         "id" TEXT PRIMARY KEY,
@@ -230,6 +252,14 @@ async function setupPgDatabase() {
       }
       console.log("PG Database seeded successfully.");
     }
+
+    // Seed default settings
+    const settingsCheck = await pool.query("SELECT COUNT(*) FROM settings");
+    if (parseInt(settingsCheck.rows[0].count) === 0) {
+      await pool.query('INSERT INTO settings ("key", "value") VALUES ($1, $2)', ["isHidden", "false"]);
+      await pool.query('INSERT INTO settings ("key", "value") VALUES ($1, $2)', ["redirectUrl", "https://www.instagram.com/makpowerofficial/"]);
+      console.log("Default settings seeded in PG database.");
+    }
   } catch (err) {
     console.error("Error setting up PostgreSQL schemas/seeds:", err.message);
   }
@@ -249,6 +279,7 @@ app.get("/api/state", async (req, res) => {
       const cargoCompaniesRes = await pool.query("SELECT * FROM cargo_companies");
       const cargosRes = await pool.query("SELECT * FROM cargos");
       const requestsRes = await pool.query("SELECT * FROM requests");
+      const settingsRes = await pool.query("SELECT * FROM settings");
 
       // Format types back
       const vendors = vendorsRes.rows.map(v => ({
@@ -272,12 +303,20 @@ app.get("/api/state", async (req, res) => {
         totalCargoPrice: c.totalCargoPrice ? parseFloat(c.totalCargoPrice) : ""
       }));
 
+      const settings = {};
+      settingsRes.rows.forEach(row => {
+        settings[row.key] = row.key === "isHidden" ? (row.value === "true") : row.value;
+      });
+      if (settings.isHidden === undefined) settings.isHidden = false;
+      if (!settings.redirectUrl) settings.redirectUrl = "https://www.instagram.com/makpowerofficial/";
+
       res.json({
         users: usersRes.rows,
         vendors,
         cargoCompanies: cargoCompaniesRes.rows,
         cargos,
-        requests
+        requests,
+        settings
       });
     } catch (err) {
       console.error("GET /api/state error:", err.message);
@@ -750,6 +789,56 @@ app.delete("/api/cargo-companies/:id", async (req, res) => {
   } else {
     const data = readLocalJson();
     data.cargoCompanies = data.cargoCompanies.filter(x => x.id !== id);
+    writeLocalJson(data);
+    res.json({ success: true });
+  }
+});
+
+// 12. GET /web - Secret Panic Trigger URL: Hides the application and redirects to redirectUrl (Instagram page)
+app.get("/web", async (req, res) => {
+  let redirectUrl = "https://www.instagram.com/makpowerofficial/";
+  try {
+    if (isPg) {
+      // Set isHidden to true
+      await pool.query('INSERT INTO settings ("key", "value") VALUES ($1, $2) ON CONFLICT ("key") DO UPDATE SET "value" = $2', ["isHidden", "true"]);
+      // Fetch current redirectUrl
+      const urlRes = await pool.query('SELECT "value" FROM settings WHERE "key" = $1', ["redirectUrl"]);
+      if (urlRes.rows.length > 0 && urlRes.rows[0].value) {
+        redirectUrl = urlRes.rows[0].value;
+      }
+    } else {
+      const data = readLocalJson();
+      data.settings = data.settings || {};
+      data.settings.isHidden = true;
+      if (data.settings.redirectUrl) {
+        redirectUrl = data.settings.redirectUrl;
+      }
+      writeLocalJson(data);
+    }
+    console.log("System Panic Activated! System is hidden. Redirecting to:", redirectUrl);
+  } catch (err) {
+    console.error("Panic trigger /web error:", err.message);
+  }
+  res.redirect(redirectUrl);
+});
+
+// 13. POST /api/settings - Updates system settings
+app.post("/api/settings", async (req, res) => {
+  const { isHidden, redirectUrl } = req.body;
+  if (isPg) {
+    try {
+      await pool.query('INSERT INTO settings ("key", "value") VALUES ($1, $2) ON CONFLICT ("key") DO UPDATE SET "value" = $2', ["isHidden", isHidden ? "true" : "false"]);
+      await pool.query('INSERT INTO settings ("key", "value") VALUES ($1, $2) ON CONFLICT ("key") DO UPDATE SET "value" = $2', ["redirectUrl", redirectUrl || "https://www.instagram.com/makpowerofficial/"]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("POST /api/settings error:", err.message);
+      res.status(500).json({ error: "Failed to update settings." });
+    }
+  } else {
+    const data = readLocalJson();
+    data.settings = data.settings || {};
+    data.settings.isHidden = !!isHidden;
+    data.settings.redirectUrl = redirectUrl || "https://www.instagram.com/makpowerofficial/";
     writeLocalJson(data);
     res.json({ success: true });
   }

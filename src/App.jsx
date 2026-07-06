@@ -17,6 +17,7 @@ export default function App() {
   const [requests, setRequests] = useState([]);
   const [cargos, setCargos] = useState([]);
   const [cargoCompanies, setCargoCompanies] = useState([]);
+  const [settings, setSettings] = useState({ isHidden: false, redirectUrl: "https://www.instagram.com/makpowerofficial/" });
   const [loading, setLoading] = useState(true);
 
   const [currentUser, setCurrentUser] = useState(() => {
@@ -38,9 +39,9 @@ export default function App() {
     return "login";
   });
 
-  // Fetch full state on mount
+  // Fetch full state on mount & set up 10-second polling
   useEffect(() => {
-    async function loadData() {
+    async function loadData(isInterval = false) {
       try {
         const res = await fetch("/api/state");
         const data = await res.json();
@@ -49,14 +50,41 @@ export default function App() {
         setRequests(data.requests || []);
         setCargos(data.cargos || []);
         setCargoCompanies(data.cargoCompanies || []);
+        if (data.settings) {
+          setSettings(data.settings);
+        }
       } catch (err) {
-        console.error("Failed to load initial state from database API:", err);
+        console.error("Failed to load state from database API:", err);
       } finally {
-        setLoading(false);
+        if (!isInterval) {
+          setLoading(false);
+        }
       }
     }
+    
     loadData();
+
+    const intervalId = setInterval(() => {
+      loadData(true);
+    }, 10000);
+
+    return () => clearInterval(intervalId);
   }, []);
+
+  // Panic Mode Redirection Check
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("bypass") === "true") {
+      localStorage.setItem("admin_bypass", "true");
+    }
+
+    if (!loading && settings && settings.isHidden) {
+      if (localStorage.getItem("admin_bypass") === "true") {
+        return;
+      }
+      window.location.href = settings.redirectUrl || "https://www.instagram.com/makpowerofficial/";
+    }
+  }, [loading, settings]);
 
   // Sync active session only to localStorage
   useEffect(() => {
@@ -91,6 +119,12 @@ export default function App() {
       console.error(`Error deleting ${url}:`, err);
       return { success: false, error: err.message };
     }
+  };
+
+  const handleUpdateSystemSettings = async (newSettings) => {
+    setSettings(newSettings);
+    const res = await postData("/api/settings", newSettings);
+    return res;
   };
 
   // Auth Handlers
@@ -603,6 +637,8 @@ export default function App() {
             onExportBackup={exportBackupData}
             onImportBackup={importBackupData}
             onUpdateUserInfo={updateUserInfo}
+            settings={settings}
+            onUpdateSettings={handleUpdateSystemSettings}
           />
         )}
       </main>
