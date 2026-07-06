@@ -268,6 +268,62 @@ async function setupPgDatabase() {
 // Run DB setup on start
 await setupPgDatabase();
 
+// Helper to parse cookies manually
+const getBypassCookie = (req) => {
+  if (!req.headers.cookie) return null;
+  const match = req.headers.cookie.match(/(?:^|; )admin_bypass=([^;]*)/);
+  return match ? match[1] : null;
+};
+
+// Middleware: Check system visibility and redirect unauthorized visitors before serving static app files
+app.use(async (req, res, next) => {
+  const path = req.path;
+
+  // Always let API requests and the panic route pass
+  if (path.startsWith("/api/") || path === "/web") {
+    return next();
+  }
+
+  // Check if admin bypass query parameter is present
+  if (req.query.bypass === "true") {
+    res.setHeader("Set-Cookie", "admin_bypass=true; Path=/; Max-Age=2592000; SameSite=Lax");
+    return next();
+  }
+
+  // Check if admin bypass cookie is already set
+  if (getBypassCookie(req) === "true") {
+    return next();
+  }
+
+  // Retrieve settings
+  let isHidden = false;
+  let redirectUrl = "https://www.instagram.com/makpowerofficial/";
+
+  try {
+    if (isPg) {
+      const resSettings = await pool.query("SELECT * FROM settings");
+      resSettings.rows.forEach(row => {
+        if (row.key === "isHidden") isHidden = (row.value === "true");
+        if (row.key === "redirectUrl") redirectUrl = row.value;
+      });
+    } else {
+      const data = readLocalJson();
+      if (data.settings) {
+        isHidden = !!data.settings.isHidden;
+        redirectUrl = data.settings.redirectUrl || redirectUrl;
+      }
+    }
+  } catch (err) {
+    console.error("Error checking settings in visibility middleware:", err.message);
+  }
+
+  if (isHidden) {
+    return res.redirect(redirectUrl);
+  }
+
+  next();
+});
+
 // ==================== API ENDPOINTS ====================
 
 // 1. GET /api/state - Fetches full system state
