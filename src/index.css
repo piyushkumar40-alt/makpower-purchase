@@ -763,43 +763,121 @@ select.form-control {
 
 /* ==================== LIGHT THEME OVERRIDES ==================== */
 [data-theme="light"] {
-  --bg-main: #f8fafc;
-  --bg-card: rgba(255, 255, 255, 0.95);
-  --bg-card-hover: rgba(241, 245, 249, 0.95);
-  --border-glass: rgba(15, 23, 42, 0.12);
-  --border-glass-focus: rgba(2, 132, 199, 0.5);
+  --bg-main: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f8fafc;
+  --border-glass: #cbd5e1;
+  --border-glass-focus: #0284c7;
 
   --primary: #0284c7;
-  --primary-glow: rgba(2, 132, 199, 0.12);
+  --primary-glow: rgba(2, 132, 199, 0.15);
   --secondary: #4f46e5;
   --accent: #d97706;
 
   --text-main: #0f172a;
   --text-muted: #475569;
-  --text-dark: #f8fafc;
+  --text-dark: #ffffff;
 
   --success: #16a34a;
-  --success-glow: rgba(22, 163, 74, 0.12);
+  --success-glow: rgba(22, 163, 74, 0.15);
   --warning: #d97706;
-  --warning-glow: rgba(217, 119, 6, 0.12);
+  --warning-glow: rgba(217, 119, 6, 0.15);
   --danger: #dc2626;
-  --danger-glow: rgba(220, 38, 38, 0.12);
+  --danger-glow: rgba(220, 38, 38, 0.15);
   --info: #2563eb;
-  --info-glow: rgba(37, 99, 235, 0.12);
+  --info-glow: rgba(37, 99, 235, 0.15);
 }
 
 [data-theme="light"] body {
   background-color: #f1f5f9;
   background-image: 
-    radial-gradient(at 0% 0%, rgba(2, 132, 199, 0.06) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(79, 70, 229, 0.06) 0px, transparent 50%);
+    radial-gradient(at 0% 0%, rgba(2, 132, 199, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(79, 70, 229, 0.05) 0px, transparent 50%);
   color: #0f172a;
 }
 
+/* Header & Navbar */
+[data-theme="light"] .app-header {
+  background: #ffffff !important;
+  border-bottom: 1px solid #cbd5e1 !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05) !important;
+}
+
+[data-theme="light"] .logo-area {
+  color: #0284c7 !important;
+}
+
+[data-theme="light"] .nav-links button,
+[data-theme="light"] .user-badge {
+  color: #0f172a !important;
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+}
+
+[data-theme="light"] .user-badge {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+  font-weight: 600 !important;
+}
+
+/* Sidebar */
+[data-theme="light"] .sidebar {
+  background: #ffffff !important;
+  border-right: 1px solid #cbd5e1 !important;
+}
+
+[data-theme="light"] .sidebar-title {
+  color: #0284c7 !important;
+  font-weight: 700 !important;
+}
+
+[data-theme="light"] .sidebar-link {
+  color: #334155 !important;
+  font-weight: 500;
+}
+
+[data-theme="light"] .sidebar-link:hover {
+  background: #f1f5f9 !important;
+  color: #0284c7 !important;
+}
+
+[data-theme="light"] .sidebar-link.active {
+  background: #e0f2fe !important;
+  color: #0284c7 !important;
+  border: 1px solid #7dd3fc !important;
+  font-weight: 700 !important;
+}
+
+/* Cards & Glass Panels */
+[data-theme="light"] .glass-panel {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05) !important;
+}
+
+[data-theme="light"] h1, 
+[data-theme="light"] h2, 
+[data-theme="light"] h3, 
+[data-theme="light"] h4, 
+[data-theme="light"] h5, 
+[data-theme="light"] h6 {
+  color: #0f172a !important;
+}
+
+/* Inputs & Form Controls */
 [data-theme="light"] .form-control {
-  background: #ffffff;
-  color: #0f172a;
-  border-color: rgba(15, 23, 42, 0.2);
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+[data-theme="light"] .form-control::placeholder {
+  color: #94a3b8 !important;
+}
+
+[data-theme="light"] .form-control:focus {
+  border-color: #0284c7 !important;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15) !important;
 }
 
 [data-theme="light"] select.form-control option {
@@ -807,37 +885,84 @@ select.form-control {
   color: #0f172a !important;
 }
 
-[data-theme="light"] .glass-panel {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+/* Buttons */
+[data-theme="light"] .btn-primary {
+  background: #0284c7 !important;
+  color: #ffffff !important;
 }
 
-[data-theme="light"] .table th {
-  background: rgba(241, 245, 249, 0.95);
-  color: #334155;
-  border-bottom-color: rgba(15, 23, 42, 0.12);
-}
-
-[data-theme="light"] .table td {
-  border-bottom-color: rgba(15, 23, 42, 0.08);
-  color: #0f172a;
+[data-theme="light"] .btn-primary:hover {
+  background: #0369a1 !important;
 }
 
 [data-theme="light"] .btn-secondary {
-  background: rgba(15, 23, 42, 0.06);
-  color: #0f172a;
-  border-color: rgba(15, 23, 42, 0.15);
+  background: #f8fafc !important;
+  color: #0f172a !important;
+  border: 1px solid #cbd5e1 !important;
 }
 
 [data-theme="light"] .btn-secondary:hover {
-  background: rgba(15, 23, 42, 0.1);
+  background: #f1f5f9 !important;
 }
 
-[data-theme="light"] .tab-btn {
-  color: #475569;
+[data-theme="light"] .btn-secondary.active {
+  background: #e0f2fe !important;
+  color: #0284c7 !important;
+  border-color: #0284c7 !important;
 }
 
-[data-theme="light"] .tab-btn.active {
-  color: #0284c7;
-  background: rgba(2, 132, 199, 0.1);
-  border-color: rgba(2, 132, 199, 0.25);
+/* Badges */
+[data-theme="light"] .badge-primary {
+  background: #e0f2fe !important;
+  color: #0369a1 !important;
+}
+
+[data-theme="light"] .badge-secondary {
+  background: #f1f5f9 !important;
+  color: #334155 !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+[data-theme="light"] .badge-success {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+}
+
+[data-theme="light"] .badge-warning,
+[data-theme="light"] .badge-pending {
+  background: #fef3c7 !important;
+  color: #b45309 !important;
+}
+
+[data-theme="light"] .badge-danger {
+  background: #fee2e2 !important;
+  color: #b91c1c !important;
+}
+
+[data-theme="light"] .badge-info {
+  background: #dbeafe !important;
+  color: #1d4ed8 !important;
+}
+
+/* Tables */
+[data-theme="light"] .table th {
+  background: #f8fafc !important;
+  color: #334155 !important;
+  border-bottom: 2px solid #cbd5e1 !important;
+  font-weight: 700 !important;
+}
+
+[data-theme="light"] .table td {
+  border-bottom: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .table tr:hover td {
+  background: #f8fafc !important;
+}
+
+/* Modal Overlay */
+[data-theme="light"] .modal-overlay {
+  background: rgba(15, 23, 42, 0.4) !important;
+  backdrop-filter: blur(4px) !important;
 }
