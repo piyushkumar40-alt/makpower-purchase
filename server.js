@@ -365,6 +365,7 @@ app.use(async (req, res, next) => {
 // Active Sessions & Auth Audit Logs Store
 let activeSessions = []; // [{ sessionId, userId, userName, role, loginTime, lastPing }]
 let authAuditLogs = [];  // [{ id, userId, userName, role, action, timestamp, details }]
+let revokedUserIds = new Set();
 
 function recordAuthAuditLog(userId, userName, role, action, details = "") {
   const logEntry = {
@@ -388,6 +389,9 @@ app.post("/api/auth/login", (req, res) => {
   if (!user || !user.id) {
     return res.status(400).json({ error: "Invalid user data for login session." });
   }
+
+  // Clear revocation flag upon fresh login
+  revokedUserIds.delete(user.id);
 
   const sessionId = "sess_" + user.id + "_" + Date.now();
   const loginTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
@@ -425,7 +429,8 @@ app.get("/api/auth/sessions", (req, res) => {
   return res.json({
     success: true,
     activeSessions,
-    authAuditLogs
+    authAuditLogs,
+    revokedUserIds: Array.from(revokedUserIds)
   });
 });
 
@@ -434,11 +439,15 @@ app.post("/api/auth/force-logout", (req, res) => {
   const { userId, sessionId } = req.body;
   const target = activeSessions.find(s => s.sessionId === sessionId || s.userId === userId);
 
+  if (userId) {
+    revokedUserIds.add(userId);
+  }
+
   if (target) {
     recordAuthAuditLog(target.userId, target.userName, target.role, "Force Signed Out", "Session revoked by SuperAdmin");
     activeSessions = activeSessions.filter(s => s.sessionId !== sessionId && s.userId !== userId);
   }
-  return res.json({ success: true, activeSessions, authAuditLogs });
+  return res.json({ success: true, activeSessions, authAuditLogs, revokedUserIds: Array.from(revokedUserIds) });
 });
 
 // 0.5 POST /api/auth/force-logout-all - Admin revokes ALL active sessions
@@ -447,13 +456,14 @@ app.post("/api/auth/force-logout-all", (req, res) => {
 
   activeSessions.forEach(s => {
     if (s.userId !== currentAdminId) {
+      revokedUserIds.add(s.userId);
       recordAuthAuditLog(s.userId, s.userName, s.role, "Force Signed Out", "Global sign out triggered by Admin");
     }
   });
 
   activeSessions = activeSessions.filter(s => s.userId === currentAdminId);
 
-  return res.json({ success: true, activeSessions, authAuditLogs });
+  return res.json({ success: true, activeSessions, authAuditLogs, revokedUserIds: Array.from(revokedUserIds) });
 });
 
 // 0.6 POST /api/upload - Cloudinary Image & File Upload Endpoint

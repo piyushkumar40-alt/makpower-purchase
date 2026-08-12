@@ -115,7 +115,7 @@ export default function LoginPage({ onLogin, onEnterAsGuest, users }) {
                 style={{ justifyContent: "flex-start", fontSize: "0.8rem", width: "100%" }}
               >
                 <Shield size={12} style={{ color: "var(--accent)" }} /> 
-                <strong>Super Admin:</strong> {superAdmin.name}
+                <strong>Admin:</strong> {superAdmin.name}
               </button>
             )}
             {nitinUser && (
