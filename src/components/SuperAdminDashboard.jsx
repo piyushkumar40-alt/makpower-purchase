@@ -55,6 +55,9 @@ export default function SuperAdminDashboard({
     setSheetSyncing(true);
     setSheetStatusMsg("");
     try {
+      // First ensure latest settings are saved
+      await handleSaveSheetSettings(sheetWebhookUrl, sheetAutoSync);
+
       const res = await fetch("/api/google-sheets/sync", { method: "POST" });
       const data = await res.json();
       if (data.success) {
@@ -72,13 +75,13 @@ export default function SuperAdminDashboard({
   const handleSaveSheetSettings = async (urlVal, syncVal) => {
     const updated = {
       ...settings,
-      googleSheetWebhookUrl: urlVal.trim(),
+      googleSheetWebhookUrl: (urlVal || "").trim(),
       googleSheetAutoSyncEnabled: syncVal
     };
     const res = await onUpdateSettings(updated);
     if (res && res.success) {
-      setSheetStatusMsg("Google Sheets settings saved successfully!");
-      setTimeout(() => setSheetStatusMsg(""), 3000);
+      setSheetStatusMsg("Google Sheets Webhook settings saved successfully!");
+      setTimeout(() => setSheetStatusMsg(""), 3500);
     }
   };
 
@@ -1124,17 +1127,23 @@ export default function SuperAdminDashboard({
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "20px" }}>
                   <div>
                     <label className="form-label" style={{ fontWeight: 600 }}>Google Apps Script Webhook URL</label>
-                    <input 
-                      type="url" 
-                      className="form-control" 
-                      placeholder="https://script.google.com/macros/s/AKfycb.../exec"
-                      value={sheetWebhookUrl}
-                      onChange={e => {
-                        setSheetWebhookUrl(e.target.value);
-                        handleSaveSheetSettings(e.target.value, sheetAutoSync);
-                      }}
-                      style={{ marginBottom: "12px" }}
-                    />
+                    <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+                      <input 
+                        type="url" 
+                        className="form-control" 
+                        placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+                        value={sheetWebhookUrl}
+                        onChange={e => setSheetWebhookUrl(e.target.value)}
+                        style={{ flex: 1 }}
+                      />
+                      <button 
+                        onClick={() => handleSaveSheetSettings(sheetWebhookUrl, sheetAutoSync)}
+                        className="btn btn-secondary"
+                        style={{ whiteSpace: "nowrap" }}
+                      >
+                        Save Settings
+                      </button>
+                    </div>
 
                     <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "8px" }}>
                       <input 

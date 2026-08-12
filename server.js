@@ -1196,11 +1196,13 @@ app.get("/web", async (req, res) => {
 
 // 13. POST /api/settings - Updates system settings
 app.post("/api/settings", async (req, res) => {
-  const { isHidden, redirectUrl } = req.body;
+  const settingsObj = req.body || {};
   if (isPg) {
     try {
-      await pool.query('INSERT INTO settings ("key", "value") VALUES ($1, $2) ON CONFLICT ("key") DO UPDATE SET "value" = $2', ["isHidden", isHidden ? "true" : "false"]);
-      await pool.query('INSERT INTO settings ("key", "value") VALUES ($1, $2) ON CONFLICT ("key") DO UPDATE SET "value" = $2', ["redirectUrl", redirectUrl || "https://www.instagram.com/makpowerofficial/"]);
+      for (const [key, val] of Object.entries(settingsObj)) {
+        const valStr = typeof val === "boolean" ? (val ? "true" : "false") : String(val ?? "");
+        await pool.query('INSERT INTO settings ("key", "value") VALUES ($1, $2) ON CONFLICT ("key") DO UPDATE SET "value" = $2', [key, valStr]);
+      }
       res.json({ success: true });
     } catch (err) {
       console.error("POST /api/settings error:", err.message);
@@ -1209,8 +1211,7 @@ app.post("/api/settings", async (req, res) => {
   } else {
     const data = readLocalJson();
     data.settings = data.settings || {};
-    data.settings.isHidden = !!isHidden;
-    data.settings.redirectUrl = redirectUrl || "https://www.instagram.com/makpowerofficial/";
+    Object.assign(data.settings, settingsObj);
     writeLocalJson(data);
     res.json({ success: true });
   }
