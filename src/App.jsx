@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { LogIn, ShoppingCart, ShieldAlert, LogOut, Settings, BarChart2, Package } from "lucide-react";
+import { LogIn, ShoppingCart, ShieldAlert, LogOut, Settings, BarChart2, Package, Sun, Moon } from "lucide-react";
 import LoginPage from "./components/LoginPage";
 import RequesterForm from "./components/RequesterForm";
 import PurchaserDashboard from "./components/PurchaserDashboard";
@@ -11,6 +11,20 @@ import ItemMasterView from "./components/ItemMasterView";
 import { initialUsers, initialVendors, initialRequests, initialCargoShipments, initialCargoCompanies } from "./mockData";
 
 export default function App() {
+  // Theme State ("dark" | "light")
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem("vanguard_theme") || "dark";
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("vanguard_theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => (prev === "dark" ? "light" : "dark"));
+  };
+
   // Load initial data from localStorage or mockData
   // Load initial data from Express DB API
   const [users, setUsers] = useState([]);
@@ -517,6 +531,17 @@ export default function App() {
               style={{ color: "#38bdf8", fontWeight: 700 }}
             >
               <Package size={14} /> Item Catalog & Stock
+            </button>
+
+            {/* Global Light / Dark Theme Toggle */}
+            <button 
+              onClick={toggleTheme}
+              className="btn btn-sm btn-secondary"
+              title={`Switch to ${theme === "dark" ? "Light" : "Dark"} Mode`}
+              style={{ display: "flex", alignItems: "center", gap: "6px" }}
+            >
+              {theme === "dark" ? <Sun size={14} style={{ color: "#f59e0b" }} /> : <Moon size={14} style={{ color: "#818cf8" }} />}
+              <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>
             </button>
 
             {currentUser ? (
