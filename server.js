@@ -679,7 +679,9 @@ async function performGoogleSheetSync() {
   }
 }
 
-// Background Interval: Run every 10 minutes (600,000 ms)
+// Smart Activity-Driven Auto-Sync Engine (Only syncs if order activity occurred in last 10 mins)
+let isOrderDataDirty = true; // Initial sync on startup if enabled
+
 setInterval(async () => {
   try {
     let settingsObj = {};
@@ -690,21 +692,162 @@ setInterval(async () => {
       settingsObj = memoryDb.settings || {};
     }
 
-    if (settingsObj.googleSheetAutoSyncEnabled === "true" || settingsObj.googleSheetAutoSyncEnabled === true) {
-      if (settingsObj.googleSheetWebhookUrl) {
-        console.log("Triggering 10-minute automated Google Sheets Sync...");
-        await performGoogleSheetSync();
+    const autoSyncEnabled = settingsObj.googleSheetAutoSyncEnabled === "true" || settingsObj.googleSheetAutoSyncEnabled === true;
+    
+    if (autoSyncEnabled && settingsObj.googleSheetWebhookUrl) {
+      if (isOrderDataDirty) {
+        console.log("Order changes detected! Triggering 10-minute automated Google Sheets Sync...");
+        const result = await performGoogleSheetSync();
+        if (result.success) {
+          isOrderDataDirty = false; // Reset dirty flag after successful sync
+        }
+      } else {
+        console.log("No order activity in the last 10 minutes. Skipping Google Sheets sync.");
       }
     }
   } catch (err) {
-    console.error("10-minute Google Sheets cron error:", err);
+    console.error("10-minute Smart Google Sheets cron error:", err);
   }
 }, 10 * 60 * 1000);
 
 // Endpoint POST /api/google-sheets/sync (Manual instant sync)
 app.post("/api/google-sheets/sync", async (req, res) => {
   const result = await performGoogleSheetSync();
+  if (result.success) isOrderDataDirty = false;
   return res.json(result);
+});
+
+// ==================== STORAGE METRICS & FILE EXPLORER API ====================
+
+// GET /api/storage/metrics - Live PostgreSQL DB & Cloudinary Storage Stats
+app.get("/api/storage/metrics", async (req, res) => {
+  try {
+    let pgStats = { sizeStr: "0 MB", bytes: 0, rowsCount: 0 };
+    let cloudinaryStats = { usageBytes: 0, usageStr: "0 MB", totalAssets: 0 };
+
+    if (isPg) {
+      try {
+        const sizeRes = await pool.query("SELECT pg_database_size(current_database()) as bytes, pg_size_pretty(pg_database_size(current_database())) as size_str");
+        if (sizeRes.rows.length > 0) {
+          pgStats.bytes = parseInt(sizeRes.rows[0].bytes) || 0;
+          pgStats.sizeStr = sizeRes.rows[0].size_str || "0 MB";
+        }
+        const countRes = await pool.query("SELECT (SELECT count(*) FROM requests) + (SELECT count(*) FROM cargos) + (SELECT count(*) FROM users) + (SELECT count(*) FROM vendors) as total_rows");
+        pgStats.rowsCount = parseInt(countRes.rows[0]?.total_rows) || 0;
+      } catch (dbErr) {
+        console.error("PostgreSQL size query error:", dbErr.message);
+      }
+    } else {
+      const jsonStr = JSON.stringify(memoryDb);
+      const b = Buffer.byteLength(jsonStr, "utf8");
+      pgStats.bytes = b;
+      pgStats.sizeStr = `${(b / (1024 * 1024)).toFixed(2)} MB`;
+      pgStats.rowsCount = (memoryDb.requests?.length || 0) + (memoryDb.cargos?.length || 0);
+    }
+
+    try {
+      const usage = await cloudinary.api.usage();
+      cloudinaryStats.usageBytes = usage.storage?.usage || 0;
+      cloudinaryStats.usageStr = `${((usage.storage?.usage || 0) / (1024 * 1024)).toFixed(2)} MB`;
+      cloudinaryStats.totalAssets = usage.resources || usage.objects?.usage || 0;
+    } catch (cErr) {
+      let requests = isPg ? (await pool.query("SELECT photo FROM requests WHERE photo LIKE '%cloudinary%'")).rows : (memoryDb.requests || []).filter(r => r.photo && r.photo.includes("cloudinary"));
+      cloudinaryStats.totalAssets = requests.length;
+      cloudinaryStats.usageStr = `${(requests.length * 0.4).toFixed(1)} MB (Est)`;
+    }
+
+    res.json({
+      success: true,
+      postgres: pgStats,
+      cloudinary: cloudinaryStats
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch storage metrics.", details: err.message });
+  }
+});
+
+// GET /api/storage/files - Browse folders & assets in Cloudinary CDN / Storage
+app.get("/api/storage/files", async (req, res) => {
+  try {
+    const folder = req.query.folder || "";
+    let folders = [];
+    let files = [];
+
+    try {
+      const folderRes = await cloudinary.api.root_folders();
+      folders = (folderRes.folders || []).map(f => ({ name: f.name, path: f.path }));
+
+      const options = {
+        max_results: 100,
+        resource_type: "image"
+      };
+      if (folder) {
+        options.prefix = folder;
+      }
+      const resourceRes = await cloudinary.api.resources(options);
+      files = (resourceRes.resources || []).map(r => ({
+        public_id: r.public_id,
+        name: r.public_id.split("/").pop(),
+        url: r.secure_url,
+        format: r.format,
+        sizeBytes: r.bytes,
+        sizeStr: `${(r.bytes / 1024).toFixed(1)} KB`,
+        createdAt: r.created_at
+      }));
+    } catch (cErr) {
+      let requests = isPg ? (await pool.query("SELECT id, model, photo, updated_at FROM requests WHERE photo IS NOT NULL AND photo != ''")).rows : (memoryDb.requests || []).filter(r => r.photo);
+      files = requests.map(r => ({
+        public_id: r.id,
+        name: `${r.model || 'Item'}_${r.id.slice(0, 6)}`,
+        url: r.photo,
+        format: "jpg",
+        sizeBytes: 150000,
+        sizeStr: "150 KB",
+        createdAt: r.updated_at || new Date().toISOString()
+      }));
+      folders = [{ name: "makpower_photos", path: "makpower_photos" }, { name: "makpower_uploads", path: "makpower_uploads" }];
+    }
+
+    res.json({
+      success: true,
+      currentFolder: folder,
+      folders,
+      files
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to list files.", details: err.message });
+  }
+});
+
+// POST /api/storage/delete - Delete a single asset file
+app.post("/api/storage/delete", async (req, res) => {
+  try {
+    const { public_id } = req.body;
+    if (!public_id) return res.status(400).json({ error: "public_id is required" });
+
+    try {
+      await cloudinary.uploader.destroy(public_id);
+    } catch (e) {
+      console.warn("Cloudinary destroy warning:", e.message);
+    }
+
+    if (isPg) {
+      await pool.query('UPDATE requests SET "photo" = \'\' WHERE "photo" LIKE $1 OR "id" = $2', [`%${public_id}%`, public_id]);
+    } else {
+      (memoryDb.requests || []).forEach(r => {
+        if (r.id === public_id || (r.photo && r.photo.includes(public_id))) {
+          r.photo = "";
+        }
+      });
+      writeLocalJson(memoryDb);
+    }
+
+    recordAuthAuditLog("admin", "File Manager", "admin", "Delete File", `Deleted storage asset: ${public_id}`);
+
+    res.json({ success: true, message: `Deleted asset ${public_id}` });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete file.", details: err.message });
+  }
 });
 
 // 1. GET /api/state - Fetches full system state
@@ -769,6 +912,7 @@ app.get("/api/state", async (req, res) => {
 // 2. POST /api/requests - Adds or Updates requests
 app.post("/api/requests", async (req, res) => {
   const r = req.body;
+  isOrderDataDirty = true;
   if (isPg) {
     try {
       const query = `

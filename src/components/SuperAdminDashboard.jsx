@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Users, Building, Database, FileText, Plus, UserMinus, RefreshCw, Download, Upload, Eye, Truck, ChevronRight, Sliders, Package, ShieldCheck, Clock, UserX, LogOut } from "lucide-react";
+import { Users, Building, Database, FileText, Plus, UserMinus, RefreshCw, Download, Upload, Eye, Truck, ChevronRight, Sliders, Package, ShieldCheck, Clock, UserX, LogOut, Folder, HardDrive, Trash2, Copy, ExternalLink } from "lucide-react";
 import TransferModal from "./TransferModal";
 import { getCurrencySymbol, CargoCompaniesPanel, VendorDetailModal, CargoCompanyDetailModal } from "./PurchaserDashboard";
 import ItemMasterView from "./ItemMasterView";
@@ -28,6 +28,64 @@ export default function SuperAdminDashboard({
 }) {
   const [subTab, setSubTab] = useState("purchasers"); // "purchasers" | "vendors" | "audit" | "backup" | "cargocompanies"
   
+  // Storage & File Manager State
+  const [storageMetrics, setStorageMetrics] = useState(null);
+  const [currentFolder, setCurrentFolder] = useState("");
+  const [storageFolders, setStorageFolders] = useState([]);
+  const [storageFiles, setStorageFiles] = useState([]);
+  const [loadingStorage, setLoadingStorage] = useState(false);
+  const [storageStatusMsg, setStorageStatusMsg] = useState("");
+
+  const loadStorageData = async (folderPath = "") => {
+    setLoadingStorage(true);
+    try {
+      const [mRes, fRes] = await Promise.all([
+        fetch("/api/storage/metrics"),
+        fetch(`/api/storage/files?folder=${encodeURIComponent(folderPath)}`)
+      ]);
+      const mData = await mRes.json();
+      const fData = await fRes.json();
+
+      if (mData.success) setStorageMetrics(mData);
+      if (fData.success) {
+        setCurrentFolder(fData.currentFolder || "");
+        setStorageFolders(fData.folders || []);
+        setStorageFiles(fData.files || []);
+      }
+    } catch (err) {
+      console.error("Storage fetch error:", err.message);
+    } finally {
+      setLoadingStorage(false);
+    }
+  };
+
+  React.useEffect(() => {
+    if (subTab === "filemanager") {
+      loadStorageData(currentFolder);
+    }
+  }, [subTab]);
+
+  const handleDeleteStorageFile = async (public_id) => {
+    if (!window.confirm(`Are you sure you want to delete asset "${public_id}"?`)) return;
+    try {
+      const res = await fetch("/api/storage/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ public_id })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStorageStatusMsg(`✅ Deleted asset ${public_id}`);
+        loadStorageData(currentFolder);
+        setTimeout(() => setStorageStatusMsg(""), 3000);
+      } else {
+        setStorageStatusMsg(`❌ Delete failed: ${data.error}`);
+      }
+    } catch (err) {
+      setStorageStatusMsg(`❌ Delete error: ${err.message}`);
+    }
+  };
+
   // System Settings State
   const [redirectUrlInput, setRedirectUrlInput] = useState(settings.redirectUrl || "https://www.instagram.com/makpowerofficial/");
   const [settingsSuccessMsg, setSettingsSuccessMsg] = useState("");
@@ -360,6 +418,14 @@ export default function SuperAdminDashboard({
           style={{ color: "#10b981", fontWeight: 700 }}
         >
           <ShieldCheck size={16} /> User Sessions & Logs
+        </button>
+
+        <button 
+          onClick={() => setSubTab("filemanager")}
+          className={`sidebar-link ${subTab === "filemanager" ? "active" : ""}`}
+          style={{ color: "#f59e0b", fontWeight: 700 }}
+        >
+          <Folder size={16} /> Storage & File Manager
         </button>
       </aside>
 
@@ -998,6 +1064,9 @@ export default function SuperAdminDashboard({
                       style={{ display: "none" }} 
                     />
                   </label>
+                </div>
+              </div>
+
               {/* Cloudinary Image Migration Panel */}
               <div className="glass-panel" style={{ padding: "24px", gridColumn: "1 / -1" }}>
                 <h3 style={{ fontSize: "1.2rem", marginBottom: "12px", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px" }}>
@@ -1261,6 +1330,177 @@ export default function SuperAdminDashboard({
               </div>
 
             </div>
+          </div>
+        )}
+
+        {/* STORAGE & DESKTOP FILE MANAGER TAB */}
+        {subTab === "filemanager" && (
+          <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            
+            {/* Header */}
+            <div className="glass-panel" style={{ padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+              <div>
+                <h2 style={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--primary)", display: "flex", alignItems: "center", gap: "10px" }}>
+                  <HardDrive size={24} style={{ color: "#f59e0b" }} /> Live Storage Usage & Desktop File Manager
+                </h2>
+                <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px" }}>
+                  Real-time database storage metrics for PostgreSQL and Cloudinary CDN, plus desktop folder browsing and asset deletion.
+                </p>
+              </div>
+              <button 
+                onClick={() => loadStorageData(currentFolder)} 
+                className="btn btn-secondary"
+                disabled={loadingStorage}
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+              >
+                <RefreshCw size={16} className={loadingStorage ? "spin" : ""} /> Refresh Storage Metrics
+              </button>
+            </div>
+
+            {/* Storage Usage Metric Cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px" }}>
+              {/* PostgreSQL Storage Card */}
+              <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
+                <div style={{ padding: "14px", borderRadius: "12px", background: "rgba(56, 189, 248, 0.1)", color: "#38bdf8" }}>
+                  <Database size={28} />
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>PostgreSQL Database Size</div>
+                  <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--text-main)" }}>
+                    {storageMetrics?.postgres?.sizeStr || "Loading..."}
+                  </div>
+                  <div style={{ fontSize: "0.78rem", color: "var(--primary)", marginTop: "2px" }}>
+                    Total {storageMetrics?.postgres?.rowsCount?.toLocaleString() || 0} database rows stored
+                  </div>
+                </div>
+              </div>
+
+              {/* Cloudinary Storage Card */}
+              <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
+                <div style={{ padding: "14px", borderRadius: "12px", background: "rgba(245, 158, 11, 0.1)", color: "#f59e0b" }}>
+                  <HardDrive size={28} />
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Cloudinary Media CDN Storage</div>
+                  <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--text-main)" }}>
+                    {storageMetrics?.cloudinary?.usageStr || "Loading..."}
+                  </div>
+                  <div style={{ fontSize: "0.78rem", color: "#f59e0b", marginTop: "2px" }}>
+                    {storageMetrics?.cloudinary?.totalAssets || 0} image & document files hosted
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Desktop File Manager Explorer */}
+            <div className="glass-panel" style={{ padding: "24px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
+                
+                {/* Breadcrumbs */}
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.9rem", fontWeight: 600 }}>
+                  <button 
+                    onClick={() => loadStorageData("")}
+                    className="btn btn-sm btn-secondary"
+                    style={{ padding: "4px 10px" }}
+                  >
+                    Root /
+                  </button>
+                  {currentFolder && (
+                    <span style={{ color: "var(--primary)" }}>{currentFolder}</span>
+                  )}
+                </div>
+
+                <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                  {storageFolders.length} folders, {storageFiles.length} files
+                </div>
+              </div>
+
+              {storageStatusMsg && (
+                <div className={`alert-strip ${storageStatusMsg.includes("❌") ? "alert-danger" : "alert-success"}`} style={{ marginBottom: "16px" }}>
+                  {storageStatusMsg}
+                </div>
+              )}
+
+              {/* Folders List */}
+              {storageFolders.length > 0 && (
+                <div style={{ marginBottom: "24px" }}>
+                  <h4 style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Folders</h4>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "12px" }}>
+                    {storageFolders.map(folder => (
+                      <div 
+                        key={folder.path}
+                        onClick={() => loadStorageData(folder.path)}
+                        className="glass-panel"
+                        style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", border: "1px solid var(--border-glass)", transition: "all 0.2s ease" }}
+                      >
+                        <Folder size={20} style={{ color: "#f59e0b" }} />
+                        <span style={{ fontSize: "0.88rem", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{folder.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Files Grid */}
+              <h4 style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Files & Assets</h4>
+              
+              {storageFiles.length === 0 ? (
+                <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
+                  No files found in this folder.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "16px" }}>
+                  {storageFiles.map(file => (
+                    <div 
+                      key={file.public_id}
+                      className="glass-panel"
+                      style={{ padding: "14px", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: "10px", border: "1px solid var(--border-glass)" }}
+                    >
+                      <div>
+                        {/* Thumbnail */}
+                        <div style={{ width: "100%", height: "110px", borderRadius: "6px", background: "rgba(0,0,0,0.3)", overflow: "hidden", marginBottom: "10px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {file.url ? (
+                            <img src={file.url} alt={file.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            <FileText size={32} style={{ opacity: 0.4 }} />
+                          )}
+                        </div>
+
+                        <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-main)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={file.name}>
+                          {file.name}
+                        </div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                          Size: {file.sizeStr}
+                        </div>
+                      </div>
+
+                      {/* File Card Actions */}
+                      <div style={{ display: "flex", gap: "6px", borderTop: "1px solid var(--border-glass)", paddingTop: "8px" }}>
+                        <a 
+                          href={file.url} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="btn btn-sm btn-secondary"
+                          style={{ flex: 1, padding: "4px", fontSize: "0.72rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px" }}
+                        >
+                          <ExternalLink size={12} /> View
+                        </a>
+                        <button 
+                          onClick={() => handleDeleteStorageFile(file.public_id)}
+                          className="btn btn-sm btn-secondary"
+                          style={{ color: "var(--danger)", padding: "4px 8px" }}
+                          title="Delete File Asset"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+            </div>
+
           </div>
         )}
 
