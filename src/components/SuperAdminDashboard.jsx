@@ -345,37 +345,42 @@ export default function SuperAdminDashboard({
                   <table className="table" style={{ width: "100%", tableLayout: "fixed" }}>
                     <thead>
                       <tr>
-                        <th style={{ width: "18%" }}>Status</th>
-                        <th style={{ width: "26%" }}>User Name</th>
-                        <th style={{ width: "18%" }}>Role</th>
-                        <th style={{ width: "24%" }}>Signed In At</th>
-                        <th style={{ width: "14%", textAlign: "right" }}>Action</th>
+                        <th style={{ width: "20%", textAlign: "center" }}>Status</th>
+                        <th style={{ width: "25%", textAlign: "center" }}>User Name</th>
+                        <th style={{ width: "15%", textAlign: "center" }}>Role</th>
+                        <th style={{ width: "25%", textAlign: "center" }}>Signed In At</th>
+                        <th style={{ width: "15%", textAlign: "center" }}>Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {activeSessions.map(s => (
-                        <tr key={s.sessionId}>
-                          <td>
-                            <span className="badge badge-success" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                              <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#fff" }}></span> 🟢 Active Now
-                            </span>
-                          </td>
-                          <td style={{ fontWeight: 700, color: "var(--primary)" }}>{s.userName}</td>
-                          <td>
-                            <span className="badge badge-secondary" style={{ textTransform: "capitalize" }}>{s.role}</span>
-                          </td>
-                          <td style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{s.loginTime}</td>
-                          <td style={{ textAlign: "right" }}>
-                            <button 
-                              onClick={() => handleForceLogout(s.userId, s.sessionId)} 
-                              className="btn btn-sm btn-danger"
-                              style={{ padding: "5px 12px", fontSize: "0.78rem" }}
-                            >
-                              Sign Out
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {activeSessions.map(s => {
+                        const displayRole = s.role === "superadmin" ? "Admin" : s.role;
+                        const displayName = (s.userName || "").replace(/super\s*admin/gi, "Admin");
+
+                        return (
+                          <tr key={s.sessionId}>
+                            <td style={{ textAlign: "center" }}>
+                              <span className="badge badge-success" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#fff" }}></span> 🟢 Active Now
+                              </span>
+                            </td>
+                            <td style={{ fontWeight: 700, color: "var(--primary)", textAlign: "center" }}>{displayName}</td>
+                            <td style={{ textAlign: "center" }}>
+                              <span className="badge badge-secondary" style={{ textTransform: "capitalize" }}>{displayRole}</span>
+                            </td>
+                            <td style={{ fontSize: "0.85rem", color: "var(--text-muted)", textAlign: "center" }}>{s.loginTime}</td>
+                            <td style={{ textAlign: "center" }}>
+                              <button 
+                                onClick={() => handleForceLogout(s.userId, s.sessionId)} 
+                                className="btn btn-sm btn-danger"
+                                style={{ padding: "5px 12px", fontSize: "0.78rem" }}
+                              >
+                                Sign Out
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -397,27 +402,34 @@ export default function SuperAdminDashboard({
                   <table className="table" style={{ width: "100%", tableLayout: "fixed" }}>
                     <thead style={{ position: "sticky", top: 0, zIndex: 2 }}>
                       <tr>
-                        <th style={{ width: "24%" }}>Date & Time</th>
-                        <th style={{ width: "26%" }}>User Name</th>
-                        <th style={{ width: "18%" }}>Role</th>
-                        <th style={{ width: "18%" }}>Auth Event Action</th>
-                        <th style={{ width: "14%" }}>Details</th>
+                        <th style={{ width: "24%", textAlign: "center" }}>Date & Time</th>
+                        <th style={{ width: "26%", textAlign: "center" }}>User Name</th>
+                        <th style={{ width: "16%", textAlign: "center" }}>Role</th>
+                        <th style={{ width: "18%", textAlign: "center" }}>Auth Event Action</th>
+                        <th style={{ width: "16%", textAlign: "center" }}>Details</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {authAuditLogs.map(log => (
-                        <tr key={log.id}>
-                          <td style={{ fontSize: "0.83rem", color: "var(--text-muted)" }}>{log.timestamp}</td>
-                          <td style={{ fontWeight: 600 }}>{log.userName}</td>
-                          <td><span className="badge badge-secondary" style={{ textTransform: "capitalize" }}>{log.role}</span></td>
-                          <td>
-                            <span className={`badge ${log.action === "Login" ? "badge-success" : log.action === "Logout" ? "badge-secondary" : "badge-danger"}`}>
-                              {log.action}
-                            </span>
-                          </td>
-                          <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{log.details || "N/A"}</td>
-                        </tr>
-                      ))}
+                      {authAuditLogs.map(log => {
+                        const displayRole = log.role === "superadmin" ? "Admin" : log.role;
+                        const displayName = (log.userName || "").replace(/super\s*admin/gi, "Admin");
+
+                        return (
+                          <tr key={log.id}>
+                            <td style={{ fontSize: "0.83rem", color: "var(--text-muted)", textAlign: "center" }}>{log.timestamp}</td>
+                            <td style={{ fontWeight: 600, textAlign: "center" }}>{displayName}</td>
+                            <td style={{ textAlign: "center" }}>
+                              <span className="badge badge-secondary" style={{ textTransform: "capitalize" }}>{displayRole}</span>
+                            </td>
+                            <td style={{ textAlign: "center" }}>
+                              <span className={`badge ${log.action === "Login" ? "badge-success" : log.action === "Logout" ? "badge-secondary" : "badge-danger"}`}>
+                                {log.action}
+                              </span>
+                            </td>
+                            <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", textAlign: "center" }}>{log.details || "N/A"}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
