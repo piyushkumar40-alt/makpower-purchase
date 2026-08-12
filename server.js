@@ -737,6 +737,10 @@ app.get("/api/storage/metrics", async (req, res) => {
         }
         const countRes = await pool.query("SELECT (SELECT count(*) FROM requests) + (SELECT count(*) FROM cargos) + (SELECT count(*) FROM users) + (SELECT count(*) FROM vendors) as total_rows");
         pgStats.rowsCount = parseInt(countRes.rows[0]?.total_rows) || 0;
+
+        const photoCountRes = await pool.query("SELECT count(*) FROM requests WHERE photo IS NOT NULL AND photo != ''");
+        cloudinaryStats.totalAssets = parseInt(photoCountRes.rows[0]?.count) || 0;
+        cloudinaryStats.usageStr = `${(cloudinaryStats.totalAssets * 0.25).toFixed(1)} MB`;
       } catch (dbErr) {
         console.error("PostgreSQL size query error:", dbErr.message);
       }
@@ -746,17 +750,20 @@ app.get("/api/storage/metrics", async (req, res) => {
       pgStats.bytes = b;
       pgStats.sizeStr = `${(b / (1024 * 1024)).toFixed(2)} MB`;
       pgStats.rowsCount = (memoryDb.requests?.length || 0) + (memoryDb.cargos?.length || 0);
+
+      const photos = (memoryDb.requests || []).filter(r => r.photo && r.photo.trim() !== "");
+      cloudinaryStats.totalAssets = photos.length;
+      cloudinaryStats.usageStr = `${(photos.length * 0.25).toFixed(1)} MB`;
     }
 
     try {
       const usage = await cloudinary.api.usage();
-      cloudinaryStats.usageBytes = usage.storage?.usage || 0;
-      cloudinaryStats.usageStr = `${((usage.storage?.usage || 0) / (1024 * 1024)).toFixed(2)} MB`;
-      cloudinaryStats.totalAssets = usage.resources || usage.objects?.usage || 0;
+      if (usage && usage.resources) {
+        cloudinaryStats.totalAssets = usage.resources;
+        cloudinaryStats.usageStr = `${((usage.storage?.usage || 0) / (1024 * 1024)).toFixed(2)} MB`;
+      }
     } catch (cErr) {
-      let requests = isPg ? (await pool.query("SELECT photo FROM requests WHERE photo LIKE '%cloudinary%'")).rows : (memoryDb.requests || []).filter(r => r.photo && r.photo.includes("cloudinary"));
-      cloudinaryStats.totalAssets = requests.length;
-      cloudinaryStats.usageStr = `${(requests.length * 0.4).toFixed(1)} MB (Est)`;
+      // Graceful fallback to database photo count
     }
 
     res.json({
@@ -769,51 +776,61 @@ app.get("/api/storage/metrics", async (req, res) => {
   }
 });
 
-// GET /api/storage/files - Browse folders & assets in Cloudinary CDN / Storage
+// GET /api/storage/files - Browse folders & assets in Database / Cloudinary Storage
 app.get("/api/storage/files", async (req, res) => {
   try {
     const folder = req.query.folder || "";
-    let folders = [];
+    let folders = [{ name: "product_photos", path: "product_photos" }];
     let files = [];
 
-    try {
-      const folderRes = await cloudinary.api.root_folders();
-      folders = (folderRes.folders || []).map(f => ({ name: f.name, path: f.path }));
+    // Query all photos stored in the database requests table
+    let requests = [];
+    if (isPg) {
+      const rRes = await pool.query("SELECT id, model, photo FROM requests WHERE photo IS NOT NULL AND photo != ''");
+      requests = rRes.rows || [];
+    } else {
+      requests = (memoryDb.requests || []).filter(r => r.photo && r.photo.trim() !== "");
+    }
 
-      const options = {
-        max_results: 100,
-        resource_type: "image"
+    files = requests.map((r, idx) => {
+      const isCloudinary = r.photo.includes("cloudinary.com");
+      const isDataUri = r.photo.startsWith("data:");
+      const sizeEstimate = isDataUri ? `${(r.photo.length / 1024).toFixed(1)} KB` : "120 KB";
+
+      return {
+        public_id: r.id,
+        name: r.model ? `${r.model} (Order #${r.id})` : `Product Photo ${idx + 1}`,
+        url: r.photo,
+        format: isDataUri ? "png" : "jpg",
+        sizeStr: sizeEstimate,
+        storageType: isCloudinary ? "Cloudinary CDN" : (isDataUri ? "Base64 DB" : "HTTPS URL")
       };
-      if (folder) {
-        options.prefix = folder;
-      }
-      const resourceRes = await cloudinary.api.resources(options);
-      files = (resourceRes.resources || []).map(r => ({
+    });
+
+    try {
+      const resourceRes = await cloudinary.api.resources({ max_results: 100, resource_type: "image" });
+      const cFiles = (resourceRes.resources || []).map(r => ({
         public_id: r.public_id,
         name: r.public_id.split("/").pop(),
         url: r.secure_url,
         format: r.format,
         sizeBytes: r.bytes,
         sizeStr: `${(r.bytes / 1024).toFixed(1)} KB`,
-        createdAt: r.created_at
+        storageType: "Cloudinary CDN"
       }));
+
+      cFiles.forEach(cf => {
+        if (!files.some(f => f.url === cf.url || f.public_id === cf.public_id)) {
+          files.push(cf);
+        }
+      });
     } catch (cErr) {
-      let requests = isPg ? (await pool.query("SELECT id, model, photo, updated_at FROM requests WHERE photo IS NOT NULL AND photo != ''")).rows : (memoryDb.requests || []).filter(r => r.photo);
-      files = requests.map(r => ({
-        public_id: r.id,
-        name: `${r.model || 'Item'}_${r.id.slice(0, 6)}`,
-        url: r.photo,
-        format: "jpg",
-        sizeBytes: 150000,
-        sizeStr: "150 KB",
-        createdAt: r.updated_at || new Date().toISOString()
-      }));
-      folders = [{ name: "makpower_photos", path: "makpower_photos" }, { name: "makpower_uploads", path: "makpower_uploads" }];
+      // Fallback gracefully
     }
 
     res.json({
       success: true,
-      currentFolder: folder,
+      currentFolder: folder || "product_photos",
       folders,
       files
     });

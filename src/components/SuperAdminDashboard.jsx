@@ -1469,8 +1469,9 @@ export default function SuperAdminDashboard({
                         <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-main)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={file.name}>
                           {file.name}
                         </div>
-                        <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                          Size: {file.sizeStr}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
+                          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Size: {file.sizeStr}</span>
+                          <span className="badge badge-secondary" style={{ fontSize: "0.62rem" }}>{file.storageType || "Database"}</span>
                         </div>
                       </div>
 
