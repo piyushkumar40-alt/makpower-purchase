@@ -342,15 +342,14 @@ export default function SuperAdminDashboard({
                 </div>
               ) : (
                 <div style={{ overflowX: "auto" }}>
-                  <table className="table">
+                  <table className="table" style={{ width: "100%", tableLayout: "fixed" }}>
                     <thead>
                       <tr>
-                        <th>Status</th>
-                        <th>User Name</th>
-                        <th>Role</th>
-                        <th>Signed In At</th>
-                        <th>Session ID</th>
-                        <th>Action</th>
+                        <th style={{ width: "18%" }}>Status</th>
+                        <th style={{ width: "26%" }}>User Name</th>
+                        <th style={{ width: "18%" }}>Role</th>
+                        <th style={{ width: "24%" }}>Signed In At</th>
+                        <th style={{ width: "14%", textAlign: "right" }}>Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -366,14 +365,13 @@ export default function SuperAdminDashboard({
                             <span className="badge badge-secondary" style={{ textTransform: "capitalize" }}>{s.role}</span>
                           </td>
                           <td style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{s.loginTime}</td>
-                          <td style={{ fontFamily: "monospace", fontSize: "0.78rem" }}>{s.sessionId}</td>
-                          <td>
+                          <td style={{ textAlign: "right" }}>
                             <button 
                               onClick={() => handleForceLogout(s.userId, s.sessionId)} 
                               className="btn btn-sm btn-danger"
-                              style={{ padding: "4px 10px", fontSize: "0.78rem" }}
+                              style={{ padding: "5px 12px", fontSize: "0.78rem" }}
                             >
-                              Sign Out This Person
+                              Sign Out
                             </button>
                           </td>
                         </tr>
@@ -396,14 +394,14 @@ export default function SuperAdminDashboard({
                 </div>
               ) : (
                 <div style={{ overflowX: "auto", maxHeight: "450px" }}>
-                  <table className="table">
+                  <table className="table" style={{ width: "100%", tableLayout: "fixed" }}>
                     <thead style={{ position: "sticky", top: 0, zIndex: 2 }}>
                       <tr>
-                        <th>Date & Time</th>
-                        <th>User Name</th>
-                        <th>Role</th>
-                        <th>Auth Event Action</th>
-                        <th>Details</th>
+                        <th style={{ width: "24%" }}>Date & Time</th>
+                        <th style={{ width: "26%" }}>User Name</th>
+                        <th style={{ width: "18%" }}>Role</th>
+                        <th style={{ width: "18%" }}>Auth Event Action</th>
+                        <th style={{ width: "14%" }}>Details</th>
                       </tr>
                     </thead>
                     <tbody>
