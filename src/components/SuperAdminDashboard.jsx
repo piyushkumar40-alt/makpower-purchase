@@ -912,7 +912,7 @@ export default function SuperAdminDashboard({
               <div className="glass-panel" style={{ padding: "24px" }}>
                 <h3 style={{ fontSize: "1.2rem", marginBottom: "12px", color: "var(--primary)" }}>Import State</h3>
                 <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: "20px" }}>
-                  Upload a previously saved Vanguard backup file. This will restore the entire database state. 
+                  Upload a previously saved Mak Power backup file. This will restore the entire database state. 
                   <strong style={{ color: "var(--danger)" }}> WARNING: This will overwrite your current browser data.</strong>
                 </p>
 

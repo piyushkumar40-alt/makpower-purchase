@@ -13,12 +13,12 @@ import { initialUsers, initialVendors, initialRequests, initialCargoShipments, i
 export default function App() {
   // Theme State ("dark" | "light")
   const [theme, setTheme] = useState(() => {
-    return localStorage.getItem("vanguard_theme") || "dark";
+    return localStorage.getItem("makpower_theme") || "dark";
   });
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("vanguard_theme", theme);
+    localStorage.setItem("makpower_theme", theme);
   }, [theme]);
 
   const toggleTheme = () => {
@@ -36,13 +36,13 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   const [currentUser, setCurrentUser] = useState(() => {
-    const saved = localStorage.getItem("vanguard_current_user");
+    const saved = localStorage.getItem("makpower_current_user");
     return saved ? JSON.parse(saved) : null;
   });
 
   // activeView: "login" | "requester" | "dashboard" | "admin" | "nitin" | "rahul" | "coordinator"
   const [activeView, setActiveView] = useState(() => {
-    const savedUser = localStorage.getItem("vanguard_current_user");
+    const savedUser = localStorage.getItem("makpower_current_user");
     if (savedUser) {
       const u = JSON.parse(savedUser);
       if (u.role === "superadmin") return "admin";
@@ -104,9 +104,9 @@ export default function App() {
   // Sync active session only to localStorage
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem("vanguard_current_user", JSON.stringify(currentUser));
+      localStorage.setItem("makpower_current_user", JSON.stringify(currentUser));
     } else {
-      localStorage.removeItem("vanguard_current_user");
+      localStorage.removeItem("makpower_current_user");
     }
   }, [currentUser]);
 
@@ -153,7 +153,7 @@ export default function App() {
           if (data.revokedUserIds.includes(currentUser.id)) {
             setCurrentUser(null);
             setActiveView("login");
-            localStorage.removeItem("vanguard_session_id");
+            localStorage.removeItem("makpower_session_id");
           }
         }
       } catch (err) {
@@ -174,7 +174,7 @@ export default function App() {
       try {
         const res = await postData("/api/auth/login", { user });
         if (res.sessionId) {
-          localStorage.setItem("vanguard_session_id", res.sessionId);
+          localStorage.setItem("makpower_session_id", res.sessionId);
         }
       } catch (err) {
         console.error("Login session record error:", err);
@@ -197,7 +197,7 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    const sessionId = localStorage.getItem("vanguard_session_id");
+    const sessionId = localStorage.getItem("makpower_session_id");
     if (currentUser) {
       try {
         await postData("/api/auth/logout", { userId: currentUser.id, sessionId });
@@ -205,7 +205,7 @@ export default function App() {
         console.error("Logout notify error:", err);
       }
     }
-    localStorage.removeItem("vanguard_session_id");
+    localStorage.removeItem("makpower_session_id");
     setCurrentUser(null);
     setActiveView("login");
   };
