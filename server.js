@@ -503,6 +503,65 @@ app.post("/api/upload", async (req, res) => {
   }
 });
 
+// POST /api/migrate-photos-to-cloudinary - Scans DB and uploads all non-Cloudinary images to Cloudinary CDN
+app.post("/api/migrate-photos-to-cloudinary", async (req, res) => {
+  try {
+    let requests = [];
+    if (isPg) {
+      const rRes = await pool.query("SELECT * FROM requests WHERE photo IS NOT NULL AND photo != ''");
+      requests = rRes.rows || [];
+    } else {
+      requests = (memoryDb.requests || []).filter(r => r.photo);
+    }
+
+    let migratedCount = 0;
+
+    for (const r of requests) {
+      const photoStr = r.photo;
+      // Skip if already hosted on Cloudinary
+      if (photoStr && photoStr.includes("res.cloudinary.com")) {
+        continue;
+      }
+
+      if (photoStr && photoStr.trim() !== "") {
+        try {
+          const uploadResult = await cloudinary.uploader.upload(photoStr, {
+            folder: "makpower_photos",
+            resource_type: "auto"
+          });
+
+          const cUrl = uploadResult.secure_url;
+          migratedCount++;
+
+          if (isPg) {
+            await pool.query('UPDATE requests SET "photo" = $1 WHERE "id" = $2', [cUrl, r.id]);
+          } else {
+            const match = memoryDb.requests.find(x => x.id === r.id);
+            if (match) match.photo = cUrl;
+          }
+        } catch (upErr) {
+          console.error(`Failed to migrate photo for request ${r.id}:`, upErr.message);
+        }
+      }
+    }
+
+    if (!isPg) {
+      writeLocalJson(memoryDb);
+    }
+
+    recordAuthAuditLog("admin", "Photo Migration", "admin", "Cloudinary Migration", `Migrated ${migratedCount} database photos to Cloudinary CDN`);
+
+    return res.json({
+      success: true,
+      migratedCount,
+      message: `Successfully migrated ${migratedCount} item photos to Cloudinary database storage.`
+    });
+  } catch (err) {
+    console.error("Migration error:", err);
+    return res.status(500).json({ error: "Failed to migrate photos to Cloudinary.", details: err.message });
+  }
+});
+
 // ==================== GOOGLE SHEETS 27-COLUMN SYNC SYSTEM ====================
 
 async function formatAllRequestsForGoogleSheets() {

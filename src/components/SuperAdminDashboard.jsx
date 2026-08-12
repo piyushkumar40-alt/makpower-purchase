@@ -39,6 +39,28 @@ export default function SuperAdminDashboard({
   const [sheetStatusMsg, setSheetStatusMsg] = useState("");
   const [showAppsScriptCode, setShowAppsScriptCode] = useState(false);
 
+  // Cloudinary Photo Migration State
+  const [migratingPhotos, setMigratingPhotos] = useState(false);
+  const [migrationStatusMsg, setMigrationStatusMsg] = useState("");
+
+  const handleMigratePhotos = async () => {
+    setMigratingPhotos(true);
+    setMigrationStatusMsg("");
+    try {
+      const res = await fetch("/api/migrate-photos-to-cloudinary", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setMigrationStatusMsg(`✅ ${data.message}`);
+      } else {
+        setMigrationStatusMsg(`❌ Migration Error: ${data.error}`);
+      }
+    } catch (err) {
+      setMigrationStatusMsg(`❌ Network Error: ${err.message}`);
+    } finally {
+      setMigratingPhotos(false);
+    }
+  };
+
   React.useEffect(() => {
     if (settings.redirectUrl) {
       setRedirectUrlInput(settings.redirectUrl);
@@ -976,7 +998,30 @@ export default function SuperAdminDashboard({
                       style={{ display: "none" }} 
                     />
                   </label>
-                </div>
+              {/* Cloudinary Image Migration Panel */}
+              <div className="glass-panel" style={{ padding: "24px", gridColumn: "1 / -1" }}>
+                <h3 style={{ fontSize: "1.2rem", marginBottom: "12px", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Upload size={18} style={{ color: "#38bdf8" }} /> Cloudinary Photo Storage Migration Engine
+                </h3>
+                <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: "16px" }}>
+                  Automatically scans your database for any local SVG, base64, or data-URI photos, uploads them to your Cloudinary database storage, and converts database references to fast HTTPS Cloudinary URLs.
+                </p>
+
+                {migrationStatusMsg && (
+                  <div className={`alert-strip ${migrationStatusMsg.includes("❌") ? "alert-danger" : "alert-success"}`} style={{ marginBottom: "16px" }}>
+                    {migrationStatusMsg}
+                  </div>
+                )}
+
+                <button 
+                  onClick={handleMigratePhotos}
+                  disabled={migratingPhotos}
+                  className="btn btn-primary"
+                  style={{ padding: "12px 24px", fontSize: "0.92rem", display: "inline-flex", alignItems: "center", gap: "8px" }}
+                >
+                  <RefreshCw size={16} className={migratingPhotos ? "spin" : ""} />
+                  {migratingPhotos ? "Migrating Database Photos to Cloudinary..." : "Migrate All Database Photos to Cloudinary"}
+                </button>
               </div>
 
             </div>
