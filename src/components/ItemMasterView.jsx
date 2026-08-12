@@ -1,12 +1,48 @@
 import React, { useState, useMemo } from "react";
-import { Package, Search, Filter, Truck, CheckCircle2, Clock, Building, ArrowLeft, ExternalLink, ChevronRight, Layers, DollarSign, MapPin, Tag, ShieldCheck } from "lucide-react";
+import { Package, Search, Filter, Truck, CheckCircle2, Clock, Building, ArrowLeft, ExternalLink, ChevronRight, Layers, DollarSign, MapPin, Tag, ShieldCheck, Upload } from "lucide-react";
+import { uploadToCloudinary } from "../utils/upload";
 
-export default function ItemMasterView({ requests = [], vendors = [], cargos = [], cargoCompanies = [], purchasers = [] }) {
+export default function ItemMasterView({ requests = [], vendors = [], cargos = [], cargoCompanies = [], purchasers = [], onBatchUpdateRequests }) {
   const [selectedModel, setSelectedModel] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [vendorFilter, setVendorFilter] = useState("All");
   const [stageFilter, setStageFilter] = useState("All");
+
+  const [uploadingModel, setUploadingModel] = useState(null);
+  const [localPhotoMap, setLocalPhotoMap] = useState({});
+
+  const handleUpdateItemPhoto = async (modelName, file) => {
+    if (!file) return;
+    setUploadingModel(modelName);
+    try {
+      const cloudinaryUrl = await uploadToCloudinary(file, "makpower_photos");
+      const lowerKey = modelName.trim().toLowerCase();
+
+      setLocalPhotoMap(prev => ({
+        ...prev,
+        [lowerKey]: cloudinaryUrl
+      }));
+
+      const matchingRequests = requests.filter(r => (r.model || "").trim().toLowerCase() === lowerKey);
+      if (matchingRequests.length > 0) {
+        const updatedBatch = matchingRequests.map(r => ({ ...r, photo: cloudinaryUrl }));
+        if (onBatchUpdateRequests) {
+          await onBatchUpdateRequests(updatedBatch);
+        } else {
+          await fetch("/api/requests/batch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updatedBatch)
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to update item photo:", err);
+    } finally {
+      setUploadingModel(null);
+    }
+  };
 
   // Helper to convert currency to RMB base
   const convertToRmb = (amount, currency = "RMB") => {
@@ -43,7 +79,9 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
 
       const item = map[lowerKey];
       // Keep best available photo
-      if (!item.photo && r.photo) {
+      if (localPhotoMap[lowerKey]) {
+        item.photo = localPhotoMap[lowerKey];
+      } else if (!item.photo && r.photo) {
         item.photo = r.photo;
       }
       if (r.category && item.category === "Uncategorized") {
@@ -181,15 +219,28 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
 
         {/* Item Header Card */}
         <div className="glass-panel" style={{ padding: "24px", display: "grid", gridTemplateColumns: "180px 1fr", gap: "24px", alignItems: "start" }}>
-          <div style={{ width: "180px", height: "180px", background: "rgba(15, 23, 42, 0.6)", borderRadius: "12px", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border-glass)" }}>
-            {item.photo ? (
-              <img src={item.photo} alt={item.model} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            ) : (
-              <div style={{ textAlign: "center", color: "var(--text-muted)", padding: "12px" }}>
-                <Package size={48} style={{ opacity: 0.4, marginBottom: "8px" }} />
-                <div style={{ fontSize: "0.75rem" }}>No Cloudinary Photo</div>
-              </div>
-            )}
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div style={{ width: "180px", height: "180px", background: "rgba(15, 23, 42, 0.6)", borderRadius: "12px", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border-glass)" }}>
+              {item.photo ? (
+                <img src={item.photo} alt={item.model} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <div style={{ textAlign: "center", color: "var(--text-muted)", padding: "12px" }}>
+                  <Package size={48} style={{ opacity: 0.4, marginBottom: "8px" }} />
+                  <div style={{ fontSize: "0.75rem" }}>No Cloudinary Photo</div>
+                </div>
+              )}
+            </div>
+
+            <label className="doc-upload-btn" style={{ width: "100%", padding: "8px", fontSize: "0.8rem", justifyContent: "center", opacity: uploadingModel === item.model ? 0.7 : 1 }}>
+              <Upload size={14} /> <span>{uploadingModel === item.model ? "Uploading to Cloudinary..." : "Update Item Photo"}</span>
+              <input 
+                type="file" 
+                accept="image/*" 
+                disabled={uploadingModel === item.model}
+                onChange={e => handleUpdateItemPhoto(item.model, e.target.files[0])} 
+                style={{ display: "none" }} 
+              />
+            </label>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -440,12 +491,31 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
               <div>
                 {/* Top Image & Model Header */}
                 <div style={{ display: "flex", gap: "14px", marginBottom: "14px" }}>
-                  <div style={{ width: "70px", height: "70px", borderRadius: "8px", background: "rgba(15,23,42,0.8)", border: "1px solid var(--border-glass)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    {item.photo ? (
-                      <img src={item.photo} alt={item.model} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    ) : (
-                      <Package size={28} style={{ opacity: 0.4 }} />
-                    )}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "center" }}>
+                    <div style={{ width: "70px", height: "70px", borderRadius: "8px", background: "rgba(15,23,42,0.8)", border: "1px solid var(--border-glass)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      {item.photo ? (
+                        <img src={item.photo} alt={item.model} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      ) : (
+                        <Package size={28} style={{ opacity: 0.4 }} />
+                      )}
+                    </div>
+                    <label 
+                      className="doc-upload-btn" 
+                      style={{ fontSize: "0.62rem", padding: "2px 6px", height: "auto", minWidth: "auto", opacity: uploadingModel === item.model ? 0.7 : 1 }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <Upload size={9} /> <span>{uploadingModel === item.model ? "..." : "Edit Photo"}</span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        disabled={uploadingModel === item.model}
+                        onChange={e => {
+                          e.stopPropagation();
+                          handleUpdateItemPhoto(item.model, e.target.files[0]);
+                        }} 
+                        style={{ display: "none" }} 
+                      />
+                    </label>
                   </div>
 
                   <div style={{ flex: 1, minWidth: 0 }}>

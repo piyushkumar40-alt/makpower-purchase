@@ -662,6 +662,7 @@ export default function App() {
               cargos={cargos} 
               cargoCompanies={cargoCompanies} 
               purchasers={users.filter(u => u.role === "purchaser")} 
+              onBatchUpdateRequests={batchUpdateRequests}
             />
           </div>
         )}
