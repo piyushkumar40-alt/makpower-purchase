@@ -32,11 +32,55 @@ export default function SuperAdminDashboard({
   const [redirectUrlInput, setRedirectUrlInput] = useState(settings.redirectUrl || "https://www.instagram.com/makpowerofficial/");
   const [settingsSuccessMsg, setSettingsSuccessMsg] = useState("");
 
+  // Google Sheets Integration State
+  const [sheetWebhookUrl, setSheetWebhookUrl] = useState(settings.googleSheetWebhookUrl || "");
+  const [sheetAutoSync, setSheetAutoSync] = useState(settings.googleSheetAutoSyncEnabled === "true" || settings.googleSheetAutoSyncEnabled === true);
+  const [sheetSyncing, setSheetSyncing] = useState(false);
+  const [sheetStatusMsg, setSheetStatusMsg] = useState("");
+  const [showAppsScriptCode, setShowAppsScriptCode] = useState(false);
+
   React.useEffect(() => {
     if (settings.redirectUrl) {
       setRedirectUrlInput(settings.redirectUrl);
     }
-  }, [settings.redirectUrl]);
+    if (settings.googleSheetWebhookUrl !== undefined) {
+      setSheetWebhookUrl(settings.googleSheetWebhookUrl || "");
+    }
+    if (settings.googleSheetAutoSyncEnabled !== undefined) {
+      setSheetAutoSync(settings.googleSheetAutoSyncEnabled === "true" || settings.googleSheetAutoSyncEnabled === true);
+    }
+  }, [settings.redirectUrl, settings.googleSheetWebhookUrl, settings.googleSheetAutoSyncEnabled]);
+
+  const handleManualSheetSync = async () => {
+    setSheetSyncing(true);
+    setSheetStatusMsg("");
+    try {
+      const res = await fetch("/api/google-sheets/sync", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setSheetStatusMsg(`✅ Successfully synced ${data.count} rows to Google Sheets at ${data.syncedAt}!`);
+      } else {
+        setSheetStatusMsg(`❌ Sync Error: ${data.error}`);
+      }
+    } catch (err) {
+      setSheetStatusMsg(`❌ Network Error: ${err.message}`);
+    } finally {
+      setSheetSyncing(false);
+    }
+  };
+
+  const handleSaveSheetSettings = async (urlVal, syncVal) => {
+    const updated = {
+      ...settings,
+      googleSheetWebhookUrl: urlVal.trim(),
+      googleSheetAutoSyncEnabled: syncVal
+    };
+    const res = await onUpdateSettings(updated);
+    if (res && res.success) {
+      setSheetStatusMsg("Google Sheets settings saved successfully!");
+      setTimeout(() => setSheetStatusMsg(""), 3000);
+    }
+  };
 
   // Purchaser State
   const [pName, setPName] = useState("");
@@ -1051,6 +1095,106 @@ export default function SuperAdminDashboard({
                     </span>
                   </div>
                 </div>
+              </div>
+
+              {/* Google Sheets Integration Panel */}
+              <div className="glass-panel" style={{ padding: "24px", gridColumn: "1 / -1" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "12px" }}>
+                  <h3 style={{ fontSize: "1.3rem", fontWeight: 700, color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px" }}>
+                    <FileText size={20} style={{ color: "#10b981" }} /> Google Sheets 27-Column Auto-Sync (Every 10 Mins)
+                  </h3>
+
+                  {settings.lastGoogleSheetSyncTime && (
+                    <span className="badge badge-success" style={{ fontSize: "0.78rem" }}>
+                      Last Synced: {settings.lastGoogleSheetSyncTime}
+                    </span>
+                  )}
+                </div>
+
+                <p style={{ color: "var(--text-muted)", fontSize: "0.88rem", marginBottom: "16px" }}>
+                  Automatically syncs all 27 purchase & cargo tracking columns to your Google Sheet every 10 minutes. If any information is missing, blank values (`""`) are sent.
+                </p>
+
+                {sheetStatusMsg && (
+                  <div className={`alert-strip ${sheetStatusMsg.includes("❌") ? "alert-danger" : "alert-success"}`} style={{ marginBottom: "16px" }}>
+                    {sheetStatusMsg}
+                  </div>
+                )}
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "20px" }}>
+                  <div>
+                    <label className="form-label" style={{ fontWeight: 600 }}>Google Apps Script Webhook URL</label>
+                    <input 
+                      type="url" 
+                      className="form-control" 
+                      placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+                      value={sheetWebhookUrl}
+                      onChange={e => {
+                        setSheetWebhookUrl(e.target.value);
+                        handleSaveSheetSettings(e.target.value, sheetAutoSync);
+                      }}
+                      style={{ marginBottom: "12px" }}
+                    />
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "8px" }}>
+                      <input 
+                        type="checkbox" 
+                        id="sheetAutoSyncToggle"
+                        checked={sheetAutoSync}
+                        onChange={e => {
+                          const val = e.target.checked;
+                          setSheetAutoSync(val);
+                          handleSaveSheetSettings(sheetWebhookUrl, val);
+                        }}
+                        style={{ width: "18px", height: "18px", cursor: "pointer" }}
+                      />
+                      <label htmlFor="sheetAutoSyncToggle" style={{ fontSize: "0.88rem", fontWeight: 600, cursor: "pointer" }}>
+                        Enable Automatic 10-Minute Sync Engine
+                      </label>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px", justifyContent: "center" }}>
+                    <button 
+                      onClick={handleManualSheetSync}
+                      disabled={sheetSyncing}
+                      className="btn btn-primary"
+                      style={{ padding: "12px", fontSize: "0.92rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
+                    >
+                      <RefreshCw size={16} className={sheetSyncing ? "spin" : ""} />
+                      {sheetSyncing ? "Syncing 27 Columns to Google Sheets..." : "Sync to Google Sheet Now"}
+                    </button>
+
+                    <button 
+                      onClick={() => setShowAppsScriptCode(!showAppsScriptCode)}
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: "0.8rem" }}
+                    >
+                      {showAppsScriptCode ? "Hide Google Apps Script Setup Code" : "📋 View Google Apps Script Setup Code"}
+                    </button>
+                  </div>
+                </div>
+
+                {showAppsScriptCode && (
+                  <div style={{ marginTop: "20px", background: "rgba(0,0,0,0.3)", padding: "16px", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+                    <h4 style={{ fontSize: "0.88rem", color: "var(--primary)", marginBottom: "8px" }}>Google Apps Script Receiver Code (Copy & Paste into Google Sheets → Extensions → Apps Script):</h4>
+                    <pre style={{ background: "#0f172a", color: "#38bdf8", padding: "12px", borderRadius: "6px", fontSize: "0.75rem", overflowX: "auto", whiteSpace: "pre-wrap" }}>
+{`function doPost(e) {
+  var data = JSON.parse(e.postData.contents);
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var headers = ["Purchaser", "Vendor", "Order Date", "Type", "Model", "Order Quantity", "Price (RMB)", "Total (RMB)", "Advance Payment", "Balance Payment", "Photo", "Vendor EDD", "Cargo Order Date", "Cargo Detail", "Cargo Price", "Cargo Price UOM", "CBM as per Packing List", "Total Cargo Price", "Mode of Transport", "Cargo Shipping Date", "Cargo ETA", "Packing List", "Invoice", "Is Material Rec?", "Packing Slip", "Packing Ordered By Nitin", "Purchase Updated?"];
+  sheet.clearContents();
+  sheet.appendRow(headers);
+  if (data.rows && data.rows.length > 0) {
+    data.rows.forEach(function(r) {
+      sheet.appendRow([r.purchaser, r.vendor, r.orderDate, r.type, r.model, r.orderQuantity, r.priceRmb, r.totalRmb, r.advancePayment, r.balancePayment, r.photo, r.vendorEdd, r.cargoOrderDate, r.cargoDetail, r.cargoPrice, r.cargoPriceUom, r.cbmPackingList, r.totalCargoPrice, r.modeOfTransport, r.cargoShippingDate, r.cargoEta, r.packingListFile, r.invoiceFile, r.isMaterialRec, r.packingSlip, r.packingOrderedByNitin, r.purchaseUpdated]);
+    });
+  }
+  return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
+}`}
+                    </pre>
+                  </div>
+                )}
               </div>
 
             </div>

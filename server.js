@@ -497,10 +497,143 @@ app.post("/api/upload", async (req, res) => {
   } catch (err) {
     console.error("Cloudinary upload error:", err);
     return res.status(500).json({
-      error: "Failed to upload file to Cloudinary.",
-      details: err.message
-    });
+// ==================== GOOGLE SHEETS 27-COLUMN SYNC SYSTEM ====================
+
+async function formatAllRequestsForGoogleSheets() {
+  let requests = [];
+  let users = [];
+  let vendors = [];
+  let cargos = [];
+
+  if (isPg) {
+    const rRes = await pool.query("SELECT * FROM requests");
+    const uRes = await pool.query("SELECT * FROM users");
+    const vRes = await pool.query("SELECT * FROM vendors");
+    const cRes = await pool.query("SELECT * FROM cargos");
+    requests = rRes.rows || [];
+    users = uRes.rows || [];
+    vendors = vRes.rows || [];
+    cargos = cRes.rows || [];
+  } else {
+    requests = memoryDb.requests || [];
+    users = memoryDb.users || [];
+    vendors = memoryDb.vendors || [];
+    cargos = memoryDb.cargos || [];
   }
+
+  const rows = requests.map(r => {
+    const purchaser = users.find(u => u.id === r.purchaserId)?.name || "";
+    const vendor = vendors.find(v => v.id === r.vendorId)?.name || "";
+    const cargo = cargos.find(c => c.id === r.cargoId) || {};
+
+    return {
+      purchaser: purchaser || "",
+      vendor: vendor || "",
+      orderDate: r.orderDate || "",
+      type: r.type || "",
+      model: r.model || "",
+      orderQuantity: r.orderQuantity != null ? String(r.orderQuantity) : "",
+      priceRmb: r.priceRmb != null ? String(r.priceRmb) : "",
+      totalRmb: r.totalRmb != null ? String(r.totalRmb) : "",
+      advancePayment: r.advancePayment != null ? String(r.advancePayment) : "",
+      balancePayment: r.balancePayment != null ? String(r.balancePayment) : "",
+      photo: r.photo || "",
+      vendorEdd: r.vendorEdd || "",
+      cargoOrderDate: cargo.cargoOrderDate || "",
+      cargoDetail: cargo.cargoDetail || "",
+      cargoPrice: cargo.cargoPrice != null ? String(cargo.cargoPrice) : "",
+      cargoPriceUom: cargo.cargoPriceUom || "",
+      cbmPackingList: cargo.cbmPackingList != null ? String(cargo.cbmPackingList) : "",
+      totalCargoPrice: cargo.totalCargoPrice != null ? String(cargo.totalCargoPrice) : "",
+      modeOfTransport: cargo.modeOfTransport || "",
+      cargoShippingDate: cargo.cargoShippingDate || "",
+      cargoEta: cargo.cargoEta || "",
+      packingListFile: cargo.packingListFile || "",
+      invoiceFile: cargo.invoiceFile || "",
+      isMaterialRec: r.isMaterialRec || cargo.isMaterialRec || "",
+      packingSlip: cargo.packingListFile || "",
+      packingOrderedByNitin: r.packingOrderedByNitin || "",
+      purchaseUpdated: r.purchaseUpdated || ""
+    };
+  });
+
+  return rows;
+}
+
+async function performGoogleSheetSync() {
+  try {
+    let settingsObj = {};
+    if (isPg) {
+      const res = await pool.query("SELECT * FROM settings");
+      (res.rows || []).forEach(r => { settingsObj[r.key] = r.value; });
+    } else {
+      settingsObj = memoryDb.settings || {};
+    }
+
+    const webhookUrl = settingsObj.googleSheetWebhookUrl;
+    if (!webhookUrl || !webhookUrl.startsWith("http")) {
+      return { success: false, error: "No valid Google Sheets Webhook URL configured. Please paste your Google Apps Script Webhook URL in Admin Settings." };
+    }
+
+    const rows = await formatAllRequestsForGoogleSheets();
+    const payload = {
+      timestamp: new Date().toISOString(),
+      rowCount: rows.length,
+      rows
+    };
+
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const nowStr = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
+    if (isPg) {
+      await pool.query(`
+        INSERT INTO settings ("key", "value") VALUES ('lastGoogleSheetSyncTime', $1)
+        ON CONFLICT ("key") DO UPDATE SET "value" = $1
+      `, [nowStr]);
+    } else {
+      if (!memoryDb.settings) memoryDb.settings = {};
+      memoryDb.settings.lastGoogleSheetSyncTime = nowStr;
+    }
+
+    recordAuthAuditLog("system", "System Auto-Sync", "system", "Google Sheets Sync", `Synced ${rows.length} rows to Google Sheets`);
+
+    return { success: true, count: rows.length, syncedAt: nowStr };
+  } catch (err) {
+    console.error("Google Sheets sync execution error:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+// Background Interval: Run every 10 minutes (600,000 ms)
+setInterval(async () => {
+  try {
+    let settingsObj = {};
+    if (isPg) {
+      const res = await pool.query("SELECT * FROM settings");
+      (res.rows || []).forEach(r => { settingsObj[r.key] = r.value; });
+    } else {
+      settingsObj = memoryDb.settings || {};
+    }
+
+    if (settingsObj.googleSheetAutoSyncEnabled === "true" || settingsObj.googleSheetAutoSyncEnabled === true) {
+      if (settingsObj.googleSheetWebhookUrl) {
+        console.log("Triggering 10-minute automated Google Sheets Sync...");
+        await performGoogleSheetSync();
+      }
+    }
+  } catch (err) {
+    console.error("10-minute Google Sheets cron error:", err);
+  }
+}, 10 * 60 * 1000);
+
+// Endpoint POST /api/google-sheets/sync (Manual instant sync)
+app.post("/api/google-sheets/sync", async (req, res) => {
+  const result = await performGoogleSheetSync();
+  return res.json(result);
 });
 
 // 1. GET /api/state - Fetches full system state
