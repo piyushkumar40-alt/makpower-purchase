@@ -142,30 +142,26 @@ export default function App() {
     return res;
   };
 
-  // Check if session was revoked remotely by Admin
+  // Check if session was explicitly revoked remotely by Admin
   useEffect(() => {
     if (!currentUser) return;
     async function checkSessionStatus() {
       try {
         const res = await fetch("/api/auth/sessions");
         const data = await res.json();
-        if (data.success && Array.isArray(data.activeSessions)) {
-          const sessionId = localStorage.getItem("vanguard_session_id");
-          const isStillActive = data.activeSessions.some(s => s.userId === currentUser.id || (sessionId && s.sessionId === sessionId));
-          
-          if (!isStillActive) {
-            alert("Your session has been signed out by the Admin.");
+        if (data.success && Array.isArray(data.revokedUserIds)) {
+          if (data.revokedUserIds.includes(currentUser.id)) {
             setCurrentUser(null);
             setActiveView("login");
             localStorage.removeItem("vanguard_session_id");
           }
         }
       } catch (err) {
-        console.error("Session status check error:", err);
+        // Silently ignore network checks
       }
     }
 
-    const checkTimer = setInterval(checkSessionStatus, 8000);
+    const checkTimer = setInterval(checkSessionStatus, 15000);
     return () => clearInterval(checkTimer);
   }, [currentUser]);
 
