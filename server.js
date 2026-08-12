@@ -677,7 +677,9 @@ app.get("/api/state", async (req, res) => {
 
       const settings = {};
       settingsRes.rows.forEach(row => {
-        settings[row.key] = row.key === "isHidden" ? (row.value === "true") : row.value;
+        if (row.value === "true") settings[row.key] = true;
+        else if (row.value === "false") settings[row.key] = false;
+        else settings[row.key] = row.value;
       });
       if (settings.isHidden === undefined) settings.isHidden = false;
       if (!settings.redirectUrl) settings.redirectUrl = "https://www.instagram.com/makpowerofficial/";

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { LogIn, ShoppingCart, ShieldAlert, LogOut, Settings, BarChart2, Package, Sun, Moon } from "lucide-react";
+import { LogIn, ShoppingCart, ShieldAlert, LogOut, Settings, BarChart2, Package, Sun, Moon, Home } from "lucide-react";
 import LoginPage from "./components/LoginPage";
 import RequesterForm from "./components/RequesterForm";
 import PurchaserDashboard from "./components/PurchaserDashboard";
@@ -42,8 +42,10 @@ export default function App() {
 
   // activeView: "login" | "requester" | "dashboard" | "admin" | "nitin" | "rahul" | "coordinator"
   const [activeView, setActiveView] = useState(() => {
+    const savedView = localStorage.getItem("makpower_active_view");
     const savedUser = localStorage.getItem("makpower_current_user");
     if (savedUser) {
+      if (savedView) return savedView;
       const u = JSON.parse(savedUser);
       if (u.role === "superadmin") return "admin";
       if (u.role === "nitin") return "nitin";
@@ -53,6 +55,26 @@ export default function App() {
     }
     return "login";
   });
+
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem("makpower_active_view", activeView);
+    } else {
+      localStorage.removeItem("makpower_active_view");
+    }
+  }, [activeView, currentUser]);
+
+  const handleGoHome = () => {
+    if (!currentUser) {
+      setActiveView("login");
+      return;
+    }
+    if (currentUser.role === "superadmin") setActiveView("admin");
+    else if (currentUser.role === "nitin") setActiveView("nitin");
+    else if (currentUser.role === "rahul") setActiveView("rahul");
+    else if (currentUser.role === "coordinator") setActiveView("coordinator");
+    else setActiveView("dashboard");
+  };
 
   // Fetch full state on mount & set up 10-second polling
   useEffect(() => {
@@ -537,6 +559,15 @@ export default function App() {
             {/* View switching logic for logged-in users */}
             {currentUser && (
               <>
+                <button 
+                  onClick={handleGoHome} 
+                  className="btn btn-sm btn-secondary"
+                  title="Go to Home Page"
+                  style={{ fontWeight: 600 }}
+                >
+                  <Home size={14} style={{ color: "var(--primary)" }} /> Home
+                </button>
+
                 {currentUser.role === "superadmin" && (
                   <button 
                     onClick={() => setActiveView("admin")} 
