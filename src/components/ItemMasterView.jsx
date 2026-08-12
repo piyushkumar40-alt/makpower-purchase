@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Package, Search, Filter, Truck, CheckCircle2, Clock, Building, ArrowLeft, ExternalLink, ChevronRight, Layers, DollarSign, MapPin, Tag, ShieldCheck, Upload } from "lucide-react";
 import { uploadToCloudinary } from "../utils/upload";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
+import Pagination from "./Pagination";
 
 export default function ItemMasterView({ requests = [], vendors = [], cargos = [], cargoCompanies = [], purchasers = [], onBatchUpdateRequests }) {
   const [selectedModel, setSelectedModel] = useState(null);
@@ -11,6 +12,10 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
   const [stageFilter, setStageFilter] = useState("All");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  
+  // Pagination State (50 per page for 5 Lakh scale)
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
 
   const [uploadingModel, setUploadingModel] = useState(null);
   const [localPhotoMap, setLocalPhotoMap] = useState({});
@@ -182,6 +187,15 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
       return matchesSearch && matchesCat && matchesVendor && matchesStage && matchesDate;
     });
   }, [itemsCatalog, searchQuery, categoryFilter, vendorFilter, stageFilter, startDate, endDate]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, categoryFilter, vendorFilter, stageFilter, startDate, endDate]);
+
+  const paginatedItems = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredItems.slice(start, start + itemsPerPage);
+  }, [filteredItems, currentPage, itemsPerPage]);
 
   // Total summary metrics
   const totalItemsCount = itemsCatalog.length;
@@ -490,94 +504,103 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
           No items found matching your filter criteria.
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "20px" }}>
-          {filteredItems.map(item => (
-            <div 
-              key={item.model} 
-              className="glass-panel" 
-              style={{ 
-                padding: "20px", display: "flex", flexDirection: "column", justifyContent: "space-between", 
-                transition: "all 0.2s ease", cursor: "pointer", border: "1px solid var(--border-glass)" 
-              }}
-              onClick={() => setSelectedModel(item.model)}
-            >
-              <div>
-                {/* Top Image & Model Header */}
-                <div style={{ display: "flex", gap: "14px", marginBottom: "14px" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "center" }}>
-                    <div style={{ width: "70px", height: "70px", borderRadius: "8px", background: "rgba(15,23,42,0.8)", border: "1px solid var(--border-glass)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      {item.photo ? (
-                        <img src={item.photo} alt={item.model} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      ) : (
-                        <Package size={28} style={{ opacity: 0.4 }} />
-                      )}
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "20px" }}>
+            {paginatedItems.map(item => (
+              <div 
+                key={item.model} 
+                className="glass-panel" 
+                style={{ 
+                  padding: "20px", display: "flex", flexDirection: "column", justifyContent: "space-between", 
+                  transition: "all 0.2s ease", cursor: "pointer", border: "1px solid var(--border-glass)" 
+                }}
+                onClick={() => setSelectedModel(item.model)}
+              >
+                <div>
+                  {/* Top Image & Model Header */}
+                  <div style={{ display: "flex", gap: "14px", marginBottom: "14px" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "center" }}>
+                      <div style={{ width: "70px", height: "70px", borderRadius: "8px", background: "rgba(15,23,42,0.8)", border: "1px solid var(--border-glass)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        {item.photo ? (
+                          <img src={item.photo} alt={item.model} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        ) : (
+                          <Package size={28} style={{ opacity: 0.4 }} />
+                        )}
+                      </div>
+                      <label 
+                        className="doc-upload-btn" 
+                        style={{ fontSize: "0.62rem", padding: "2px 6px", height: "auto", minWidth: "auto", opacity: uploadingModel === item.model ? 0.7 : 1 }}
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <Upload size={9} /> <span>{uploadingModel === item.model ? "..." : "Edit Photo"}</span>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          disabled={uploadingModel === item.model}
+                          onChange={e => {
+                            e.stopPropagation();
+                            handleUpdateItemPhoto(item.model, e.target.files[0]);
+                          }} 
+                          style={{ display: "none" }} 
+                        />
+                      </label>
                     </div>
-                    <label 
-                      className="doc-upload-btn" 
-                      style={{ fontSize: "0.62rem", padding: "2px 6px", height: "auto", minWidth: "auto", opacity: uploadingModel === item.model ? 0.7 : 1 }}
-                      onClick={e => e.stopPropagation()}
-                    >
-                      <Upload size={9} /> <span>{uploadingModel === item.model ? "..." : "Edit Photo"}</span>
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        disabled={uploadingModel === item.model}
-                        onChange={e => {
-                          e.stopPropagation();
-                          handleUpdateItemPhoto(item.model, e.target.files[0]);
-                        }} 
-                        style={{ display: "none" }} 
-                      />
-                    </label>
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <h4 
+                        style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                      >
+                        {item.model}
+                      </h4>
+                      <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                        Made By: <strong>{item.vendors.slice(0, 2).join(", ")}{item.vendors.length > 2 ? "..." : ""}</strong>
+                      </div>
+                      <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
+                        <span className="badge badge-info" style={{ fontSize: "0.68rem" }}>{item.category}</span>
+                        <span className="badge badge-secondary" style={{ fontSize: "0.68rem" }}>{item.itemNature}</span>
+                      </div>
+                    </div>
                   </div>
 
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <h4 
-                      style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
-                    >
-                      {item.model}
-                    </h4>
-                    <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                      Made By: <strong>{item.vendors.slice(0, 2).join(", ")}{item.vendors.length > 2 ? "..." : ""}</strong>
+                  {/* Live Stock & Location Badge */}
+                  <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: "8px", padding: "12px", marginBottom: "14px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                    <div>
+                      <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>In-Transit Ordered</div>
+                      <div style={{ fontSize: "1rem", fontWeight: 700, color: "#f59e0b" }}>{item.totalOrderedQty} pcs</div>
                     </div>
-                    <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
-                      <span className="badge badge-info" style={{ fontSize: "0.68rem" }}>{item.category}</span>
-                      <span className="badge badge-secondary" style={{ fontSize: "0.68rem" }}>{item.itemNature}</span>
+                    <div>
+                      <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Delivered Stock</div>
+                      <div style={{ fontSize: "1rem", fontWeight: 700, color: "var(--success)" }}>{item.totalDeliveredQty} pcs</div>
                     </div>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.8rem" }}>
+                    <span style={{ color: "var(--text-muted)" }}>Stage Location:</span>
+                    <span className={`badge ${item.latestStageCode === 5 ? "badge-success" : "badge-warning"}`} style={{ fontSize: "0.72rem" }}>
+                      <MapPin size={10} style={{ marginRight: "4px" }} /> {item.latestStage}
+                    </span>
                   </div>
                 </div>
 
-                {/* Live Stock & Location Badge */}
-                <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: "8px", padding: "12px", marginBottom: "14px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                  <div>
-                    <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>In-Transit Ordered</div>
-                    <div style={{ fontSize: "1rem", fontWeight: 700, color: "#f59e0b" }}>{item.totalOrderedQty} pcs</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Delivered Stock</div>
-                    <div style={{ fontSize: "1rem", fontWeight: 700, color: "var(--success)" }}>{item.totalDeliveredQty} pcs</div>
-                  </div>
-                </div>
-
-                {/* Where is item now? badge */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                  <span>Location Stage:</span>
-                  <span className={`badge ${item.latestStageCode === 5 ? "badge-success" : "badge-pending"}`}>
-                    <MapPin size={10} style={{ marginRight: "4px" }} /> {item.latestStage}
+                {/* Card Action */}
+                <div style={{ borderTop: "1px solid var(--border-glass)", paddingTop: "12px", marginTop: "14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{item.requests.length} order batch(es)</span>
+                  <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--primary)", display: "flex", alignItems: "center", gap: "4px" }}>
+                    View Details & Track <ChevronRight size={14} />
                   </span>
                 </div>
               </div>
+            ))}
+          </div>
 
-              {/* Card Action */}
-              <div style={{ borderTop: "1px solid var(--border-glass)", paddingTop: "12px", marginTop: "14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{item.requests.length} order batch(es)</span>
-                <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--primary)", display: "flex", alignItems: "center", gap: "4px" }}>
-                  View Details & Track <ChevronRight size={14} />
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
+          <Pagination 
+            currentPage={currentPage}
+            totalItems={filteredItems.length}
+            itemsPerPage={itemsPerPage}
+            onPageChange={setCurrentPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
+        </>
       )}
 
     </div>

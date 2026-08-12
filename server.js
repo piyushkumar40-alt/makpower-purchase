@@ -527,7 +527,13 @@ async function formatAllRequestsForGoogleSheets() {
     cargos = memoryDb.cargos || [];
   }
 
-  const rows = requests.map(r => {
+  // Exclude delivered orders from Google Sheets sync (only sync pending/in-transit items)
+  const activePendingRequests = requests.filter(r => {
+    const isDelivered = (r.isMaterialRec === "Yes" || Boolean(r.actualReceivedDate && r.actualReceivedDate.trim() !== "") || r.status === "Delivered");
+    return !isDelivered;
+  });
+
+  const rows = activePendingRequests.map(r => {
     const purchaser = users.find(u => u.id === r.purchaserId)?.name || "";
     const vendor = vendors.find(v => v.id === r.vendorId)?.name || "";
     const cargo = cargos.find(c => c.id === r.cargoId) || {};
