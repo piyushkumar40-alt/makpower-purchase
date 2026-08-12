@@ -142,11 +142,48 @@ export default function App() {
     return res;
   };
 
+  // Check if session was revoked remotely by Admin
+  useEffect(() => {
+    if (!currentUser) return;
+    async function checkSessionStatus() {
+      try {
+        const res = await fetch("/api/auth/sessions");
+        const data = await res.json();
+        if (data.success && Array.isArray(data.activeSessions)) {
+          const sessionId = localStorage.getItem("vanguard_session_id");
+          const isStillActive = data.activeSessions.some(s => s.userId === currentUser.id || (sessionId && s.sessionId === sessionId));
+          
+          if (!isStillActive) {
+            alert("Your session has been signed out by the Admin.");
+            setCurrentUser(null);
+            setActiveView("login");
+            localStorage.removeItem("vanguard_session_id");
+          }
+        }
+      } catch (err) {
+        console.error("Session status check error:", err);
+      }
+    }
+
+    const checkTimer = setInterval(checkSessionStatus, 8000);
+    return () => clearInterval(checkTimer);
+  }, [currentUser]);
+
   // Auth Handlers
-  const handleLogin = (email, password) => {
+  const handleLogin = async (email, password) => {
     const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password && u.status === "active");
     if (user) {
       setCurrentUser(user);
+      
+      try {
+        const res = await postData("/api/auth/login", { user });
+        if (res.sessionId) {
+          localStorage.setItem("vanguard_session_id", res.sessionId);
+        }
+      } catch (err) {
+        console.error("Login session record error:", err);
+      }
+
       if (user.role === "superadmin") {
         setActiveView("admin");
       } else if (user.role === "nitin") {
@@ -163,7 +200,16 @@ export default function App() {
     return { success: false, message: "Invalid email, password, or inactive account." };
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const sessionId = localStorage.getItem("vanguard_session_id");
+    if (currentUser) {
+      try {
+        await postData("/api/auth/logout", { userId: currentUser.id, sessionId });
+      } catch (err) {
+        console.error("Logout notify error:", err);
+      }
+    }
+    localStorage.removeItem("vanguard_session_id");
     setCurrentUser(null);
     setActiveView("login");
   };

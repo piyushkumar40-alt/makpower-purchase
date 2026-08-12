@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Users, Building, Database, FileText, Plus, UserMinus, RefreshCw, Download, Upload, Eye, Truck, ChevronRight, Sliders, Package } from "lucide-react";
+import { Users, Building, Database, FileText, Plus, UserMinus, RefreshCw, Download, Upload, Eye, Truck, ChevronRight, Sliders, Package, ShieldCheck, Clock, UserX, LogOut } from "lucide-react";
 import TransferModal from "./TransferModal";
 import { getCurrencySymbol, CargoCompaniesPanel, VendorDetailModal, CargoCompanyDetailModal } from "./PurchaserDashboard";
 import ItemMasterView from "./ItemMasterView";
@@ -62,6 +62,68 @@ export default function SuperAdminDashboard({
   // Audit Logs State
   const [auditFilter, setAuditFilter] = useState("All"); // "All" | "Local" | "Import"
   const [auditSearch, setAuditSearch] = useState("");
+
+  // Active User Sessions & Auth Audit Logs State
+  const [activeSessions, setActiveSessions] = useState([]);
+  const [authAuditLogs, setAuthAuditLogs] = useState([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+
+  const fetchSessionsData = async () => {
+    setLoadingSessions(true);
+    try {
+      const res = await fetch("/api/auth/sessions");
+      const data = await res.json();
+      if (data.success) {
+        setActiveSessions(data.activeSessions || []);
+        setAuthAuditLogs(data.authAuditLogs || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch sessions data:", err);
+    } finally {
+      setLoadingSessions(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchSessionsData();
+    const interval = setInterval(fetchSessionsData, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleForceLogout = async (userId, sessionId) => {
+    try {
+      const res = await fetch("/api/auth/force-logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, sessionId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActiveSessions(data.activeSessions || []);
+        setAuthAuditLogs(data.authAuditLogs || []);
+      }
+    } catch (err) {
+      console.error("Error signing out user:", err);
+    }
+  };
+
+  const handleForceLogoutAll = async () => {
+    if (!window.confirm("Are you sure you want to sign out ALL active users?")) return;
+    try {
+      const res = await fetch("/api/auth/force-logout-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentAdminId: "u_admin" })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActiveSessions(data.activeSessions || []);
+        setAuthAuditLogs(data.authAuditLogs || []);
+      }
+    } catch (err) {
+      console.error("Error signing out all users:", err);
+    }
+  };
 
   // Offboarding modal state
   const [selectedDeactivateUser, setSelectedDeactivateUser] = useState(null);
@@ -221,10 +283,150 @@ export default function SuperAdminDashboard({
         >
           <Package size={16} /> Item Catalog & Stock
         </button>
+
+        <button 
+          onClick={() => setSubTab("sessions")}
+          className={`sidebar-link ${subTab === "sessions" ? "active" : ""}`}
+          style={{ color: "#10b981", fontWeight: 700 }}
+        >
+          <ShieldCheck size={16} /> User Sessions & Logs
+        </button>
       </aside>
 
       {/* Main content display */}
       <section className="main-content">
+
+        {/* USER SESSIONS & AUTH LOGS TAB */}
+        {subTab === "sessions" && (
+          <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            
+            {/* Header & Global Action Bar */}
+            <div className="glass-panel" style={{ padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+              <div>
+                <h2 style={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--primary)", display: "flex", alignItems: "center", gap: "10px" }}>
+                  <ShieldCheck size={24} style={{ color: "#10b981" }} /> User Active Sessions & Authentication Logs
+                </h2>
+                <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px" }}>
+                  Monitor who is signed in right now, view login & logout timestamp history, and remotely sign out specific users or all users.
+                </p>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                <button onClick={fetchSessionsData} className="btn btn-secondary" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <RefreshCw size={14} className={loadingSessions ? "spin" : ""} /> Refresh
+                </button>
+
+                <button 
+                  onClick={handleForceLogoutAll} 
+                  className="btn btn-danger" 
+                  style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
+                >
+                  <LogOut size={14} /> Sign Out All Users
+                </button>
+              </div>
+            </div>
+
+            {/* Currently Active Logged-In Users */}
+            <div className="glass-panel" style={{ padding: "24px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                <h3 style={{ fontSize: "1.2rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px", color: "var(--success)" }}>
+                  <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "var(--success)" }}></span>
+                  Currently Logged In Right Now ({activeSessions.length})
+                </h3>
+              </div>
+
+              {activeSessions.length === 0 ? (
+                <div style={{ padding: "30px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.9rem" }}>
+                  No active user sessions currently registered.
+                </div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Status</th>
+                        <th>User Name</th>
+                        <th>Role</th>
+                        <th>Signed In At</th>
+                        <th>Session ID</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeSessions.map(s => (
+                        <tr key={s.sessionId}>
+                          <td>
+                            <span className="badge badge-success" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                              <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#fff" }}></span> 🟢 Active Now
+                            </span>
+                          </td>
+                          <td style={{ fontWeight: 700, color: "var(--primary)" }}>{s.userName}</td>
+                          <td>
+                            <span className="badge badge-secondary" style={{ textTransform: "capitalize" }}>{s.role}</span>
+                          </td>
+                          <td style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{s.loginTime}</td>
+                          <td style={{ fontFamily: "monospace", fontSize: "0.78rem" }}>{s.sessionId}</td>
+                          <td>
+                            <button 
+                              onClick={() => handleForceLogout(s.userId, s.sessionId)} 
+                              className="btn btn-sm btn-danger"
+                              style={{ padding: "4px 10px", fontSize: "0.78rem" }}
+                            >
+                              Sign Out This Person
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Login & Logout History Audit Trail */}
+            <div className="glass-panel" style={{ padding: "24px" }}>
+              <h3 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <Clock size={18} style={{ color: "var(--primary)" }} /> Authentication History & Timestamp Log
+              </h3>
+
+              {authAuditLogs.length === 0 ? (
+                <div style={{ padding: "30px", textAlign: "center", color: "var(--text-muted)" }}>
+                  No authentication logs recorded yet.
+                </div>
+              ) : (
+                <div style={{ overflowX: "auto", maxHeight: "450px" }}>
+                  <table className="table">
+                    <thead style={{ position: "sticky", top: 0, zIndex: 2 }}>
+                      <tr>
+                        <th>Date & Time</th>
+                        <th>User Name</th>
+                        <th>Role</th>
+                        <th>Auth Event Action</th>
+                        <th>Details</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {authAuditLogs.map(log => (
+                        <tr key={log.id}>
+                          <td style={{ fontSize: "0.83rem", color: "var(--text-muted)" }}>{log.timestamp}</td>
+                          <td style={{ fontWeight: 600 }}>{log.userName}</td>
+                          <td><span className="badge badge-secondary" style={{ textTransform: "capitalize" }}>{log.role}</span></td>
+                          <td>
+                            <span className={`badge ${log.action === "Login" ? "badge-success" : log.action === "Logout" ? "badge-secondary" : "badge-danger"}`}>
+                              {log.action}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{log.details || "N/A"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+          </div>
+        )}
 
         {/* ITEM MASTER & STOCK TAB */}
         {subTab === "itemmaster" && (

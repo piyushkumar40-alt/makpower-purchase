@@ -362,7 +362,101 @@ app.use(async (req, res, next) => {
 
 // ==================== API ENDPOINTS ====================
 
-// 0. POST /api/upload - Cloudinary Image & File Upload Endpoint
+// Active Sessions & Auth Audit Logs Store
+let activeSessions = []; // [{ sessionId, userId, userName, role, loginTime, lastPing }]
+let authAuditLogs = [];  // [{ id, userId, userName, role, action, timestamp, details }]
+
+function recordAuthAuditLog(userId, userName, role, action, details = "") {
+  const logEntry = {
+    id: "log_" + Date.now() + "_" + Math.random().toString(36).substr(2, 4),
+    userId,
+    userName,
+    role,
+    action,
+    timestamp: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
+    isoTime: new Date().toISOString(),
+    details
+  };
+  authAuditLogs.unshift(logEntry);
+  if (authAuditLogs.length > 500) authAuditLogs = authAuditLogs.slice(0, 500);
+  return logEntry;
+}
+
+// 0.1 POST /api/auth/login - Record login & session
+app.post("/api/auth/login", (req, res) => {
+  const { user } = req.body;
+  if (!user || !user.id) {
+    return res.status(400).json({ error: "Invalid user data for login session." });
+  }
+
+  const sessionId = "sess_" + user.id + "_" + Date.now();
+  const loginTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
+
+  activeSessions = activeSessions.filter(s => s.userId !== user.id);
+
+  const sessionObj = {
+    sessionId,
+    userId: user.id,
+    userName: user.name || user.email || user.id,
+    role: user.role || "user",
+    loginTime,
+    lastPing: Date.now()
+  };
+
+  activeSessions.push(sessionObj);
+  recordAuthAuditLog(user.id, sessionObj.userName, sessionObj.role, "Login", "Signed in from browser");
+
+  return res.json({ success: true, sessionId, session: sessionObj });
+});
+
+// 0.2 POST /api/auth/logout - Record explicit logout
+app.post("/api/auth/logout", (req, res) => {
+  const { userId, sessionId } = req.body;
+  const target = activeSessions.find(s => s.sessionId === sessionId || s.userId === userId);
+  if (target) {
+    recordAuthAuditLog(target.userId, target.userName, target.role, "Logout", "User initiated logout");
+  }
+  activeSessions = activeSessions.filter(s => s.sessionId !== sessionId && s.userId !== userId);
+  return res.json({ success: true });
+});
+
+// 0.3 GET /api/auth/sessions - Admin fetch of active sessions & audit logs
+app.get("/api/auth/sessions", (req, res) => {
+  return res.json({
+    success: true,
+    activeSessions,
+    authAuditLogs
+  });
+});
+
+// 0.4 POST /api/auth/force-logout - Admin revokes specific user session
+app.post("/api/auth/force-logout", (req, res) => {
+  const { userId, sessionId } = req.body;
+  const target = activeSessions.find(s => s.sessionId === sessionId || s.userId === userId);
+
+  if (target) {
+    recordAuthAuditLog(target.userId, target.userName, target.role, "Force Signed Out", "Session revoked by SuperAdmin");
+    activeSessions = activeSessions.filter(s => s.sessionId !== sessionId && s.userId !== userId);
+  }
+  return res.json({ success: true, activeSessions, authAuditLogs });
+});
+
+// 0.5 POST /api/auth/force-logout-all - Admin revokes ALL active sessions
+app.post("/api/auth/force-logout-all", (req, res) => {
+  const { currentAdminId } = req.body;
+
+  activeSessions.forEach(s => {
+    if (s.userId !== currentAdminId) {
+      recordAuthAuditLog(s.userId, s.userName, s.role, "Force Signed Out", "Global sign out triggered by Admin");
+    }
+  });
+
+  activeSessions = activeSessions.filter(s => s.userId === currentAdminId);
+
+  return res.json({ success: true, activeSessions, authAuditLogs });
+});
+
+// 0.6 POST /api/upload - Cloudinary Image & File Upload Endpoint
 app.post("/api/upload", async (req, res) => {
   try {
     const { image, file, folder } = req.body;
