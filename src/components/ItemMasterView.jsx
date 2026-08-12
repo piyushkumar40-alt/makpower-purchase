@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Package, Search, Filter, Truck, CheckCircle2, Clock, Building, ArrowLeft, ExternalLink, ChevronRight, Layers, DollarSign, MapPin, Tag, ShieldCheck, Upload } from "lucide-react";
 import { uploadToCloudinary } from "../utils/upload";
+import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 
 export default function ItemMasterView({ requests = [], vendors = [], cargos = [], cargoCompanies = [], purchasers = [], onBatchUpdateRequests }) {
   const [selectedModel, setSelectedModel] = useState(null);
@@ -8,6 +9,8 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [vendorFilter, setVendorFilter] = useState("All");
   const [stageFilter, setStageFilter] = useState("All");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   const [uploadingModel, setUploadingModel] = useState(null);
   const [localPhotoMap, setLocalPhotoMap] = useState({});
@@ -174,9 +177,11 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
                            (stageFilter === "In-Transit" && item.latestStageCode < 5) ||
                            (stageFilter === "Delivered" && item.latestStageCode === 5);
 
-      return matchesSearch && matchesCat && matchesVendor && matchesStage;
+      const matchesDate = !startDate && !endDate ? true : item.requests.some(r => isDateInBetween(r.orderDate || r.createdDate, startDate, endDate));
+
+      return matchesSearch && matchesCat && matchesVendor && matchesStage && matchesDate;
     });
-  }, [itemsCatalog, searchQuery, categoryFilter, vendorFilter, stageFilter]);
+  }, [itemsCatalog, searchQuery, categoryFilter, vendorFilter, stageFilter, startDate, endDate]);
 
   // Total summary metrics
   const totalItemsCount = itemsCatalog.length;
@@ -444,6 +449,14 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
             style={{ paddingLeft: "36px" }}
           />
         </div>
+
+        <DateRangeFilter 
+          startDate={startDate}
+          endDate={endDate}
+          onStartDateChange={setStartDate}
+          onEndDateChange={setEndDate}
+          onClear={() => { setStartDate(""); setEndDate(""); }}
+        />
 
         <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
           <div>
