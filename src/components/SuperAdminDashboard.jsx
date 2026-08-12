@@ -1181,16 +1181,25 @@ export default function SuperAdminDashboard({
                     <pre style={{ background: "#0f172a", color: "#38bdf8", padding: "12px", borderRadius: "6px", fontSize: "0.75rem", overflowX: "auto", whiteSpace: "pre-wrap" }}>
 {`function doPost(e) {
   var data = JSON.parse(e.postData.contents);
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetName = "Imported Data From App";
+  var sheet = ss.getSheetByName(sheetName);
+  
+  // If the sheet tab "Imported Data From App" does not exist, create it automatically
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+  }
+
   var headers = ["Purchaser", "Vendor", "Order Date", "Type", "Model", "Order Quantity", "Price (RMB)", "Total (RMB)", "Advance Payment", "Balance Payment", "Photo", "Vendor EDD", "Cargo Order Date", "Cargo Detail", "Cargo Price", "Cargo Price UOM", "CBM as per Packing List", "Total Cargo Price", "Mode of Transport", "Cargo Shipping Date", "Cargo ETA", "Packing List", "Invoice", "Is Material Rec?", "Packing Slip", "Packing Ordered By Nitin", "Purchase Updated?"];
   sheet.clearContents();
   sheet.appendRow(headers);
+
   if (data.rows && data.rows.length > 0) {
     data.rows.forEach(function(r) {
-      sheet.appendRow([r.purchaser, r.vendor, r.orderDate, r.type, r.model, r.orderQuantity, r.priceRmb, r.totalRmb, r.advancePayment, r.balancePayment, r.photo, r.vendorEdd, r.cargoOrderDate, r.cargoDetail, r.cargoPrice, r.cargoPriceUom, r.cbmPackingList, r.totalCargoPrice, r.modeOfTransport, r.cargoShippingDate, r.cargoEta, r.packingListFile, r.invoiceFile, r.isMaterialRec, r.packingSlip, r.packingOrderedByNitin, r.purchaseUpdated]);
+      sheet.appendRow([r.purchaser || "", r.vendor || "", r.orderDate || "", r.type || "", r.model || "", r.orderQuantity || "", r.priceRmb || "", r.totalRmb || "", r.advancePayment || "", r.balancePayment || "", r.photo || "", r.vendorEdd || "", r.cargoOrderDate || "", r.cargoDetail || "", r.cargoPrice || "", r.cargoPriceUom || "", r.cbmPackingList || "", r.totalCargoPrice || "", r.modeOfTransport || "", r.cargoShippingDate || "", r.cargoEta || "", r.packingListFile || "", r.invoiceFile || "", r.isMaterialRec || "", r.packingSlip || "", r.packingOrderedByNitin || "", r.purchaseUpdated || ""]);
     });
   }
-  return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify({ status: "success", sheet: sheetName, count: data.rows ? data.rows.length : 0 })).setMimeType(ContentService.MimeType.JSON);
 }`}
                     </pre>
                   </div>
