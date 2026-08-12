@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Trash2, CheckCircle2, Clipboard, ShieldAlert, Sparkles, X } from "lucide-react";
+import { Plus, Trash2, CheckCircle2, Clipboard, ShieldAlert, Sparkles, X, Package } from "lucide-react";
+import ItemMasterView from "./ItemMasterView";
 
-export default function RequesterForm({ onAddRequests, purchasers, vendors, currentUser }) {
+export default function RequesterForm({ onAddRequests, purchasers, vendors, currentUser, requests = [], cargos = [], cargoCompanies = [] }) {
+  const [activeTab, setActiveTab] = useState("form"); // "form" | "catalog"
   // Determine default purchaser based on logged-in user
   const defaultPurchaserId = currentUser?.role === "purchaser" ? currentUser.id : (purchasers[0]?.id || "");
 
@@ -287,6 +289,27 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
   return (
     <div className="glass-panel card-fade-in" style={{ padding: "28px", width: "100%", maxWidth: "1400px", margin: "20px auto" }}>
       
+      {/* Sub Tab Navigation */}
+      <div style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "10px" }}>
+        <button 
+          onClick={() => setActiveTab("form")} 
+          className={`tab-btn ${activeTab === "form" ? "active" : ""}`}
+        >
+          Purchase Requisition Sheet
+        </button>
+        <button 
+          onClick={() => setActiveTab("catalog")} 
+          className={`tab-btn ${activeTab === "catalog" ? "active" : ""}`}
+          style={{ color: "#38bdf8", fontWeight: 700 }}
+        >
+          <Package size={14} style={{ marginRight: "4px", display: "inline" }} /> Item Catalog & Stock Lookup
+        </button>
+      </div>
+
+      {activeTab === "catalog" ? (
+        <ItemMasterView requests={requests} vendors={vendors} cargos={cargos} cargoCompanies={cargoCompanies} purchasers={purchasers} />
+      ) : (
+        <>
       {/* Header Info */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-glass)", paddingBottom: "16px", marginBottom: "20px", flexWrap: "wrap", gap: "15px" }}>
         <div>
@@ -509,6 +532,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
         </div>
 
       </div>
+      </>
+      )}
 
       {/* ==================== EXCEL PASTE WIZARD MODAL ==================== */}
       {showPasteModal && (

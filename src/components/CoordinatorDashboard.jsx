@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { LogOut, Filter, ShieldAlert, Clock, AlertTriangle, CheckCircle, Search, User } from "lucide-react";
+import ItemMasterView from "./ItemMasterView";
 
 export default function CoordinatorDashboard({ currentUser, requests, vendors, cargos, users, onLogout }) {
   const [activeTab, setActiveTab] = useState("pending"); // "pending" | "delayed"
@@ -230,7 +231,19 @@ export default function CoordinatorDashboard({ currentUser, requests, vendors, c
           {totalDelayed > 0 && <AlertTriangle size={14} style={{ color: "var(--danger)" }} />}
           Delayed & Overdue Tasks ({totalDelayed})
         </button>
+        <button 
+          onClick={() => setActiveTab("itemmaster")} 
+          className={`tab-btn ${activeTab === "itemmaster" ? "active" : ""}`}
+          style={{ color: "#38bdf8", fontWeight: 700 }}
+        >
+          Item Catalog & Stock
+        </button>
       </div>
+
+      {activeTab === "itemmaster" ? (
+        <ItemMasterView requests={requests} vendors={vendors} cargos={cargos} purchasers={users.filter(u => u.role === "purchaser")} />
+      ) : (
+        <>
 
       {/* Filters Panel */}
       <div className="glass-panel" style={{ padding: "18px 24px", marginBottom: "20px" }}>
@@ -347,7 +360,8 @@ export default function CoordinatorDashboard({ currentUser, requests, vendors, c
           </div>
         </div>
       )}
-
+      </>
+      )}
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { Users, Building, Database, FileText, Plus, UserMinus, RefreshCw, Download, Upload, Eye, Truck, ChevronRight, Sliders } from "lucide-react";
+import { Users, Building, Database, FileText, Plus, UserMinus, RefreshCw, Download, Upload, Eye, Truck, ChevronRight, Sliders, Package } from "lucide-react";
 import TransferModal from "./TransferModal";
 import { getCurrencySymbol, CargoCompaniesPanel, VendorDetailModal, CargoCompanyDetailModal } from "./PurchaserDashboard";
+import ItemMasterView from "./ItemMasterView";
 
 export default function SuperAdminDashboard({
   users,
@@ -211,10 +212,29 @@ export default function SuperAdminDashboard({
         >
           <Sliders size={16} /> System Settings
         </button>
+
+        <button 
+          onClick={() => setSubTab("itemmaster")}
+          className={`sidebar-link ${subTab === "itemmaster" ? "active" : ""}`}
+          style={{ color: "#38bdf8", fontWeight: 700 }}
+        >
+          <Package size={16} /> Item Catalog & Stock
+        </button>
       </aside>
 
       {/* Main content display */}
       <section className="main-content">
+
+        {/* ITEM MASTER & STOCK TAB */}
+        {subTab === "itemmaster" && (
+          <ItemMasterView 
+            requests={requests} 
+            vendors={vendors} 
+            cargos={cargos} 
+            cargoCompanies={cargoCompanies} 
+            purchasers={users.filter(u => u.role === "purchaser")} 
+          />
+        )}
 
         {/* PURCHASERS MANAGMENT TAB */}
         {subTab === "purchasers" && (

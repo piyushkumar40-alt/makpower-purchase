@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { LogOut, Filter, CheckSquare, Square, CheckCircle, PackageOpen, Download } from "lucide-react";
+import ItemMasterView from "./ItemMasterView";
 
 export default function RahulDashboard({ currentUser, requests, vendors, cargos, onBatchUpdateRequests, onLogout }) {
   const [activeTab, setActiveTab] = useState("pending"); // "pending" | "submitted"
@@ -94,7 +95,19 @@ export default function RahulDashboard({ currentUser, requests, vendors, cargos,
         >
           Submitted Updates Archive ({submittedRequests.length})
         </button>
+        <button 
+          onClick={() => { setActiveTab("itemmaster"); setCheckedIds([]); }} 
+          className={`tab-btn ${activeTab === "itemmaster" ? "active" : ""}`}
+          style={{ color: "#38bdf8", fontWeight: 700 }}
+        >
+          Item Catalog & Stock
+        </button>
       </div>
+
+      {activeTab === "itemmaster" ? (
+        <ItemMasterView requests={requests} vendors={vendors} cargos={cargos} />
+      ) : (
+        <>
 
       {/* Filters Panel */}
       <div className="glass-panel" style={{ padding: "18px 24px", marginBottom: "20px" }}>
@@ -272,6 +285,8 @@ export default function RahulDashboard({ currentUser, requests, vendors, cargos,
             </table>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

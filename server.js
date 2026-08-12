@@ -3,6 +3,7 @@ import pg from "pg";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import { v2 as cloudinary } from "cloudinary";
 import { initialUsers, initialVendors, initialRequests, initialCargoShipments, initialCargoCompanies } from "./src/mockData.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -12,6 +13,41 @@ const app = express();
 app.use(express.json({ limit: "50mb" }));
 
 const PORT = process.env.PORT || 3001;
+
+// Cloudinary Setup
+const envCloudinaryKey = process.env.cloudinary_key || process.env.CLOUDINARY_KEY || process.env.CLOUDINARY_URL;
+
+if (envCloudinaryKey && envCloudinaryKey.startsWith("cloudinary://")) {
+  cloudinary.config({
+    cloudinary_url: envCloudinaryKey
+  });
+  console.log("Cloudinary configured using connection string URL.");
+} else if (process.env.CLOUDINARY_URL) {
+  cloudinary.config({
+    cloudinary_url: process.env.CLOUDINARY_URL
+  });
+  console.log("Cloudinary configured using CLOUDINARY_URL.");
+} else {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_NAME || process.env.CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY || process.env.CLOUDINARY_KEY || process.env.cloudinary_key || process.env.API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET || process.env.CLOUDINARY_SECRET || process.env.API_SECRET;
+
+  if (cloudName && apiKey && apiSecret) {
+    cloudinary.config({
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret
+    });
+    console.log("Cloudinary configured using cloud_name, api_key, and api_secret.");
+  } else {
+    cloudinary.config({
+      cloud_name: cloudName || "makpower",
+      api_key: apiKey,
+      api_secret: apiSecret
+    });
+    console.log("Cloudinary initialized with provided environment credentials.");
+  }
+}
 
 // Database Connection Setup
 let isPg = false;
@@ -325,6 +361,43 @@ app.use(async (req, res, next) => {
 });
 
 // ==================== API ENDPOINTS ====================
+
+// 0. POST /api/upload - Cloudinary Image & File Upload Endpoint
+app.post("/api/upload", async (req, res) => {
+  try {
+    const { image, file, folder } = req.body;
+    const fileToUpload = image || file;
+
+    if (!fileToUpload) {
+      return res.status(400).json({ error: "No image or file data provided for upload." });
+    }
+
+    // If already a CDN / HTTP URL, return as is
+    if (typeof fileToUpload === "string" && (fileToUpload.startsWith("http://") || fileToUpload.startsWith("https://"))) {
+      return res.json({ success: true, url: fileToUpload });
+    }
+
+    const uploadOptions = {
+      folder: folder || "makpower_uploads",
+      resource_type: "auto"
+    };
+
+    const uploadResult = await cloudinary.uploader.upload(fileToUpload, uploadOptions);
+
+    return res.json({
+      success: true,
+      url: uploadResult.secure_url,
+      public_id: uploadResult.public_id,
+      format: uploadResult.format
+    });
+  } catch (err) {
+    console.error("Cloudinary upload error:", err);
+    return res.status(500).json({
+      error: "Failed to upload file to Cloudinary.",
+      details: err.message
+    });
+  }
+});
 
 // 1. GET /api/state - Fetches full system state
 app.get("/api/state", async (req, res) => {

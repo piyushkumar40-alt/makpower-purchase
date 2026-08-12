@@ -7,6 +7,7 @@ import SuperAdminDashboard from "./components/SuperAdminDashboard";
 import NitinDashboard from "./components/NitinDashboard";
 import RahulDashboard from "./components/RahulDashboard";
 import CoordinatorDashboard from "./components/CoordinatorDashboard";
+import ItemMasterView from "./components/ItemMasterView";
 import { initialUsers, initialVendors, initialRequests, initialCargoShipments, initialCargoCompanies } from "./mockData";
 
 export default function App() {
@@ -510,6 +511,14 @@ export default function App() {
               <ShoppingCart size={14} /> Requester Portal
             </button>
 
+            <button 
+              onClick={() => setActiveView("itemcatalog")} 
+              className={`btn btn-sm btn-secondary ${activeView === "itemcatalog" ? "active" : ""}`}
+              style={{ color: "#38bdf8", fontWeight: 700 }}
+            >
+              <Package size={14} /> Item Catalog & Stock
+            </button>
+
             {currentUser ? (
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <span className="user-badge">
@@ -558,6 +567,9 @@ export default function App() {
               onAddRequests={addRequests} 
               purchasers={users.filter(u => u.role === "purchaser" && u.status === "active")} 
               vendors={vendors} 
+              requests={requests}
+              cargos={cargos}
+              cargoCompanies={cargoCompanies}
               currentUser={currentUser}
             />
           </div>
@@ -640,6 +652,18 @@ export default function App() {
             settings={settings}
             onUpdateSettings={handleUpdateSystemSettings}
           />
+        )}
+
+        {activeView === "itemcatalog" && (
+          <div style={{ flex: 1, padding: "24px", maxWidth: "1400px", margin: "0 auto", width: "100%" }}>
+            <ItemMasterView 
+              requests={requests} 
+              vendors={vendors} 
+              cargos={cargos} 
+              cargoCompanies={cargoCompanies} 
+              purchasers={users.filter(u => u.role === "purchaser")} 
+            />
+          </div>
         )}
       </main>
       )}

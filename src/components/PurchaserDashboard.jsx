@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
+import { uploadToCloudinary } from "../utils/upload";
+import ItemMasterView from "./ItemMasterView";
 
 export default function PurchaserDashboard({
   currentUser,
@@ -163,6 +165,9 @@ export default function PurchaserDashboard({
           </button>
           <button onClick={() => setActiveTab("cargocompanies")} className={`tab-btn ${activeTab === "cargocompanies" ? "active" : ""}`}>
             Logistics Carriers
+          </button>
+          <button onClick={() => setActiveTab("itemmaster")} className={`tab-btn ${activeTab === "itemmaster" ? "active" : ""}`} style={{ color: "#38bdf8", fontWeight: 700 }}>
+            Item Catalog & Stock
           </button>
         </div>
       </div>
@@ -1216,15 +1221,21 @@ function EditRequestModal({ request, requests, vendors, currentUser, onClose, on
     }
   }, [historicalPhoto, request.photo, useHistoryPhoto]);
 
-  const handlePhotoUpload = (e) => {
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  const handlePhotoUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setPhoto(event.target.result); // Base64 encoding
+    setUploadingPhoto(true);
+    try {
+      const url = await uploadToCloudinary(file, "makpower_photos");
+      setPhoto(url);
       setUseHistoryPhoto(false);
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.error("Photo upload failed:", err);
+    } finally {
+      setUploadingPhoto(false);
+    }
   };
 
   const handleSubmit = (e) => {
@@ -1368,9 +1379,9 @@ function EditRequestModal({ request, requests, vendors, currentUser, onClose, on
             
             <div className="form-group">
               <label className="form-label">Model Photo</label>
-              <label className="doc-upload-btn" style={{ height: "42px", padding: "8px" }}>
-                <Upload size={14} /> <span>Upload Photo</span>
-                <input type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: "none" }} />
+              <label className="doc-upload-btn" style={{ height: "42px", padding: "8px", opacity: uploadingPhoto ? 0.7 : 1 }}>
+                <Upload size={14} /> <span>{uploadingPhoto ? "Uploading to Cloudinary..." : "Upload Photo"}</span>
+                <input type="file" accept="image/*" onChange={handlePhotoUpload} disabled={uploadingPhoto} style={{ display: "none" }} />
               </label>
             </div>
           </div>
@@ -1683,11 +1694,10 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
   const [invoiceFile, setInvoiceFile] = useState(null);           // { name, data }
   const [isRec, setIsRec] = useState("No");
 
-  const readFile = (file) => new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => resolve({ name: file.name, data: e.target.result });
-    reader.readAsDataURL(file);
-  });
+  const readFile = async (file) => {
+    const url = await uploadToCloudinary(file, "makpower_docs");
+    return { name: file.name, data: url };
+  };
 
   const handleFileChange = async (e, setter) => {
     const file = e.target.files[0];
@@ -1929,11 +1939,10 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
   );
   const [isRec, setIsRec] = useState(cargo.isMaterialRec || "No");
 
-  const readFile = (file) => new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => resolve({ name: file.name, data: e.target.result });
-    reader.readAsDataURL(file);
-  });
+  const readFile = async (file) => {
+    const url = await uploadToCloudinary(file, "makpower_docs");
+    return { name: file.name, data: url };
+  };
 
   const handleFileChange = async (e, setter) => {
     const file = e.target.files[0];
@@ -2147,11 +2156,10 @@ function PendingDocumentsPanel({ cargos, requests, vendors, cargoCompanies, onUp
   const [uploadingCargo, setUploadingCargo] = useState(null); // cargo being edited for docs
   const [itemPackingFiles, setItemPackingFiles] = useState({}); // { requestId: { name, data } }
 
-  const readFile = (file) => new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => resolve({ name: file.name, data: e.target.result });
-    reader.readAsDataURL(file);
-  });
+  const readFile = async (file) => {
+    const url = await uploadToCloudinary(file, "makpower_docs");
+    return { name: file.name, data: url };
+  };
 
   // Cargos that have at least one missing document
   const pendingCargos = cargos.filter(c => !c.packingListFile || !c.invoiceFile);
@@ -3012,6 +3020,16 @@ export function VendorDetailModal({
             </div>
           )}
         </div>
+        {/* ==================== ITEM MASTER & STOCK TAB ==================== */}
+        {activeTab === "itemmaster" && (
+          <ItemMasterView 
+            requests={requests} 
+            vendors={vendors} 
+            cargos={cargos} 
+            cargoCompanies={cargoCompanies} 
+            purchasers={purchasers} 
+          />
+        )}
       </div>
     </div>
   );

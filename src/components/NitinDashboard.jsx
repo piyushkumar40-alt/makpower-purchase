@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { LogOut, Filter, CheckSquare, Square, CheckCircle, PackageOpen, Eye, X } from "lucide-react";
+import ItemMasterView from "./ItemMasterView";
 
 export default function NitinDashboard({ currentUser, requests, vendors, cargos, onBatchUpdateRequests, onLogout }) {
   const [activeTab, setActiveTab] = useState("pending"); // "pending" | "submitted"
@@ -97,9 +98,20 @@ export default function NitinDashboard({ currentUser, requests, vendors, cargos,
         >
           Submitted Packing Archive ({submittedRequests.length})
         </button>
+        <button 
+          onClick={() => { setActiveTab("itemmaster"); setCheckedIds([]); }} 
+          className={`tab-btn ${activeTab === "itemmaster" ? "active" : ""}`}
+          style={{ color: "#38bdf8", fontWeight: 700 }}
+        >
+          Item Catalog & Stock
+        </button>
       </div>
 
-      {/* Filters Panel */}
+      {activeTab === "itemmaster" ? (
+        <ItemMasterView requests={requests} vendors={vendors} cargos={cargos} />
+      ) : (
+        <>
+          {/* Filters Panel */}
       <div className="glass-panel" style={{ padding: "18px 24px", marginBottom: "20px" }}>
         <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "14px", fontSize: "0.9rem", fontWeight: 600, color: "var(--primary)" }}>
           <Filter size={16} /> Filter Requisitions
@@ -269,6 +281,8 @@ export default function NitinDashboard({ currentUser, requests, vendors, cargos,
             </table>
           </div>
         </div>
+      )}
+      </>
       )}
 
       {/* Image zoom modal overlay */}
