@@ -497,6 +497,12 @@ app.post("/api/upload", async (req, res) => {
   } catch (err) {
     console.error("Cloudinary upload error:", err);
     return res.status(500).json({
+      error: "Failed to upload file to Cloudinary.",
+      details: err.message
+    });
+  }
+});
+
 // ==================== GOOGLE SHEETS 27-COLUMN SYNC SYSTEM ====================
 
 async function formatAllRequestsForGoogleSheets() {
