@@ -614,8 +614,8 @@ export default function App() {
         <div style={{ display: "flex", flex: 1, justifyContent: "center", alignItems: "center", height: "80vh" }}>
           <div className="glass-panel" style={{ padding: "40px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
             <div style={{ width: "40px", height: "40px", borderRadius: "50%", border: "4px solid var(--primary-glow)", borderTopColor: "var(--primary)", animation: "spin 1s linear infinite" }}></div>
-            <h2 style={{ fontSize: "1.4rem", textShadow: "0 0 10px var(--primary-glow)" }}>Connecting Database...</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Syncing Vanguard Purchase & Logistics ledger</p>
+            <h2 style={{ fontSize: "1.4rem", textShadow: "0 0 10px var(--primary-glow)" }}>Connecting...</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Syncing Mak Power Purchase Ledger</p>
           </div>
           <style>{`
             @keyframes spin {
