@@ -525,13 +525,15 @@ export default function App() {
               <ShoppingCart size={14} /> Requester Portal
             </button>
 
-            <button 
-              onClick={() => setActiveView("itemcatalog")} 
-              className={`btn btn-sm btn-secondary ${activeView === "itemcatalog" ? "active" : ""}`}
-              style={{ color: "#38bdf8", fontWeight: 700 }}
-            >
-              <Package size={14} /> Item Catalog & Stock
-            </button>
+            {currentUser?.role !== "superadmin" && (
+              <button 
+                onClick={() => setActiveView("itemcatalog")} 
+                className={`btn btn-sm btn-secondary ${activeView === "itemcatalog" ? "active" : ""}`}
+                style={{ color: "#38bdf8", fontWeight: 700 }}
+              >
+                <Package size={14} /> Item Catalog & Stock
+              </button>
+            )}
 
             {/* Global Light / Dark Theme Toggle */}
             <button 
@@ -676,6 +678,7 @@ export default function App() {
             onUpdateUserInfo={updateUserInfo}
             settings={settings}
             onUpdateSettings={handleUpdateSystemSettings}
+            onBatchUpdateRequests={batchUpdateRequests}
           />
         )}
 

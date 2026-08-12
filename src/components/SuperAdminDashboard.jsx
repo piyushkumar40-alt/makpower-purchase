@@ -22,7 +22,8 @@ export default function SuperAdminDashboard({
   onImportBackup,
   onUpdateUserInfo,
   settings = { isHidden: false, redirectUrl: "" },
-  onUpdateSettings
+  onUpdateSettings,
+  onBatchUpdateRequests
 }) {
   const [subTab, setSubTab] = useState("purchasers"); // "purchasers" | "vendors" | "audit" | "backup" | "cargocompanies"
   
@@ -233,6 +234,7 @@ export default function SuperAdminDashboard({
             cargos={cargos} 
             cargoCompanies={cargoCompanies} 
             purchasers={users.filter(u => u.role === "purchaser")} 
+            onBatchUpdateRequests={onBatchUpdateRequests}
           />
         )}
 
