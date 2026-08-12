@@ -65,10 +65,10 @@ export const initialVendors = [
   { id: "v-5", name: "Local Packaging Solutions", location: "Okhla Industrial Area, Phase-III, New Delhi, IN", phone: "+91 11 4160 5555", history: "Local packaging material and casing provider.", status: "Active", purchaserIds: ["u-john", "u-anees"] }
 ];
 
-// Mock SVG images to represent product photos in the database
-const sensorSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%231e293b" rx="10"/><circle cx="50" cy="50" r="30" fill="none" stroke="%233b82f6" stroke-width="4"/><circle cx="50" cy="50" r="15" fill="%2310b981"/><path d="M20,20 L30,20 M20,80 L30,80 M80,20 L70,20 M80,80 L70,80" stroke="%2364748b" stroke-width="3"/></svg>`;
-const boltSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%231e293b" rx="10"/><path d="M50,15 L75,30 L75,45 L50,35 L25,45 L25,30 Z" fill="%2394a3b8"/><rect x="42" y="42" width="16" height="45" fill="%2364748b" rx="2"/><line x1="42" y1="52" x2="58" y2="52" stroke="%23475569" stroke-width="3"/><line x1="42" y1="62" x2="58" y2="62" stroke="%23475569" stroke-width="3"/><line x1="42" y1="72" x2="58" y2="72" stroke="%23475569" stroke-width="3"/></svg>`;
-const plcSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%231e293b" rx="10"/><rect x="20" y="20" width="60" height="60" fill="%230f172a" stroke="%23f59e0b" stroke-width="2" rx="5"/><rect x="30" y="30" width="15" height="10" fill="%23ef4444"/><rect x="30" y="45" width="40" height="5" fill="%2310b981"/><circle cx="65" cy="35" r="5" fill="%2310b981"/><circle cx="65" cy="65" r="5" fill="%23ef4444"/><path d="M30,60 H55 M30,70 H45" stroke="%2338bdf8" stroke-width="2"/></svg>`;
+// High quality product photo URLs stored on Cloudinary / CDN
+const sensorSvg = "https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=300&auto=format&fit=crop&q=80";
+const boltSvg = "https://images.unsplash.com/photo-1586864387967-d02ef85d93e8?w=300&auto=format&fit=crop&q=80";
+const plcSvg = "https://images.unsplash.com/photo-1518770660439-4636190af475?w=300&auto=format&fit=crop&q=80";
 
 export const initialRequests = [
   // 1. Pending Purchaser Details (Step 1 Completed, Step 2 Pending)

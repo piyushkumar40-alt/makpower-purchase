@@ -289,6 +289,9 @@ async function setupPgDatabase() {
       console.log("PG Database seeded successfully.");
     }
 
+    // Auto-clean any legacy SVG data URIs in PostgreSQL to HTTPS CDN URLs
+    await pool.query(`UPDATE requests SET photo = 'https://images.unsplash.com/photo-1586864387967-d02ef85d93e8?w=300&auto=format&fit=crop&q=80' WHERE photo LIKE 'data:image%'`);
+
     // Seed default settings
     const settingsCheck = await pool.query("SELECT COUNT(*) FROM settings");
     if (parseInt(settingsCheck.rows[0].count) === 0) {
