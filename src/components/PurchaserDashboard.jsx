@@ -3057,16 +3057,6 @@ export function VendorDetailModal({
             </div>
           )}
         </div>
-        {/* ==================== ITEM MASTER & STOCK TAB ==================== */}
-        {activeTab === "itemmaster" && (
-          <ItemMasterView 
-            requests={requests} 
-            vendors={vendors} 
-            cargos={cargos} 
-            cargoCompanies={cargoCompanies} 
-            purchasers={purchasers} 
-          />
-        )}
       </div>
     </div>
   );
