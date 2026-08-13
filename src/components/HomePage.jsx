@@ -591,7 +591,7 @@ export default function HomePage({
                       <strong>{localCount} requisitions</strong>
                     </div>
                     <div style={{ padding: "10px", background: "rgba(129, 140, 248, 0.1)", borderRadius: "8px" }}>
-                      <span style={{ color: "#818cf8", fontWeight 600 }}>Import Procurement:</span><br />
+                      <span style={{ color: "#818cf8", fontWeight: 600 }}>Import Procurement:</span><br />
                       <strong>{importCount} requisitions</strong>
                     </div>
                   </div>
