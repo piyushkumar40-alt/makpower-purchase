@@ -121,6 +121,22 @@ export default function SuperAdminDashboard({
       }
     } catch (err) {
       setStorageStatusMsg(`❌ Delete error: ${err.message}`);
+  const handleDeleteAllCloudinaryImages = async () => {
+    if (!window.confirm("⚠️ ARE YOU SURE? This will permanently delete ALL images from Cloudinary storage itself!")) return;
+    setLoadingStorage(true);
+    try {
+      const res = await fetch("/api/storage/delete-all-cloudinary", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setStorageStatusMsg(`✅ ${data.message}`);
+        loadStorageData(currentFolder);
+      } else {
+        setStorageStatusMsg(`❌ Purge failed: ${data.error}`);
+      }
+    } catch (err) {
+      setStorageStatusMsg(`❌ Purge error: ${err.message}`);
+    } finally {
+      setLoadingStorage(false);
     }
   };
 
@@ -1437,14 +1453,25 @@ export default function SuperAdminDashboard({
                     Real-time database storage metrics for PostgreSQL and Cloudinary CDN, plus desktop folder browsing, multi-select, and asset deletion.
                   </p>
                 </div>
-                <button 
-                  onClick={() => loadStorageData(currentFolder)} 
-                  className="btn btn-secondary"
-                  disabled={loadingStorage}
-                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
-                >
-                  <RefreshCw size={16} className={loadingStorage ? "spin" : ""} /> Refresh Storage Metrics
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                  <button 
+                    onClick={handleDeleteAllCloudinaryImages}
+                    className="btn btn-danger"
+                    disabled={loadingStorage}
+                    style={{ display: "flex", alignItems: "center", gap: "8px" }}
+                    title="Permanently delete all images from Cloudinary storage"
+                  >
+                    <Trash2 size={16} /> Delete All Images from Cloudinary
+                  </button>
+                  <button 
+                    onClick={() => loadStorageData(currentFolder)} 
+                    className="btn btn-secondary"
+                    disabled={loadingStorage}
+                    style={{ display: "flex", alignItems: "center", gap: "8px" }}
+                  >
+                    <RefreshCw size={16} className={loadingStorage ? "spin" : ""} /> Refresh Storage Metrics
+                  </button>
+                </div>
               </div>
 
               {/* Requirement 2: Interactive Storage Source Metric Cards (Click to Filter) */}

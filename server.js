@@ -870,6 +870,56 @@ app.post("/api/storage/delete", async (req, res) => {
   }
 });
 
+// POST /api/storage/delete-all-cloudinary - Delete ALL assets from Cloudinary itself & clear Cloudinary links in DB
+app.post("/api/storage/delete-all-cloudinary", async (req, res) => {
+  try {
+    let deletedCount = 0;
+
+    // 1. Bulk delete image resources from Cloudinary CDN
+    try {
+      const deleteRes = await cloudinary.api.delete_all_resources({ resource_type: "image" });
+      if (deleteRes && deleteRes.deleted) {
+        deletedCount = Object.keys(deleteRes.deleted).length;
+      }
+    } catch (cErr) {
+      console.warn("Cloudinary delete_all_resources API warning, trying fallback by list:", cErr.message);
+      try {
+        const resourceRes = await cloudinary.api.resources({ max_results: 500, resource_type: "image" });
+        const publicIds = (resourceRes.resources || []).map(r => r.public_id);
+        if (publicIds.length > 0) {
+          await cloudinary.api.delete_resources(publicIds);
+          deletedCount = publicIds.length;
+        }
+      } catch (e) {
+        console.error("Cloudinary fallback bulk delete error:", e.message);
+      }
+    }
+
+    // 2. Clear all Cloudinary photo URLs in database requests table
+    if (isPg) {
+      await pool.query(`UPDATE requests SET "photo" = '' WHERE "photo" LIKE '%cloudinary.com%'`);
+    } else {
+      (memoryDb.requests || []).forEach(r => {
+        if (r.photo && r.photo.includes("cloudinary.com")) {
+          r.photo = "";
+        }
+      });
+      writeLocalJson(memoryDb);
+    }
+
+    recordAuthAuditLog("admin", "File Manager", "admin", "Purge Cloudinary", `Deleted all images from Cloudinary storage (${deletedCount} assets deleted)`);
+
+    return res.json({
+      success: true,
+      deletedCount,
+      message: `Successfully deleted all image assets from Cloudinary itself.`
+    });
+  } catch (err) {
+    console.error("Delete all Cloudinary error:", err);
+    return res.status(500).json({ error: "Failed to delete all Cloudinary images.", details: err.message });
+  }
+});
+
 // 1. GET /api/state - Fetches full system state
 app.get("/api/state", async (req, res) => {
   if (isPg) {
