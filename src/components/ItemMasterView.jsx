@@ -588,9 +588,9 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
                       <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "2px" }}>
                         Made By: <strong>{item.vendors.slice(0, 2).join(", ")}{item.vendors.length > 2 ? "..." : ""}</strong>
                       </div>
-                      <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
-                        <span className="badge badge-info" style={{ fontSize: "0.68rem" }}>{item.category}</span>
-                        <span className="badge badge-secondary" style={{ fontSize: "0.68rem" }}>{item.itemNature}</span>
+                      <div style={{ display: "flex", gap: "6px", marginTop: "6px", flexWrap: "wrap" }}>
+                        <span className="badge badge-info" style={{ fontSize: "0.68rem", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.category}</span>
+                        <span className="badge badge-secondary" style={{ fontSize: "0.68rem", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.itemNature}</span>
                       </div>
                     </div>
                   </div>
