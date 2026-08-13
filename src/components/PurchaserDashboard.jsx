@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw } from "lucide-react";
+import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import { uploadToCloudinary } from "../utils/upload";
 import ItemMasterView from "./ItemMasterView";
@@ -125,85 +125,90 @@ export default function PurchaserDashboard({
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
       
-      {/* Top Navbar Tabs */}
-      <div style={{ background: "rgba(10, 15, 30, 0.4)", borderBottom: "1px solid var(--border-glass)", padding: "0 24px" }}>
-        <div style={{ maxWidth: "1400px", margin: "0 auto", width: "100%", display: "flex", gap: "10px", flexWrap: "wrap" }}>
-          <button 
-            onClick={() => setActiveTab("alerts")} 
-            className={`tab-btn ${activeTab === "alerts" ? "active" : ""}`}
-            style={{ position: "relative" }}
-          >
-            Operations Alerts
-            {totalAlertsCount > 0 && (
-              <span style={{ 
-                position: "absolute", top: "4px", right: "-6px", background: "var(--danger)", 
-                color: "#fff", fontSize: "0.65rem", padding: "2px 6px", borderRadius: "99px", fontWeight: "bold" 
-              }}>
-                {totalAlertsCount}
-              </span>
-            )}
-          </button>
-          <button onClick={() => setActiveTab("pending")} className={`tab-btn ${activeTab === "pending" ? "active" : ""}`}>
-            Step 1: Commercial & Timeline Specification
-          </button>
-          <button onClick={() => setActiveTab("vendorready")} className={`tab-btn ${activeTab === "vendorready" ? "active" : ""}`}>
-            Step 2: Vendor Ready
-          </button>
-          <button onClick={() => setActiveTab("planner")} className={`tab-btn ${activeTab === "planner" ? "active" : ""}`}>
-            Step 3: Cargo Consolidation
-          </button>
-          <button onClick={() => setActiveTab("cargopickup")} className={`tab-btn ${activeTab === "cargopickup" ? "active" : ""}`}>
-            Step 4: Cargo Pickup
-          </button>
-          <button onClick={() => setActiveTab("shipments")} className={`tab-btn ${activeTab === "shipments" ? "active" : ""}`}>
-            Step 5: Transit Tracking & Receipt
-          </button>
-          <button onClick={() => setActiveTab("all")} className={`tab-btn ${activeTab === "all" ? "active" : ""}`}>
-            Received History
-          </button>
-          {/* Pending Documents tab with alert badge */}
+      {/* Top Dual Dropdown Navigation Bar (Desktop & Mobile) */}
+      <div style={{ background: "rgba(10, 15, 30, 0.4)", borderBottom: "1px solid var(--border-glass)", padding: "12px 24px" }}>
+        <div style={{ maxWidth: "1400px", margin: "0 auto", width: "100%", display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+          
+          {/* Dropdown 1: Workflow Steps & Order Stages */}
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: "1 1 280px", minWidth: "250px" }}>
+            <label style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary)", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "6px" }}>
+              <Layers size={16} /> Workflow Steps:
+            </label>
+            <select 
+              className="form-control"
+              style={{ 
+                flex: 1, 
+                fontWeight: 600, 
+                fontSize: "0.9rem",
+                cursor: "pointer",
+                borderColor: ["pending", "vendorready", "planner", "cargopickup", "shipments", "all", "cancelled"].includes(activeTab) ? "var(--primary)" : "var(--border-glass)",
+                boxShadow: ["pending", "vendorready", "planner", "cargopickup", "shipments", "all", "cancelled"].includes(activeTab) ? "0 0 12px var(--primary-glow)" : "none"
+              }}
+              value={["pending", "vendorready", "planner", "cargopickup", "shipments", "all", "cancelled"].includes(activeTab) ? activeTab : ""}
+              onChange={e => {
+                if (e.target.value) setActiveTab(e.target.value);
+              }}
+            >
+              <option value="" disabled style={{ background: "var(--bg-card)", color: "var(--text-muted)" }}>-- Select Workflow Step --</option>
+              <option value="pending" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Step 1: Commercial & Timeline Specification</option>
+              <option value="vendorready" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Step 2: Vendor Ready</option>
+              <option value="planner" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Step 3: Cargo Consolidation</option>
+              <option value="cargopickup" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Step 4: Cargo Pickup</option>
+              <option value="shipments" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Step 5: Transit Tracking & Receipt</option>
+              <option value="all" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Received History</option>
+              <option value="cancelled" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Cancelled Orders</option>
+            </select>
+          </div>
+
+          {/* Dropdown 2: Directories, Records & Modules */}
           {(() => {
             const pendingDocCount = myCargos.filter(c => !c.packingListFile || !c.invoiceFile).length;
             return (
-              <button
-                onClick={() => setActiveTab("docs")}
-                className={`tab-btn ${activeTab === "docs" ? "active" : ""}`}
-                style={{ position: "relative" }}
-              >
-                Pending Documents
-                {pendingDocCount > 0 && (
-                  <span style={{
-                    position: "absolute", top: "4px", right: "-6px",
-                    background: "#f59e0b", color: "#0f172a",
-                    fontSize: "0.65rem", padding: "2px 6px", borderRadius: "99px", fontWeight: "bold"
-                  }}>{pendingDocCount}</span>
-                )}
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: "1 1 280px", minWidth: "250px" }}>
+                <label style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--secondary)", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <Folder size={16} /> Directories & Modules:
+                </label>
+                <select 
+                  className="form-control"
+                  style={{ 
+                    flex: 1, 
+                    fontWeight: 600, 
+                    fontSize: "0.9rem",
+                    cursor: "pointer",
+                    borderColor: ["alerts", "docs", "vendors", "cargocompanies", "itemmaster"].includes(activeTab) ? "var(--secondary)" : "var(--border-glass)",
+                    boxShadow: ["alerts", "docs", "vendors", "cargocompanies", "itemmaster"].includes(activeTab) ? "0 0 12px rgba(129, 140, 248, 0.2)" : "none"
+                  }}
+                  value={["alerts", "docs", "vendors", "cargocompanies", "itemmaster"].includes(activeTab) ? activeTab : ""}
+                  onChange={e => {
+                    if (e.target.value) setActiveTab(e.target.value);
+                  }}
+                >
+                  <option value="" disabled style={{ background: "var(--bg-card)", color: "var(--text-muted)" }}>-- Select Directory / Module --</option>
+                  <option value="alerts" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>
+                    Operations Alerts {totalAlertsCount > 0 ? `(${totalAlertsCount} Alerts)` : ""}
+                  </option>
+                  <option value="docs" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>
+                    Pending Documents {pendingDocCount > 0 ? `(${pendingDocCount} Missing)` : ""}
+                  </option>
+                  <option value="vendors" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Vendor Registry</option>
+                  <option value="cargocompanies" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Logistics Carriers</option>
+                  <option value="itemmaster" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Item Catalog & Stock</option>
+                </select>
+              </div>
             );
           })()}
-          <button onClick={() => setActiveTab("cancelled")} className={`tab-btn ${activeTab === "cancelled" ? "active" : ""}`}>
-            Cancelled Orders
-          </button>
-          <button onClick={() => setActiveTab("vendors")} className={`tab-btn ${activeTab === "vendors" ? "active" : ""}`}>
-            Vendor Registry
-          </button>
-          <button onClick={() => setActiveTab("cargocompanies")} className={`tab-btn ${activeTab === "cargocompanies" ? "active" : ""}`}>
-            Logistics Carriers
-          </button>
-          <button onClick={() => setActiveTab("itemmaster")} className={`tab-btn ${activeTab === "itemmaster" ? "active" : ""}`} style={{ color: "#38bdf8", fontWeight: 700 }}>
-            Item Catalog & Stock
-          </button>
 
-          {/* Requirement 5: Missed Target Date Quick Filter Toggle */}
+          {/* Quick Filter: Missed Target Date */}
           <button 
             onClick={() => setMissedTargetOnly(!missedTargetOnly)}
             className={`btn btn-sm ${missedTargetOnly ? "btn-danger" : "btn-secondary"}`}
-            style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "6px", fontWeight: 600 }}
+            style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "6px", fontWeight: 600, padding: "8px 14px" }}
             title="Filter dashboard to show only items that missed target dates"
           >
             <AlertTriangle size={14} style={{ color: missedTargetOnly ? "#fff" : "var(--danger)" }} />
             <span>{missedTargetOnly ? "Showing Missed Target Only" : "Show Missed Target Only"}</span>
           </button>
+
         </div>
       </div>
 
