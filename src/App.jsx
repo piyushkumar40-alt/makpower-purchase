@@ -566,12 +566,12 @@ export default function App() {
             {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
 
-          <div className={`nav-links ${mobileMenuOpen ? "mobile-open" : ""}`}>
-            {/* View switching logic for logged-in users */}
+          {/* Desktop Navigation Links */}
+          <div className="nav-links">
             {currentUser && (
               <>
                 <button 
-                  onClick={() => { handleGoHome(); setMobileMenuOpen(false); }} 
+                  onClick={handleGoHome} 
                   className={`btn btn-sm btn-secondary ${activeView === "home" ? "active" : ""}`}
                   title="Go to Home Page"
                   style={{ fontWeight: 600 }}
@@ -581,7 +581,7 @@ export default function App() {
 
                 {currentUser.role === "superadmin" && (
                   <button 
-                    onClick={() => { setActiveView("admin"); setMobileMenuOpen(false); }} 
+                    onClick={() => setActiveView("admin")} 
                     className={`btn btn-sm btn-secondary ${activeView === "admin" ? "active" : ""}`}
                   >
                     <Settings size={14} /> Admin
@@ -590,7 +590,6 @@ export default function App() {
                 
                 <button 
                   onClick={() => {
-                    setMobileMenuOpen(false);
                     if (currentUser.role === "nitin") setActiveView("nitin");
                     else if (currentUser.role === "rahul") setActiveView("rahul");
                     else if (currentUser.role === "coordinator") setActiveView("coordinator");
@@ -604,7 +603,7 @@ export default function App() {
             )}
 
             <button 
-              onClick={() => { setActiveView("requester"); setMobileMenuOpen(false); }} 
+              onClick={() => setActiveView("requester")} 
               className={`btn btn-sm btn-secondary ${activeView === "requester" ? "active" : ""}`}
             >
               <ShoppingCart size={14} /> Requester Portal
@@ -612,9 +611,9 @@ export default function App() {
 
             {currentUser?.role !== "superadmin" && (
               <button 
-                onClick={() => { setActiveView("itemcatalog"); setMobileMenuOpen(false); }} 
+                onClick={() => setActiveView("itemcatalog")} 
                 className={`btn btn-sm btn-secondary ${activeView === "itemcatalog" ? "active" : ""}`}
-                style={{ color: "#38bdf8", fontWeight: 700 }}
+                style={{ color: "var(--primary)", fontWeight: 700 }}
               >
                 <Package size={14} /> Item Catalog & Stock
               </button>
@@ -637,13 +636,13 @@ export default function App() {
                   <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: currentUser.role === "superadmin" ? "#f59e0b" : currentUser.role === "nitin" ? "#ec4899" : currentUser.role === "rahul" ? "#10b981" : "#38bdf8" }}></span>
                   {currentUser.name} ({currentUser.role === "superadmin" ? "Admin" : currentUser.role === "nitin" ? "Nitin" : currentUser.role === "rahul" ? "Rahul" : "Purchaser"})
                 </span>
-                <button onClick={() => { handleLogout(); setMobileMenuOpen(false); }} className="btn btn-sm btn-danger">
+                <button onClick={handleLogout} className="btn btn-sm btn-danger">
                   <LogOut size={14} /> Logout
                 </button>
               </div>
             ) : (
               activeView !== "login" && (
-                <button onClick={() => { setActiveView("login"); setMobileMenuOpen(false); }} className="btn btn-sm btn-primary">
+                <button onClick={() => setActiveView("login")} className="btn btn-sm btn-primary">
                   <LogIn size={14} /> Staff Login
                 </button>
               )
@@ -651,6 +650,125 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {/* ==================== ANIMATED MOBILE NAVIGATION DRAWER ==================== */}
+      {mobileMenuOpen && (
+        <div className="mobile-drawer-backdrop" onClick={() => setMobileMenuOpen(false)}>
+          <div className="mobile-drawer-panel" onClick={e => e.stopPropagation()}>
+            
+            {/* Drawer Header */}
+            <div className="mobile-drawer-header">
+              <div className="logo-area" style={{ fontSize: "1.15rem" }} onClick={() => { handleGoHome(); setMobileMenuOpen(false); }}>
+                <Package size={22} strokeWidth={2.5} />
+                <span>MAK POWER</span>
+              </div>
+              <button 
+                className="mobile-drawer-close" 
+                onClick={() => setMobileMenuOpen(false)}
+                aria-label="Close navigation menu"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* User Profile Info Card */}
+            {currentUser && (
+              <div className="mobile-user-card">
+                <span 
+                  className="user-role-dot" 
+                  style={{ background: currentUser.role === "superadmin" ? "#f59e0b" : currentUser.role === "nitin" ? "#ec4899" : currentUser.role === "rahul" ? "#10b981" : "#38bdf8" }}
+                ></span>
+                <div className="mobile-user-details">
+                  <span className="mobile-user-name">{currentUser.name}</span>
+                  <span className="mobile-user-role">
+                    {currentUser.role === "superadmin" ? "Super Admin" : currentUser.role === "nitin" ? "Nitin Manager" : currentUser.role === "rahul" ? "Rahul Manager" : "Purchaser"}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Mobile Nav Links List */}
+            <div className="mobile-nav-list">
+              {currentUser && (
+                <>
+                  <button 
+                    onClick={() => { handleGoHome(); setMobileMenuOpen(false); }} 
+                    className={`mobile-nav-item ${activeView === "home" ? "active" : ""}`}
+                  >
+                    <Home size={18} /> <span>Home</span>
+                  </button>
+
+                  {currentUser.role === "superadmin" && (
+                    <button 
+                      onClick={() => { setActiveView("admin"); setMobileMenuOpen(false); }} 
+                      className={`mobile-nav-item ${activeView === "admin" ? "active" : ""}`}
+                    >
+                      <Settings size={18} /> <span>Admin Console</span>
+                    </button>
+                  )}
+                  
+                  <button 
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      if (currentUser.role === "nitin") setActiveView("nitin");
+                      else if (currentUser.role === "rahul") setActiveView("rahul");
+                      else if (currentUser.role === "coordinator") setActiveView("coordinator");
+                      else setActiveView("dashboard");
+                    }} 
+                    className={`mobile-nav-item ${["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "active" : ""}`}
+                  >
+                    <BarChart2 size={18} /> <span>Operations Workboard</span>
+                  </button>
+                </>
+              )}
+
+              <button 
+                onClick={() => { setActiveView("requester"); setMobileMenuOpen(false); }} 
+                className={`mobile-nav-item ${activeView === "requester" ? "active" : ""}`}
+              >
+                <ShoppingCart size={18} /> <span>Requester Portal</span>
+              </button>
+
+              {currentUser?.role !== "superadmin" && (
+                <button 
+                  onClick={() => { setActiveView("itemcatalog"); setMobileMenuOpen(false); }} 
+                  className={`mobile-nav-item ${activeView === "itemcatalog" ? "active" : ""}`}
+                >
+                  <Package size={18} /> <span>Item Catalog & Stock</span>
+                </button>
+              )}
+
+              {/* Theme Toggle Button */}
+              <button 
+                onClick={() => { toggleTheme(); }} 
+                className="mobile-nav-item theme-switch-item"
+              >
+                {theme === "dark" ? <Sun size={18} style={{ color: "#f59e0b" }} /> : <Moon size={18} style={{ color: "#818cf8" }} />}
+                <span>{theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}</span>
+              </button>
+
+              {currentUser ? (
+                <button 
+                  onClick={() => { handleLogout(); setMobileMenuOpen(false); }} 
+                  className="mobile-nav-item logout-item"
+                >
+                  <LogOut size={18} /> <span>Logout</span>
+                </button>
+              ) : (
+                activeView !== "login" && (
+                  <button 
+                    onClick={() => { setActiveView("login"); setMobileMenuOpen(false); }} 
+                    className="mobile-nav-item login-item"
+                  >
+                    <LogIn size={18} /> <span>Staff Login</span>
+                  </button>
+                )
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* Loading Screen Overlay */}
       {loading ? (
