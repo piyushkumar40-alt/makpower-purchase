@@ -5,13 +5,155 @@ import { uploadToCloudinary } from "../utils/upload";
 import ItemMasterView from "./ItemMasterView";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 
+// Custom Glassmorphic Animated Select Dropdown Component
+function CustomAnimatedDropdown({ label, icon: HeaderIcon, labelColor, options = [], value, onChange, isActive }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = React.useRef(null);
+
+  React.useEffect(() => {
+    function handleClickOutside(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const safeOptions = Array.isArray(options) ? options : [];
+  const selectedOption = safeOptions.find(o => o && o.id === value);
+
+  return (
+    <div ref={containerRef} style={{ position: "relative", flex: "1 1 280px", minWidth: "250px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        {label && (
+          <label style={{ fontSize: "0.85rem", fontWeight: 700, color: labelColor || "var(--primary)", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "6px" }}>
+            {HeaderIcon && <HeaderIcon size={16} />} {label}
+          </label>
+        )}
+        
+        {/* Animated Trigger Button */}
+        <button
+          type="button"
+          onClick={() => setOpen(prev => !prev)}
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justify: "space-between",
+            gap: "10px",
+            padding: "10px 14px",
+            borderRadius: "12px",
+            border: isActive ? `1.5px solid ${labelColor || "var(--primary)"}` : "1px solid var(--border-glass)",
+            boxShadow: isActive ? `0 0 14px ${labelColor || "var(--primary)"}25` : "0 2px 8px rgba(0,0,0,0.03)",
+            cursor: "pointer",
+            background: "var(--bg-card)",
+            color: "var(--text-main)",
+            transition: "all 0.2s ease"
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden" }}>
+            {selectedOption?.icon}
+            <span style={{ fontWeight: 600, fontSize: "0.88rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {selectedOption ? selectedOption.label : "-- Select View --"}
+            </span>
+            {selectedOption?.badge > 0 && (
+              <span className="badge badge-danger" style={{ fontSize: "0.68rem", padding: "2px 6px", borderRadius: "99px" }}>
+                {selectedOption.badge}
+              </span>
+            )}
+          </div>
+          <ChevronDown 
+            size={16} 
+            style={{ 
+              transition: "transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)", 
+              transform: open ? "rotate(180deg)" : "rotate(0deg)",
+              color: "var(--text-muted)",
+              flexShrink: 0
+            }} 
+          />
+        </button>
+      </div>
+
+      {/* Popover Menu Dropdown */}
+      {open && (
+        <div 
+          style={{
+            position: "absolute",
+            top: "calc(100% + 8px)",
+            left: 0,
+            right: 0,
+            zIndex: 900,
+            padding: "8px",
+            background: "var(--bg-card)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            border: "1px solid var(--border-glass)",
+            borderRadius: "14px",
+            boxShadow: "0 15px 35px -5px rgba(0, 0, 0, 0.25)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "4px",
+            animation: "dropdownPop 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards"
+          }}
+        >
+          {safeOptions.map(opt => {
+            if (!opt) return null;
+            const isSelected = opt.id === value;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => {
+                  onChange(opt.id);
+                  setOpen(false);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justify: "space-between",
+                  gap: "10px",
+                  padding: "10px 12px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: isSelected ? "var(--primary-glow)" : "transparent",
+                  color: isSelected ? "var(--primary)" : "var(--text-main)",
+                  fontWeight: isSelected ? 700 : 500,
+                  fontSize: "0.88rem",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  transition: "all 0.15s ease"
+                }}
+                className="custom-dropdown-option"
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  {opt.icon}
+                  <span>{opt.label}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  {opt.badge > 0 && (
+                    <span className="badge badge-danger" style={{ fontSize: "0.65rem", padding: "2px 6px" }}>
+                      {opt.badge}
+                    </span>
+                  )}
+                  {isSelected && <Check size={14} style={{ color: "var(--primary)" }} />}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PurchaserDashboard({
-  currentUser,
-  requests,
-  vendors,
-  cargos,
+  currentUser = {},
+  requests = [],
+  vendors = [],
+  cargos = [],
   cargoCompanies = [],
-  purchasers,
+  purchasers = [],
   onUpdateRequest,
   onCancelOrder,
   onUndoCargoAssignment,
@@ -3542,141 +3684,3 @@ export const calculateCargoCompanyMetrics = (company, cargos, requests) => {
     delays
   };
 };
-
-// Custom Glassmorphic Animated Select Dropdown Component
-function CustomAnimatedDropdown({ label, icon: HeaderIcon, labelColor, options, value, onChange, isActive }) {
-  const [open, setOpen] = useState(false);
-  const containerRef = React.useRef(null);
-
-  React.useEffect(() => {
-    function handleClickOutside(event) {
-      if (containerRef.current && !containerRef.current.contains(event.target)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const selectedOption = options.find(o => o.id === value);
-
-  return (
-    <div ref={containerRef} style={{ position: "relative", flex: "1 1 280px", minWidth: "250px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-        <label style={{ fontSize: "0.85rem", fontWeight: 700, color: labelColor, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "6px" }}>
-          {HeaderIcon && <HeaderIcon size={16} />} {label}
-        </label>
-        
-        {/* Animated Trigger Button */}
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            justify: "space-between",
-            gap: "10px",
-            padding: "10px 14px",
-            borderRadius: "12px",
-            border: isActive ? `1.5px solid ${labelColor}` : "1px solid var(--border-glass)",
-            boxShadow: isActive ? `0 0 14px ${labelColor}25` : "0 2px 8px rgba(0,0,0,0.03)",
-            cursor: "pointer",
-            background: "var(--bg-card)",
-            color: "var(--text-main)",
-            transition: "all 0.2s ease"
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden" }}>
-            {selectedOption?.icon}
-            <span style={{ fontWeight: 600, fontSize: "0.88rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {selectedOption ? selectedOption.label : "-- Select View --"}
-            </span>
-            {selectedOption?.badge > 0 && (
-              <span className="badge badge-danger" style={{ fontSize: "0.68rem", padding: "2px 6px", borderRadius: "99px" }}>
-                {selectedOption.badge}
-              </span>
-            )}
-          </div>
-          <ChevronDown 
-            size={16} 
-            style={{ 
-              transition: "transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)", 
-              transform: open ? "rotate(180deg)" : "rotate(0deg)",
-              color: "var(--text-muted)",
-              flexShrink: 0
-            }} 
-          />
-        </button>
-      </div>
-
-      {/* Popover Menu Dropdown */}
-      {open && (
-        <div 
-          style={{
-            position: "absolute",
-            top: "calc(100% + 8px)",
-            left: 0,
-            right: 0,
-            zIndex: 900,
-            padding: "8px",
-            background: "var(--bg-card)",
-            backdropFilter: "blur(20px)",
-            WebkitBackdropFilter: "blur(20px)",
-            border: "1px solid var(--border-glass)",
-            borderRadius: "14px",
-            boxShadow: "0 15px 35px -5px rgba(0, 0, 0, 0.25)",
-            display: "flex",
-            flexDirection: "column",
-            gap: "4px",
-            animation: "dropdownPop 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards"
-          }}
-        >
-          {options.map(opt => {
-            const isSelected = opt.id === value;
-            return (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => {
-                  onChange(opt.id);
-                  setOpen(false);
-                }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justify: "space-between",
-                  gap: "10px",
-                  padding: "10px 12px",
-                  borderRadius: "8px",
-                  border: "none",
-                  background: isSelected ? "var(--primary-glow)" : "transparent",
-                  color: isSelected ? "var(--primary)" : "var(--text-main)",
-                  fontWeight: isSelected ? 700 : 500,
-                  fontSize: "0.88rem",
-                  cursor: "pointer",
-                  textAlign: "left",
-                  transition: "all 0.15s ease"
-                }}
-                className="custom-dropdown-option"
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  {opt.icon}
-                  <span>{opt.label}</span>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  {opt.badge > 0 && (
-                    <span className="badge badge-danger" style={{ fontSize: "0.65rem", padding: "2px 6px" }}>
-                      {opt.badge}
-                    </span>
-                  )}
-                  {isSelected && <Check size={14} style={{ color: "var(--primary)" }} />}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
