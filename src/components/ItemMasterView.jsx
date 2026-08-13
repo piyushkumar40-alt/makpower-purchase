@@ -25,7 +25,13 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
   }, [currentPage]);
 
   const [uploadingModel, setUploadingModel] = useState(null);
-  const [localPhotoMap, setLocalPhotoMap] = useState({});
+  const [localPhotoMap, setLocalPhotoMap] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("makpower_model_photos") || "{}");
+    } catch (e) {
+      return {};
+    }
+  });
 
   const handleUpdateItemPhoto = async (modelName, file) => {
     if (!file) return;
@@ -34,10 +40,15 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
       const cloudinaryUrl = await uploadToCloudinary(file, "makpower_photos");
       const lowerKey = modelName.trim().toLowerCase();
 
-      setLocalPhotoMap(prev => ({
-        ...prev,
-        [lowerKey]: cloudinaryUrl
-      }));
+      setLocalPhotoMap(prev => {
+        const nextMap = { ...prev, [lowerKey]: cloudinaryUrl };
+        try {
+          localStorage.setItem("makpower_model_photos", JSON.stringify(nextMap));
+        } catch (e) {
+          console.error("Failed to save local photo map:", e);
+        }
+        return nextMap;
+      });
 
       const matchingRequests = requests.filter(r => (r.model || "").trim().toLowerCase() === lowerKey);
       if (matchingRequests.length > 0) {
@@ -51,6 +62,13 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
             body: JSON.stringify(updatedBatch)
           });
         }
+      } else {
+        // Also save to settings endpoint so server retains photo mapping for new requests
+        fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ [`photo_${lowerKey}`]: cloudinaryUrl })
+        }).catch(e => console.error(e));
       }
     } catch (err) {
       console.error("Failed to update item photo:", err);
@@ -96,7 +114,7 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
       // Keep best available photo
       if (localPhotoMap[lowerKey]) {
         item.photo = localPhotoMap[lowerKey];
-      } else if (!item.photo && r.photo) {
+      } else if (r.photo) {
         item.photo = r.photo;
       }
       if (r.category && item.category === "Uncategorized") {
