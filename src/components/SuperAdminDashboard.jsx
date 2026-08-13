@@ -121,6 +121,9 @@ export default function SuperAdminDashboard({
       }
     } catch (err) {
       setStorageStatusMsg(`❌ Delete error: ${err.message}`);
+    }
+  };
+
   const handleDeleteAllCloudinaryImages = async () => {
     if (!window.confirm("⚠️ ARE YOU SURE? This will permanently delete ALL images from Cloudinary storage itself!")) return;
     setLoadingStorage(true);
