@@ -1454,16 +1454,27 @@ select.form-control {
   color: #4f46e5 !important;
 }
 
-[data-theme="light"] [style*="color: var(--text-muted)"] {
-  color: #475569 !important;
+/* Custom Popover Dropdown Keyframe Animation & Option Styling */
+@keyframes dropdownPop {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
-[data-theme="light"] [style*="color: var(--primary)"] {
+.custom-dropdown-option:hover {
+  background: var(--bg-card-hover) !important;
+  color: var(--primary) !important;
+}
+
+[data-theme="light"] .custom-dropdown-option:hover {
+  background: #e0f2fe !important;
   color: #0284c7 !important;
 }
 
-[data-theme="light"] [style*="color: var(--secondary)"] {
-  color: #4f46e5 !important;
-}
 
 

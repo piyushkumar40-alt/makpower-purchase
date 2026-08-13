@@ -126,75 +126,47 @@ export default function PurchaserDashboard({
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
       
       {/* Top Dual Dropdown Navigation Bar (Desktop & Mobile) */}
-      <div style={{ background: "rgba(10, 15, 30, 0.4)", borderBottom: "1px solid var(--border-glass)", padding: "12px 24px" }}>
+      <div style={{ background: "var(--bg-card)", borderBottom: "1px solid var(--border-glass)", padding: "12px 24px" }}>
         <div style={{ maxWidth: "1400px", margin: "0 auto", width: "100%", display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
           
           {/* Dropdown 1: Workflow Steps & Order Stages */}
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: "1 1 280px", minWidth: "250px" }}>
-            <label style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary)", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "6px" }}>
-              <Layers size={16} /> Workflow Steps:
-            </label>
-            <select 
-              className="form-control"
-              style={{ 
-                flex: 1, 
-                fontWeight: 600, 
-                fontSize: "0.9rem",
-                cursor: "pointer",
-                borderColor: ["pending", "vendorready", "planner", "cargopickup", "shipments", "all", "cancelled"].includes(activeTab) ? "var(--primary)" : "var(--border-glass)",
-                boxShadow: ["pending", "vendorready", "planner", "cargopickup", "shipments", "all", "cancelled"].includes(activeTab) ? "0 0 12px var(--primary-glow)" : "none"
-              }}
-              value={["pending", "vendorready", "planner", "cargopickup", "shipments", "all", "cancelled"].includes(activeTab) ? activeTab : ""}
-              onChange={e => {
-                if (e.target.value) setActiveTab(e.target.value);
-              }}
-            >
-              <option value="" disabled style={{ background: "var(--bg-card)", color: "var(--text-muted)" }}>-- Select Workflow Step --</option>
-              <option value="pending" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Step 1: Commercial & Timeline Specification</option>
-              <option value="vendorready" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Step 2: Vendor Ready</option>
-              <option value="planner" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Step 3: Cargo Consolidation</option>
-              <option value="cargopickup" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Step 4: Cargo Pickup</option>
-              <option value="shipments" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Step 5: Transit Tracking & Receipt</option>
-              <option value="all" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Received History</option>
-              <option value="cancelled" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Cancelled Orders</option>
-            </select>
-          </div>
+          <CustomAnimatedDropdown 
+            label="Workflow Steps:"
+            icon={Layers}
+            labelColor="var(--primary)"
+            isActive={["pending", "vendorready", "planner", "cargopickup", "shipments", "all", "cancelled"].includes(activeTab)}
+            value={activeTab}
+            onChange={tab => setActiveTab(tab)}
+            options={[
+              { id: "pending", label: "Step 1: Commercial & Timeline Specification", icon: <Clock size={16} style={{ color: "var(--primary)" }} /> },
+              { id: "vendorready", label: "Step 2: Vendor Ready", icon: <CheckCircle2 size={16} style={{ color: "var(--warning)" }} /> },
+              { id: "planner", label: "Step 3: Cargo Consolidation", icon: <Package size={16} style={{ color: "var(--secondary)" }} /> },
+              { id: "cargopickup", label: "Step 4: Cargo Pickup", icon: <Truck size={16} style={{ color: "var(--success)" }} /> },
+              { id: "shipments", label: "Step 5: Transit Tracking & Receipt", icon: <Truck size={16} style={{ color: "var(--primary)" }} /> },
+              { id: "all", label: "Received History", icon: <CheckCircle2 size={16} style={{ color: "var(--success)" }} /> },
+              { id: "cancelled", label: "Cancelled Orders", icon: <XCircle size={16} style={{ color: "var(--danger)" }} /> }
+            ]}
+          />
 
           {/* Dropdown 2: Directories, Records & Modules */}
           {(() => {
             const pendingDocCount = myCargos.filter(c => !c.packingListFile || !c.invoiceFile).length;
             return (
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: "1 1 280px", minWidth: "250px" }}>
-                <label style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--secondary)", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <Folder size={16} /> Directories & Modules:
-                </label>
-                <select 
-                  className="form-control"
-                  style={{ 
-                    flex: 1, 
-                    fontWeight: 600, 
-                    fontSize: "0.9rem",
-                    cursor: "pointer",
-                    borderColor: ["alerts", "docs", "vendors", "cargocompanies", "itemmaster"].includes(activeTab) ? "var(--secondary)" : "var(--border-glass)",
-                    boxShadow: ["alerts", "docs", "vendors", "cargocompanies", "itemmaster"].includes(activeTab) ? "0 0 12px rgba(129, 140, 248, 0.2)" : "none"
-                  }}
-                  value={["alerts", "docs", "vendors", "cargocompanies", "itemmaster"].includes(activeTab) ? activeTab : ""}
-                  onChange={e => {
-                    if (e.target.value) setActiveTab(e.target.value);
-                  }}
-                >
-                  <option value="" disabled style={{ background: "var(--bg-card)", color: "var(--text-muted)" }}>-- Select Directory / Module --</option>
-                  <option value="alerts" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>
-                    Operations Alerts {totalAlertsCount > 0 ? `(${totalAlertsCount} Alerts)` : ""}
-                  </option>
-                  <option value="docs" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>
-                    Pending Documents {pendingDocCount > 0 ? `(${pendingDocCount} Missing)` : ""}
-                  </option>
-                  <option value="vendors" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Vendor Registry</option>
-                  <option value="cargocompanies" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Logistics Carriers</option>
-                  <option value="itemmaster" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Item Catalog & Stock</option>
-                </select>
-              </div>
+              <CustomAnimatedDropdown 
+                label="Directories & Modules:"
+                icon={Folder}
+                labelColor="var(--secondary)"
+                isActive={["alerts", "docs", "vendors", "cargocompanies", "itemmaster"].includes(activeTab)}
+                value={activeTab}
+                onChange={tab => setActiveTab(tab)}
+                options={[
+                  { id: "alerts", label: "Operations Alerts", icon: <AlertTriangle size={16} style={{ color: "var(--danger)" }} />, badge: totalAlertsCount },
+                  { id: "docs", label: "Pending Documents", icon: <FileText size={16} style={{ color: "var(--warning)" }} />, badge: pendingDocCount },
+                  { id: "vendors", label: "Vendor Registry", icon: <ChevronRight size={16} style={{ color: "var(--primary)" }} /> },
+                  { id: "cargocompanies", label: "Logistics Carriers", icon: <Truck size={16} style={{ color: "var(--secondary)" }} /> },
+                  { id: "itemmaster", label: "Item Catalog & Stock", icon: <Package size={16} style={{ color: "var(--primary)" }} /> }
+                ]}
+              />
             );
           })()}
 
@@ -3570,3 +3542,141 @@ export const calculateCargoCompanyMetrics = (company, cargos, requests) => {
     delays
   };
 };
+
+// Custom Glassmorphic Animated Select Dropdown Component
+function CustomAnimatedDropdown({ label, icon: HeaderIcon, labelColor, options, value, onChange, isActive }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = React.useRef(null);
+
+  React.useEffect(() => {
+    function handleClickOutside(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find(o => o.id === value);
+
+  return (
+    <div ref={containerRef} style={{ position: "relative", flex: "1 1 280px", minWidth: "250px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <label style={{ fontSize: "0.85rem", fontWeight: 700, color: labelColor, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "6px" }}>
+          {HeaderIcon && <HeaderIcon size={16} />} {label}
+        </label>
+        
+        {/* Animated Trigger Button */}
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justify: "space-between",
+            gap: "10px",
+            padding: "10px 14px",
+            borderRadius: "12px",
+            border: isActive ? `1.5px solid ${labelColor}` : "1px solid var(--border-glass)",
+            boxShadow: isActive ? `0 0 14px ${labelColor}25` : "0 2px 8px rgba(0,0,0,0.03)",
+            cursor: "pointer",
+            background: "var(--bg-card)",
+            color: "var(--text-main)",
+            transition: "all 0.2s ease"
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden" }}>
+            {selectedOption?.icon}
+            <span style={{ fontWeight: 600, fontSize: "0.88rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {selectedOption ? selectedOption.label : "-- Select View --"}
+            </span>
+            {selectedOption?.badge > 0 && (
+              <span className="badge badge-danger" style={{ fontSize: "0.68rem", padding: "2px 6px", borderRadius: "99px" }}>
+                {selectedOption.badge}
+              </span>
+            )}
+          </div>
+          <ChevronDown 
+            size={16} 
+            style={{ 
+              transition: "transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)", 
+              transform: open ? "rotate(180deg)" : "rotate(0deg)",
+              color: "var(--text-muted)",
+              flexShrink: 0
+            }} 
+          />
+        </button>
+      </div>
+
+      {/* Popover Menu Dropdown */}
+      {open && (
+        <div 
+          style={{
+            position: "absolute",
+            top: "calc(100% + 8px)",
+            left: 0,
+            right: 0,
+            zIndex: 900,
+            padding: "8px",
+            background: "var(--bg-card)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            border: "1px solid var(--border-glass)",
+            borderRadius: "14px",
+            boxShadow: "0 15px 35px -5px rgba(0, 0, 0, 0.25)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "4px",
+            animation: "dropdownPop 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards"
+          }}
+        >
+          {options.map(opt => {
+            const isSelected = opt.id === value;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => {
+                  onChange(opt.id);
+                  setOpen(false);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justify: "space-between",
+                  gap: "10px",
+                  padding: "10px 12px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: isSelected ? "var(--primary-glow)" : "transparent",
+                  color: isSelected ? "var(--primary)" : "var(--text-main)",
+                  fontWeight: isSelected ? 700 : 500,
+                  fontSize: "0.88rem",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  transition: "all 0.15s ease"
+                }}
+                className="custom-dropdown-option"
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  {opt.icon}
+                  <span>{opt.label}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  {opt.badge > 0 && (
+                    <span className="badge badge-danger" style={{ fontSize: "0.65rem", padding: "2px 6px" }}>
+                      {opt.badge}
+                    </span>
+                  )}
+                  {isSelected && <Check size={14} style={{ color: "var(--primary)" }} />}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
