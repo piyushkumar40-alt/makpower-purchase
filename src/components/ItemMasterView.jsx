@@ -329,11 +329,11 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
 
         {/* Where is Item Now? Visual Supply Chain Milestone Stepper */}
         <div className="glass-panel" style={{ padding: "24px" }}>
-          <h3 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px", color: "var(--primary)" }}>
-            <MapPin size={20} /> Where is this Item Now? (Real-Time Location & Milestone Pipeline)
+          <h3 style={{ fontSize: "1.15rem", fontWeight: 700, marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px", color: "var(--primary)" }}>
+            <MapPin size={18} /> Where is this Item Now? (Real-Time Location & Milestone Pipeline)
           </h3>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "12px", position: "relative" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "12px", position: "relative" }}>
             {[
               { step: 1, title: "Step 1: Order Placed", desc: "Commercial & Tech Specs" },
               { step: 2, title: "Step 2: Vendor Factory", desc: "Production at Vendor Site" },
@@ -343,26 +343,52 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
             ].map(s => {
               const isActive = item.latestStageCode >= s.step;
               const isCurrent = item.latestStageCode === s.step;
+
+              let bg = "var(--bg-main)";
+              let border = "1px solid var(--border-glass)";
+              let titleColor = "var(--text-main)";
+              let circleBg = "var(--border-glass)";
+              let circleColor = "var(--text-muted)";
+
+              if (isCurrent) {
+                bg = "var(--primary-glow)";
+                border = "2px solid var(--primary)";
+                titleColor = "var(--primary)";
+                circleBg = "var(--primary)";
+                circleColor = "#ffffff";
+              } else if (isActive) {
+                bg = "var(--success-glow)";
+                border = "1px solid var(--success)";
+                titleColor = "var(--success)";
+                circleBg = "var(--success)";
+                circleColor = "#ffffff";
+              }
+
               return (
                 <div 
                   key={s.step} 
                   style={{ 
-                    background: isCurrent ? "rgba(56, 189, 248, 0.15)" : isActive ? "rgba(34, 197, 94, 0.08)" : "rgba(15, 23, 42, 0.4)",
-                    border: `1px solid ${isCurrent ? "#38bdf8" : isActive ? "rgba(34, 197, 94, 0.4)" : "var(--border-glass)"}`,
-                    borderRadius: "10px",
-                    padding: "14px",
-                    textAlign: "center"
+                    background: bg,
+                    border: border,
+                    borderRadius: "12px",
+                    padding: "14px 10px",
+                    textAlign: "center",
+                    transition: "all 0.2s ease",
+                    boxShadow: isCurrent ? "0 4px 14px var(--primary-glow)" : "none"
                   }}
                 >
                   <div style={{ 
                     width: "32px", height: "32px", borderRadius: "50%", margin: "0 auto 8px auto",
-                    background: isCurrent ? "#38bdf8" : isActive ? "var(--success)" : "rgba(255,255,255,0.1)",
-                    color: "#0f172a", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center"
+                    background: circleBg,
+                    color: circleColor,
+                    fontWeight: 700,
+                    fontSize: "0.85rem",
+                    display: "flex", alignItems: "center", justifyContent: "center"
                   }}>
                     {isActive ? "✓" : s.step}
                   </div>
-                  <div style={{ fontSize: "0.85rem", fontWeight: 700, color: isCurrent ? "#38bdf8" : "#fff", marginBottom: "4px" }}>{s.title}</div>
-                  <div style={{ fontSize: "0.73rem", color: "var(--text-muted)" }}>{s.desc}</div>
+                  <div style={{ fontSize: "0.84rem", fontWeight: 700, color: titleColor, marginBottom: "4px" }}>{s.title}</div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", lineHeight: "1.3" }}>{s.desc}</div>
                 </div>
               );
             })}
