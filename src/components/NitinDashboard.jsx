@@ -3,7 +3,13 @@ import { LogOut, Filter, CheckSquare, Square, CheckCircle, PackageOpen, Eye, X }
 import ItemMasterView from "./ItemMasterView";
 
 export default function NitinDashboard({ currentUser, requests, vendors, cargos, onBatchUpdateRequests, onLogout }) {
-  const [activeTab, setActiveTab] = useState("pending"); // "pending" | "submitted"
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem("makpower_nitin_tab") || "pending";
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem("makpower_nitin_tab", activeTab);
+  }, [activeTab]);
   
   // Filters state
   const [filterVendor, setFilterVendor] = useState("");

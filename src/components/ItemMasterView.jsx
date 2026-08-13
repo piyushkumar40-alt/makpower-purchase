@@ -13,9 +13,16 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   
-  // Pagination State (50 per page for 5 Lakh scale)
-  const [currentPage, setCurrentPage] = useState(1);
+  // Pagination State (Persisted across refreshes)
+  const [currentPage, setCurrentPage] = useState(() => {
+    const saved = localStorage.getItem("makpower_catalog_page");
+    return saved ? Number(saved) : 1;
+  });
   const [itemsPerPage, setItemsPerPage] = useState(50);
+
+  useEffect(() => {
+    localStorage.setItem("makpower_catalog_page", currentPage.toString());
+  }, [currentPage]);
 
   const [uploadingModel, setUploadingModel] = useState(null);
   const [localPhotoMap, setLocalPhotoMap] = useState({});

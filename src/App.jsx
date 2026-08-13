@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { LogIn, ShoppingCart, ShieldAlert, LogOut, Settings, BarChart2, Package, Sun, Moon, Home } from "lucide-react";
+import { LogIn, ShoppingCart, ShieldAlert, LogOut, Settings, BarChart2, Package, Sun, Moon, Home, Menu, X } from "lucide-react";
 import LoginPage from "./components/LoginPage";
 import RequesterForm from "./components/RequesterForm";
 import PurchaserDashboard from "./components/PurchaserDashboard";
@@ -8,9 +8,13 @@ import NitinDashboard from "./components/NitinDashboard";
 import RahulDashboard from "./components/RahulDashboard";
 import CoordinatorDashboard from "./components/CoordinatorDashboard";
 import ItemMasterView from "./components/ItemMasterView";
+import HomePage from "./components/HomePage";
 import { initialUsers, initialVendors, initialRequests, initialCargoShipments, initialCargoCompanies } from "./mockData";
 
 export default function App() {
+  // Mobile drawer state
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   // Theme State ("dark" | "light")
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem("makpower_theme") || "dark";
@@ -40,18 +44,13 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
-  // activeView: "login" | "requester" | "dashboard" | "admin" | "nitin" | "rahul" | "coordinator"
+  // activeView: "login" | "home" | "requester" | "dashboard" | "admin" | "nitin" | "rahul" | "coordinator" | "itemcatalog"
   const [activeView, setActiveView] = useState(() => {
     const savedView = localStorage.getItem("makpower_active_view");
     const savedUser = localStorage.getItem("makpower_current_user");
     if (savedUser) {
       if (savedView) return savedView;
-      const u = JSON.parse(savedUser);
-      if (u.role === "superadmin") return "admin";
-      if (u.role === "nitin") return "nitin";
-      if (u.role === "rahul") return "rahul";
-      if (u.role === "coordinator") return "coordinator";
-      return "dashboard";
+      return "home";
     }
     return "login";
   });
@@ -69,11 +68,7 @@ export default function App() {
       setActiveView("login");
       return;
     }
-    if (currentUser.role === "superadmin") setActiveView("admin");
-    else if (currentUser.role === "nitin") setActiveView("nitin");
-    else if (currentUser.role === "rahul") setActiveView("rahul");
-    else if (currentUser.role === "coordinator") setActiveView("coordinator");
-    else setActiveView("dashboard");
+    setActiveView("home");
   };
 
   // Fetch full state on mount & set up 10-second polling
@@ -550,18 +545,27 @@ export default function App() {
     <div className="app-container">
       <header className="app-header">
         <div className="header-inner">
-          <div className="logo-area">
+          <div className="logo-area" onClick={handleGoHome} style={{ cursor: "pointer" }}>
             <Package size={26} strokeWidth={2.5} />
             <span>MAK POWER PURCHASE</span>
           </div>
 
-          <div className="nav-links">
+          {/* Mobile hamburger menu toggle */}
+          <button 
+            className="mobile-menu-toggle btn btn-sm btn-secondary" 
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Toggle navigation menu"
+          >
+            {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+          </button>
+
+          <div className={`nav-links ${mobileMenuOpen ? "mobile-open" : ""}`}>
             {/* View switching logic for logged-in users */}
             {currentUser && (
               <>
                 <button 
-                  onClick={handleGoHome} 
-                  className="btn btn-sm btn-secondary"
+                  onClick={() => { handleGoHome(); setMobileMenuOpen(false); }} 
+                  className={`btn btn-sm btn-secondary ${activeView === "home" ? "active" : ""}`}
                   title="Go to Home Page"
                   style={{ fontWeight: 600 }}
                 >
@@ -570,7 +574,7 @@ export default function App() {
 
                 {currentUser.role === "superadmin" && (
                   <button 
-                    onClick={() => setActiveView("admin")} 
+                    onClick={() => { setActiveView("admin"); setMobileMenuOpen(false); }} 
                     className={`btn btn-sm btn-secondary ${activeView === "admin" ? "active" : ""}`}
                   >
                     <Settings size={14} /> Admin
@@ -579,6 +583,7 @@ export default function App() {
                 
                 <button 
                   onClick={() => {
+                    setMobileMenuOpen(false);
                     if (currentUser.role === "nitin") setActiveView("nitin");
                     else if (currentUser.role === "rahul") setActiveView("rahul");
                     else if (currentUser.role === "coordinator") setActiveView("coordinator");
@@ -586,13 +591,13 @@ export default function App() {
                   }} 
                   className={`btn btn-sm btn-secondary ${["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "active" : ""}`}
                 >
-                  <BarChart2 size={14} /> Dashboard
+                  <BarChart2 size={14} /> Workboard
                 </button>
               </>
             )}
 
             <button 
-              onClick={() => setActiveView("requester")} 
+              onClick={() => { setActiveView("requester"); setMobileMenuOpen(false); }} 
               className={`btn btn-sm btn-secondary ${activeView === "requester" ? "active" : ""}`}
             >
               <ShoppingCart size={14} /> Requester Portal
@@ -600,7 +605,7 @@ export default function App() {
 
             {currentUser?.role !== "superadmin" && (
               <button 
-                onClick={() => setActiveView("itemcatalog")} 
+                onClick={() => { setActiveView("itemcatalog"); setMobileMenuOpen(false); }} 
                 className={`btn btn-sm btn-secondary ${activeView === "itemcatalog" ? "active" : ""}`}
                 style={{ color: "#38bdf8", fontWeight: 700 }}
               >
@@ -620,18 +625,18 @@ export default function App() {
             </button>
 
             {currentUser ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                 <span className="user-badge">
                   <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: currentUser.role === "superadmin" ? "#f59e0b" : currentUser.role === "nitin" ? "#ec4899" : currentUser.role === "rahul" ? "#10b981" : "#38bdf8" }}></span>
                   {currentUser.name} ({currentUser.role === "superadmin" ? "Admin" : currentUser.role === "nitin" ? "Nitin" : currentUser.role === "rahul" ? "Rahul" : "Purchaser"})
                 </span>
-                <button onClick={handleLogout} className="btn btn-sm btn-danger">
+                <button onClick={() => { handleLogout(); setMobileMenuOpen(false); }} className="btn btn-sm btn-danger">
                   <LogOut size={14} /> Logout
                 </button>
               </div>
             ) : (
               activeView !== "login" && (
-                <button onClick={() => setActiveView("login")} className="btn btn-sm btn-primary">
+                <button onClick={() => { setActiveView("login"); setMobileMenuOpen(false); }} className="btn btn-sm btn-primary">
                   <LogIn size={14} /> Staff Login
                 </button>
               )
@@ -659,6 +664,19 @@ export default function App() {
         <main className="main-content-area" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
           {activeView === "login" && (
             <LoginPage onLogin={handleLogin} onEnterAsGuest={enterAsGuest} users={users} />
+          )}
+
+          {activeView === "home" && currentUser && (
+            <HomePage 
+              currentUser={currentUser}
+              users={users}
+              requests={requests}
+              vendors={vendors}
+              cargos={cargos}
+              cargoCompanies={cargoCompanies}
+              onNavigateView={setActiveView}
+              onLogout={handleLogout}
+            />
           )}
 
         {activeView === "requester" && (

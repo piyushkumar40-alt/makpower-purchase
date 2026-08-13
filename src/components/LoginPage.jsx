@@ -50,7 +50,7 @@ export default function LoginPage({ onLogin, onEnterAsGuest, users }) {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+        <form onSubmit={handleSubmit} autoComplete="on" style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
           {/* Email input */}
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Email Address</label>
@@ -58,6 +58,8 @@ export default function LoginPage({ onLogin, onEnterAsGuest, users }) {
               <Mail size={16} style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
               <input 
                 type="email" 
+                name="email"
+                autoComplete="username"
                 className="form-control" 
                 placeholder="you@company.com" 
                 value={email}
@@ -75,6 +77,8 @@ export default function LoginPage({ onLogin, onEnterAsGuest, users }) {
               <Key size={16} style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
               <input 
                 type="password" 
+                name="password"
+                autoComplete="current-password"
                 className="form-control" 
                 placeholder="••••••••" 
                 value={password}

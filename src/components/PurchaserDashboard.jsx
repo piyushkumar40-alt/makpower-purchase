@@ -25,7 +25,16 @@ export default function PurchaserDashboard({
   onUpdateCargoCompany,
   onRemoveCargoCompany
 }) {
-  const [activeTab, setActiveTab] = useState("alerts"); // "alerts" | "pending" | "planner" | "shipments" | "all" | "cancelled" | "vendors" | "cargocompanies"
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem("makpower_purchaser_tab") || "alerts";
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem("makpower_purchaser_tab", activeTab);
+  }, [activeTab]);
+
+  // Requirement 5: Missed Target Date Filter State
+  const [missedTargetOnly, setMissedTargetOnly] = useState(false);
   
   // Modals state
   const [editingRequest, setEditingRequest] = useState(null);
@@ -49,18 +58,32 @@ export default function PurchaserDashboard({
   const [plannerVendorId, setPlannerVendorId] = useState("");
   const [checkedRequestIds, setCheckedRequestIds] = useState([]);
 
+  // Calculate today's date for alerts & missed target checks
+  const todayStr = "2026-06-11"; // Mock system date
+  const today = new Date(todayStr);
+
   // Filter requests based on user role (Admin sees all, Purchaser sees their own)
   const isSearchAdmin = currentUser.role === "superadmin";
-  const allMyRequests = isSearchAdmin ? requests : requests.filter(r => r.purchaserId === currentUser.id);
+  const rawMyRequests = isSearchAdmin ? requests : requests.filter(r => r.purchaserId === currentUser.id);
+
+  // Helper: check if target date is missed
+  const isTargetDateMissed = (r) => {
+    if (r.isMaterialRec === "Yes" || r.status === "Cancelled") return false;
+    const targetDateStr = r.vendorEdd || r.requiredByDate;
+    if (!targetDateStr) return false;
+    return new Date(targetDateStr) < today;
+  };
+
+  // Requirement 5: Filter items whose target date is missed when toggle is active
+  const allMyRequests = missedTargetOnly 
+    ? rawMyRequests.filter(r => isTargetDateMissed(r))
+    : rawMyRequests;
+
   // Active requests (not cancelled)
   const myRequests = allMyRequests.filter(r => r.status !== "Cancelled");
   // Cancelled requests
   const cancelledRequests = allMyRequests.filter(r => r.status === "Cancelled");
-  const myCargos = cargos; // Keep it simple, let them manage all cargos or let admin override
-
-  // Calculate today's date for alerts
-  const todayStr = "2026-06-11"; // Mock system date
-  const today = new Date(todayStr);
+  const myCargos = cargos;
 
   // Helper: check due status for pricing items
   const getEddAlertStatus = (r) => {
@@ -169,6 +192,17 @@ export default function PurchaserDashboard({
           </button>
           <button onClick={() => setActiveTab("itemmaster")} className={`tab-btn ${activeTab === "itemmaster" ? "active" : ""}`} style={{ color: "#38bdf8", fontWeight: 700 }}>
             Item Catalog & Stock
+          </button>
+
+          {/* Requirement 5: Missed Target Date Quick Filter Toggle */}
+          <button 
+            onClick={() => setMissedTargetOnly(!missedTargetOnly)}
+            className={`btn btn-sm ${missedTargetOnly ? "btn-danger" : "btn-secondary"}`}
+            style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "6px", fontWeight: 600 }}
+            title="Filter dashboard to show only items that missed target dates"
+          >
+            <AlertTriangle size={14} style={{ color: missedTargetOnly ? "#fff" : "var(--danger)" }} />
+            <span>{missedTargetOnly ? "Showing Missed Target Only" : "Show Missed Target Only"}</span>
           </button>
         </div>
       </div>

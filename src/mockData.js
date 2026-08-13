@@ -3,7 +3,7 @@ export const initialUsers = [
     id: "u-admin",
     name: "Super Admin",
     email: "admin@company.com",
-    password: "admin123",
+    password: "MakPower#Admin2026!",
     role: "superadmin",
     status: "active"
   },
@@ -11,7 +11,7 @@ export const initialUsers = [
     id: "u-anees",
     name: "Anees",
     email: "anees@company.com",
-    password: "anees123",
+    password: "MakPower#Anees2026!",
     role: "purchaser",
     status: "active"
   },
@@ -19,7 +19,7 @@ export const initialUsers = [
     id: "u-john",
     name: "John",
     email: "john@company.com",
-    password: "john123",
+    password: "MakPower#John2026!",
     role: "purchaser",
     status: "active"
   },
@@ -27,7 +27,7 @@ export const initialUsers = [
     id: "u-sarah",
     name: "Sarah",
     email: "sarah@company.com",
-    password: "sarah123",
+    password: "MakPower#Sarah2026!",
     role: "purchaser",
     status: "active"
   },
@@ -35,7 +35,7 @@ export const initialUsers = [
     id: "u-nitin",
     name: "Nitin Kumar",
     email: "nitin@company.com",
-    password: "nitin123",
+    password: "MakPower#Nitin2026!",
     role: "nitin",
     status: "active"
   },
@@ -43,7 +43,7 @@ export const initialUsers = [
     id: "u-rahul",
     name: "Rahul Dev",
     email: "rahul@company.com",
-    password: "rahul123",
+    password: "MakPower#Rahul2026!",
     role: "rahul",
     status: "active"
   },
@@ -51,7 +51,7 @@ export const initialUsers = [
     id: "u-coordinator",
     name: "Priya Sharma",
     email: "coordinator@company.com",
-    password: "coordinator123",
+    password: "MakPower#Coord2026!",
     role: "coordinator",
     status: "active"
   }
