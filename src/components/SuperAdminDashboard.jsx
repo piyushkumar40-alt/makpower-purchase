@@ -73,6 +73,7 @@ export default function SuperAdminDashboard({
 
   // Storage Manager Filters & Selection State
   const [storageFilterSource, setStorageFilterSource] = useState("all"); // "all" | "postgres" | "cloudinary"
+  const [storageFileType, setStorageFileType] = useState("all"); // "all" | "image" | "pdf"
   const [storageSearchQuery, setStorageSearchQuery] = useState("");
   const [selectedFileIds, setSelectedFileIds] = useState([]);
 
@@ -1373,7 +1374,12 @@ export default function SuperAdminDashboard({
         {/* STORAGE & DESKTOP FILE MANAGER TAB */}
         {subTab === "filemanager" && (() => {
           // Requirement 2: Live Filtered Files Calculation
-          const filteredStorageFiles = storageFiles.filter(file => {
+          const rawFiles = Array.isArray(storageFiles) ? storageFiles : [];
+          const rawFolders = Array.isArray(storageFolders) ? storageFolders : [];
+          const rawSelectedIds = Array.isArray(selectedFileIds) ? selectedFileIds : [];
+
+          const filteredStorageFiles = rawFiles.filter(file => {
+            if (!file) return false;
             const isCloudinary = file.storageType === "Cloudinary CDN" || (file.url && file.url.includes("cloudinary.com"));
 
             if (storageFilterSource === "postgres" && isCloudinary) return false;
@@ -1400,7 +1406,7 @@ export default function SuperAdminDashboard({
             return true;
           });
 
-          const isAllSelected = filteredStorageFiles.length > 0 && filteredStorageFiles.every(f => selectedFileIds.includes(f.public_id));
+          const isAllSelected = filteredStorageFiles.length > 0 && filteredStorageFiles.every(f => rawSelectedIds.includes(f.public_id));
 
           const handleSelectAllFiles = (e) => {
             if (e.target.checked) {
@@ -1412,7 +1418,9 @@ export default function SuperAdminDashboard({
 
           const handleToggleFileSelect = (public_id) => {
             setSelectedFileIds(prev =>
-              prev.includes(public_id) ? prev.filter(id => id !== public_id) : [...prev, public_id]
+              (Array.isArray(prev) ? prev : []).includes(public_id) 
+                ? prev.filter(id => id !== public_id) 
+                : [...(Array.isArray(prev) ? prev : []), public_id]
             );
           };
 
