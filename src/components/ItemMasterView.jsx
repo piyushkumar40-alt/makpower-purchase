@@ -4,7 +4,7 @@ import { uploadToCloudinary } from "../utils/upload";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 import Pagination from "./Pagination";
 
-export default function ItemMasterView({ requests = [], vendors = [], cargos = [], cargoCompanies = [], purchasers = [], onBatchUpdateRequests }) {
+export default function ItemMasterView({ requests = [], vendors = [], cargos = [], cargoCompanies = [], purchasers = [], settings = {}, onUpdateSettings, onBatchUpdateRequests }) {
   const [selectedModel, setSelectedModel] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
@@ -50,6 +50,19 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
         return nextMap;
       });
 
+      // Always save to system settings table so server retains photo mapping for Storage & File Manager and new requests
+      const settingPayload = { [`photo_${lowerKey}`]: cloudinaryUrl };
+      if (onUpdateSettings) {
+        await onUpdateSettings(settingPayload);
+      } else {
+        await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(settingPayload)
+        }).catch(e => console.error(e));
+      }
+
+      // Also update any matching requests in requests table
       const matchingRequests = requests.filter(r => (r.model || "").trim().toLowerCase() === lowerKey);
       if (matchingRequests.length > 0) {
         const updatedBatch = matchingRequests.map(r => ({ ...r, photo: cloudinaryUrl }));
@@ -62,13 +75,6 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
             body: JSON.stringify(updatedBatch)
           });
         }
-      } else {
-        // Also save to settings endpoint so server retains photo mapping for new requests
-        fetch("/api/settings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ [`photo_${lowerKey}`]: cloudinaryUrl })
-        }).catch(e => console.error(e));
       }
     } catch (err) {
       console.error("Failed to update item photo:", err);
@@ -111,9 +117,11 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
       }
 
       const item = map[lowerKey];
-      // Keep best available photo
+      // Keep best available photo across local storage, global system settings, or order photo
       if (localPhotoMap[lowerKey]) {
         item.photo = localPhotoMap[lowerKey];
+      } else if (settings && settings[`photo_${lowerKey}`]) {
+        item.photo = settings[`photo_${lowerKey}`];
       } else if (r.photo) {
         item.photo = r.photo;
       }

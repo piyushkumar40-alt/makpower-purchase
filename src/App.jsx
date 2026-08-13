@@ -237,25 +237,32 @@ export default function App() {
   };
 
   const addRequests = async (newReqs) => {
-    const reqsWithIds = newReqs.map((req, idx) => ({
-      ...req,
-      id: `req-${Date.now()}-${idx}`,
-      isMaterialRec: "No",
-      cargoId: "",
-      priceRmb: "",
-      totalRmb: "",
-      advancePayment: "",
-      balancePayment: "",
-      photo: "",
-      vendorEdd: "",
-      packingOrderedByNitin: "No",
-      purchaseUpdated: "No",
-      notes: req.notes || "",
-      itemNature: req.itemNature || "Non Consumables",
-      category: req.category || "",
-      requiredByDate: req.requiredByDate || "",
-      entryBy: req.entryBy || "Guest"
-    }));
+    const reqsWithIds = newReqs.map((req, idx) => {
+      const lowerModel = (req.model || "").trim().toLowerCase();
+      const existingPhoto = (settings && settings[`photo_${lowerModel}`]) ||
+        (requests.find(r => (r.model || "").trim().toLowerCase() === lowerModel && r.photo)?.photo) ||
+        "";
+
+      return {
+        ...req,
+        id: `req-${Date.now()}-${idx}`,
+        isMaterialRec: "No",
+        cargoId: "",
+        priceRmb: "",
+        totalRmb: "",
+        advancePayment: "",
+        balancePayment: "",
+        photo: req.photo || existingPhoto,
+        vendorEdd: "",
+        packingOrderedByNitin: "No",
+        purchaseUpdated: "No",
+        notes: req.notes || "",
+        itemNature: req.itemNature || "Non Consumables",
+        category: req.category || "",
+        requiredByDate: req.requiredByDate || "",
+        entryBy: req.entryBy || "Guest"
+      };
+    });
     await postData("/api/requests/batch", reqsWithIds);
     setRequests(prev => [...reqsWithIds, ...prev]);
   };
@@ -781,6 +788,8 @@ export default function App() {
               cargos={cargos} 
               cargoCompanies={cargoCompanies} 
               purchasers={users.filter(u => u.role === "purchaser")} 
+              settings={settings}
+              onUpdateSettings={handleUpdateSystemSettings}
               onBatchUpdateRequests={batchUpdateRequests}
             />
           </div>

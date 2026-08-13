@@ -2696,15 +2696,17 @@ export function CargoCompaniesPanel({ cargoCompanies, onAddCargoCompany, onUpdat
 // 7. VENDOR DETAIL MODAL WITH HISTORY & PROFILE EDITS
 export function VendorDetailModal({ 
   vendor, 
-  requests, 
-  cargos, 
-  purchasers, 
-  currentUser, 
+  requests = [], 
+  cargos = [], 
+  purchasers = [], 
+  currentUser = {}, 
   onUpdateVendor, 
   onRemoveVendor, 
   onClose 
 }) {
-  const [name, setName] = useState(vendor.name);
+  if (!vendor) return null;
+
+  const [name, setName] = useState(vendor.name || "");
   const [location, setLocation] = useState(vendor.location || "");
   const [phone, setPhone] = useState(vendor.phone || "");
   const [history, setHistory] = useState(vendor.history || "");
@@ -2713,11 +2715,11 @@ export function VendorDetailModal({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const isAdmin = currentUser.role === "superadmin";
-  const vendorRequests = requests.filter(r => r.vendorId === vendor.id && (isAdmin || r.purchaserId === currentUser.id));
+  const isAdmin = currentUser?.role === "superadmin";
+  const vendorRequests = (requests || []).filter(r => r && r.vendorId === vendor.id && (isAdmin || r.purchaserId === currentUser?.id));
 
   // Calculate Metrics
-  const metrics = calculateVendorMetrics(vendor, requests);
+  const metrics = calculateVendorMetrics(vendor, requests || []);
   const { score, scorePending, completedCount, otdRate, avgDelay, totalOrders, delayedOrders, categoryData, statusData, delays } = metrics;
 
   // Score styling
@@ -3402,10 +3404,26 @@ export const getDelayDays = (date1Str, date2Str) => {
   return diffDays > 0 ? diffDays : 0;
 };
 
-export const calculateVendorMetrics = (vendor, requests) => {
-  const vendorRequests = requests.filter(r => r.vendorId === vendor.id && r.vendorEdd);
+export const calculateVendorMetrics = (vendor, requests = []) => {
+  if (!vendor || !vendor.id) {
+    return {
+      score: null,
+      scorePending: true,
+      completedCount: 0,
+      otdRate: 100,
+      avgDelay: 0,
+      totalOrders: 0,
+      delayedOrders: 0,
+      categoryData: [],
+      statusData: [],
+      delays: []
+    };
+  }
+
+  const safeReqs = Array.isArray(requests) ? requests : [];
+  const vendorRequests = safeReqs.filter(r => r && r.vendorId === vendor.id && r.vendorEdd);
   const totalOrders = vendorRequests.length;
-  const completedCount = requests.filter(r => r.vendorId === vendor.id && r.isMaterialRec === "Yes").length;
+  const completedCount = safeReqs.filter(r => r && r.vendorId === vendor.id && r.isMaterialRec === "Yes").length;
   const scorePending = completedCount < 5;
 
   let delayedOrdersCount = 0;

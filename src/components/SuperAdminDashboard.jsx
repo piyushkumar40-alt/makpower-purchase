@@ -639,6 +639,8 @@ export default function SuperAdminDashboard({
             cargos={cargos} 
             cargoCompanies={cargoCompanies} 
             purchasers={users.filter(u => u.role === "purchaser")} 
+            settings={settings}
+            onUpdateSettings={onUpdateSettings}
             onBatchUpdateRequests={onBatchUpdateRequests}
           />
         )}
@@ -1211,6 +1213,33 @@ export default function SuperAdminDashboard({
                     {settingsSuccessMsg}
                   </div>
                 )}
+              </div>
+
+              {/* Cloudinary CDN Photo Migration Panel */}
+              <div className="glass-panel" style={{ padding: "24px" }}>
+                <h3 style={{ fontSize: "1.2rem", marginBottom: "12px", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Upload size={20} style={{ color: "#38bdf8" }} /> Cloudinary Storage & Photo Migration
+                </h3>
+                
+                <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "16px" }}>
+                  Scans all database order items and catalog model photos. Converts raw Base64 data images (`data:image...`) into hosted Cloudinary HTTPS CDN URLs for Google Sheets rendering.
+                </p>
+
+                {migrationStatusMsg && (
+                  <div className={`alert-strip ${migrationStatusMsg.includes("❌") ? "alert-danger" : "alert-success"}`} style={{ marginBottom: "16px" }}>
+                    {migrationStatusMsg}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleMigratePhotos}
+                  disabled={migratingPhotos}
+                  className="btn btn-primary"
+                  style={{ width: "100%", padding: "12px", fontSize: "0.9rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
+                >
+                  <RefreshCw size={16} className={migratingPhotos ? "spin" : ""} />
+                  {migratingPhotos ? "Migrating All Photos to Cloudinary..." : "Migrate All Database Photos to Cloudinary CDN"}
+                </button>
               </div>
 
               {/* Redirect Settings Panel */}

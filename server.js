@@ -510,11 +510,18 @@ app.post("/api/upload", async (req, res) => {
 app.post("/api/migrate-photos-to-cloudinary", async (req, res) => {
   try {
     let requests = [];
+    let photoSettings = [];
     if (isPg) {
       const rRes = await pool.query("SELECT * FROM requests WHERE photo IS NOT NULL AND photo != ''");
       requests = rRes.rows || [];
+      const sRes = await pool.query("SELECT key, value FROM settings WHERE key LIKE 'photo_%' AND value IS NOT NULL AND value != ''");
+      photoSettings = sRes.rows || [];
     } else {
       requests = (memoryDb.requests || []).filter(r => r.photo);
+      const settingsObj = memoryDb.settings || {};
+      photoSettings = Object.entries(settingsObj)
+        .filter(([k, v]) => k.startsWith("photo_") && v && v.trim() !== "")
+        .map(([key, value]) => ({ key, value }));
     }
 
     let migratedCount = 0;
@@ -544,6 +551,30 @@ app.post("/api/migrate-photos-to-cloudinary", async (req, res) => {
           }
         } catch (upErr) {
           console.error(`Failed to migrate photo for request ${r.id}:`, upErr.message);
+        }
+      }
+    }
+
+    for (const s of photoSettings) {
+      const photoStr = s.value;
+      if (photoStr && photoStr.includes("res.cloudinary.com")) continue;
+
+      if (photoStr && photoStr.trim() !== "") {
+        try {
+          const uploadResult = await cloudinary.uploader.upload(photoStr, {
+            folder: "makpower_photos",
+            resource_type: "auto"
+          });
+          const cUrl = uploadResult.secure_url;
+          migratedCount++;
+
+          if (isPg) {
+            await pool.query('UPDATE settings SET "value" = $1 WHERE "key" = $2', [cUrl, s.key]);
+          } else {
+            if (memoryDb.settings) memoryDb.settings[s.key] = cUrl;
+          }
+        } catch (upErr) {
+          console.error(`Failed to migrate setting photo ${s.key}:`, upErr.message);
         }
       }
     }
@@ -738,8 +769,12 @@ app.get("/api/storage/metrics", async (req, res) => {
         const countRes = await pool.query("SELECT (SELECT count(*) FROM requests) + (SELECT count(*) FROM cargos) + (SELECT count(*) FROM users) + (SELECT count(*) FROM vendors) as total_rows");
         pgStats.rowsCount = parseInt(countRes.rows[0]?.total_rows) || 0;
 
-        const photoCountRes = await pool.query("SELECT count(*) FROM requests WHERE photo IS NOT NULL AND photo != ''");
-        cloudinaryStats.totalAssets = parseInt(photoCountRes.rows[0]?.count) || 0;
+        const photoCountRes = await pool.query(`
+          SELECT 
+            (SELECT count(*) FROM requests WHERE photo IS NOT NULL AND photo != '') +
+            (SELECT count(*) FROM settings WHERE key LIKE 'photo_%' AND value IS NOT NULL AND value != '') as total_count
+        `);
+        cloudinaryStats.totalAssets = parseInt(photoCountRes.rows[0]?.total_count) || 0;
         cloudinaryStats.usageStr = `${(cloudinaryStats.totalAssets * 0.25).toFixed(1)} MB`;
       } catch (dbErr) {
         console.error("PostgreSQL size query error:", dbErr.message);
@@ -751,15 +786,16 @@ app.get("/api/storage/metrics", async (req, res) => {
       pgStats.sizeStr = `${(b / (1024 * 1024)).toFixed(2)} MB`;
       pgStats.rowsCount = (memoryDb.requests?.length || 0) + (memoryDb.cargos?.length || 0);
 
-      const photos = (memoryDb.requests || []).filter(r => r.photo && r.photo.trim() !== "");
-      cloudinaryStats.totalAssets = photos.length;
-      cloudinaryStats.usageStr = `${(photos.length * 0.25).toFixed(1)} MB`;
+      const reqPhotos = (memoryDb.requests || []).filter(r => r.photo && r.photo.trim() !== "");
+      const settingPhotos = Object.entries(memoryDb.settings || {}).filter(([k, v]) => k.startsWith("photo_") && v && v.trim() !== "");
+      cloudinaryStats.totalAssets = reqPhotos.length + settingPhotos.length;
+      cloudinaryStats.usageStr = `${(cloudinaryStats.totalAssets * 0.25).toFixed(1)} MB`;
     }
 
     try {
       const usage = await cloudinary.api.usage();
       if (usage && usage.resources) {
-        cloudinaryStats.totalAssets = usage.resources;
+        cloudinaryStats.totalAssets = Math.max(cloudinaryStats.totalAssets, usage.resources);
         cloudinaryStats.usageStr = `${((usage.storage?.usage || 0) / (1024 * 1024)).toFixed(2)} MB`;
       }
     } catch (cErr) {
@@ -783,7 +819,7 @@ app.get("/api/storage/files", async (req, res) => {
     let folders = [{ name: "product_photos", path: "product_photos" }];
     let files = [];
 
-    // Query all photos stored in the database requests table
+    // 1. Query all photos stored in the database requests table
     let requests = [];
     if (isPg) {
       const rRes = await pool.query("SELECT id, model, photo FROM requests WHERE photo IS NOT NULL AND photo != ''");
@@ -807,8 +843,41 @@ app.get("/api/storage/files", async (req, res) => {
       };
     });
 
+    // 2. Query all item model photos stored in settings table (key LIKE 'photo_%')
+    let photoSettings = [];
+    if (isPg) {
+      const sRes = await pool.query("SELECT key, value FROM settings WHERE key LIKE 'photo_%' AND value IS NOT NULL AND value != ''");
+      photoSettings = sRes.rows || [];
+    } else {
+      const settingsObj = memoryDb.settings || {};
+      photoSettings = Object.entries(settingsObj)
+        .filter(([k, v]) => k.startsWith("photo_") && v && v.trim() !== "")
+        .map(([key, value]) => ({ key, value }));
+    }
+
+    photoSettings.forEach(s => {
+      const rawModel = s.key.replace(/^photo_/, "");
+      const modelName = rawModel.toUpperCase();
+      const photoUrl = s.value;
+      const isCloudinary = photoUrl.includes("cloudinary.com");
+      const isDataUri = photoUrl.startsWith("data:");
+      const sizeEstimate = isDataUri ? `${(photoUrl.length / 1024).toFixed(1)} KB` : "120 KB";
+
+      if (!files.some(f => f.url === photoUrl || f.public_id === s.key)) {
+        files.push({
+          public_id: s.key,
+          name: `${modelName} (Item Catalog Photo)`,
+          url: photoUrl,
+          format: isDataUri ? "png" : "jpg",
+          sizeStr: sizeEstimate,
+          storageType: isCloudinary ? "Cloudinary CDN" : (isDataUri ? "Base64 DB" : "HTTPS URL")
+        });
+      }
+    });
+
+    // 3. Query Cloudinary API resources if configured
     try {
-      const resourceRes = await cloudinary.api.resources({ max_results: 100, resource_type: "image" });
+      const resourceRes = await cloudinary.api.resources({ max_results: 500, resource_type: "image" });
       const cFiles = (resourceRes.resources || []).map(r => ({
         public_id: r.public_id,
         name: r.public_id.split("/").pop(),
@@ -853,12 +922,20 @@ app.post("/api/storage/delete", async (req, res) => {
 
     if (isPg) {
       await pool.query('UPDATE requests SET "photo" = \'\' WHERE "photo" LIKE $1 OR "id" = $2', [`%${public_id}%`, public_id]);
+      await pool.query('DELETE FROM settings WHERE "key" = $1 OR "value" LIKE $2', [public_id, `%${public_id}%`]);
     } else {
       (memoryDb.requests || []).forEach(r => {
         if (r.id === public_id || (r.photo && r.photo.includes(public_id))) {
           r.photo = "";
         }
       });
+      if (memoryDb.settings) {
+        Object.keys(memoryDb.settings).forEach(k => {
+          if (k === public_id || (k.startsWith("photo_") && memoryDb.settings[k]?.includes(public_id))) {
+            delete memoryDb.settings[k];
+          }
+        });
+      }
       writeLocalJson(memoryDb);
     }
 
@@ -895,15 +972,23 @@ app.post("/api/storage/delete-all-cloudinary", async (req, res) => {
       }
     }
 
-    // 2. Clear all Cloudinary photo URLs in database requests table
+    // 2. Clear all Cloudinary photo URLs in database requests table and settings table
     if (isPg) {
       await pool.query(`UPDATE requests SET "photo" = '' WHERE "photo" LIKE '%cloudinary.com%'`);
+      await pool.query(`DELETE FROM settings WHERE "key" LIKE 'photo_%' AND "value" LIKE '%cloudinary.com%'`);
     } else {
       (memoryDb.requests || []).forEach(r => {
         if (r.photo && r.photo.includes("cloudinary.com")) {
           r.photo = "";
         }
       });
+      if (memoryDb.settings) {
+        Object.keys(memoryDb.settings).forEach(k => {
+          if (k.startsWith("photo_") && memoryDb.settings[k]?.includes("cloudinary.com")) {
+            delete memoryDb.settings[k];
+          }
+        });
+      }
       writeLocalJson(memoryDb);
     }
 
