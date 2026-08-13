@@ -340,10 +340,11 @@ select.form-control {
 .custom-table,
 .table {
   width: 100%;
+  table-layout: auto;
   border-collapse: collapse;
   text-align: left;
   font-family: var(--font-body);
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   border: 1px solid var(--border-glass);
 }
 
@@ -354,20 +355,22 @@ select.form-control {
   color: var(--text-main);
   font-family: var(--font-heading);
   font-weight: 700;
-  font-size: 0.85rem;
-  padding: 12px 14px;
-  white-space: nowrap;
-  letter-spacing: 0.02em;
+  font-size: 0.82rem;
+  padding: 8px 10px;
+  white-space: normal;
+  word-break: break-word;
+  letter-spacing: 0.01em;
 }
 
 .custom-table td,
 .table td {
-  padding: 12px 14px;
+  padding: 8px 10px;
   border: 1px solid var(--border-glass);
   color: var(--text-main);
   vertical-align: middle;
-  white-space: nowrap;
-  font-size: 0.88rem;
+  white-space: normal;
+  word-break: break-word;
+  font-size: 0.82rem;
   font-family: var(--font-body);
 }
 
@@ -798,10 +801,12 @@ select.form-control {
     margin-bottom: 12px;
   }
 
-  .custom-table th, .custom-table td {
-    padding: 8px 10px;
-    font-size: 0.78rem;
-    white-space: nowrap;
+  .custom-table th, .custom-table td,
+  .table th, .table td {
+    padding: 6px 8px;
+    font-size: 0.76rem;
+    white-space: normal;
+    word-break: break-word;
   }
 
   .tab-btn {
@@ -1374,7 +1379,10 @@ select.form-control {
   border: 1px solid #cbd5e1 !important;
   font-family: var(--font-heading) !important;
   font-weight: 700 !important;
-  font-size: 0.85rem !important;
+  font-size: 0.82rem !important;
+  padding: 8px 10px !important;
+  white-space: normal !important;
+  word-break: break-word !important;
 }
 
 [data-theme="light"] .custom-table td,
@@ -1382,7 +1390,10 @@ select.form-control {
   border: 1px solid #cbd5e1 !important;
   color: #0f172a !important;
   font-family: var(--font-body) !important;
-  font-size: 0.88rem !important;
+  font-size: 0.82rem !important;
+  padding: 8px 10px !important;
+  white-space: normal !important;
+  word-break: break-word !important;
 }
 
 [data-theme="light"] .custom-table tbody tr:nth-child(even),
