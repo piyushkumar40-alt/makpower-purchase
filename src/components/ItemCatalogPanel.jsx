@@ -1300,6 +1300,7 @@ export default function ItemCatalogPanel({
                   />
                 </th>
                 <th style={{ width: "50px", textAlign: "center" }}>Image</th>
+                {isSuperAdmin && <th style={{ width: "90px" }}>Item ID</th>}
                 <th>Name / Model</th>
                 <th>Category</th>
                 <th>Type (FG/RM)</th>
@@ -1313,7 +1314,7 @@ export default function ItemCatalogPanel({
             <tbody>
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={isSuperAdmin ? "10" : "9"} style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
+                  <td colSpan={isSuperAdmin ? "11" : "9"} style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
                     {searchQuery || categoryFilter !== "all" || typeFilter !== "all"
                       ? "No catalog items match your search filter."
                       : "Master Item Catalog is empty. Click 'Add Master Item' or 'Excel Bulk Upload' above to populate items!"}
@@ -1323,6 +1324,22 @@ export default function ItemCatalogPanel({
                 filteredItems.map(item => {
                   const isSelected = selectedIds.includes(item.id);
                   const isFG = item.itemType === "FG";
+
+                  // Resolve Creator Name (e.g. Mr. Anees vs Super Admin)
+                  const creatorName = (() => {
+                    if (item.createdBy && item.createdBy !== "Super Admin" && item.createdBy !== "u-admin" && item.createdBy !== "System Admin") return item.createdBy;
+                    if (item.entryBy && item.entryBy !== "Super Admin" && item.entryBy !== "u-admin" && item.entryBy !== "System Admin") return item.entryBy;
+
+                    // Search purchase requests for creator of this item model
+                    const reqMatch = (requests || []).find(r => r.model && r.model.toLowerCase() === item.name.toLowerCase());
+                    if (reqMatch) {
+                      const purchaserObj = (users || []).find(u => u.id === reqMatch.purchaserId);
+                      if (purchaserObj) return purchaserObj.name;
+                      if (reqMatch.entryBy) return reqMatch.entryBy;
+                    }
+                    return item.createdBy || item.entryBy || (currentUser?.name ? currentUser.name : "Super Admin");
+                  })();
+
                   return (
                     <tr key={item.id} className={isSelected ? "planner-row-selected" : ""}>
                       <td style={{ textAlign: "center" }}>
@@ -1347,6 +1364,11 @@ export default function ItemCatalogPanel({
                           </div>
                         )}
                       </td>
+                      {isSuperAdmin && (
+                        <td style={{ fontWeight: 700, color: "var(--primary)", cursor: "pointer" }} onClick={() => handleItemClick(item)}>
+                          #{item.id}
+                        </td>
+                      )}
                       <td style={{ fontWeight: 600, color: "var(--text-main)", cursor: "pointer" }} onClick={() => handleItemClick(item)}>
                         {item.name}
                       </td>
@@ -1375,7 +1397,7 @@ export default function ItemCatalogPanel({
                         <td style={{ cursor: "pointer" }} onClick={() => handleItemClick(item)}>
                           <span className="badge badge-secondary" style={{ fontSize: "0.75rem", textTransform: "capitalize", display: "inline-flex", alignItems: "center", gap: "4px" }}>
                             <User size={10} />
-                            {item.createdBy || item.entryBy || (currentUser?.name ? currentUser.name : "Super Admin")}
+                            {creatorName}
                           </span>
                         </td>
                       )}
