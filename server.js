@@ -145,8 +145,10 @@ async function setupPgDatabase() {
         "email" TEXT UNIQUE,
         "password" TEXT,
         "role" TEXT,
+        "designation" TEXT,
         "status" TEXT
       );
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS "designation" TEXT;
     `);
 
     await pool.query(`
@@ -1387,9 +1389,9 @@ app.post("/api/users", async (req, res) => {
   if (isPg) {
     try {
       await pool.query(
-        `INSERT INTO users ("id", "name", "email", "password", "role", "status") VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name", "email" = EXCLUDED."email", "password" = EXCLUDED."password", "role" = EXCLUDED."role", "status" = EXCLUDED."status"`,
-        [u.id, u.name, u.email, u.password, u.role, u.status]
+        `INSERT INTO users ("id", "name", "email", "password", "role", "designation", "status") VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name", "email" = EXCLUDED."email", "password" = EXCLUDED."password", "role" = EXCLUDED."role", "designation" = EXCLUDED."designation", "status" = EXCLUDED."status"`,
+        [u.id, u.name, u.email, u.password, u.role, u.designation || "Purchaser", u.status]
       );
       res.json({ success: true });
     } catch (err) {

@@ -283,6 +283,7 @@ export default function SuperAdminDashboard({
   const [editNameVal, setEditNameVal] = useState("");
   const [editPasswordVal, setEditPasswordVal] = useState("");
   const [editDesignationVal, setEditDesignationVal] = useState("Purchaser");
+  const [editRoleVal, setEditRoleVal] = useState("purchaser");
   const [editSuccessMsg, setEditSuccessMsg] = useState("");
 
   // Vendor State
@@ -758,6 +759,7 @@ export default function SuperAdminDashboard({
                                   setEditNameVal(staff.name);
                                   setEditPasswordVal("");
                                   setEditDesignationVal(staff.designation || "Purchaser");
+                                  setEditRoleVal(staff.role || "purchaser");
                                   setEditSuccessMsg("");
                                 }}
                                 className="btn btn-secondary btn-sm"
@@ -797,7 +799,32 @@ export default function SuperAdminDashboard({
                               </div>
 
                               <div className="form-group" style={{ marginBottom: 0, gap: "4px" }}>
-                                <label className="form-label" style={{ fontSize: "0.72rem" }}>Designation</label>
+                                <label className="form-label" style={{ fontSize: "0.72rem" }}>System Access Role (Permissions)</label>
+                                <select 
+                                  className="form-control" 
+                                  style={{ padding: "4px 8px", fontSize: "0.85rem", height: "32px", fontWeight: 700, color: "var(--primary)" }}
+                                  value={editRoleVal}
+                                  onChange={e => {
+                                    const r = e.target.value;
+                                    setEditRoleVal(r);
+                                    if (r === "owner") setEditDesignationVal("Owner");
+                                    else if (r === "purchaser") setEditDesignationVal("Purchaser");
+                                    else if (r === "nitin") setEditDesignationVal("Packing");
+                                    else if (r === "rahul") setEditDesignationVal("Accounts and Updates");
+                                    else if (r === "coordinator") setEditDesignationVal("Logistics");
+                                  }}
+                                >
+                                  <option value="owner">👑 Owner (Executive Dashboard)</option>
+                                  <option value="purchaser">🛒 Purchaser (Order Processing)</option>
+                                  <option value="nitin">📦 Packing</option>
+                                  <option value="rahul">💰 Accounts & Updates</option>
+                                  <option value="coordinator">🚚 Logistics Coordinator</option>
+                                  <option value="superadmin">⚡ System Admin</option>
+                                </select>
+                              </div>
+
+                              <div className="form-group" style={{ marginBottom: 0, gap: "4px" }}>
+                                <label className="form-label" style={{ fontSize: "0.72rem" }}>Designation Title</label>
                                 <select 
                                   className="form-control" 
                                   style={{ padding: "4px 8px", fontSize: "0.85rem", height: "32px" }}
@@ -834,14 +861,13 @@ export default function SuperAdminDashboard({
                                 <button 
                                   onClick={() => {
                                     if (!editNameVal.trim()) return;
-                                    let roleVal = staff.role;
+                                    let roleVal = editRoleVal;
                                     const dLower = editDesignationVal.toLowerCase();
                                     if (dLower.includes("owner")) roleVal = "owner";
                                     else if (dLower.includes("admin") || dLower.includes("superadmin")) roleVal = "superadmin";
                                     else if (dLower.includes("logistics") || dLower.includes("coordinator")) roleVal = "coordinator";
                                     else if (dLower.includes("packing") || dLower.includes("nitin")) roleVal = "nitin";
                                     else if (dLower.includes("accounts") || dLower.includes("rahul")) roleVal = "rahul";
-                                    else if (dLower.includes("purchaser")) roleVal = "purchaser";
                                     
                                     const updates = { 
                                       name: editNameVal.trim(), 
