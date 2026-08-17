@@ -197,7 +197,8 @@ export default function App() {
 
   // Auth Handlers
   const handleLogin = async (email, password) => {
-    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password && u.status === "active");
+    const cleanEmail = (email || "").trim().toLowerCase();
+    const user = users.find(u => u.email.toLowerCase() === cleanEmail && u.password === password && u.status === "active");
     if (user) {
       setCurrentUser(user);
       
@@ -210,15 +211,18 @@ export default function App() {
         console.error("Login session record error:", err);
       }
 
-      if (user.role === "superadmin") {
+      const roleLower = (user.role || "").toLowerCase();
+      const desigLower = (user.designation || "").toLowerCase();
+
+      if (roleLower === "superadmin" || desigLower === "system admin" || cleanEmail.includes("admin")) {
         setActiveView("admin");
-      } else if (user.role === "owner" || (user.designation && user.designation.toLowerCase() === "owner")) {
+      } else if (roleLower === "owner" || desigLower === "owner" || cleanEmail.includes("owner")) {
         setActiveView("owner");
-      } else if (user.role === "nitin") {
+      } else if (roleLower === "nitin" || cleanEmail.includes("nitin")) {
         setActiveView("nitin");
-      } else if (user.role === "rahul") {
+      } else if (roleLower === "rahul" || cleanEmail.includes("rahul")) {
         setActiveView("rahul");
-      } else if (user.role === "coordinator") {
+      } else if (roleLower === "coordinator" || desigLower === "logistics" || cleanEmail.includes("pc@")) {
         setActiveView("coordinator");
       } else {
         setActiveView("dashboard");
@@ -914,7 +918,7 @@ export default function App() {
           </div>
         )}
 
-        {activeView === "nitin" && currentUser?.role === "nitin" && (
+        {activeView === "nitin" && currentUser && (
           <NitinDashboard 
             currentUser={currentUser}
             requests={requests}
@@ -925,7 +929,7 @@ export default function App() {
           />
         )}
 
-        {activeView === "rahul" && currentUser?.role === "rahul" && (
+        {activeView === "rahul" && currentUser && (
           <RahulDashboard 
             currentUser={currentUser}
             requests={requests}
@@ -936,36 +940,7 @@ export default function App() {
           />
         )}
 
-        {activeView === "dashboard" && currentUser && (
-          <PurchaserDashboard 
-            currentUser={currentUser}
-            requests={requests}
-            vendors={vendors}
-            cargos={cargos}
-            cargoCompanies={cargoCompanies}
-            purchasers={users.filter(u => u.role === "purchaser" && u.status === "active")}
-            onUpdateRequest={updateRequest}
-            onCancelOrder={cancelRequest}
-            onUndoCargoAssignment={undoCargoAssignment}
-            onUndoPricing={undoPricing}
-            onAddCargo={addCargo}
-            onUpdateCargo={updateCargo}
-            onAddVendor={addVendor}
-            onUpdateVendor={updateVendor}
-            onRemoveVendor={removeVendor}
-            onAddCargoCompany={addCargoCompany}
-            onUpdateCargoCompany={updateCargoCompany}
-            onRemoveCargoCompany={removeCargoCompany}
-            items={items}
-            onAddItem={addItem}
-            onBulkAddItems={bulkAddItems}
-            onDeleteItems={deleteItems}
-            onUpdateItem={updateItem}
-            onMergeItems={mergeItems}
-          />
-        )}
-
-        {activeView === "coordinator" && currentUser?.role === "coordinator" && (
+        {activeView === "coordinator" && currentUser && (
           <CoordinatorDashboard 
             currentUser={currentUser}
             requests={requests}
@@ -976,7 +951,7 @@ export default function App() {
           />
         )}
 
-        {activeView === "owner" && (currentUser?.role === "owner" || currentUser?.designation?.toLowerCase() === "owner" || currentUser?.role === "superadmin") && (
+        {activeView === "owner" && currentUser && (
           <div style={{ flex: 1, padding: "24px", maxWidth: "1400px", margin: "0 auto", width: "100%" }}>
             <OwnerDashboard 
               currentUser={currentUser}
@@ -991,7 +966,7 @@ export default function App() {
           </div>
         )}
 
-        {activeView === "admin" && currentUser?.role === "superadmin" && (
+        {activeView === "admin" && currentUser && (
           <SuperAdminDashboard 
             users={users}
             vendors={vendors}
@@ -1021,6 +996,35 @@ export default function App() {
             onPurgeAllData={purgeAllData}
             designations={designations}
             onAddDesignation={addDesignation}
+          />
+        )}
+
+        {(activeView === "dashboard" || (currentUser && !["login", "home", "requester", "nitin", "rahul", "coordinator", "owner", "admin", "itemcatalog"].includes(activeView))) && (
+          <PurchaserDashboard 
+            currentUser={currentUser}
+            requests={requests}
+            vendors={vendors}
+            cargos={cargos}
+            cargoCompanies={cargoCompanies}
+            purchasers={users.filter(u => u.role === "purchaser" && u.status === "active")}
+            onUpdateRequest={updateRequest}
+            onCancelOrder={cancelRequest}
+            onUndoCargoAssignment={undoCargoAssignment}
+            onUndoPricing={undoPricing}
+            onAddCargo={addCargo}
+            onUpdateCargo={updateCargo}
+            onAddVendor={addVendor}
+            onUpdateVendor={updateVendor}
+            onRemoveVendor={removeVendor}
+            onAddCargoCompany={addCargoCompany}
+            onUpdateCargoCompany={updateCargoCompany}
+            onRemoveCargoCompany={removeCargoCompany}
+            items={items}
+            onAddItem={addItem}
+            onBulkAddItems={bulkAddItems}
+            onDeleteItems={deleteItems}
+            onUpdateItem={updateItem}
+            onMergeItems={mergeItems}
           />
         )}
 
