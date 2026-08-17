@@ -472,6 +472,11 @@ export default function ItemCatalogPanel({
           const rowKeys = Object.keys(row);
           if (rowKeys.length === 0) return;
 
+          const rawAction = getRowValue(row, ["action", "mode", "status", "operation"]) || "NEW";
+          const actionUpper = String(rawAction).trim().toUpperCase();
+          const isDeleteAction = actionUpper.includes("DEL") || actionUpper.includes("REM");
+          const isUpdateAction = actionUpper.includes("UPD") || actionUpper.includes("EDIT");
+
           // Look for ID field (Item ID, ID, Sr No, Code, etc.)
           const rawId = getRowValue(row, ["itemid", "id", "srno", "sno", "code", "itemcode", "sr"]);
           
@@ -479,8 +484,8 @@ export default function ItemCatalogPanel({
           let rawName = "";
           for (const k of rowKeys) {
             const cleanKey = k.toLowerCase().trim().replace(/[^a-z0-9]/g, "");
-            // Skip ID-only columns like "itemid", "id", "srno" unless key has "name" or "nam"
-            if ((cleanKey.includes("id") || cleanKey.includes("srno") || cleanKey.includes("sno")) && !cleanKey.includes("name") && !cleanKey.includes("nam") && !cleanKey.includes("model")) {
+            // Skip ID and Action columns
+            if ((cleanKey.includes("id") || cleanKey.includes("srno") || cleanKey.includes("sno") || cleanKey.includes("action") || cleanKey.includes("mode")) && !cleanKey.includes("name") && !cleanKey.includes("nam") && !cleanKey.includes("model")) {
               continue;
             }
             if (cleanKey.includes("name") || cleanKey.includes("nam") || cleanKey.includes("model") || cleanKey.includes("particulars") || cleanKey.includes("title") || cleanKey.includes("product")) {
@@ -492,11 +497,11 @@ export default function ItemCatalogPanel({
             }
           }
           
-          // Fallback for Name if header is non-standard or equal to rawId
-          if (!rawName || rawName === String(rawId)) {
+          // Fallback for Name if header is non-standard
+          if (!rawName && !isUpdateAction && !isDeleteAction) {
             for (const k of rowKeys) {
               const cleanK = k.toLowerCase().trim().replace(/[^a-z0-9]/g, "");
-              if (!cleanK.includes("id") && !cleanK.includes("srno") && !cleanK.includes("sno")) {
+              if (!cleanK.includes("id") && !cleanK.includes("srno") && !cleanK.includes("sno") && !cleanK.includes("action") && !cleanK.includes("mode") && !cleanK.includes("status")) {
                 const val = row[k];
                 if (val !== undefined && val !== null && String(val).trim() !== "" && String(val).trim() !== String(rawId)) {
                   rawName = String(val).trim();
@@ -506,67 +511,46 @@ export default function ItemCatalogPanel({
             }
           }
 
-          const rawAction = getRowValue(row, ["action", "mode", "status", "operation"]) || "NEW";
-          const actionUpper = String(rawAction).trim().toUpperCase();
-          const isDeleteAction = actionUpper.includes("DEL") || actionUpper.includes("REM");
-          const isUpdateAction = actionUpper.includes("UPD") || actionUpper.includes("EDIT");
+          if (!isDeleteAction && !isUpdateAction && !rawName) return; // Skip empty rows for NEW items
 
-          if (!isDeleteAction && !rawName) return; // Skip empty rows
+          const rawCategory = getRowValue(row, ["category", "cat", "group", "class"]);
+          const rawType = getRowValue(row, ["itemtype", "type", "fgrm", "fg", "rm"]);
+          const rawNature = getRowValue(row, ["itemnature", "nature", "consumable"]);
+          const rawUnit = getRowValue(row, ["unit", "uom", "pcs"]);
+          const rawDesc = getRowValue(row, ["desc", "description", "specification", "specs", "notes"]);
+          const rawPhoto = getRowValue(row, ["photo", "photourl", "image", "imageurl", "picture", "pic"]);
 
-          const rawCategory = getRowValue(row, ["category", "cat", "group", "class"]) || "General";
-          const rawType = getRowValue(row, ["itemtype", "type", "fgrm", "fg", "rm"]) || "RM";
-          const rawNature = getRowValue(row, ["itemnature", "nature", "consumable"]) || "Non Consumables";
-          const rawUnit = getRowValue(row, ["unit", "uom", "pcs"]) || "Pcs";
-          const rawDesc = getRowValue(row, ["desc", "description", "specification", "specs", "notes"]) || "";
-          const rawPhoto = getRowValue(row, ["photo", "photourl", "image", "imageurl", "picture", "pic"]) || "";
-
-          const cleanName = String(rawName).trim();
-          const nameKey = normalizeItemKey(cleanName);
-          const duplicateMatch = existingNameKeys.get(nameKey);
-          const isDuplicate = !isUpdateAction && !isDeleteAction && Boolean(duplicateMatch);
-
-          let finalType = "RM";
-          const typeStr = String(rawType).trim().toUpperCase();
-          if (typeStr.includes("FG") || typeStr.includes("FINISHED")) {
-            finalType = "FG";
+          let finalType = "";
+          if (rawType) {
+            const typeStr = String(rawType).trim().toUpperCase();
+            finalType = (typeStr.includes("FG") || typeStr.includes("FINISHED")) ? "FG" : "RM";
+          } else if (!isUpdateAction) {
+            finalType = "RM";
           }
 
           let finalId = String(rawId || "").trim().toUpperCase();
-
-          if (!finalId) {
+          if (!finalId && !isUpdateAction && !isDeleteAction) {
             while (existingIds.has(String(autoIdCounter))) {
               autoIdCounter++;
             }
             finalId = String(autoIdCounter++);
-          } else if (!isUpdateAction && !isDeleteAction && existingIds.has(finalId)) {
-            // Deduplicate ID if already taken in system or sheet for NEW items
-            let suffix = 1;
-            let candidate = `${finalId}-${suffix}`;
-            while (existingIds.has(candidate)) {
-              suffix++;
-              candidate = `${finalId}-${suffix}`;
-            }
-            finalId = candidate;
           }
 
-          existingIds.add(finalId);
-          if (!isDuplicate && !isUpdateAction && !isDeleteAction) {
-            existingNameKeys.set(nameKey, { id: finalId, name: cleanName });
-          }
+          const existingItem = items.find(i => String(i.id).trim().toUpperCase() === finalId);
 
           parsed.push({
             id: finalId,
-            name: cleanName,
-            category: String(rawCategory).trim(),
-            itemType: finalType,
-            itemNature: String(rawNature).includes("Consumable") || String(rawNature).includes("Consumab") ? "Consumables" : "Non Consumables",
-            unit: String(rawUnit).trim() || "Pcs",
-            description: String(rawDesc).trim(),
-            photo: String(rawPhoto).trim(),
+            name: rawName ? String(rawName).trim() : (existingItem ? existingItem.name : ""),
+            category: rawCategory ? String(rawCategory).trim() : (isUpdateAction ? "" : "General"),
+            itemType: finalType || (isUpdateAction ? "" : "RM"),
+            itemNature: rawNature ? (String(rawNature).includes("Consumable") ? "Consumables" : "Non Consumables") : (isUpdateAction ? "" : "Non Consumables"),
+            unit: rawUnit ? String(rawUnit).trim() : (isUpdateAction ? "" : "Pcs"),
+            description: rawDesc ? String(rawDesc).trim() : "",
+            photo: rawPhoto ? String(rawPhoto).trim() : "",
             currentStock: 0,
             action: isDeleteAction ? "DELETE" : isUpdateAction ? "UPDATE" : "NEW",
-            isDuplicate,
-            duplicateMatchName: duplicateMatch ? duplicateMatch.name : null
+            isDuplicate: !isUpdateAction && !isDeleteAction && Boolean(rawName && existingNameKeys.has(normalizeItemKey(rawName))),
+            duplicateMatchName: existingItem ? existingItem.name : null
           });
         });
 
@@ -688,6 +672,36 @@ export default function ItemCatalogPanel({
             <Plus size={16} /> Add Master Item
           </button>
         </div>
+      </div>
+
+      {/* Catalog Database Switcher Tabs: FG Database vs RM Database */}
+      <div style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "1px solid var(--border-color)", paddingBottom: "12px", flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 700, marginRight: "4px" }}>
+          Database Mode:
+        </span>
+        <button 
+          onClick={() => setTypeFilter("FG")}
+          className={`btn ${typeFilter === "FG" ? "btn-primary" : "btn-secondary"}`}
+          style={{ padding: "8px 18px", fontSize: "0.88rem", fontWeight: 700, borderRadius: "8px", background: typeFilter === "FG" ? "linear-gradient(135deg, #10b981, #059669)" : undefined, borderColor: "#10b981" }}
+        >
+          📦 Finished Goods Database (FG) ({items.filter(i => i.itemType === "FG").length})
+        </button>
+
+        <button 
+          onClick={() => setTypeFilter("RM")}
+          className={`btn ${typeFilter === "RM" ? "btn-primary" : "btn-secondary"}`}
+          style={{ padding: "8px 18px", fontSize: "0.88rem", fontWeight: 700, borderRadius: "8px", background: typeFilter === "RM" ? "linear-gradient(135deg, #6366f1, #4f46e5)" : undefined, borderColor: "#6366f1" }}
+        >
+          🔩 Raw Materials Database (RM) ({items.filter(i => (i.itemType || "RM") !== "FG").length})
+        </button>
+
+        <button 
+          onClick={() => setTypeFilter("all")}
+          className={`btn ${typeFilter === "all" ? "btn-primary" : "btn-secondary"}`}
+          style={{ padding: "8px 18px", fontSize: "0.88rem", fontWeight: 700, borderRadius: "8px" }}
+        >
+          🌐 All Combined Items ({items.length})
+        </button>
       </div>
 
       {/* Purchaser Info Strip */}

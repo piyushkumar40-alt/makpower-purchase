@@ -1550,18 +1550,52 @@ app.post("/api/items/bulk", async (req, res) => {
         }
 
         if (actionUpper === "UPDATE" || actionUpper === "EDIT") {
-          if (idUpper && item.name) {
-            await pool.query(
-              `UPDATE items SET "name" = $1, "category" = $2, "itemType" = $3, "itemNature" = $4, "unit" = $5, "description" = $6, "photo" = $7 WHERE UPPER("id") = $8`,
-              [item.name, item.category || "", item.itemType || "RM", item.itemNature || "Non Consumables", item.unit || "Pcs", item.description || "", item.photo || "", idUpper]
-            );
-            updatedCount++;
+          if (idUpper) {
+            const updates = [];
+            const values = [];
+            let paramIdx = 1;
+
+            if (item.name && item.name.trim() && item.name.trim().toUpperCase() !== "UPDATE") {
+              updates.push(`"name" = $${paramIdx++}`);
+              values.push(item.name.trim());
+            }
+            if (item.category && item.category.trim()) {
+              updates.push(`"category" = $${paramIdx++}`);
+              values.push(item.category.trim());
+            }
+            if (item.itemType && item.itemType.trim()) {
+              updates.push(`"itemType" = $${paramIdx++}`);
+              values.push(item.itemType.trim());
+            }
+            if (item.itemNature && item.itemNature.trim()) {
+              updates.push(`"itemNature" = $${paramIdx++}`);
+              values.push(item.itemNature.trim());
+            }
+            if (item.unit && item.unit.trim()) {
+              updates.push(`"unit" = $${paramIdx++}`);
+              values.push(item.unit.trim());
+            }
+            if (item.description && item.description.trim()) {
+              updates.push(`"description" = $${paramIdx++}`);
+              values.push(item.description.trim());
+            }
+            if (item.photo && item.photo.trim()) {
+              updates.push(`"photo" = $${paramIdx++}`);
+              values.push(item.photo.trim());
+            }
+
+            if (updates.length > 0) {
+              values.push(idUpper);
+              const sql = `UPDATE items SET ${updates.join(", ")} WHERE UPPER("id") = $${paramIdx}`;
+              await pool.query(sql, values);
+              updatedCount++;
+            }
           }
           continue;
         }
 
         // Default action: NEW / INSERT
-        if (!idUpper || !item.name) continue;
+        if (!idUpper || !item.name || item.name.trim().toUpperCase() === "UPDATE") continue;
         const key = normalizeItemKey(item.name);
         if (existingNameKeys.has(key) && !existingItemsMap.has(idUpper)) {
           skippedCount++;
@@ -1604,8 +1638,19 @@ app.post("/api/items/bulk", async (req, res) => {
       if (actionUpper === "UPDATE" || actionUpper === "EDIT") {
         const idx = data.items.findIndex(i => String(i.id).trim().toUpperCase() === idUpper);
         if (idx !== -1) {
-          data.items[idx] = { ...data.items[idx], ...item };
-          updatedCount++;
+          const nonNullItem = {};
+          if (item.name && item.name.trim() && item.name.trim().toUpperCase() !== "UPDATE") nonNullItem.name = item.name.trim();
+          if (item.category && item.category.trim()) nonNullItem.category = item.category.trim();
+          if (item.itemType && item.itemType.trim()) nonNullItem.itemType = item.itemType.trim();
+          if (item.itemNature && item.itemNature.trim()) nonNullItem.itemNature = item.itemNature.trim();
+          if (item.unit && item.unit.trim()) nonNullItem.unit = item.unit.trim();
+          if (item.description && item.description.trim()) nonNullItem.description = item.description.trim();
+          if (item.photo && item.photo.trim()) nonNullItem.photo = item.photo.trim();
+
+          if (Object.keys(nonNullItem).length > 0) {
+            data.items[idx] = { ...data.items[idx], ...nonNullItem };
+            updatedCount++;
+          }
         }
         continue;
       }
