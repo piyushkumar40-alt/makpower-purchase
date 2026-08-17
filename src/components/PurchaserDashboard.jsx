@@ -4,8 +4,7 @@ import AnalyticsPanel from "./AnalyticsPanel";
 import { uploadToCloudinary } from "../utils/upload";
 import ItemMasterView from "./ItemMasterView";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
-
-
+import ItemCatalogPanel from "./ItemCatalogPanel";
 
 export default function PurchaserDashboard({
   currentUser = {},
@@ -25,7 +24,11 @@ export default function PurchaserDashboard({
   onRemoveVendor,
   onAddCargoCompany,
   onUpdateCargoCompany,
-  onRemoveCargoCompany
+  onRemoveCargoCompany,
+  items = [],
+  onAddItem,
+  onBulkAddItems,
+  onDeleteItems
 }) {
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem("makpower_purchaser_tab") || "alerts";
@@ -1102,6 +1105,17 @@ export default function PurchaserDashboard({
             onUpdateCargoCompany={onUpdateCargoCompany}
             onRemoveCargoCompany={onRemoveCargoCompany}
             onSelectCargoCompany={setSelectedCargoCompanyForDetail}
+          />
+        )}
+
+        {/* ==================== ITEM CATALOG TAB ==================== */}
+        {activeTab === "itemmaster" && (
+          <ItemCatalogPanel 
+            items={items}
+            onAddItem={onAddItem}
+            onBulkAddItems={onBulkAddItems}
+            onDeleteItems={onDeleteItems}
+            currentUser={currentUser}
           />
         )}
 

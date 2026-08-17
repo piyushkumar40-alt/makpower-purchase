@@ -5,7 +5,8 @@ export default function ItemCatalogPanel({
   items = [],
   onAddItem,
   onBulkAddItems,
-  onDeleteItems
+  onDeleteItems,
+  currentUser = {}
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -30,14 +31,45 @@ export default function ItemCatalogPanel({
   const [bulkError, setBulkError] = useState("");
   const [uploadingBulk, setUploadingBulk] = useState(false);
 
-  // Auto-generate next numeric ID (1, 2, 3...) when opening add form
+  // Auto-generate next unique ID when opening add form
   const handleOpenAddForm = () => {
-    // Find highest numeric ID in current items
-    const numericIds = items
-      .map(i => parseInt(String(i.id).replace(/\D/g, ""), 10))
-      .filter(n => !isNaN(n));
-    const nextId = numericIds.length > 0 ? Math.max(...numericIds) + 1 : 1;
-    setNewItemId(String(nextId));
+    const existingIds = new Set(items.map(i => String(i.id).trim().toUpperCase()));
+    let generatedId = "";
+
+    const isPurchaser = currentUser && currentUser.role === "purchaser";
+    if (isPurchaser) {
+      // Purchaser ID format: First 2 letters of purchaser name + "-" + number (e.g. AN-1, AN-2)
+      const prefix = (currentUser.name || "Purchaser").trim().toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2) || "AN";
+      let maxNum = 0;
+      items.forEach(i => {
+        const idStr = String(i.id).trim().toUpperCase();
+        if (idStr.startsWith(prefix)) {
+          const numPart = parseInt(idStr.replace(/[^\d]/g, ""), 10);
+          if (!isNaN(numPart) && numPart > maxNum) {
+            maxNum = numPart;
+          }
+        }
+      });
+      let nextNum = maxNum + 1;
+      let candidate = `${prefix}-${nextNum}`;
+      while (existingIds.has(candidate.toUpperCase())) {
+        nextNum++;
+        candidate = `${prefix}-${nextNum}`;
+      }
+      generatedId = candidate;
+    } else {
+      // Admin ID format: Numeric sequence 1, 2, 3...
+      const numericIds = items
+        .map(i => parseInt(String(i.id).replace(/\D/g, ""), 10))
+        .filter(n => !isNaN(n));
+      let nextNum = numericIds.length > 0 ? Math.max(...numericIds) + 1 : 1;
+      while (existingIds.has(String(nextNum))) {
+        nextNum++;
+      }
+      generatedId = String(nextNum);
+    }
+
+    setNewItemId(generatedId);
     setFormMsg("");
     setShowAddForm(true);
   };
@@ -143,13 +175,14 @@ export default function ItemCatalogPanel({
         }
 
         // Map columns intelligently (supports headers like: ID, Item ID, Name, Item Name, Model, Category, Nature, Unit, Description)
+        const existingIds = new Set(items.map(i => String(i.id).trim().toUpperCase()));
         const parsed = [];
         let autoIdCounter = 1;
 
         jsonRows.forEach((row, idx) => {
           // Look for ID field
           const rawId = row["ID"] || row["Item ID"] || row["id"] || row["itemId"] || row["Item_ID"] || row["Sr No"] || row["S.No"];
-          const rawName = row["Name"] || row["Item Name"] || row["Model"] || row["name"] || row["Description"] || row["Item"];
+          const rawName = row["Name"] || row["Item Name"] || row["Model"] || row["name"] || row["Item"];
           const rawCategory = row["Category"] || row["category"] || row["Group"] || "General";
           const rawNature = row["Nature"] || row["Item Nature"] || row["itemNature"] || "Non Consumables";
           const rawUnit = row["Unit"] || row["UOM"] || row["unit"] || "Pcs";
@@ -157,10 +190,25 @@ export default function ItemCatalogPanel({
 
           if (!rawName) return; // Skip empty rows
 
-          let finalId = String(rawId || "").trim();
+          let finalId = String(rawId || "").trim().toUpperCase();
+
           if (!finalId) {
+            while (existingIds.has(String(autoIdCounter))) {
+              autoIdCounter++;
+            }
             finalId = String(autoIdCounter++);
+          } else if (existingIds.has(finalId)) {
+            // Deduplicate ID if already taken in system or sheet!
+            let suffix = 1;
+            let candidate = `${finalId}-${suffix}`;
+            while (existingIds.has(candidate)) {
+              suffix++;
+              candidate = `${finalId}-${suffix}`;
+            }
+            finalId = candidate;
           }
+
+          existingIds.add(finalId);
 
           parsed.push({
             id: finalId,

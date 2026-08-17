@@ -910,6 +910,10 @@ export default function App() {
             onAddCargoCompany={addCargoCompany}
             onUpdateCargoCompany={updateCargoCompany}
             onRemoveCargoCompany={removeCargoCompany}
+            items={items}
+            onAddItem={addItem}
+            onBulkAddItems={bulkAddItems}
+            onDeleteItems={deleteItems}
           />
         )}
 
