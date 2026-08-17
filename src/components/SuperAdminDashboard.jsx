@@ -267,10 +267,12 @@ export default function SuperAdminDashboard({
     }
   };
 
-  // Purchaser State
+  // Purchaser / Staff State
   const [pName, setPName] = useState("");
   const [pEmail, setPEmail] = useState("");
   const [pPassword, setPPassword] = useState("");
+  const [pDesignation, setPDesignation] = useState("Purchaser");
+  const [customDesignationInput, setCustomDesignationInput] = useState("");
   const [pError, setPError] = useState("");
   const [pSuccess, setPSuccess] = useState("");
 
@@ -278,6 +280,7 @@ export default function SuperAdminDashboard({
   const [editingStaffId, setEditingStaffId] = useState(null);
   const [editNameVal, setEditNameVal] = useState("");
   const [editPasswordVal, setEditPasswordVal] = useState("");
+  const [editDesignationVal, setEditDesignationVal] = useState("Purchaser");
   const [editSuccessMsg, setEditSuccessMsg] = useState("");
 
   // Vendor State
@@ -717,8 +720,8 @@ export default function SuperAdminDashboard({
                             <div>
                               <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
                                 {staff.name}
-                                <span className="badge" style={{ fontSize: "0.6rem", padding: "1px 6px", background: "rgba(56, 189, 248, 0.1)", color: "var(--primary)", border: "1px solid rgba(56, 189, 248, 0.2)" }}>
-                                  {getRoleLabel(staff.role)}
+                                <span className="badge" style={{ fontSize: "0.65rem", padding: "2px 8px", background: "rgba(56, 189, 248, 0.12)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)", fontWeight: 700 }}>
+                                  {staff.designation || getRoleLabel(staff.role)}
                                 </span>
                               </div>
                               <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "2px" }}>{staff.email}</div>
@@ -733,6 +736,7 @@ export default function SuperAdminDashboard({
                                   setEditingStaffId(staff.id);
                                   setEditNameVal(staff.name);
                                   setEditPasswordVal("");
+                                  setEditDesignationVal(staff.designation || "Purchaser");
                                   setEditSuccessMsg("");
                                 }}
                                 className="btn btn-secondary btn-sm"
@@ -771,6 +775,28 @@ export default function SuperAdminDashboard({
                                 />
                               </div>
 
+                              <div className="form-group" style={{ marginBottom: 0, gap: "4px" }}>
+                                <label className="form-label" style={{ fontSize: "0.72rem" }}>Designation</label>
+                                <select 
+                                  className="form-control" 
+                                  style={{ padding: "4px 8px", fontSize: "0.85rem", height: "32px" }}
+                                  value={editDesignationVal}
+                                  onChange={e => setEditDesignationVal(e.target.value)}
+                                >
+                                  <option value="Purchaser">Purchaser</option>
+                                  <option value="Packing">Packing</option>
+                                  <option value="Accounts and Updates">Accounts and Updates</option>
+                                  <option value="Accounts">Accounts</option>
+                                  <option value="Warehouse">Warehouse</option>
+                                  <option value="Logistics">Logistics</option>
+                                  <option value="Owner">Owner (Executive Dashboard)</option>
+                                  <option value="System Admin">System Admin</option>
+                                  {(designations || []).map(d => (
+                                    <option key={d.id} value={d.title}>{d.title}</option>
+                                  ))}
+                                </select>
+                              </div>
+
                               <div className="form-group" style={{ marginBottom: "4px", gap: "4px" }}>
                                 <label className="form-label" style={{ fontSize: "0.72rem" }}>New Password (leave blank to keep current)</label>
                                 <input 
@@ -787,7 +813,17 @@ export default function SuperAdminDashboard({
                                 <button 
                                   onClick={() => {
                                     if (!editNameVal.trim()) return;
-                                    const updates = { name: editNameVal.trim() };
+                                    let roleVal = staff.role;
+                                    const dLower = editDesignationVal.toLowerCase();
+                                    if (dLower === "owner") roleVal = "owner";
+                                    else if (dLower === "system admin" || dLower === "superadmin") roleVal = "superadmin";
+                                    else if (dLower === "logistics") roleVal = "coordinator";
+                                    
+                                    const updates = { 
+                                      name: editNameVal.trim(), 
+                                      designation: editDesignationVal,
+                                      role: roleVal 
+                                    };
                                     if (editPasswordVal.trim()) {
                                       updates.password = editPasswordVal.trim();
                                     }
@@ -823,11 +859,11 @@ export default function SuperAdminDashboard({
                 </div>
               </div>
 
-              {/* Add Purchaser Form */}
+              {/* Add Staff Account Form */}
               <div className="glass-panel" style={{ padding: "24px" }}>
-                <h3 style={{ fontSize: "1.2rem", marginBottom: "16px", color: "var(--primary)" }}>Create Purchaser Account</h3>
-                {pError && <div className="alert-strip alert-danger">{pError}</div>}
-                {pSuccess && <div className="alert-strip alert-success">{pSuccess}</div>}
+                <h3 style={{ fontSize: "1.2rem", marginBottom: "16px", color: "var(--primary)" }}>Create Staff Account</h3>
+                {pError && <div className="alert-strip alert-danger" style={{ marginBottom: "14px" }}>{pError}</div>}
+                {pSuccess && <div className="alert-strip alert-success" style={{ marginBottom: "14px" }}>{pSuccess}</div>}
 
                 <form onSubmit={handleAddPurchaserSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
@@ -847,12 +883,48 @@ export default function SuperAdminDashboard({
                     <input 
                       type="email" 
                       className="form-control"
-                      placeholder="e.g. nitin@company.com"
+                      placeholder="e.g. nitin@makpowerindia.com"
                       value={pEmail}
                       onChange={e => setPEmail(e.target.value)}
                       required
                     />
                   </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Designation</label>
+                    <select 
+                      className="form-control"
+                      value={pDesignation}
+                      onChange={e => setPDesignation(e.target.value)}
+                    >
+                      <option value="Purchaser">Purchaser</option>
+                      <option value="Packing">Packing</option>
+                      <option value="Accounts and Updates">Accounts and Updates</option>
+                      <option value="Accounts">Accounts</option>
+                      <option value="Warehouse">Warehouse</option>
+                      <option value="Logistics">Logistics</option>
+                      <option value="Owner">Owner (Executive Dashboard)</option>
+                      <option value="System Admin">System Admin</option>
+                      {(designations || []).map(d => (
+                        <option key={d.id} value={d.title}>{d.title}</option>
+                      ))}
+                      <option value="Custom">+ Write-in Custom Designation</option>
+                    </select>
+                  </div>
+
+                  {pDesignation === "Custom" && (
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">Custom Designation Title*</label>
+                      <input 
+                        type="text" 
+                        className="form-control"
+                        placeholder="e.g. Quality Control, Factory Head"
+                        value={customDesignationInput}
+                        onChange={e => setCustomDesignationInput(e.target.value)}
+                        required
+                      />
+                    </div>
+                  )}
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Login Password</label>

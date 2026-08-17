@@ -5,6 +5,16 @@ export const initialUsers = [
     email: "admin@makpowerindia.com",
     password: "112233",
     role: "superadmin",
+    designation: "System Admin",
+    status: "active"
+  },
+  {
+    id: "u-owner",
+    name: "Company Owner",
+    email: "owner@makpowerindia.com",
+    password: "MakPower#Owner2026!",
+    role: "owner",
+    designation: "Owner",
     status: "active"
   },
   {
@@ -13,6 +23,7 @@ export const initialUsers = [
     email: "anees@makpowerindia.com",
     password: "MakPower#Anees2026!",
     role: "purchaser",
+    designation: "Purchaser",
     status: "active"
   },
   {
@@ -20,25 +31,39 @@ export const initialUsers = [
     name: "Nitin Kumar",
     email: "nitin@makpowerindia.com",
     password: "MakPower#Nitin2026!",
-    role: "nitin",
+    role: "purchaser",
+    designation: "Packing",
     status: "active"
   },
   {
     id: "u-rahul",
-    name: "Rahul Dev",
+    name: "Rahul",
     email: "rahul@makpowerindia.com",
     password: "MakPower#Rahul2026!",
-    role: "rahul",
+    role: "purchaser",
+    designation: "Accounts and Updates",
     status: "active"
   },
   {
     id: "u-coordinator",
-    name: "Priya Sharma",
+    name: "Logistics PC",
     email: "pc@makpowerindia.com",
     password: "MakPower#Coord2026!",
     role: "coordinator",
+    designation: "Logistics",
     status: "active"
   }
+];
+
+export const initialDesignations = [
+  { id: "d-owner", title: "Owner", role: "owner", description: "Company Executive / Owner Dashboard Access" },
+  { id: "d-accounts-updates", title: "Accounts and Updates", role: "purchaser", description: "Accounts & Financial Order Updates" },
+  { id: "d-purchaser", title: "Purchaser", role: "purchaser", description: "Purchase Requisitions & Vendor Management" },
+  { id: "d-packing", title: "Packing", role: "purchaser", description: "Packing & Production Purchasing" },
+  { id: "d-accounts", title: "Accounts", role: "purchaser", description: "Payment & Accounts Reconciliation" },
+  { id: "d-warehouse", title: "Warehouse", role: "purchaser", description: "Inventory & Stock Receiving" },
+  { id: "d-logistics", title: "Logistics", role: "coordinator", description: "Cargo & Shipment Dispatch Management" },
+  { id: "d-admin", title: "System Admin", role: "superadmin", description: "Full System Administration" }
 ];
 
 export const initialVendors = [];

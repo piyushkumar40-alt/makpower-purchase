@@ -37,6 +37,7 @@ export default function App() {
   const [cargos, setCargos] = useState([]);
   const [cargoCompanies, setCargoCompanies] = useState([]);
   const [items, setItems] = useState([]);
+  const [designations, setDesignations] = useState([]);
   const [settings, setSettings] = useState({ isHidden: false, redirectUrl: "https://www.instagram.com/makpowerofficial/" });
   const [loading, setLoading] = useState(true);
 
@@ -84,6 +85,7 @@ export default function App() {
         setCargos(data.cargos || []);
         setCargoCompanies(data.cargoCompanies || []);
         setItems(data.items || []);
+        setDesignations(data.designations || []);
         if (data.settings) {
           setSettings(data.settings);
         }
@@ -104,6 +106,15 @@ export default function App() {
 
     return () => clearInterval(intervalId);
   }, []);
+
+  // Add Designation Handler
+  const addDesignation = async (designationObj) => {
+    const res = await postData("/api/designations", designationObj);
+    if (res && res.success) {
+      setDesignations(prev => [...prev.filter(d => d.title !== designationObj.title), res.designation]);
+    }
+    return res;
+  };
 
   // Panic Mode Redirection Check
   useEffect(() => {
@@ -201,6 +212,8 @@ export default function App() {
 
       if (user.role === "superadmin") {
         setActiveView("admin");
+      } else if (user.role === "owner" || (user.designation && user.designation.toLowerCase() === "owner")) {
+        setActiveView("owner");
       } else if (user.role === "nitin") {
         setActiveView("nitin");
       } else if (user.role === "rahul") {
@@ -380,16 +393,23 @@ export default function App() {
     }
   };
 
-  const addPurchaser = async (name, email, password) => {
+  const addPurchaser = async (name, email, password, designation = "Purchaser") => {
     const exists = users.some(u => u.email.toLowerCase() === email.toLowerCase());
     if (exists) return { success: false, message: "User with this email already exists." };
+
+    let role = "purchaser";
+    const dLower = (designation || "").toLowerCase();
+    if (dLower === "owner") role = "owner";
+    else if (dLower === "system admin" || dLower === "superadmin") role = "superadmin";
+    else if (dLower === "logistics") role = "coordinator";
 
     const newUser = {
       id: `u-${Date.now()}`,
       name,
       email,
       password,
-      role: "purchaser",
+      role,
+      designation: designation || "Purchaser",
       status: "active"
     };
     await postData("/api/users", newUser);
@@ -651,6 +671,16 @@ export default function App() {
                     className={`btn btn-sm btn-secondary ${activeView === "admin" ? "active" : ""}`}
                   >
                     <Settings size={14} /> Admin
+                  </button>
+                )}
+
+                {(currentUser.role === "owner" || currentUser.designation?.toLowerCase() === "owner" || currentUser.role === "superadmin") && (
+                  <button 
+                    onClick={() => setActiveView("owner")} 
+                    className={`btn btn-sm btn-secondary ${activeView === "owner" ? "active" : ""}`}
+                    style={{ borderColor: "#38bdf8", color: "#7dd3fc", fontWeight: 700 }}
+                  >
+                    <Building2 size={14} style={{ color: "#38bdf8" }} /> Executive Owner
                   </button>
                 )}
                 
@@ -946,6 +976,21 @@ export default function App() {
           />
         )}
 
+        {activeView === "owner" && (currentUser?.role === "owner" || currentUser?.designation?.toLowerCase() === "owner" || currentUser?.role === "superadmin") && (
+          <div style={{ flex: 1, padding: "24px", maxWidth: "1400px", margin: "0 auto", width: "100%" }}>
+            <OwnerDashboard 
+              currentUser={currentUser}
+              requests={requests}
+              cargos={cargos}
+              vendors={vendors}
+              users={users}
+              items={items}
+              cargoCompanies={cargoCompanies}
+              onLogout={handleLogout}
+            />
+          </div>
+        )}
+
         {activeView === "admin" && currentUser?.role === "superadmin" && (
           <SuperAdminDashboard 
             users={users}
@@ -974,6 +1019,8 @@ export default function App() {
             onUpdateItem={updateItem}
             onMergeItems={mergeItems}
             onPurgeAllData={purgeAllData}
+            designations={designations}
+            onAddDesignation={addDesignation}
           />
         )}
 

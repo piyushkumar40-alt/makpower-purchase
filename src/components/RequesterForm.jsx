@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Plus, Trash2, CheckCircle2, Clipboard, ShieldAlert, Sparkles, X, Package } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
 
-export default function RequesterForm({ onAddRequests, purchasers, vendors, currentUser, requests = [], cargos = [], cargoCompanies = [] }) {
+export default function RequesterForm({ onAddRequests, purchasers, vendors, currentUser, requests = [], cargos = [], cargoCompanies = [], items = [] }) {
+  const catalogCategories = Array.from(new Set((items || []).map(i => i.category).filter(Boolean)));
   const [activeTab, setActiveTab] = useState("form"); // "form" | "catalog"
   // Determine default purchaser based on logged-in user
   const defaultPurchaserId = currentUser?.role === "purchaser" ? currentUser.id : (purchasers[0]?.id || "");
@@ -391,28 +392,82 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
 
                   {/* Category */}
                   <td>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
-                      placeholder="e.g. MEMORY CARD PACKING" 
-                      value={row.category}
-                      onChange={e => updateCell(row.id, "category", e.target.value)}
-                      required
-                    />
+                    {catalogCategories.length > 0 ? (
+                      <select 
+                        className="form-control" 
+                        style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+                        value={row.category}
+                        onChange={e => {
+                          const catVal = e.target.value;
+                          updateCell(row.id, "category", catVal);
+                        }}
+                      >
+                        <option value="" style={{ background: "#0f172a" }}>Select Category...</option>
+                        {catalogCategories.map(cat => (
+                          <option key={cat} value={cat} style={{ background: "#0f172a" }}>{cat}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input 
+                        type="text" 
+                        className="form-control" 
+                        style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+                        placeholder="e.g. AUDIO" 
+                        value={row.category}
+                        onChange={e => updateCell(row.id, "category", e.target.value)}
+                        required
+                      />
+                    )}
                   </td>
 
-                  {/* Item Name */}
+                  {/* Item Name / Model */}
                   <td>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
-                      placeholder="e.g. Infinix HOT12i Fighter" 
-                      value={row.model}
-                      onChange={e => updateCell(row.id, "model", e.target.value)}
-                      required
-                    />
+                    {items && items.length > 0 ? (
+                      <select 
+                        className="form-control" 
+                        style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+                        value={row.model}
+                        onChange={e => {
+                          const selectedName = e.target.value;
+                          const matchedItem = items.find(i => i.name === selectedName);
+                          if (matchedItem) {
+                            setRows(prev => prev.map(r => {
+                              if (r.id === row.id) {
+                                return {
+                                  ...r,
+                                  model: matchedItem.name,
+                                  category: matchedItem.category || r.category,
+                                  type: matchedItem.itemType || r.type,
+                                  itemNature: matchedItem.itemNature || r.itemNature
+                                };
+                              }
+                              return r;
+                            }));
+                          } else {
+                            updateCell(row.id, "model", selectedName);
+                          }
+                        }}
+                      >
+                        <option value="" style={{ background: "#0f172a" }}>Select Item Model...</option>
+                        {items
+                          .filter(i => !row.category || i.category === row.category)
+                          .map(item => (
+                            <option key={item.id} value={item.name} style={{ background: "#0f172a" }}>
+                              {item.name} (ID: {item.id}) - {item.category || "General"}
+                            </option>
+                          ))}
+                      </select>
+                    ) : (
+                      <input 
+                        type="text" 
+                        className="form-control" 
+                        style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+                        placeholder="e.g. AUDIO001" 
+                        value={row.model}
+                        onChange={e => updateCell(row.id, "model", e.target.value)}
+                        required
+                      />
+                    )}
                   </td>
 
                   {/* Qty */}
