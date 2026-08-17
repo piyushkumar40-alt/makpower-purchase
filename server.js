@@ -230,12 +230,14 @@ async function setupPgDatabase() {
         "id" TEXT PRIMARY KEY,
         "name" TEXT,
         "category" TEXT,
+        "itemType" TEXT,
         "itemNature" TEXT,
         "unit" TEXT,
         "description" TEXT,
         "photo" TEXT,
         "currentStock" INTEGER
       );
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS "itemType" TEXT;
     `);
 
     // Sync Users to new @makpowerindia.com list if legacy users exist
@@ -1467,10 +1469,10 @@ app.post("/api/items", async (req, res) => {
   if (isPg) {
     try {
       await pool.query(
-        `INSERT INTO items ("id", "name", "category", "itemNature", "unit", "description", "photo", "currentStock")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name", "category" = EXCLUDED."category", "itemNature" = EXCLUDED."itemNature", "unit" = EXCLUDED."unit", "description" = EXCLUDED."description", "photo" = EXCLUDED."photo", "currentStock" = EXCLUDED."currentStock"`,
-        [item.id, item.name, item.category || "", item.itemNature || "Non Consumables", item.unit || "Pcs", item.description || "", item.photo || "", item.currentStock || 0]
+        `INSERT INTO items ("id", "name", "category", "itemType", "itemNature", "unit", "description", "photo", "currentStock")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name", "category" = EXCLUDED."category", "itemType" = EXCLUDED."itemType", "itemNature" = EXCLUDED."itemNature", "unit" = EXCLUDED."unit", "description" = EXCLUDED."description", "photo" = EXCLUDED."photo", "currentStock" = EXCLUDED."currentStock"`,
+        [item.id, item.name, item.category || "", item.itemType || "RM", item.itemNature || "Non Consumables", item.unit || "Pcs", item.description || "", item.photo || "", item.currentStock || 0]
       );
       res.json({ success: true });
     } catch (err) {
@@ -1502,10 +1504,10 @@ app.post("/api/items/bulk", async (req, res) => {
       for (const item of items) {
         if (!item.id || !item.name) continue;
         await pool.query(
-          `INSERT INTO items ("id", "name", "category", "itemNature", "unit", "description", "photo", "currentStock")
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name", "category" = EXCLUDED."category", "itemNature" = EXCLUDED."itemNature", "unit" = EXCLUDED."unit", "description" = EXCLUDED."description", "photo" = EXCLUDED."photo", "currentStock" = EXCLUDED."currentStock"`,
-          [item.id, item.name, item.category || "", item.itemNature || "Non Consumables", item.unit || "Pcs", item.description || "", item.photo || "", item.currentStock || 0]
+          `INSERT INTO items ("id", "name", "category", "itemType", "itemNature", "unit", "description", "photo", "currentStock")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name", "category" = EXCLUDED."category", "itemType" = EXCLUDED."itemType", "itemNature" = EXCLUDED."itemNature", "unit" = EXCLUDED."unit", "description" = EXCLUDED."description", "photo" = EXCLUDED."photo", "currentStock" = EXCLUDED."currentStock"`,
+          [item.id, item.name, item.category || "", item.itemType || "RM", item.itemNature || "Non Consumables", item.unit || "Pcs", item.description || "", item.photo || "", item.currentStock || 0]
         );
       }
       res.json({ success: true, count: items.length });

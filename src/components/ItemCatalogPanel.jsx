@@ -19,11 +19,14 @@ export default function ItemCatalogPanel({
   const [newItemId, setNewItemId] = useState("");
   const [newItemName, setNewItemName] = useState("");
   const [newItemCategory, setNewItemCategory] = useState("");
+  const [newItemType, setNewItemType] = useState("RM"); // "RM" | "FG"
   const [newItemNature, setNewItemNature] = useState("Non Consumables");
   const [newItemUnit, setNewItemUnit] = useState("Pcs");
   const [newItemDescription, setNewItemDescription] = useState("");
   const [newItemPhoto, setNewItemPhoto] = useState("");
   const [formMsg, setFormMsg] = useState("");
+
+  const [typeFilter, setTypeFilter] = useState("all"); // "all" | "RM" | "FG"
 
   // Excel Bulk Upload Modal state
   const [showBulkModal, setShowBulkModal] = useState(false);
@@ -90,6 +93,7 @@ export default function ItemCatalogPanel({
       id: cleanId,
       name: cleanName,
       category: newItemCategory.trim() || "General",
+      itemType: newItemType,
       itemNature: newItemNature,
       unit: newItemUnit.trim() || "Pcs",
       description: newItemDescription.trim(),
@@ -184,11 +188,18 @@ export default function ItemCatalogPanel({
           const rawId = row["ID"] || row["Item ID"] || row["id"] || row["itemId"] || row["Item_ID"] || row["Sr No"] || row["S.No"];
           const rawName = row["Name"] || row["Item Name"] || row["Model"] || row["name"] || row["Item"];
           const rawCategory = row["Category"] || row["category"] || row["Group"] || "General";
+          const rawType = row["Item Type"] || row["Type"] || row["itemType"] || row["FG/RM"] || row["FG"] || row["RM"] || "RM";
           const rawNature = row["Nature"] || row["Item Nature"] || row["itemNature"] || "Non Consumables";
           const rawUnit = row["Unit"] || row["UOM"] || row["unit"] || "Pcs";
           const rawDesc = row["Description"] || row["Notes"] || row["Specs"] || row["description"] || "";
 
           if (!rawName) return; // Skip empty rows
+
+          let finalType = "RM";
+          const typeStr = String(rawType).trim().toUpperCase();
+          if (typeStr.includes("FG") || typeStr.includes("FINISHED")) {
+            finalType = "FG";
+          }
 
           let finalId = String(rawId || "").trim().toUpperCase();
 
@@ -214,6 +225,7 @@ export default function ItemCatalogPanel({
             id: finalId,
             name: String(rawName).trim(),
             category: String(rawCategory).trim(),
+            itemType: finalType,
             itemNature: String(rawNature).includes("Consumable") ? "Consumables" : "Non Consumables",
             unit: String(rawUnit).trim() || "Pcs",
             description: String(rawDesc).trim(),
@@ -253,13 +265,14 @@ export default function ItemCatalogPanel({
     }
   };
 
-  // Filter items by search & category
+  // Filter items by search, category & type
   const categories = ["all", ...new Set(items.map(i => i.category).filter(Boolean))];
   const filteredItems = items.filter(i => {
     const matchesCategory = categoryFilter === "all" || i.category === categoryFilter;
+    const matchesType = typeFilter === "all" || (i.itemType || "RM") === typeFilter;
     const q = searchQuery.toLowerCase();
     const matchesSearch = !q || String(i.id).toLowerCase().includes(q) || (i.name && i.name.toLowerCase().includes(q)) || (i.category && i.category.toLowerCase().includes(q));
-    return matchesCategory && matchesSearch;
+    return matchesCategory && matchesType && matchesSearch;
   });
 
   return (
@@ -272,7 +285,7 @@ export default function ItemCatalogPanel({
             <Package size={24} style={{ color: "var(--primary)" }} /> Master Item Catalog
           </h2>
           <p style={{ color: "var(--text-muted)", fontSize: "0.88rem" }}>
-            System Admin item repository. Manage Item IDs (1, 2, 3...), bulk upload via Excel, and item definitions.
+            System Admin item repository. Manage Item IDs (1, 2, 3...), bulk upload via Excel, Item Types (FG/RM), and categories.
           </p>
         </div>
 
@@ -358,6 +371,18 @@ export default function ItemCatalogPanel({
             </div>
 
             <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Item Type (FG/RM)</label>
+              <select 
+                className="form-control"
+                value={newItemType}
+                onChange={e => setNewItemType(e.target.value)}
+              >
+                <option value="RM">RM (Raw Material)</option>
+                <option value="FG">FG (Finished Goods)</option>
+              </select>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Nature</label>
               <select 
                 className="form-control"
@@ -401,104 +426,89 @@ export default function ItemCatalogPanel({
 
       {/* Excel Bulk Upload Modal */}
       {showBulkModal && (
-        <div className="modal-overlay">
-          <div className="modal-content glass-panel" style={{ maxWidth: "700px" }}>
-            <h3 style={{ fontSize: "1.3rem", color: "var(--primary)", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <FileSpreadsheet size={22} style={{ color: "#10b981" }} /> Excel Bulk Import Master Items
+        <div className="glass-panel" style={{ padding: "24px", marginBottom: "24px", border: "1px solid #10b981" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h3 style={{ fontSize: "1.1rem", color: "#34d399", display: "flex", alignItems: "center", gap: "8px" }}>
+              <FileSpreadsheet size={20} /> Excel / CSV Bulk Item Import
             </h3>
-            
-            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "16px" }}>
-              Upload an Excel file (<code>.xlsx</code>, <code>.xls</code>, <code>.csv</code>) containing columns like <strong>ID</strong>, <strong>Item Name</strong>, <strong>Category</strong>, <strong>Nature</strong>, and <strong>Unit</strong>.
-            </p>
-
-            {bulkError && (
-              <div className="alert-strip alert-danger" style={{ marginBottom: "16px" }}>
-                <AlertCircle size={16} /> {bulkError}
-              </div>
-            )}
-
-            <div style={{ border: "2px dashed var(--border-glass)", borderRadius: "12px", padding: "24px", textAlign: "center", marginBottom: "20px", background: "rgba(0,0,0,0.1)" }}>
-              <Upload size={32} style={{ color: "var(--primary)", marginBottom: "10px" }} />
-              <div style={{ fontWeight: 600, marginBottom: "4px" }}>Select Excel or CSV File</div>
-              <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "16px" }}>Supported formats: .xlsx, .xls, .csv</div>
-              
-              <input 
-                type="file" 
-                accept=".xlsx, .xls, .csv"
-                onChange={handleFileUpload}
-                style={{ display: "none" }}
-                id="excel-file-input"
-              />
-              <label htmlFor="excel-file-input" className="btn btn-primary" style={{ cursor: "pointer" }}>
-                Browse Excel File
-              </label>
-            </div>
-
-            {bulkParsedItems.length > 0 && (
-              <div style={{ marginBottom: "20px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                  <span style={{ fontWeight: 600, fontSize: "0.9rem", color: "#10b981" }}>
-                    ✅ Successfully parsed {bulkParsedItems.length} items from file!
-                  </span>
-                </div>
-
-                <div className="table-container" style={{ maxHeight: "220px", overflowY: "auto" }}>
-                  <table className="custom-table" style={{ fontSize: "0.78rem" }}>
-                    <thead>
-                      <tr>
-                        <th>Item ID</th>
-                        <th>Name / Model</th>
-                        <th>Category</th>
-                        <th>Nature</th>
-                        <th>Unit</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bulkParsedItems.slice(0, 15).map((item, idx) => (
-                        <tr key={idx}>
-                          <td style={{ fontWeight: 700, color: "var(--primary)" }}>{item.id}</td>
-                          <td>{item.name}</td>
-                          <td>{item.category}</td>
-                          <td>{item.itemNature}</td>
-                          <td>{item.unit}</td>
-                        </tr>
-                      ))}
-                      {bulkParsedItems.length > 15 && (
-                        <tr>
-                          <td colSpan="5" style={{ textAlign: "center", color: "var(--text-muted)", fontStyle: "italic" }}>
-                            + {bulkParsedItems.length - 15} more items...
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", borderTop: "1px solid var(--border-glass)", paddingTop: "16px" }}>
-              <button 
-                onClick={() => { setShowBulkModal(false); setBulkParsedItems([]); }}
-                className="btn btn-secondary"
-              >
-                Cancel
-              </button>
-              
-              <button 
-                onClick={handleConfirmBulkUpload}
-                disabled={bulkParsedItems.length === 0 || uploadingBulk}
-                className="btn btn-success"
-              >
-                {uploadingBulk ? "Importing Items..." : `Import ${bulkParsedItems.length} Items to Catalog`}
-              </button>
-            </div>
+            <button onClick={() => setShowBulkModal(false)} className="btn btn-secondary btn-sm">Close</button>
           </div>
+
+          <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "16px" }}>
+            Select an Excel file (<code>.xlsx</code>, <code>.xls</code>, <code>.csv</code>). Sheet headers should include: <strong>Item ID</strong>, <strong>Item Name</strong>, <strong>Category</strong>, <strong>Item Type (FG/RM)</strong>, <strong>Nature</strong>, <strong>Unit</strong>, <strong>Description</strong>.
+          </p>
+
+          {bulkError && (
+            <div className="alert-strip alert-danger" style={{ marginBottom: "16px" }}>
+              <AlertCircle size={16} /> {bulkError}
+            </div>
+          )}
+
+          <div style={{ marginBottom: "20px" }}>
+            <input 
+              type="file" 
+              accept=".xlsx, .xls, .csv" 
+              onChange={handleFileUpload}
+              className="form-control"
+              style={{ cursor: "pointer" }}
+            />
+          </div>
+
+          {bulkParsedItems.length > 0 && (
+            <div>
+              <h4 style={{ fontSize: "0.95rem", marginBottom: "10px", color: "var(--primary)" }}>
+                Parsed Preview ({bulkParsedItems.length} items ready to import):
+              </h4>
+              <div className="table-container" style={{ maxHeight: "250px", overflowY: "auto", marginBottom: "16px" }}>
+                <table className="custom-table" style={{ fontSize: "0.82rem" }}>
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Name / Model</th>
+                      <th>Category</th>
+                      <th>Type (FG/RM)</th>
+                      <th>Nature</th>
+                      <th>Unit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bulkParsedItems.map((pi, idx) => (
+                      <tr key={idx}>
+                        <td style={{ fontWeight: 700, color: "var(--primary)" }}>#{pi.id}</td>
+                        <td style={{ fontWeight: 600 }}>{pi.name}</td>
+                        <td>{pi.category || "General"}</td>
+                        <td>
+                          <span className={`badge ${pi.itemType === "FG" ? "badge-success" : "badge-secondary"}`}>
+                            {pi.itemType || "RM"}
+                          </span>
+                        </td>
+                        <td>{pi.itemNature}</td>
+                        <td>{pi.unit}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                <button type="button" onClick={() => setShowBulkModal(false)} className="btn btn-secondary">Cancel</button>
+                <button 
+                  type="button" 
+                  onClick={handleConfirmBulkUpload}
+                  disabled={bulkParsedItems.length === 0 || uploadingBulk}
+                  className="btn btn-success"
+                >
+                  {uploadingBulk ? "Importing Items..." : `Import ${bulkParsedItems.length} Items to Catalog`}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Search & Category Filter Bar */}
+      {/* Search, Category & Type Filter Bar */}
       <div className="glass-panel" style={{ padding: "16px 20px", marginBottom: "20px", display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap" }}>
-        <div style={{ position: "relative", flex: "1 1 250px" }}>
+        <div style={{ position: "relative", flex: "1 1 220px" }}>
           <Search size={16} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
           <input 
             type="text"
@@ -508,6 +518,20 @@ export default function ItemCatalogPanel({
             onChange={e => setSearchQuery(e.target.value)}
             style={{ paddingLeft: "36px" }}
           />
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <label style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 600 }}>Type:</label>
+          <select 
+            className="form-control"
+            value={typeFilter}
+            onChange={e => setTypeFilter(e.target.value)}
+            style={{ width: "auto", minWidth: "130px" }}
+          >
+            <option value="all">All Types (FG/RM)</option>
+            <option value="RM">RM (Raw Material)</option>
+            <option value="FG">FG (Finished Goods)</option>
+          </select>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -548,6 +572,7 @@ export default function ItemCatalogPanel({
                 <th>Item ID</th>
                 <th>Name / Model</th>
                 <th>Category</th>
+                <th>Type (FG/RM)</th>
                 <th>Nature</th>
                 <th>Unit (UOM)</th>
                 <th>Description / Specs</th>
@@ -557,8 +582,8 @@ export default function ItemCatalogPanel({
             <tbody>
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
-                    {searchQuery || categoryFilter !== "all" 
+                  <td colSpan="9" style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
+                    {searchQuery || categoryFilter !== "all" || typeFilter !== "all"
                       ? "No catalog items match your search filter."
                       : "Master Item Catalog is empty. Click 'Add Master Item' or 'Excel Bulk Upload' above to populate items!"}
                   </td>
@@ -566,6 +591,7 @@ export default function ItemCatalogPanel({
               ) : (
                 filteredItems.map(item => {
                   const isSelected = selectedIds.includes(item.id);
+                  const isFG = item.itemType === "FG";
                   return (
                     <tr key={item.id} className={isSelected ? "planner-row-selected" : ""}>
                       <td style={{ textAlign: "center" }}>
@@ -585,6 +611,11 @@ export default function ItemCatalogPanel({
                       <td>
                         <span className="badge badge-secondary" style={{ fontSize: "0.75rem" }}>
                           {item.category || "General"}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="badge" style={{ fontSize: "0.75rem", fontWeight: 700, background: isFG ? "rgba(16, 185, 129, 0.18)" : "rgba(99, 102, 241, 0.18)", color: isFG ? "#34d399" : "#a5b4fc", border: `1px solid ${isFG ? "rgba(16, 185, 129, 0.3)" : "rgba(99, 102, 241, 0.3)"}` }}>
+                          {isFG ? "FG (Finished)" : "RM (Raw Material)"}
                         </span>
                       </td>
                       <td>
