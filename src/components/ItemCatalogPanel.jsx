@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Layers, Plus, Upload, Trash2, Search, CheckSquare, Square, FileSpreadsheet, Package, AlertCircle, RefreshCw, GitMerge, Edit3, Info } from "lucide-react";
+import { Layers, Plus, Upload, Trash2, Search, CheckSquare, Square, FileSpreadsheet, Package, AlertCircle, RefreshCw, GitMerge, Edit3, Info, Download, Image, ListPlus } from "lucide-react";
 
 // Normalize item names for fuzzy duplicate detection (e.g. DC02, DC 02, DC2, DC-2, DC-02 -> DC2)
 export function normalizeItemKey(str) {
@@ -27,8 +27,11 @@ export default function ItemCatalogPanel({
   // Selection state for bulk delete
   const [selectedIds, setSelectedIds] = useState([]);
 
-  // Create single item form state
+  // Create item form state
   const [showAddForm, setShowAddForm] = useState(false);
+  const [addFormMode, setAddFormMode] = useState("single"); // "single" | "multiple"
+
+  // Single Item form fields
   const [newItemId, setNewItemId] = useState("");
   const [newItemName, setNewItemName] = useState("");
   const [newItemCategory, setNewItemCategory] = useState("");
@@ -38,6 +41,13 @@ export default function ItemCatalogPanel({
   const [newItemDescription, setNewItemDescription] = useState("");
   const [newItemPhoto, setNewItemPhoto] = useState("");
   const [formMsg, setFormMsg] = useState("");
+
+  // Multiple Items form rows
+  const [multiRows, setMultiRows] = useState([
+    { id: "", name: "", category: "", itemType: "RM", itemNature: "Non Consumables", unit: "Pcs", description: "", photo: "" },
+    { id: "", name: "", category: "", itemType: "RM", itemNature: "Non Consumables", unit: "Pcs", description: "", photo: "" },
+    { id: "", name: "", category: "", itemType: "RM", itemNature: "Non Consumables", unit: "Pcs", description: "", photo: "" }
+  ]);
 
   const [typeFilter, setTypeFilter] = useState("all"); // "all" | "RM" | "FG"
 
@@ -55,6 +65,7 @@ export default function ItemCatalogPanel({
   const [editNature, setEditNature] = useState("Non Consumables");
   const [editUnit, setEditUnit] = useState("Pcs");
   const [editDescription, setEditDescription] = useState("");
+  const [editPhoto, setEditPhoto] = useState("");
   const [editMsg, setEditMsg] = useState("");
 
   // Merge Items Modal state (Super Admin only)
@@ -105,6 +116,125 @@ export default function ItemCatalogPanel({
     setNewItemId(generatedId);
     setFormMsg("");
     setShowAddForm(true);
+  };
+
+  // Download Empty Template CSV
+  const handleDownloadEmptyTemplate = () => {
+    const csvContent = [
+      "Action,Item ID,Item Name,Category,Item Type (FG/RM),Nature,Unit,Description,Photo URL",
+      "NEW,1001,AUDIO-MODEL-01,AUDIO,FG,Consumables,Pcs,Sample Finished Goods Model,https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200",
+      "UPDATE,1,AUDIO001,AUDIO,FG,Consumables,Pcs,Updated specifications,https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200",
+      "DELETE,2,,,,,,,"
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "Makpower_Master_Catalog_Template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Export Current Catalog for Bulk Update CSV
+  const handleExportAllItemsTemplate = () => {
+    if (items.length === 0) {
+      alert("No items in catalog to export.");
+      return;
+    }
+
+    const headers = ["Action", "Item ID", "Item Name", "Category", "Item Type (FG/RM)", "Nature", "Unit", "Description", "Photo URL"];
+    const rows = items.map(i => [
+      "UPDATE",
+      `"${i.id}"`,
+      `"${(i.name || "").replace(/"/g, '""')}"`,
+      `"${(i.category || "General").replace(/"/g, '""')}"`,
+      i.itemType || "RM",
+      i.itemNature || "Non Consumables",
+      `"${(i.unit || "Pcs").replace(/"/g, '""')}"`,
+      `"${(i.description || "").replace(/"/g, '""')}"`,
+      `"${(i.photo || "").replace(/"/g, '""')}"`
+    ].join(","));
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `Makpower_Catalog_Export_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Multi-Row Form Handlers
+  const handleAddMultiRow = () => {
+    setMultiRows(prev => [
+      ...prev,
+      { id: "", name: "", category: "", itemType: "RM", itemNature: "Non Consumables", unit: "Pcs", description: "", photo: "" }
+    ]);
+  };
+
+  const handleRemoveMultiRow = (idx) => {
+    setMultiRows(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleMultiRowChange = (idx, field, val) => {
+    setMultiRows(prev => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], [field]: val };
+      return copy;
+    });
+  };
+
+  const handleCreateMultipleItems = async (e) => {
+    e.preventDefault();
+    setFormMsg("");
+
+    const validRows = multiRows.filter(r => r.name && r.name.trim());
+    if (validRows.length === 0) {
+      setFormMsg("Please enter at least one item name.");
+      return;
+    }
+
+    const existingIds = new Set(items.map(i => String(i.id).trim().toUpperCase()));
+    let autoIdCounter = 1;
+
+    const payload = validRows.map(r => {
+      let finalId = String(r.id || "").trim().toUpperCase();
+      if (!finalId) {
+        while (existingIds.has(String(autoIdCounter))) {
+          autoIdCounter++;
+        }
+        finalId = String(autoIdCounter++);
+      }
+      existingIds.add(finalId);
+
+      return {
+        id: finalId,
+        name: r.name.trim(),
+        category: r.category.trim() || "General",
+        itemType: r.itemType || "RM",
+        itemNature: r.itemNature || "Non Consumables",
+        unit: r.unit.trim() || "Pcs",
+        description: r.description.trim(),
+        photo: r.photo.trim(),
+        currentStock: 0,
+        action: "NEW"
+      };
+    });
+
+    const res = await onBulkAddItems(payload);
+    if (res && res.success) {
+      setShowAddForm(false);
+      setMultiRows([
+        { id: "", name: "", category: "", itemType: "RM", itemNature: "Non Consumables", unit: "Pcs", description: "", photo: "" },
+        { id: "", name: "", category: "", itemType: "RM", itemNature: "Non Consumables", unit: "Pcs", description: "", photo: "" }
+      ]);
+    } else {
+      setFormMsg(`❌ Multi-creation failed: ${res?.error || "Server error."}`);
+    }
   };
 
   const handleCreateItem = async (e) => {
@@ -177,6 +307,7 @@ export default function ItemCatalogPanel({
     setEditNature(item.itemNature || "Non Consumables");
     setEditUnit(item.unit || "Pcs");
     setEditDescription(item.description || "");
+    setEditPhoto(item.photo || "");
     setEditMsg("");
   };
 
@@ -206,7 +337,8 @@ export default function ItemCatalogPanel({
       itemType: editType,
       itemNature: editNature,
       unit: editUnit.trim() || "Pcs",
-      description: editDescription.trim()
+      description: editDescription.trim(),
+      photo: editPhoto.trim()
     };
 
     if (onUpdateItem) {
@@ -374,18 +506,24 @@ export default function ItemCatalogPanel({
             }
           }
 
-          if (!rawName) return; // Skip empty rows
+          const rawAction = getRowValue(row, ["action", "mode", "status", "operation"]) || "NEW";
+          const actionUpper = String(rawAction).trim().toUpperCase();
+          const isDeleteAction = actionUpper.includes("DEL") || actionUpper.includes("REM");
+          const isUpdateAction = actionUpper.includes("UPD") || actionUpper.includes("EDIT");
+
+          if (!isDeleteAction && !rawName) return; // Skip empty rows
 
           const rawCategory = getRowValue(row, ["category", "cat", "group", "class"]) || "General";
           const rawType = getRowValue(row, ["itemtype", "type", "fgrm", "fg", "rm"]) || "RM";
           const rawNature = getRowValue(row, ["itemnature", "nature", "consumable"]) || "Non Consumables";
           const rawUnit = getRowValue(row, ["unit", "uom", "pcs"]) || "Pcs";
           const rawDesc = getRowValue(row, ["desc", "description", "specification", "specs", "notes"]) || "";
+          const rawPhoto = getRowValue(row, ["photo", "photourl", "image", "imageurl", "picture", "pic"]) || "";
 
           const cleanName = String(rawName).trim();
           const nameKey = normalizeItemKey(cleanName);
           const duplicateMatch = existingNameKeys.get(nameKey);
-          const isDuplicate = Boolean(duplicateMatch);
+          const isDuplicate = !isUpdateAction && !isDeleteAction && Boolean(duplicateMatch);
 
           let finalType = "RM";
           const typeStr = String(rawType).trim().toUpperCase();
@@ -400,8 +538,8 @@ export default function ItemCatalogPanel({
               autoIdCounter++;
             }
             finalId = String(autoIdCounter++);
-          } else if (existingIds.has(finalId)) {
-            // Deduplicate ID if already taken in system or sheet!
+          } else if (!isUpdateAction && !isDeleteAction && existingIds.has(finalId)) {
+            // Deduplicate ID if already taken in system or sheet for NEW items
             let suffix = 1;
             let candidate = `${finalId}-${suffix}`;
             while (existingIds.has(candidate)) {
@@ -412,7 +550,7 @@ export default function ItemCatalogPanel({
           }
 
           existingIds.add(finalId);
-          if (!isDuplicate) {
+          if (!isDuplicate && !isUpdateAction && !isDeleteAction) {
             existingNameKeys.set(nameKey, { id: finalId, name: cleanName });
           }
 
@@ -424,7 +562,9 @@ export default function ItemCatalogPanel({
             itemNature: String(rawNature).includes("Consumable") || String(rawNature).includes("Consumab") ? "Consumables" : "Non Consumables",
             unit: String(rawUnit).trim() || "Pcs",
             description: String(rawDesc).trim(),
+            photo: String(rawPhoto).trim(),
             currentStock: 0,
+            action: isDeleteAction ? "DELETE" : isUpdateAction ? "UPDATE" : "NEW",
             isDuplicate,
             duplicateMatchName: duplicateMatch ? duplicateMatch.name : null
           });
@@ -445,7 +585,7 @@ export default function ItemCatalogPanel({
   };
 
   const handleConfirmBulkUpload = async () => {
-    const validItems = bulkParsedItems.filter(i => !i.isDuplicate);
+    const validItems = bulkParsedItems.filter(i => !i.isDuplicate || i.action === "UPDATE" || i.action === "DELETE");
     if (validItems.length === 0) {
       setBulkError("⚠️ All items in the uploaded file already exist in the catalog (e.g. DC-02 matched existing DC02). No new items to import.");
       return;
@@ -455,6 +595,7 @@ export default function ItemCatalogPanel({
     try {
       const res = await onBulkAddItems(validItems);
       if (res && res.success) {
+        alert(`Bulk action completed successfully! Total processed: ${res.count || validItems.length} (Inserted: ${res.insertedCount || 0}, Updated: ${res.updatedCount || 0}, Deleted: ${res.deletedCount || 0}, Skipped: ${res.skippedCount || 0})`);
         setShowBulkModal(false);
         setBulkParsedItems([]);
       } else {
@@ -491,7 +632,26 @@ export default function ItemCatalogPanel({
           </p>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: "6px" }}>
+            <button 
+              onClick={handleDownloadEmptyTemplate}
+              className="btn btn-secondary btn-sm"
+              title="Download Blank CSV Template with Action (NEW/UPDATE/DELETE) columns"
+              style={{ fontSize: "0.8rem", borderColor: "rgba(255,255,255,0.2)" }}
+            >
+              <Download size={14} /> Empty Template
+            </button>
+            <button 
+              onClick={handleExportAllItemsTemplate}
+              className="btn btn-secondary btn-sm"
+              title="Export all current catalog items into CSV prefilled with UPDATE action for bulk editing"
+              style={{ fontSize: "0.8rem", borderColor: "rgba(255,255,255,0.2)" }}
+            >
+              <Download size={14} /> Export All Items
+            </button>
+          </div>
+
           {isSuperAdmin && (
             <button 
               onClick={() => { setShowMergeModal(true); setMergeMsg(""); setSourceId(""); setTargetId(""); }}
@@ -600,12 +760,13 @@ export default function ItemCatalogPanel({
             </div>
 
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Unit (UOM)</label>
+              <label className="form-label">Photo / Public Image URL</label>
               <input 
                 type="text" 
                 className="form-control" 
-                value={editUnit}
-                onChange={e => setEditUnit(e.target.value)}
+                placeholder="https://example.com/photo.jpg"
+                value={editPhoto}
+                onChange={e => setEditPhoto(e.target.value)}
               />
             </div>
 
@@ -701,10 +862,30 @@ export default function ItemCatalogPanel({
       {/* Add Item Modal / Inline Form */}
       {showAddForm && (
         <div className="glass-panel" style={{ padding: "24px", marginBottom: "24px", border: "1px solid var(--primary)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-            <h3 style={{ fontSize: "1.1rem", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px" }}>
-              <Plus size={18} /> Create New Master Item
-            </h3>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <h3 style={{ fontSize: "1.1rem", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px" }}>
+                <Plus size={18} /> Create Master Items
+              </h3>
+              <div style={{ display: "flex", gap: "4px", background: "rgba(255,255,255,0.05)", padding: "4px", borderRadius: "6px" }}>
+                <button 
+                  type="button" 
+                  onClick={() => setAddFormMode("single")}
+                  className={`btn btn-sm ${addFormMode === "single" ? "btn-primary" : "btn-secondary"}`}
+                  style={{ fontSize: "0.8rem", padding: "4px 10px" }}
+                >
+                  <Plus size={14} /> Single Item
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setAddFormMode("multiple")}
+                  className={`btn btn-sm ${addFormMode === "multiple" ? "btn-primary" : "btn-secondary"}`}
+                  style={{ fontSize: "0.8rem", padding: "4px 10px" }}
+                >
+                  <ListPlus size={14} /> Create Multiple at Once
+                </button>
+              </div>
+            </div>
             <button onClick={() => setShowAddForm(false)} className="btn btn-secondary btn-sm">Cancel</button>
           </div>
 
@@ -714,93 +895,202 @@ export default function ItemCatalogPanel({
             </div>
           )}
 
-          <form onSubmit={handleCreateItem} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Item ID (Numeric / String)*</label>
-              <input 
-                type="text" 
-                className="form-control"
-                placeholder="e.g. 1, 2, 3..."
-                value={newItemId}
-                onChange={e => setNewItemId(e.target.value)}
-                required
-              />
-            </div>
+          {addFormMode === "single" ? (
+            <form onSubmit={handleCreateItem} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Item ID (Numeric / String)*</label>
+                <input 
+                  type="text" 
+                  className="form-control"
+                  placeholder="e.g. 1, 2, 3..."
+                  value={newItemId}
+                  onChange={e => setNewItemId(e.target.value)}
+                  required
+                />
+              </div>
 
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Item Name / Model*</label>
-              <input 
-                type="text" 
-                className="form-control"
-                placeholder="e.g. XM-900 Transducer"
-                value={newItemName}
-                onChange={e => setNewItemName(e.target.value)}
-                required
-              />
-            </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Item Name / Model*</label>
+                <input 
+                  type="text" 
+                  className="form-control"
+                  placeholder="e.g. AUDIO001"
+                  value={newItemName}
+                  onChange={e => setNewItemName(e.target.value)}
+                  required
+                />
+              </div>
 
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Category</label>
-              <input 
-                type="text" 
-                className="form-control"
-                placeholder="e.g. Electronics, Hardware"
-                value={newItemCategory}
-                onChange={e => setNewItemCategory(e.target.value)}
-              />
-            </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Category</label>
+                <input 
+                  type="text" 
+                  className="form-control"
+                  placeholder="e.g. AUDIO, NECKBAND"
+                  value={newItemCategory}
+                  onChange={e => setNewItemCategory(e.target.value)}
+                />
+              </div>
 
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Item Type (FG/RM)</label>
-              <select 
-                className="form-control"
-                value={newItemType}
-                onChange={e => setNewItemType(e.target.value)}
-              >
-                <option value="RM">RM (Raw Material)</option>
-                <option value="FG">FG (Finished Goods)</option>
-              </select>
-            </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Item Type (FG/RM)</label>
+                <select 
+                  className="form-control"
+                  value={newItemType}
+                  onChange={e => setNewItemType(e.target.value)}
+                >
+                  <option value="RM">RM (Raw Material)</option>
+                  <option value="FG">FG (Finished Goods)</option>
+                </select>
+              </div>
 
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Nature</label>
-              <select 
-                className="form-control"
-                value={newItemNature}
-                onChange={e => setNewItemNature(e.target.value)}
-              >
-                <option value="Non Consumables">Non Consumables</option>
-                <option value="Consumables">Consumables</option>
-              </select>
-            </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Nature</label>
+                <select 
+                  className="form-control"
+                  value={newItemNature}
+                  onChange={e => setNewItemNature(e.target.value)}
+                >
+                  <option value="Non Consumables">Non Consumables</option>
+                  <option value="Consumables">Consumables</option>
+                </select>
+              </div>
 
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Unit (UOM)</label>
-              <input 
-                type="text" 
-                className="form-control"
-                placeholder="Pcs, Set, Kg, Box"
-                value={newItemUnit}
-                onChange={e => setNewItemUnit(e.target.value)}
-              />
-            </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Unit (UOM)</label>
+                <input 
+                  type="text" 
+                  className="form-control"
+                  placeholder="Pcs, Set, Kg, Box"
+                  value={newItemUnit}
+                  onChange={e => setNewItemUnit(e.target.value)}
+                />
+              </div>
 
-            <div className="form-group" style={{ marginBottom: 0, gridColumn: "1 / -1" }}>
-              <label className="form-label">Description / Specifications</label>
-              <input 
-                type="text" 
-                className="form-control"
-                placeholder="Detailed technical specifications..."
-                value={newItemDescription}
-                onChange={e => setNewItemDescription(e.target.value)}
-              />
-            </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Photo / Public Image URL</label>
+                <input 
+                  type="text" 
+                  className="form-control"
+                  placeholder="https://example.com/photo.jpg"
+                  value={newItemPhoto}
+                  onChange={e => setNewItemPhoto(e.target.value)}
+                />
+              </div>
 
-            <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-              <button type="button" onClick={() => setShowAddForm(false)} className="btn btn-secondary">Cancel</button>
-              <button type="submit" className="btn btn-primary">Save Master Item</button>
-            </div>
-          </form>
+              <div className="form-group" style={{ marginBottom: 0, gridColumn: "1 / -1" }}>
+                <label className="form-label">Description / Specifications</label>
+                <input 
+                  type="text" 
+                  className="form-control"
+                  placeholder="Detailed technical specifications..."
+                  value={newItemDescription}
+                  onChange={e => setNewItemDescription(e.target.value)}
+                />
+              </div>
+
+              <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
+                <button type="button" onClick={() => setShowAddForm(false)} className="btn btn-secondary">Cancel</button>
+                <button type="submit" className="btn btn-primary">Save Master Item</button>
+              </div>
+            </form>
+          ) : (
+            /* Multi-Row Item Form */
+            <form onSubmit={handleCreateMultipleItems}>
+              <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "12px" }}>
+                Fill out multiple item rows below to create them all at once into the catalog:
+              </p>
+
+              <div className="table-container" style={{ maxHeight: "300px", overflowY: "auto", marginBottom: "16px" }}>
+                <table className="custom-table" style={{ fontSize: "0.83rem" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: "90px" }}>Item ID</th>
+                      <th style={{ minWidth: "160px" }}>Item Name / Model*</th>
+                      <th style={{ width: "120px" }}>Category</th>
+                      <th style={{ width: "90px" }}>Type</th>
+                      <th style={{ width: "130px" }}>Nature</th>
+                      <th style={{ width: "80px" }}>Unit</th>
+                      <th style={{ minWidth: "140px" }}>Photo URL</th>
+                      <th style={{ width: "50px", textAlign: "center" }}>Del</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {multiRows.map((row, idx) => (
+                      <tr key={idx}>
+                        <td>
+                          <input 
+                            type="text" 
+                            className="form-control" 
+                            style={{ padding: "4px 8px", fontSize: "0.82rem" }} 
+                            placeholder="Auto ID" 
+                            value={row.id} 
+                            onChange={e => handleMultiRowChange(idx, "id", e.target.value)} 
+                          />
+                        </td>
+                        <td>
+                          <input 
+                            type="text" 
+                            className="form-control" 
+                            style={{ padding: "4px 8px", fontSize: "0.82rem" }} 
+                            placeholder="Item Name *" 
+                            value={row.name} 
+                            onChange={e => handleMultiRowChange(idx, "name", e.target.value)} 
+                            required 
+                          />
+                        </td>
+                        <td>
+                          <input 
+                            type="text" 
+                            className="form-control" 
+                            style={{ padding: "4px 8px", fontSize: "0.82rem" }} 
+                            placeholder="Category" 
+                            value={row.category} 
+                            onChange={e => handleMultiRowChange(idx, "category", e.target.value)} 
+                          />
+                        </td>
+                        <td>
+                          <select className="form-control" style={{ padding: "4px 6px", fontSize: "0.82rem" }} value={row.itemType} onChange={e => handleMultiRowChange(idx, "itemType", e.target.value)}>
+                            <option value="RM">RM</option>
+                            <option value="FG">FG</option>
+                          </select>
+                        </td>
+                        <td>
+                          <select className="form-control" style={{ padding: "4px 6px", fontSize: "0.82rem" }} value={row.itemNature} onChange={e => handleMultiRowChange(idx, "itemNature", e.target.value)}>
+                            <option value="Non Consumables">Non Consumables</option>
+                            <option value="Consumables">Consumables</option>
+                          </select>
+                        </td>
+                        <td>
+                          <input type="text" className="form-control" style={{ padding: "4px 8px", fontSize: "0.82rem" }} placeholder="Unit" value={row.unit} onChange={e => handleMultiRowChange(idx, "unit", e.target.value)} />
+                        </td>
+                        <td>
+                          <input type="text" className="form-control" style={{ padding: "4px 8px", fontSize: "0.82rem" }} placeholder="Photo URL" value={row.photo} onChange={e => handleMultiRowChange(idx, "photo", e.target.value)} />
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <button type="button" onClick={() => handleRemoveMultiRow(idx)} className="btn btn-sm btn-danger" title="Remove Row" style={{ padding: "4px 8px" }}>
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <button type="button" onClick={handleAddMultiRow} className="btn btn-secondary btn-sm">
+                  <Plus size={14} /> Add Another Row
+                </button>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button type="button" onClick={() => setShowAddForm(false)} className="btn btn-secondary">Cancel</button>
+                  <button type="submit" className="btn btn-primary">
+                    Save All {multiRows.filter(r => r.name.trim()).length} Items
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
         </div>
       )}
 
@@ -837,12 +1127,14 @@ export default function ItemCatalogPanel({
           {bulkParsedItems.length > 0 && (
             <div>
               <h4 style={{ fontSize: "0.95rem", marginBottom: "10px", color: "var(--primary)" }}>
-                Parsed Preview ({bulkParsedItems.length} items ready to import):
+                Parsed Preview ({bulkParsedItems.length} items ready for bulk action):
               </h4>
               <div className="table-container" style={{ maxHeight: "250px", overflowY: "auto", marginBottom: "16px" }}>
                 <table className="custom-table" style={{ fontSize: "0.82rem" }}>
                   <thead>
                     <tr>
+                      <th style={{ width: "65px" }}>Action</th>
+                      <th style={{ width: "40px", textAlign: "center" }}>Img</th>
                       <th>ID</th>
                       <th>Name / Model</th>
                       <th>Category</th>
@@ -853,11 +1145,23 @@ export default function ItemCatalogPanel({
                   </thead>
                   <tbody>
                     {bulkParsedItems.map((pi, idx) => (
-                      <tr key={idx} style={{ opacity: pi.isDuplicate ? 0.65 : 1 }}>
+                      <tr key={idx} style={{ opacity: pi.isDuplicate && pi.action === "NEW" ? 0.65 : 1 }}>
+                        <td>
+                          <span className={`badge ${pi.action === "DELETE" ? "badge-danger" : pi.action === "UPDATE" ? "badge-secondary" : "badge-success"}`} style={{ fontSize: "0.68rem", textTransform: "uppercase" }}>
+                            {pi.action}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          {pi.photo ? (
+                            <img src={pi.photo} alt="" style={{ width: "22px", height: "22px", borderRadius: "4px", objectFit: "cover" }} onError={(e) => { e.target.style.display = "none"; }} />
+                          ) : (
+                            <Package size={14} style={{ color: "var(--text-muted)" }} />
+                          )}
+                        </td>
                         <td style={{ fontWeight: 700, color: "var(--primary)" }}>{pi.id}</td>
                         <td style={{ fontWeight: 600 }}>
                           {pi.name}
-                          {pi.isDuplicate && (
+                          {pi.isDuplicate && pi.action === "NEW" && (
                             <span className="badge badge-danger" style={{ marginLeft: "8px", fontSize: "0.7rem", textTransform: "none" }}>
                               Already Exists (matches "{pi.duplicateMatchName}") — Skipped
                             </span>
@@ -885,7 +1189,7 @@ export default function ItemCatalogPanel({
                   disabled={bulkParsedItems.length === 0 || uploadingBulk}
                   className="btn btn-success"
                 >
-                  {uploadingBulk ? "Importing Items..." : `Import ${bulkParsedItems.length} Items to Catalog`}
+                  {uploadingBulk ? "Processing Bulk Actions..." : `Execute Bulk Actions on ${bulkParsedItems.length} Items`}
                 </button>
               </div>
             </div>
@@ -956,6 +1260,7 @@ export default function ItemCatalogPanel({
                     style={{ cursor: "pointer" }}
                   />
                 </th>
+                <th style={{ width: "50px", textAlign: "center" }}>Image</th>
                 <th>Item ID</th>
                 <th>Name / Model</th>
                 <th>Category</th>
@@ -969,7 +1274,7 @@ export default function ItemCatalogPanel({
             <tbody>
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan="9" style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
+                  <td colSpan="10" style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
                     {searchQuery || categoryFilter !== "all" || typeFilter !== "all"
                       ? "No catalog items match your search filter."
                       : "Master Item Catalog is empty. Click 'Add Master Item' or 'Excel Bulk Upload' above to populate items!"}
@@ -988,6 +1293,20 @@ export default function ItemCatalogPanel({
                           onChange={() => toggleSelectId(item.id)}
                           style={{ cursor: "pointer" }}
                         />
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        {item.photo ? (
+                          <img 
+                            src={item.photo} 
+                            alt={item.name} 
+                            style={{ width: "32px", height: "32px", borderRadius: "6px", objectFit: "cover", border: "1px solid var(--border-color)", margin: "0 auto" }} 
+                            onError={(e) => { e.target.onerror = null; e.target.style.display = "none"; }}
+                          />
+                        ) : (
+                          <div style={{ width: "32px", height: "32px", borderRadius: "6px", background: "rgba(99, 102, 241, 0.1)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto" }}>
+                            <Package size={16} style={{ color: "var(--primary)" }} />
+                          </div>
+                        )}
                       </td>
                       <td style={{ fontWeight: 800, color: "var(--primary)", fontSize: "0.9rem" }}>
                         {item.id}

@@ -1521,7 +1521,7 @@ app.post("/api/items", async (req, res) => {
   }
 });
 
-// POST /api/items/bulk - Bulk add/update Master Items (from Excel upload)
+// POST /api/items/bulk - Bulk add/update/delete Master Items (from Excel upload or multi-create)
 app.post("/api/items/bulk", async (req, res) => {
   const items = req.body.items || [];
   if (!Array.isArray(items) || items.length === 0) {
@@ -1530,16 +1530,42 @@ app.post("/api/items/bulk", async (req, res) => {
   if (isPg) {
     try {
       const existingRes = await pool.query("SELECT * FROM items");
+      const existingItemsMap = new Map(existingRes.rows.map(i => [String(i.id).trim().toUpperCase(), i]));
       const existingNameKeys = new Set(existingRes.rows.map(i => normalizeItemKey(i.name)));
       let insertedCount = 0;
+      let updatedCount = 0;
+      let deletedCount = 0;
       let skippedCount = 0;
 
       for (const item of items) {
-        if (!item.id || !item.name) continue;
+        const idUpper = String(item.id || "").trim().toUpperCase();
+        const actionUpper = String(item.action || "NEW").trim().toUpperCase();
+
+        if (actionUpper === "DELETE" || actionUpper === "REMOVE") {
+          if (idUpper) {
+            await pool.query('DELETE FROM items WHERE UPPER("id") = $1', [idUpper]);
+            deletedCount++;
+          }
+          continue;
+        }
+
+        if (actionUpper === "UPDATE" || actionUpper === "EDIT") {
+          if (idUpper && item.name) {
+            await pool.query(
+              `UPDATE items SET "name" = $1, "category" = $2, "itemType" = $3, "itemNature" = $4, "unit" = $5, "description" = $6, "photo" = $7 WHERE UPPER("id") = $8`,
+              [item.name, item.category || "", item.itemType || "RM", item.itemNature || "Non Consumables", item.unit || "Pcs", item.description || "", item.photo || "", idUpper]
+            );
+            updatedCount++;
+          }
+          continue;
+        }
+
+        // Default action: NEW / INSERT
+        if (!idUpper || !item.name) continue;
         const key = normalizeItemKey(item.name);
-        if (existingNameKeys.has(key)) {
+        if (existingNameKeys.has(key) && !existingItemsMap.has(idUpper)) {
           skippedCount++;
-          continue; // Skip duplicate item names (e.g. DC-02 if DC02 exists)
+          continue; // Skip duplicate item names
         }
         existingNameKeys.add(key);
 
@@ -1551,7 +1577,7 @@ app.post("/api/items/bulk", async (req, res) => {
         );
         insertedCount++;
       }
-      res.json({ success: true, count: insertedCount, skippedCount });
+      res.json({ success: true, count: insertedCount + updatedCount + deletedCount, insertedCount, updatedCount, deletedCount, skippedCount });
     } catch (err) {
       console.error("POST /api/items/bulk error:", err.message);
       res.status(500).json({ error: err.message });
@@ -1561,18 +1587,38 @@ app.post("/api/items/bulk", async (req, res) => {
     if (!data.items) data.items = [];
     const existingNameKeys = new Set(data.items.map(i => normalizeItemKey(i.name)));
     let insertedCount = 0;
+    let updatedCount = 0;
+    let deletedCount = 0;
     let skippedCount = 0;
 
     for (const item of items) {
-      if (!item.id || !item.name) continue;
+      const idUpper = String(item.id || "").trim().toUpperCase();
+      const actionUpper = String(item.action || "NEW").trim().toUpperCase();
+
+      if (actionUpper === "DELETE" || actionUpper === "REMOVE") {
+        data.items = data.items.filter(i => String(i.id).trim().toUpperCase() !== idUpper);
+        deletedCount++;
+        continue;
+      }
+
+      if (actionUpper === "UPDATE" || actionUpper === "EDIT") {
+        const idx = data.items.findIndex(i => String(i.id).trim().toUpperCase() === idUpper);
+        if (idx !== -1) {
+          data.items[idx] = { ...data.items[idx], ...item };
+          updatedCount++;
+        }
+        continue;
+      }
+
+      if (!idUpper || !item.name) continue;
       const key = normalizeItemKey(item.name);
-      if (existingNameKeys.has(key)) {
+      if (existingNameKeys.has(key) && !data.items.some(i => String(i.id).trim().toUpperCase() === idUpper)) {
         skippedCount++;
         continue;
       }
       existingNameKeys.add(key);
 
-      const idx = data.items.findIndex(i => i.id === item.id);
+      const idx = data.items.findIndex(i => String(i.id).trim().toUpperCase() === idUpper);
       if (idx !== -1) {
         data.items[idx] = { ...data.items[idx], ...item };
       } else {
@@ -1581,7 +1627,7 @@ app.post("/api/items/bulk", async (req, res) => {
       insertedCount++;
     }
     writeLocalJson(data);
-    res.json({ success: true, count: insertedCount, skippedCount });
+    res.json({ success: true, count: insertedCount + updatedCount + deletedCount, insertedCount, updatedCount, deletedCount, skippedCount });
   }
 });
 
