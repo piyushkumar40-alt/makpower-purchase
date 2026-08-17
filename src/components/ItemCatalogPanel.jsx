@@ -1306,14 +1306,14 @@ export default function ItemCatalogPanel({
                 <th>Nature</th>
                 <th>Unit (UOM)</th>
                 <th>Description / Specs</th>
-                <th>Created By</th>
+                {isSuperAdmin && <th>Created By</th>}
                 <th style={{ textAlign: "center" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan="10" style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
+                  <td colSpan={isSuperAdmin ? "10" : "9"} style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
                     {searchQuery || categoryFilter !== "all" || typeFilter !== "all"
                       ? "No catalog items match your search filter."
                       : "Master Item Catalog is empty. Click 'Add Master Item' or 'Excel Bulk Upload' above to populate items!"}
@@ -1371,12 +1371,14 @@ export default function ItemCatalogPanel({
                       <td style={{ color: "var(--text-muted)", fontSize: "0.8rem", maxWidth: "250px", cursor: "pointer" }} onClick={() => handleItemClick(item)}>
                         {item.description || "-"}
                       </td>
-                      <td style={{ cursor: "pointer" }} onClick={() => handleItemClick(item)}>
-                        <span className="badge badge-secondary" style={{ fontSize: "0.75rem", textTransform: "capitalize", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                          <User size={10} />
-                          {item.createdBy || item.entryBy || (currentUser?.name ? currentUser.name : "Super Admin")}
-                        </span>
-                      </td>
+                      {isSuperAdmin && (
+                        <td style={{ cursor: "pointer" }} onClick={() => handleItemClick(item)}>
+                          <span className="badge badge-secondary" style={{ fontSize: "0.75rem", textTransform: "capitalize", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                            <User size={10} />
+                            {item.createdBy || item.entryBy || (currentUser?.name ? currentUser.name : "Super Admin")}
+                          </span>
+                        </td>
+                      )}
                       <td style={{ textAlign: "center" }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
                           <button 
