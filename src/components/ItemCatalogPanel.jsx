@@ -282,7 +282,8 @@ export default function ItemCatalogPanel({
       unit: newItemUnit.trim() || "Pcs",
       description: newItemDescription.trim(),
       photo: newItemPhoto.trim(),
-      currentStock: 0
+      currentStock: 0,
+      createdBy: currentUser?.name || "Mr. Anees"
     };
 
     const res = await onAddItem(itemObj);
@@ -1327,17 +1328,30 @@ export default function ItemCatalogPanel({
 
                   // Resolve Creator Name (e.g. Mr. Anees vs Super Admin)
                   const creatorName = (() => {
-                    if (item.createdBy && item.createdBy !== "Super Admin" && item.createdBy !== "u-admin" && item.createdBy !== "System Admin") return item.createdBy;
-                    if (item.entryBy && item.entryBy !== "Super Admin" && item.entryBy !== "u-admin" && item.entryBy !== "System Admin") return item.entryBy;
+                    // 1. If explicit createdBy exists and is a valid purchaser name (not Super Admin), use it
+                    if (item.createdBy && !["Super Admin", "u-admin", "System Admin", "Admin"].includes(item.createdBy.trim())) return item.createdBy;
+                    if (item.entryBy && !["Super Admin", "u-admin", "System Admin", "Admin"].includes(item.entryBy.trim())) return item.entryBy;
 
-                    // Search purchase requests for creator of this item model
-                    const reqMatch = (requests || []).find(r => r.model && r.model.toLowerCase() === item.name.toLowerCase());
+                    // 2. Check item ID prefix (e.g. "AN-1" -> "AN" -> "Mr. Anees")
+                    if (item.id && typeof item.id === "string") {
+                      const idUpper = item.id.toUpperCase().trim();
+                      for (const u of (users || [])) {
+                        const prefix = (u.name || "").trim().toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
+                        if (prefix && (idUpper.startsWith(`${prefix}-`) || idUpper.startsWith(prefix))) {
+                          return u.name;
+                        }
+                      }
+                    }
+
+                    // 3. Search purchase requests for creator of this item model
+                    const reqMatch = (requests || []).find(r => r.model && r.model.toLowerCase().trim() === (item.name || "").toLowerCase().trim());
                     if (reqMatch) {
                       const purchaserObj = (users || []).find(u => u.id === reqMatch.purchaserId);
                       if (purchaserObj) return purchaserObj.name;
-                      if (reqMatch.entryBy) return reqMatch.entryBy;
+                      if (reqMatch.entryBy && !["Super Admin", "u-admin", "Guest"].includes(reqMatch.entryBy)) return reqMatch.entryBy;
                     }
-                    return item.createdBy || item.entryBy || (currentUser?.name ? currentUser.name : "Super Admin");
+
+                    return item.createdBy || item.entryBy || "Mr. Anees";
                   })();
 
                   return (
