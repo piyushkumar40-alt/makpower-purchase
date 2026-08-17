@@ -2,12 +2,14 @@ import React, { useState } from "react";
 import { 
   X, Package, MapPin, Truck, Calendar, User, DollarSign, Clock, 
   CheckCircle2, AlertTriangle, ExternalLink, Layers, Building2, 
-  ZoomIn, ArrowRight, ShieldCheck, Tag, Info, History
+  ZoomIn, ArrowRight, ArrowLeft, ShieldCheck, Tag, Info, History
 } from "lucide-react";
 
 export default function ItemDetailModal({ 
   item, 
   onClose, 
+  onBack,
+  isFullPage = true,
   requests = [], 
   cargos = [], 
   vendors = [], 
@@ -65,9 +67,10 @@ export default function ItemDetailModal({
   const vendorList = Object.values(vendorMap).sort((a, b) => b.totalSpend - a.totalSpend);
 
   const isFG = item.itemType === "FG";
+  const handleGoBack = onClose || onBack;
 
   return (
-    <div className="modal-backdrop card-fade-in" style={{ zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+    <div className={isFullPage ? "card-fade-in" : "modal-backdrop card-fade-in"} style={isFullPage ? { width: "100%", maxWidth: "1200px", margin: "0 auto" } : { zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
       
       {/* Lightbox Image Zoom Modal */}
       {enlargedImage && (
@@ -134,8 +137,7 @@ export default function ItemDetailModal({
         className="glass-panel" 
         style={{
           width: "100%",
-          maxWidth: "1050px",
-          maxHeight: "90vh",
+          maxHeight: isFullPage ? "none" : "90vh",
           display: "flex",
           flexDirection: "column",
           borderRadius: "16px",
@@ -145,9 +147,9 @@ export default function ItemDetailModal({
         }}
       >
         
-        {/* Modal Top Header Bar */}
+        {/* Modal Top Header Bar with Prominent Back Button */}
         <div style={{ 
-          padding: "20px 24px", 
+          padding: "18px 24px", 
           background: "rgba(15, 23, 42, 0.9)", 
           borderBottom: "1px solid var(--border-color)",
           display: "flex",
@@ -156,7 +158,16 @@ export default function ItemDetailModal({
           flexWrap: "wrap",
           gap: "12px"
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+            {handleGoBack && (
+              <button 
+                onClick={handleGoBack}
+                className="btn btn-secondary btn-sm"
+                style={{ borderRadius: "8px", padding: "8px 16px", display: "inline-flex", alignItems: "center", gap: "8px", fontWeight: 700, borderColor: "#38bdf8", color: "#38bdf8" }}
+              >
+                <ArrowLeft size={18} /> Back
+              </button>
+            )}
             {item.photo ? (
               <div 
                 onClick={() => setEnlargedImage(true)}

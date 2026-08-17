@@ -10,6 +10,7 @@ import CoordinatorDashboard from "./components/CoordinatorDashboard";
 import ItemMasterView from "./components/ItemMasterView";
 import ItemCatalogPanel from "./components/ItemCatalogPanel";
 import OwnerDashboard from "./components/OwnerDashboard";
+import ItemDetailModal from "./components/ItemDetailModal";
 import HomePage from "./components/HomePage";
 import { initialUsers, initialVendors, initialRequests, initialCargoShipments, initialCargoCompanies } from "./mockData";
 
@@ -48,20 +49,37 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
-  // activeView: "login" | "home" | "requester" | "dashboard" | "admin" | "nitin" | "rahul" | "coordinator" | "itemcatalog"
+  // activeView: "login" | "home" | "requester" | "dashboard" | "admin" | "nitin" | "rahul" | "coordinator" | "itemcatalog" | "itemdetail"
   const [activeView, setActiveView] = useState(() => {
     const savedView = localStorage.getItem("makpower_active_view");
     const savedUser = localStorage.getItem("makpower_current_user");
     if (savedUser) {
-      if (savedView) return savedView;
+      if (savedView && savedView !== "itemdetail") return savedView;
       return "home";
     }
     return "login";
   });
 
+  const [selectedItemForDetail, setSelectedItemForDetail] = useState(null);
+  const [previousViewBeforeItemDetail, setPreviousViewBeforeItemDetail] = useState("dashboard");
+
+  const handleOpenItemDetail = (item) => {
+    if (!item) return;
+    setPreviousViewBeforeItemDetail(activeView);
+    setSelectedItemForDetail(item);
+    setActiveView("itemdetail");
+  };
+
+  const handleBackFromItemDetail = () => {
+    setActiveView(previousViewBeforeItemDetail || "dashboard");
+    setSelectedItemForDetail(null);
+  };
+
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem("makpower_active_view", activeView);
+      if (activeView !== "itemdetail") {
+        localStorage.setItem("makpower_active_view", activeView);
+      }
     } else {
       localStorage.removeItem("makpower_active_view");
     }
@@ -1041,6 +1059,23 @@ export default function App() {
               onUpdateItem={updateItem}
               onMergeItems={mergeItems}
               currentUser={currentUser}
+              requests={requests}
+              cargos={cargos}
+              vendors={vendors}
+              users={users}
+              cargoCompanies={cargoCompanies}
+              onViewItemDetail={handleOpenItemDetail}
+            />
+          </div>
+        )}
+
+        {activeView === "itemdetail" && selectedItemForDetail && (
+          <div style={{ flex: 1, padding: "24px", maxWidth: "1400px", margin: "0 auto", width: "100%" }}>
+            <ItemDetailModal 
+              item={selectedItemForDetail}
+              onClose={handleBackFromItemDetail}
+              onBack={handleBackFromItemDetail}
+              isFullPage={true}
               requests={requests}
               cargos={cargos}
               vendors={vendors}

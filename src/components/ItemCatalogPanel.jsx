@@ -23,13 +23,22 @@ export default function ItemCatalogPanel({
   cargos = [],
   vendors = [],
   users = [],
-  cargoCompanies = []
+  cargoCompanies = [],
+  onViewItemDetail
 }) {
   const isSuperAdmin = currentUser && currentUser.role === "superadmin";
 
   const [selectedItemDetail, setSelectedItemDetail] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+
+  const handleItemClick = (item) => {
+    if (onViewItemDetail) {
+      onViewItemDetail(item);
+    } else {
+      setSelectedItemDetail(item);
+    }
+  };
   
   // Selection state for bulk delete
   const [selectedIds, setSelectedIds] = useState([]);
@@ -1315,7 +1324,7 @@ export default function ItemCatalogPanel({
                           style={{ cursor: "pointer" }}
                         />
                       </td>
-                      <td style={{ textAlign: "center", cursor: "pointer" }} onClick={() => setSelectedItemDetail(item)}>
+                      <td style={{ textAlign: "center", cursor: "pointer" }} onClick={() => handleItemClick(item)}>
                         {item.photo ? (
                           <img 
                             src={item.photo} 
@@ -1329,37 +1338,37 @@ export default function ItemCatalogPanel({
                           </div>
                         )}
                       </td>
-                      <td style={{ fontWeight: 800, color: "#38bdf8", fontSize: "0.9rem", cursor: "pointer" }} onClick={() => setSelectedItemDetail(item)} title="Click to view full item history & location details">
+                      <td style={{ fontWeight: 800, color: "#38bdf8", fontSize: "0.9rem", cursor: "pointer" }} onClick={() => handleItemClick(item)} title="Click to view full item history & location details">
                         #{item.id}
                       </td>
-                      <td style={{ fontWeight: 600, color: "var(--text-main)", cursor: "pointer" }} onClick={() => setSelectedItemDetail(item)}>
+                      <td style={{ fontWeight: 600, color: "var(--text-main)", cursor: "pointer" }} onClick={() => handleItemClick(item)}>
                         {item.name}
                       </td>
-                      <td style={{ cursor: "pointer" }} onClick={() => setSelectedItemDetail(item)}>
+                      <td style={{ cursor: "pointer" }} onClick={() => handleItemClick(item)}>
                         <span className="badge badge-secondary" style={{ fontSize: "0.75rem" }}>
                           {item.category || "General"}
                         </span>
                       </td>
-                      <td style={{ cursor: "pointer" }} onClick={() => setSelectedItemDetail(item)}>
+                      <td style={{ cursor: "pointer" }} onClick={() => handleItemClick(item)}>
                         <span className="badge" style={{ fontSize: "0.75rem", fontWeight: 700, background: isFG ? "rgba(16, 185, 129, 0.18)" : "rgba(99, 102, 241, 0.18)", color: isFG ? "#34d399" : "#a5b4fc", border: `1px solid ${isFG ? "rgba(16, 185, 129, 0.3)" : "rgba(99, 102, 241, 0.3)"}` }}>
                           {isFG ? "FG (Finished)" : "RM (Raw Material)"}
                         </span>
                       </td>
-                      <td style={{ cursor: "pointer" }} onClick={() => setSelectedItemDetail(item)}>
+                      <td style={{ cursor: "pointer" }} onClick={() => handleItemClick(item)}>
                         <span className={`badge ${item.itemNature === "Consumables" ? "badge-warning" : "badge-approved"}`} style={{ fontSize: "0.75rem" }}>
                           {item.itemNature || "Non Consumables"}
                         </span>
                       </td>
-                      <td style={{ fontWeight: 500, cursor: "pointer" }} onClick={() => setSelectedItemDetail(item)}>
+                      <td style={{ fontWeight: 500, cursor: "pointer" }} onClick={() => handleItemClick(item)}>
                         {item.unit || "Pcs"}
                       </td>
-                      <td style={{ color: "var(--text-muted)", fontSize: "0.8rem", maxWidth: "250px", cursor: "pointer" }} onClick={() => setSelectedItemDetail(item)}>
+                      <td style={{ color: "var(--text-muted)", fontSize: "0.8rem", maxWidth: "250px", cursor: "pointer" }} onClick={() => handleItemClick(item)}>
                         {item.description || "-"}
                       </td>
                       <td style={{ textAlign: "center" }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
                           <button 
-                            onClick={() => setSelectedItemDetail(item)}
+                            onClick={() => handleItemClick(item)}
                             className="btn btn-sm btn-primary"
                             title="View Full Item Details, History & Tracking"
                             style={{ padding: "4px 8px", fontSize: "0.75rem" }}
