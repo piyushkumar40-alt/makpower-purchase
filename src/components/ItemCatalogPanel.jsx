@@ -1,5 +1,11 @@
-import React, { useState } from "react";
-import { Layers, Plus, Upload, Trash2, Search, CheckSquare, Square, FileSpreadsheet, Package, AlertCircle, RefreshCw } from "lucide-react";
+// Normalize item names for fuzzy duplicate detection (e.g. DC02, DC 02, DC2, DC-2, DC-02 -> DC2)
+export function normalizeItemKey(str) {
+  if (!str) return "";
+  let s = String(str).trim().toUpperCase();
+  s = s.replace(/[^A-Z0-9]/g, "");
+  s = s.replace(/([A-Z]+)0+(\d+)/g, "$1$2");
+  return s;
+}
 
 export default function ItemCatalogPanel({
   items = [],
@@ -86,6 +92,14 @@ export default function ItemCatalogPanel({
 
     if (!cleanId || !cleanName) {
       setFormMsg("Item ID and Item Name are required.");
+      return;
+    }
+
+    // Check for fuzzy duplicate item names (e.g. DC02, DC 02, DC2, DC-2, DC-02)
+    const targetKey = normalizeItemKey(cleanName);
+    const existingMatch = items.find(i => i.id !== cleanId && normalizeItemKey(i.name) === targetKey);
+    if (existingMatch) {
+      setFormMsg(`⚠️ Item already created! An existing item "${existingMatch.name}" (Item ID #${existingMatch.id}) matches "${cleanName}".`);
       return;
     }
 
@@ -180,6 +194,7 @@ export default function ItemCatalogPanel({
 
         // Map columns intelligently (supports headers like: ID, Item ID, Name, Item Name, Model, Category, Nature, Unit, Description)
         const existingIds = new Set(items.map(i => String(i.id).trim().toUpperCase()));
+        const existingNameKeys = new Map(items.map(i => [normalizeItemKey(i.name), i]));
         const parsed = [];
         let autoIdCounter = 1;
 
@@ -194,6 +209,11 @@ export default function ItemCatalogPanel({
           const rawDesc = row["Description"] || row["Notes"] || row["Specs"] || row["description"] || "";
 
           if (!rawName) return; // Skip empty rows
+
+          const cleanName = String(rawName).trim();
+          const nameKey = normalizeItemKey(cleanName);
+          const duplicateMatch = existingNameKeys.get(nameKey);
+          const isDuplicate = Boolean(duplicateMatch);
 
           let finalType = "RM";
           const typeStr = String(rawType).trim().toUpperCase();
@@ -220,16 +240,21 @@ export default function ItemCatalogPanel({
           }
 
           existingIds.add(finalId);
+          if (!isDuplicate) {
+            existingNameKeys.set(nameKey, { id: finalId, name: cleanName });
+          }
 
           parsed.push({
             id: finalId,
-            name: String(rawName).trim(),
+            name: cleanName,
             category: String(rawCategory).trim(),
             itemType: finalType,
             itemNature: String(rawNature).includes("Consumable") ? "Consumables" : "Non Consumables",
             unit: String(rawUnit).trim() || "Pcs",
             description: String(rawDesc).trim(),
-            currentStock: 0
+            currentStock: 0,
+            isDuplicate,
+            duplicateMatchName: duplicateMatch ? duplicateMatch.name : null
           });
         });
 
@@ -248,10 +273,15 @@ export default function ItemCatalogPanel({
   };
 
   const handleConfirmBulkUpload = async () => {
-    if (bulkParsedItems.length === 0) return;
+    const validItems = bulkParsedItems.filter(i => !i.isDuplicate);
+    if (validItems.length === 0) {
+      setBulkError("⚠️ All items in the uploaded file already exist in the catalog (e.g. DC-02 matched existing DC02). No new items to import.");
+      return;
+    }
+
     setUploadingBulk(true);
     try {
-      const res = await onBulkAddItems(bulkParsedItems);
+      const res = await onBulkAddItems(validItems);
       if (res && res.success) {
         setShowBulkModal(false);
         setBulkParsedItems([]);
@@ -473,9 +503,16 @@ export default function ItemCatalogPanel({
                   </thead>
                   <tbody>
                     {bulkParsedItems.map((pi, idx) => (
-                      <tr key={idx}>
+                      <tr key={idx} style={{ opacity: pi.isDuplicate ? 0.65 : 1 }}>
                         <td style={{ fontWeight: 700, color: "var(--primary)" }}>#{pi.id}</td>
-                        <td style={{ fontWeight: 600 }}>{pi.name}</td>
+                        <td style={{ fontWeight: 600 }}>
+                          {pi.name}
+                          {pi.isDuplicate && (
+                            <span className="badge badge-danger" style={{ marginLeft: "8px", fontSize: "0.7rem", textTransform: "none" }}>
+                              Already Exists (matches "{pi.duplicateMatchName}") — Skipped
+                            </span>
+                          )}
+                        </td>
                         <td>{pi.category || "General"}</td>
                         <td>
                           <span className={`badge ${pi.itemType === "FG" ? "badge-success" : "badge-secondary"}`}>

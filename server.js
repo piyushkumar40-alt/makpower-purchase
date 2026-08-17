@@ -1460,14 +1460,35 @@ app.get("/api/items", async (req, res) => {
   }
 });
 
+// Helper to normalize item names for fuzzy duplicate detection (e.g. DC02, DC 02, DC2, DC-2, DC-02 -> DC2)
+function normalizeItemKey(str) {
+  if (!str) return "";
+  let s = String(str).trim().toUpperCase();
+  s = s.replace(/[^A-Z0-9]/g, "");
+  s = s.replace(/([A-Z]+)0+(\d+)/g, "$1$2");
+  return s;
+}
+
 // POST /api/items - Add or update a single Master Item
 app.post("/api/items", async (req, res) => {
   const item = req.body;
   if (!item.id || !item.name) {
     return res.status(400).json({ error: "Item ID and Item Name are required." });
   }
+
+  const targetKey = normalizeItemKey(item.name);
+
   if (isPg) {
     try {
+      // Check for fuzzy duplicate item name matching (DC02 == DC 02 == DC-2 == DC-02)
+      const existingRes = await pool.query("SELECT * FROM items");
+      const match = existingRes.rows.find(i => i.id !== item.id && normalizeItemKey(i.name) === targetKey);
+      if (match) {
+        return res.status(400).json({
+          error: `Item already exists! An existing item "${match.name}" (Item ID #${match.id}) matches "${item.name}".`
+        });
+      }
+
       await pool.query(
         `INSERT INTO items ("id", "name", "category", "itemType", "itemNature", "unit", "description", "photo", "currentStock")
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -1482,6 +1503,13 @@ app.post("/api/items", async (req, res) => {
   } else {
     const data = readLocalJson();
     if (!data.items) data.items = [];
+    const match = data.items.find(i => i.id !== item.id && normalizeItemKey(i.name) === targetKey);
+    if (match) {
+      return res.status(400).json({
+        error: `Item already exists! An existing item "${match.name}" (Item ID #${match.id}) matches "${item.name}".`
+      });
+    }
+
     const idx = data.items.findIndex(i => i.id === item.id);
     if (idx !== -1) {
       data.items[idx] = { ...data.items[idx], ...item };
@@ -1501,16 +1529,29 @@ app.post("/api/items/bulk", async (req, res) => {
   }
   if (isPg) {
     try {
+      const existingRes = await pool.query("SELECT * FROM items");
+      const existingNameKeys = new Set(existingRes.rows.map(i => normalizeItemKey(i.name)));
+      let insertedCount = 0;
+      let skippedCount = 0;
+
       for (const item of items) {
         if (!item.id || !item.name) continue;
+        const key = normalizeItemKey(item.name);
+        if (existingNameKeys.has(key)) {
+          skippedCount++;
+          continue; // Skip duplicate item names (e.g. DC-02 if DC02 exists)
+        }
+        existingNameKeys.add(key);
+
         await pool.query(
           `INSERT INTO items ("id", "name", "category", "itemType", "itemNature", "unit", "description", "photo", "currentStock")
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name", "category" = EXCLUDED."category", "itemType" = EXCLUDED."itemType", "itemNature" = EXCLUDED."itemNature", "unit" = EXCLUDED."unit", "description" = EXCLUDED."description", "photo" = EXCLUDED."photo", "currentStock" = EXCLUDED."currentStock"`,
           [item.id, item.name, item.category || "", item.itemType || "RM", item.itemNature || "Non Consumables", item.unit || "Pcs", item.description || "", item.photo || "", item.currentStock || 0]
         );
+        insertedCount++;
       }
-      res.json({ success: true, count: items.length });
+      res.json({ success: true, count: insertedCount, skippedCount });
     } catch (err) {
       console.error("POST /api/items/bulk error:", err.message);
       res.status(500).json({ error: err.message });
@@ -1518,17 +1559,29 @@ app.post("/api/items/bulk", async (req, res) => {
   } else {
     const data = readLocalJson();
     if (!data.items) data.items = [];
+    const existingNameKeys = new Set(data.items.map(i => normalizeItemKey(i.name)));
+    let insertedCount = 0;
+    let skippedCount = 0;
+
     for (const item of items) {
       if (!item.id || !item.name) continue;
+      const key = normalizeItemKey(item.name);
+      if (existingNameKeys.has(key)) {
+        skippedCount++;
+        continue;
+      }
+      existingNameKeys.add(key);
+
       const idx = data.items.findIndex(i => i.id === item.id);
       if (idx !== -1) {
         data.items[idx] = { ...data.items[idx], ...item };
       } else {
         data.items.push(item);
       }
+      insertedCount++;
     }
     writeLocalJson(data);
-    res.json({ success: true, count: items.length });
+    res.json({ success: true, count: insertedCount, skippedCount });
   }
 });
 
