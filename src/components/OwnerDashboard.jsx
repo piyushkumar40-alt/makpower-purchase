@@ -21,7 +21,7 @@ export default function OwnerDashboard({
   const [searchQuery, setSearchQuery] = useState("");
 
   // Calculate High-Level Metrics
-  const activeRequests = requests.filter(r => r.status !== "Cancelled");
+  const activeRequests = (requests || []).filter(r => r.status !== "Cancelled");
   
   // Total Spend (RMB)
   const totalRmbSpend = activeRequests.reduce((sum, r) => sum + (parseFloat(r.totalRmb) || 0), 0);
@@ -31,8 +31,9 @@ export default function OwnerDashboard({
   const totalBalanceDue = activeRequests.reduce((sum, r) => sum + (parseFloat(r.balancePayment) || 0), 0);
 
   // In-Transit Cargos & Cargo Freight Spend
-  const inTransitCargos = cargos.filter(c => c.isMaterialRec !== "Yes");
-  const totalCargoFreightSpend = cargos.reduce((sum, c) => sum + (parseFloat(c.totalCargoPrice) || 0), 0);
+  const safeCargos = cargos || [];
+  const inTransitCargos = safeCargos.filter(c => c.isMaterialRec !== "Yes");
+  const totalCargoFreightSpend = safeCargos.reduce((sum, c) => sum + (parseFloat(c.totalCargoPrice) || 0), 0);
 
   // Completed Orders Count
   const completedOrders = activeRequests.filter(r => r.isMaterialRec === "Yes");
@@ -73,7 +74,7 @@ export default function OwnerDashboard({
   });
 
   // Vendor Performance Table Data
-  const vendorPerformance = vendors.map(v => {
+  const vendorPerformance = (vendors || []).map(v => {
     const vRequests = activeRequests.filter(r => r.vendorId === v.id);
     const vSpend = vRequests.reduce((sum, r) => sum + (parseFloat(r.totalRmb) || 0), 0);
     const vCompleted = vRequests.filter(r => r.isMaterialRec === "Yes").length;
@@ -89,7 +90,7 @@ export default function OwnerDashboard({
   }).sort((a, b) => b.spend - a.spend);
 
   // Purchaser Activity & Workload Table Data
-  const purchaserWorkload = users.map(u => {
+  const purchaserWorkload = (users || []).map(u => {
     const pRequests = activeRequests.filter(r => r.purchaserId === u.id || r.entryBy === u.name);
     const pSpend = pRequests.reduce((sum, r) => sum + (parseFloat(r.totalRmb) || 0), 0);
     return {
@@ -104,7 +105,7 @@ export default function OwnerDashboard({
 
   // Critical Risk & Delay Alerts
   const today = new Date().toISOString().slice(0, 10);
-  const delayedCargos = cargos.filter(c => c.isMaterialRec !== "Yes" && c.cargoEta && c.cargoEta < today);
+  const delayedCargos = safeCargos.filter(c => c.isMaterialRec !== "Yes" && c.cargoEta && c.cargoEta < today);
   const highValuePendingOrders = activeRequests.filter(r => r.isMaterialRec !== "Yes" && parseFloat(r.totalRmb) > 20000);
 
   // Download Owner Executive Summary Report CSV
