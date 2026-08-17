@@ -914,6 +914,7 @@ export default function App() {
               cargos={cargos}
               cargoCompanies={cargoCompanies}
               currentUser={currentUser}
+              items={items}
             />
           </div>
         )}
@@ -1030,15 +1031,19 @@ export default function App() {
 
         {activeView === "itemcatalog" && (
           <div style={{ flex: 1, padding: "24px", maxWidth: "1400px", margin: "0 auto", width: "100%" }}>
-            <ItemMasterView 
-              requests={requests} 
-              vendors={vendors} 
-              cargos={cargos} 
-              cargoCompanies={cargoCompanies} 
-              purchasers={users.filter(u => u.role === "purchaser")} 
-              settings={settings}
-              onUpdateSettings={handleUpdateSystemSettings}
-              onBatchUpdateRequests={batchUpdateRequests}
+            <ItemCatalogPanel 
+              items={items}
+              onAddItem={addItem}
+              onBulkAddItems={bulkAddItems}
+              onDeleteItems={deleteItems}
+              onUpdateItem={updateItem}
+              onMergeItems={mergeItems}
+              currentUser={currentUser}
+              requests={requests}
+              cargos={cargos}
+              vendors={vendors}
+              users={users}
+              cargoCompanies={cargoCompanies}
             />
           </div>
         )}
