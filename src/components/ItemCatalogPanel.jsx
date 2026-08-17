@@ -269,7 +269,7 @@ export default function ItemCatalogPanel({
     const targetKey = normalizeItemKey(cleanName);
     const existingMatch = items.find(i => i.id !== cleanId && normalizeItemKey(i.name) === targetKey);
     if (existingMatch) {
-      setFormMsg(`⚠️ Item already created! An existing item "${existingMatch.name}" (Item ID #${existingMatch.id}) matches "${cleanName}".`);
+      setFormMsg(`⚠️ Item already created! An existing item "${existingMatch.name}" matches "${cleanName}".`);
       return;
     }
 
@@ -299,7 +299,7 @@ export default function ItemCatalogPanel({
 
   // Single Item Delete
   const handleDeleteSingle = async (id, name) => {
-    if (!window.confirm(`Are you sure you want to delete item "${name}" (ID: ${id})?`)) return;
+    if (!window.confirm(`Are you sure you want to delete item "${name}"?`)) return;
     await onDeleteItems([id]);
     setSelectedIds(prev => prev.filter(x => x !== id));
   };
@@ -342,7 +342,7 @@ export default function ItemCatalogPanel({
     const targetKey = normalizeItemKey(cleanName);
     const match = items.find(i => i.id !== editingItem.id && normalizeItemKey(i.name) === targetKey);
     if (match) {
-      setEditMsg(`⚠️ Cannot rename! An item with name "${match.name}" (Item ID #${match.id}) already exists.`);
+      setEditMsg(`⚠️ Cannot rename! An item with name "${match.name}" already exists.`);
       return;
     }
 
@@ -735,7 +735,7 @@ export default function ItemCatalogPanel({
         <div className="glass-panel" style={{ padding: "24px", marginBottom: "24px", border: "1px solid #38bdf8" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
             <h3 style={{ fontSize: "1.1rem", color: "#38bdf8", display: "flex", alignItems: "center", gap: "8px" }}>
-              <Edit3 size={18} /> Edit Master Item Name & Details (#{editingItem.id})
+              <Edit3 size={18} /> Edit Master Item Name & Details
             </h3>
             <button onClick={() => setEditingItem(null)} className="btn btn-secondary btn-sm">Cancel</button>
           </div>
@@ -747,11 +747,6 @@ export default function ItemCatalogPanel({
           )}
 
           <form onSubmit={handleSaveEditItem} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Item ID (Read Only)</label>
-              <input type="text" className="form-control" value={editingItem.id} disabled style={{ opacity: 0.7 }} />
-            </div>
-
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Item Name / Model*</label>
               <input 
@@ -840,42 +835,56 @@ export default function ItemCatalogPanel({
 
           <form onSubmit={handleConfirmMerge} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px" }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label" style={{ color: "var(--danger)" }}>1. Select Item to MERGE & DELETE (Source)*</label>
-              <select 
+              <label className="form-label" style={{ color: "var(--danger)" }}>1. Type or Select Item to MERGE & DELETE (Source)*</label>
+              <input 
+                type="text" 
+                list="list-merge-source"
                 className="form-control" 
-                value={sourceId}
-                onChange={e => setSourceId(e.target.value)}
+                placeholder="Type or select Source Item..." 
+                value={items.find(i => i.id === sourceId)?.name || ""}
+                onChange={e => {
+                  const val = e.target.value;
+                  const matched = items.find(i => i.name.toLowerCase() === val.toLowerCase());
+                  setSourceId(matched ? matched.id : "");
+                }}
                 required
-              >
-                <option value="">-- Select Source Item to Remove --</option>
+              />
+              <datalist id="list-merge-source">
                 {items.map(i => (
-                  <option key={i.id} value={i.id}>
-                    #{i.id} — {i.name} ({i.category || "General"})
+                  <option key={i.id} value={i.name}>
+                    {i.name}
                   </option>
                 ))}
-              </select>
+              </datalist>
             </div>
 
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label" style={{ color: "#34d399" }}>2. Select Master Item to KEEP (Target)*</label>
-              <select 
+              <label className="form-label" style={{ color: "#34d399" }}>2. Type or Select Master Item to KEEP (Target)*</label>
+              <input 
+                type="text" 
+                list="list-merge-target"
                 className="form-control" 
-                value={targetId}
-                onChange={e => setTargetId(e.target.value)}
+                placeholder="Type or select Target Item..." 
+                value={items.find(i => i.id === targetId)?.name || ""}
+                onChange={e => {
+                  const val = e.target.value;
+                  const matched = items.filter(i => i.id !== sourceId).find(i => i.name.toLowerCase() === val.toLowerCase());
+                  setTargetId(matched ? matched.id : "");
+                }}
                 required
-              >
-                <option value="">-- Select Target Item to Keep --</option>
+              />
+              <datalist id="list-merge-target">
                 {items.filter(i => i.id !== sourceId).map(i => (
-                  <option key={i.id} value={i.id}>
-                    #{i.id} — {i.name} ({i.category || "General"})
+                  <option key={i.id} value={i.name}>
+                    {i.name}
                   </option>
                 ))}
-              </select>
+              </datalist>
             </div>
 
             {sourceId && targetId && sourceId !== targetId && (
               <div style={{ gridColumn: "1 / -1", padding: "14px 18px", background: "rgba(129, 140, 248, 0.12)", border: "1px solid rgba(129, 140, 248, 0.3)", borderRadius: "8px", fontSize: "0.88rem" }}>
-                <strong>Merge Preview:</strong> Item <code>"{items.find(i => i.id === sourceId)?.name}"</code> (#{sourceId}) will be combined into <code>"{items.find(i => i.id === targetId)?.name}"</code> (#{targetId}). All purchase order records pointing to #{sourceId} will update to "{items.find(i => i.id === targetId)?.name}".
+                <strong>Merge Preview:</strong> Item <code>"{items.find(i => i.id === sourceId)?.name}"</code> will be combined into <code>"{items.find(i => i.id === targetId)?.name}"</code>. All purchase order records pointing to "{items.find(i => i.id === sourceId)?.name}" will update to "{items.find(i => i.id === targetId)?.name}".
               </div>
             )}
 
@@ -1234,7 +1243,7 @@ export default function ItemCatalogPanel({
           <input 
             type="text"
             className="form-control"
-            placeholder="Search by Item ID (1, 2, 3...), Name, or Category..."
+            placeholder="Search by Item Name, Category, or Specifications..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             style={{ paddingLeft: "36px" }}
@@ -1291,7 +1300,6 @@ export default function ItemCatalogPanel({
                   />
                 </th>
                 <th style={{ width: "50px", textAlign: "center" }}>Image</th>
-                <th>Item ID</th>
                 <th>Name / Model</th>
                 <th>Category</th>
                 <th>Type (FG/RM)</th>
@@ -1305,7 +1313,7 @@ export default function ItemCatalogPanel({
             <tbody>
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan="11" style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
+                  <td colSpan="10" style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
                     {searchQuery || categoryFilter !== "all" || typeFilter !== "all"
                       ? "No catalog items match your search filter."
                       : "Master Item Catalog is empty. Click 'Add Master Item' or 'Excel Bulk Upload' above to populate items!"}
@@ -1338,9 +1346,6 @@ export default function ItemCatalogPanel({
                             <Package size={16} style={{ color: "var(--primary)" }} />
                           </div>
                         )}
-                      </td>
-                      <td style={{ fontWeight: 800, color: "#38bdf8", fontSize: "0.9rem", cursor: "pointer" }} onClick={() => handleItemClick(item)} title="Click to view full item history & location details">
-                        #{item.id}
                       </td>
                       <td style={{ fontWeight: 600, color: "var(--text-main)", cursor: "pointer" }} onClick={() => handleItemClick(item)}>
                         {item.name}

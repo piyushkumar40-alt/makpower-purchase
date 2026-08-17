@@ -1204,7 +1204,7 @@ export default function SuperAdminDashboard({
                           const modelMatch = r.model.toLowerCase().includes(searchLower);
                           
                           const purchaserObj = users.find(u => u.id === r.purchaserId);
-                          const purchaserMatch = purchaserObj ? purchaserObj.name.toLowerCase().includes(searchLower) : false;
+                          const purchaserMatch = purchaserObj && purchaserObj.name ? purchaserObj.name.toLowerCase().includes(searchLower) : false;
                           
                           return modelMatch || purchaserMatch;
                         }
@@ -1467,21 +1467,21 @@ export default function SuperAdminDashboard({
                 </h3>
                 
                 <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "16px" }}>
-                  Wipes all operational data (orders, requests, vendors, cargo shipments) starting fresh with 0 records. User accounts are preserved.
+                  Wipes all operational data (orders, requests, vendors, items, cargo shipments) starting completely fresh with 0 records. User accounts are preserved.
                 </p>
 
                 <button
                   onClick={async () => {
-                    if (!window.confirm("⚠️ ARE YOU SURE? This will permanently delete ALL orders, vendors, and cargo shipments!")) return;
+                    if (!window.confirm("⚠️ ARE YOU SURE? This will permanently delete ALL orders, vendors, items, and cargo shipments!")) return;
                     if (onPurgeAllData) {
-                      await onPurgeAllData(false);
-                      alert("✅ All operational data has been purged successfully!");
+                      await onPurgeAllData(true);
+                      alert("✅ All operational data, vendors, and items have been purged successfully!");
                     }
                   }}
                   className="btn btn-danger"
                   style={{ width: "100%", padding: "12px", fontSize: "0.9rem" }}
                 >
-                  Purge All Orders, Vendors & Cargo Data
+                  Purge All Orders, Vendors, Cargo & Items Data
                 </button>
               </div>
 

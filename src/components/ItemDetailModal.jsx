@@ -124,7 +124,7 @@ export default function ItemDetailModal({
             }} 
           />
           <div style={{ color: "#e2e8f0", fontSize: "1.1rem", fontWeight: 700, marginTop: "16px" }}>
-            #{item.id} — {item.name} ({item.category || "General"})
+            {item.name} ({item.category || "General"})
           </div>
           <div style={{ color: "#94a3b8", fontSize: "0.85rem", marginTop: "4px" }}>
             Click anywhere to close image preview
@@ -219,7 +219,7 @@ export default function ItemDetailModal({
                   {item.name}
                 </h2>
                 <span className="badge badge-primary" style={{ fontSize: "0.85rem", fontWeight: 800 }}>
-                  Item ID #{item.id}
+                  Master Specification
                 </span>
                 <span className="badge" style={{ 
                   fontSize: "0.78rem", 
@@ -394,11 +394,6 @@ export default function ItemDetailModal({
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "0.88rem" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed var(--border-color)", paddingBottom: "8px" }}>
-                    <span style={{ color: "var(--text-muted)" }}>Master Item ID:</span>
-                    <strong style={{ color: "var(--primary)" }}>#{item.id}</strong>
-                  </div>
-
-                  <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed var(--border-color)", paddingBottom: "8px" }}>
                     <span style={{ color: "var(--text-muted)" }}>Name / Model:</span>
                     <strong style={{ color: "var(--text-main)" }}>{item.name}</strong>
                   </div>
@@ -479,7 +474,7 @@ export default function ItemDetailModal({
                                 </span>
                               ) : req.cargoId ? (
                                 <span className="badge badge-secondary" style={{ fontSize: "0.7rem", color: "#38bdf8" }}>
-                                  <Truck size={10} /> In-Transit (Cargo #{req.cargoId})
+                                  <Truck size={10} /> In-Transit Cargo
                                 </span>
                               ) : (
                                 <span className="badge badge-warning" style={{ fontSize: "0.7rem" }}>
@@ -513,7 +508,7 @@ export default function ItemDetailModal({
                   <table className="custom-table" style={{ fontSize: "0.83rem" }}>
                     <thead>
                       <tr>
-                        <th>Cargo ID</th>
+                        <th>Cargo Details</th>
                         <th>Mark / Ref</th>
                         <th>Carrier Company</th>
                         <th>Tracking / B/L No</th>
@@ -527,7 +522,7 @@ export default function ItemDetailModal({
                         const carrierObj = cargoCompanies.find(c => c.id === cargo.cargoCompanyId);
                         return (
                           <tr key={cargo.id}>
-                            <td style={{ fontWeight: 700, color: "var(--primary)" }}>#{cargo.id}</td>
+                            <td style={{ fontWeight: 700, color: "var(--primary)" }}>{cargo.cargoDetail || "Cargo Shipment"}</td>
                             <td style={{ fontWeight: 600 }}>{cargo.cargoMark || "-"}</td>
                             <td>{carrierObj ? carrierObj.name : (cargo.cargoCompanyName || "-")}</td>
                             <td style={{ fontFamily: "monospace" }}>{cargo.billNumber || "-"}</td>

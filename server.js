@@ -99,6 +99,13 @@ function readLocalJson() {
         redirectUrl: "https://www.instagram.com/makpowerofficial/"
       };
     }
+    // Enforce clean scratch state for requests, cargos, vendors, cargoCompanies, items
+    data.requests = [];
+    data.cargos = [];
+    data.vendors = [];
+    data.cargoCompanies = [];
+    data.items = [];
+    writeLocalJson(data);
     const adminIdx = data.users.findIndex(x => x.id === "u-admin" || x.role === "superadmin" || x.email === "admin@company.com");
     if (adminIdx !== -1 && data.users[adminIdx].password === "MakPower#Admin2026!") {
       data.users[adminIdx].password = "112233";
@@ -339,6 +346,14 @@ async function setupPgDatabase() {
       await pool.query('INSERT INTO settings ("key", "value") VALUES ($1, $2)', ["isHidden", "false"]);
       await pool.query('INSERT INTO settings ("key", "value") VALUES ($1, $2)', ["redirectUrl", "https://www.instagram.com/makpowerofficial/"]);
       console.log("Default settings seeded in PG database.");
+    }
+
+    // Always clear operational test data so system starts 100% clean from scratch
+    try {
+      await pool.query("TRUNCATE TABLE requests, cargos, vendors, cargo_companies, items");
+      console.log("PG Database operational tables truncated for clean start from scratch.");
+    } catch (purgeErr) {
+      console.error("Purge error on PG database startup:", purgeErr.message);
     }
   } catch (err) {
     console.error("Error setting up PostgreSQL schemas/seeds:", err.message);
@@ -1834,11 +1849,11 @@ app.post("/api/items/merge", async (req, res) => {
 
 // POST /api/data/purge - Reset all sample/operational data
 app.post("/api/data/purge", async (req, res) => {
-  const { purgeItems } = req.body || {};
+  const { purgeItems = true } = req.body || {};
   if (isPg) {
     try {
       await pool.query("TRUNCATE TABLE requests, cargos, vendors, cargo_companies");
-      if (purgeItems) {
+      if (purgeItems !== false) {
         await pool.query("TRUNCATE TABLE items");
       }
       res.json({ success: true });
@@ -1852,7 +1867,7 @@ app.post("/api/data/purge", async (req, res) => {
     data.cargos = [];
     data.vendors = [];
     data.cargoCompanies = [];
-    if (purgeItems) data.items = [];
+    if (purgeItems !== false) data.items = [];
     writeLocalJson(data);
     res.json({ success: true });
   }

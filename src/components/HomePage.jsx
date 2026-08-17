@@ -216,7 +216,7 @@ export default function HomePage({
                 <table className="custom-table">
                   <thead>
                     <tr>
-                      <th>Order ID</th>
+                      <th>Logged Date</th>
                       <th>Model / Item</th>
                       <th>Quantity</th>
                       <th>Vendor</th>
@@ -233,7 +233,7 @@ export default function HomePage({
 
                       return (
                         <tr key={req.id}>
-                          <td><strong>{req.id}</strong></td>
+                          <td><strong>{req.orderDate || "—"}</strong></td>
                           <td style={{ fontWeight: 600 }}>{req.model}</td>
                           <td>{req.orderQuantity} units</td>
                           <td>{vName}</td>

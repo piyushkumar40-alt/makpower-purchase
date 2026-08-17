@@ -33,7 +33,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
   // Sync entry author and default purchaser when currentUser changes
   useEffect(() => {
     if (currentUser) {
-      setEntryBy(currentUser.name);
+      setEntryBy(currentUser.name || "Requester");
       if (currentUser.role === "purchaser") {
         setRows(prev => prev.map(r => ({ ...r, purchaserId: currentUser.id })));
       }
@@ -132,7 +132,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
     const rowPurchaserId = currentUser?.role === "purchaser" ? currentUser.id : (purchasers[0]?.id || "");
     if (!nameStr) return rowPurchaserId;
     const cleanName = nameStr.toLowerCase().replace("mr.", "").trim();
-    const match = purchasers.find(p => p.name.toLowerCase().includes(cleanName) || cleanName.includes(p.name.toLowerCase()));
+    const match = purchasers.find(p => p?.name && (p.name.toLowerCase().includes(cleanName) || cleanName.includes(p.name.toLowerCase())));
     return match ? match.id : rowPurchaserId;
   };
 
@@ -296,25 +296,27 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
           onClick={() => setActiveTab("form")} 
           className={`tab-btn ${activeTab === "form" ? "active" : ""}`}
         >
-          Purchase Requisition Sheet
+          Purchase Requisition
         </button>
-        <button 
-          onClick={() => setActiveTab("catalog")} 
-          className={`tab-btn ${activeTab === "catalog" ? "active" : ""}`}
-          style={{ color: "#38bdf8", fontWeight: 700 }}
-        >
-          <Package size={14} style={{ marginRight: "4px", display: "inline" }} /> Item Catalog & Stock Lookup
-        </button>
+        {currentUser && (
+          <button 
+            onClick={() => setActiveTab("catalog")} 
+            className={`tab-btn ${activeTab === "catalog" ? "active" : ""}`}
+            style={{ color: "#38bdf8", fontWeight: 700 }}
+          >
+            <Package size={14} style={{ marginRight: "4px", display: "inline" }} /> Item Catalog & Stock Lookup
+          </button>
+        )}
       </div>
 
-      {activeTab === "catalog" ? (
+      {activeTab === "catalog" && currentUser ? (
         <ItemMasterView requests={requests} vendors={vendors} cargos={cargos} cargoCompanies={cargoCompanies} purchasers={purchasers} />
       ) : (
         <>
       {/* Header Info */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-glass)", paddingBottom: "16px", marginBottom: "20px", flexWrap: "wrap", gap: "15px" }}>
         <div>
-          <h2 style={{ fontSize: "1.6rem" }}>Mak Power Purchase Request Sheet</h2>
+          <h2 style={{ fontSize: "1.6rem" }}>Mak Power Purchase Request</h2>
           <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "2px" }}>
             Enter multiple purchase items below or copy-paste directly from your tracking Excel sheets.
           </p>
@@ -392,82 +394,63 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
 
                   {/* Category */}
                   <td>
-                    {catalogCategories.length > 0 ? (
-                      <select 
-                        className="form-control" 
-                        style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
-                        value={row.category}
-                        onChange={e => {
-                          const catVal = e.target.value;
-                          updateCell(row.id, "category", catVal);
-                        }}
-                      >
-                        <option value="" style={{ background: "#0f172a" }}>Select Category...</option>
-                        {catalogCategories.map(cat => (
-                          <option key={cat} value={cat} style={{ background: "#0f172a" }}>{cat}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
-                        placeholder="e.g. AUDIO" 
-                        value={row.category}
-                        onChange={e => updateCell(row.id, "category", e.target.value)}
-                        required
-                      />
-                    )}
+                    <input 
+                      type="text" 
+                      list={`list-cat-${row.id}`}
+                      className="form-control" 
+                      style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+                      placeholder="Type or Select Category..." 
+                      value={row.category}
+                      onChange={e => updateCell(row.id, "category", e.target.value)}
+                      required
+                    />
+                    <datalist id={`list-cat-${row.id}`}>
+                      {catalogCategories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </datalist>
                   </td>
 
                   {/* Item Name / Model */}
                   <td>
-                    {items && items.length > 0 ? (
-                      <select 
-                        className="form-control" 
-                        style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
-                        value={row.model}
-                        onChange={e => {
-                          const selectedName = e.target.value;
-                          const matchedItem = items.find(i => i.name === selectedName);
-                          if (matchedItem) {
-                            setRows(prev => prev.map(r => {
-                              if (r.id === row.id) {
-                                return {
-                                  ...r,
-                                  model: matchedItem.name,
-                                  category: matchedItem.category || r.category,
-                                  type: matchedItem.itemType || r.type,
-                                  itemNature: matchedItem.itemNature || r.itemNature
-                                };
-                              }
-                              return r;
-                            }));
-                          } else {
-                            updateCell(row.id, "model", selectedName);
-                          }
-                        }}
-                      >
-                        <option value="" style={{ background: "#0f172a" }}>Select Item Model...</option>
-                        {items
-                          .filter(i => !row.category || i.category === row.category)
-                          .map(item => (
-                            <option key={item.id} value={item.name} style={{ background: "#0f172a" }}>
-                              {item.name} (ID: {item.id}) - {item.category || "General"}
-                            </option>
-                          ))}
-                      </select>
-                    ) : (
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
-                        placeholder="e.g. AUDIO001" 
-                        value={row.model}
-                        onChange={e => updateCell(row.id, "model", e.target.value)}
-                        required
-                      />
-                    )}
+                    <input 
+                      type="text" 
+                      list={`list-model-${row.id}`}
+                      className="form-control" 
+                      style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+                      placeholder="Type or Select Item Model..." 
+                      value={row.model}
+                      onChange={e => {
+                        const selectedName = e.target.value;
+                        const matchedItem = (items || []).find(i => i.name.toLowerCase() === selectedName.toLowerCase());
+                        if (matchedItem) {
+                          setRows(prev => prev.map(r => {
+                            if (r.id === row.id) {
+                              return {
+                                ...r,
+                                model: matchedItem.name,
+                                category: matchedItem.category || r.category,
+                                type: matchedItem.itemType || r.type,
+                                itemNature: matchedItem.itemNature || r.itemNature
+                              };
+                            }
+                            return r;
+                          }));
+                        } else {
+                          updateCell(row.id, "model", selectedName);
+                        }
+                      }}
+                      required
+                    />
+                    <datalist id={`list-model-${row.id}`}>
+                      {(items || [])
+                        .filter(i => !row.category || (i.category && i.category.toLowerCase() === row.category.toLowerCase()))
+                        .map(item => (
+                          <option key={item.id || item.name} value={item.name}>
+                            {item.name}
+                          </option>
+                        ))}
+                    </datalist>
                   </td>
 
                   {/* Qty */}

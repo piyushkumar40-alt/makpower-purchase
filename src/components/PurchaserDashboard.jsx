@@ -539,12 +539,25 @@ export default function PurchaserDashboard({
             <div style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap", marginBottom: "16px" }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Filter by Vendor</label>
-                <select className="form-control" value={vrFilter} onChange={e => { setVrFilter(e.target.value); setVrChecked([]); }} style={{ minWidth: "200px" }}>
-                  <option value="">All Vendors</option>
+                <input 
+                  type="text" 
+                  list="list-vr-vendors"
+                  className="form-control" 
+                  placeholder="Type or Select Vendor..." 
+                  value={vendors.find(v => v.id === vrFilter)?.name || ""}
+                  onChange={e => {
+                    const val = e.target.value;
+                    const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
+                    setVrFilter(matched ? matched.id : "");
+                    setVrChecked([]);
+                  }}
+                  style={{ minWidth: "200px" }}
+                />
+                <datalist id="list-vr-vendors">
                   {vendors.filter(v => v.status !== "Inactive").map(v => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
+                    <option key={v.id} value={v.name}>{v.name}</option>
                   ))}
-                </select>
+                </datalist>
               </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Ready Date</label>
@@ -674,12 +687,25 @@ export default function PurchaserDashboard({
             <div style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap", marginBottom: "16px" }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Filter by Vendor</label>
-                <select className="form-control" value={cpFilter} onChange={e => { setCpFilter(e.target.value); setCpChecked([]); }} style={{ minWidth: "200px" }}>
-                  <option value="">All Vendors</option>
+                <input 
+                  type="text" 
+                  list="list-cp-vendors"
+                  className="form-control" 
+                  placeholder="Type or Select Vendor..." 
+                  value={vendors.find(v => v.id === cpFilter)?.name || ""}
+                  onChange={e => {
+                    const val = e.target.value;
+                    const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
+                    setCpFilter(matched ? matched.id : "");
+                    setCpChecked([]);
+                  }}
+                  style={{ minWidth: "200px" }}
+                />
+                <datalist id="list-cp-vendors">
                   {vendors.filter(v => v.status !== "Inactive").map(v => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
+                    <option key={v.id} value={v.name}>{v.name}</option>
                   ))}
-                </select>
+                </datalist>
               </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Pickup Date</label>
@@ -1339,7 +1365,7 @@ function EditRequestModal({ request, requests, vendors, currentUser, onClose, on
       <div className="glass-panel modal-content">
         <h3 style={{ fontSize: "1.4rem", marginBottom: "6px", color: "var(--primary)" }}>Fulfill Purchase Details (Step 1)</h3>
         <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "20px" }}>
-          Model: <strong>{request.model}</strong> | Qty: {request.orderQuantity} | Vendor: {vName}
+          Model: <strong>{request.model}</strong> | Qty: {request.orderQuantity}
         </p>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -1347,28 +1373,29 @@ function EditRequestModal({ request, requests, vendors, currentUser, onClose, on
           {/* Vendor Selection (Required) */}
           <div className="form-group">
             <label className="form-label">Vendor / Supplier</label>
-            <select 
+            <input 
+              type="text" 
+              list="pricing-vendor-list"
               className="form-control"
-              value={vendorId}
-              onChange={e => setVendorId(e.target.value)}
+              placeholder="Type or Select Vendor..."
+              value={vendors.find(v => v.id === vendorId)?.name || ""}
+              onChange={e => {
+                const val = e.target.value;
+                const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
+                setVendorId(matched ? matched.id : "");
+              }}
               required
-            >
-              <option value="" style={{ background: "#0f172a" }}>Select Vendor...</option>
+            />
+            <datalist id="pricing-vendor-list">
               {vendors
                 .filter(v => v.status !== "Inactive")
                 .filter(v => currentUser.role === "superadmin" || v.purchaserIds?.includes(currentUser.id))
-                .map(v => {
-                  const metrics = calculateVendorMetrics(v, requests);
-                  const scoreText = metrics.scorePending
-                    ? `Rating: Pending — Insufficient History [${metrics.completedCount}/5 completed]`
-                    : `Rating: ${metrics.score}/100`;
-                  return (
-                    <option key={v.id} value={v.id} style={{ background: "#0f172a" }}>
-                      {v.name} ({scoreText})
-                    </option>
-                  );
-                })}
-            </select>
+                .map(v => (
+                  <option key={v.id} value={v.name}>
+                    {v.name} ({v.location || "Supplier"})
+                  </option>
+                ))}
+            </datalist>
           </div>
           
           {/* Currency selection & Price per unit */}
@@ -1535,7 +1562,7 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px", marginBottom: "20px" }}>
           <div>
-            <h3 style={{ fontSize: "1.4rem", fontWeight: 700 }}>Order ID: {request.id}</h3>
+            <h3 style={{ fontSize: "1.4rem", fontWeight: 700 }}>Requisition Details: {request.model}</h3>
             <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Logged Date: {request.orderDate}</p>
           </div>
           <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
@@ -1604,7 +1631,7 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
             </h4>
             {cargo ? (
               <div className="details-list">
-                <div className="details-term">Cargo ID:</div><div className="details-def" style={{ fontWeight: 600 }}>{cargo.id}</div>
+                <div className="details-term">Cargo Code:</div><div className="details-def" style={{ fontWeight: 600 }}>{cargo.cargoDetail || cargo.cargoMark || "Shipment"}</div>
                 <div className="details-term">Cargo Order Date:</div><div className="details-def">{cargo.cargoOrderDate || "—"}</div>
                 <div className="details-term">Cargo Detail:</div><div className="details-def">{cargo.cargoDetail || "—"}</div>
                 <div className="details-term">Cargo Cost:</div><div className="details-def">{cargo.cargoPrice ? `${getCurrencySymbol(cargo.currency)}${cargo.cargoPrice} (${cargo.cargoPriceUom || "Total"})` : "—"}</div>
@@ -3057,7 +3084,7 @@ export function VendorDetailModal({
                     <th>Model</th>
                     <th>Qty</th>
                     <th>Total Price</th>
-                    <th>Cargo ID</th>
+                    <th>Cargo Logistics</th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -3076,13 +3103,15 @@ export function VendorDetailModal({
                       statusClass = "badge-approved";
                     }
 
+                    const cMatch = cargos.find(c => c.id === r.cargoId);
+
                     return (
                       <tr key={r.id}>
                         <td>{r.orderDate}</td>
                         <td style={{ fontWeight: 600 }}>{r.model}</td>
                         <td>{r.orderQuantity}</td>
                         <td>{r.priceRmb ? `${getCurrencySymbol(r.currency)}${Number(r.totalRmb).toLocaleString()}` : "—"}</td>
-                        <td>{r.cargoId || <span style={{ color: "var(--text-muted)" }}>—</span>}</td>
+                        <td>{cMatch ? (cMatch.cargoDetail || "Cargo Shipment") : (r.cargoId ? "Cargo Shipment" : "—")}</td>
                         <td>
                           <span className={`badge ${statusClass}`} style={{ fontSize: "0.7rem", padding: "2px 6px" }}>
                             {statusLabel}

@@ -405,7 +405,7 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
             <table className="table">
               <thead>
                 <tr>
-                  <th>Order ID</th>
+                  <th>Item Nature</th>
                   <th>Order Date</th>
                   <th>Purchaser Name</th>
                   <th>Made By (Vendor)</th>
@@ -428,14 +428,14 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
                   } else if (cargo && cargo.cargoShippingDate) {
                     itemStage = `In Freight Transit (Step 4: ${cargo.modeOfTransport || "Transit"})`;
                   } else if (r.cargoId) {
-                    itemStage = `Cargo Consolidated (Step 3: ${r.cargoId})`;
+                    itemStage = `Cargo Consolidated (Step 3: ${cargo?.cargoDetail || "Consolidated"})`;
                   } else if (r.vendorEdd || r.priceRmb) {
                     itemStage = "Vendor Factory Production (Step 2)";
                   }
 
                   return (
                     <tr key={r.id}>
-                      <td style={{ fontWeight: 600 }}>{r.id}</td>
+                      <td style={{ fontWeight: 600 }}>{r.itemNature || "Non Consumables"}</td>
                       <td>{r.orderDate || "N/A"}</td>
                       <td style={{ fontWeight: 600, color: "var(--primary)" }}>{purchaser}</td>
                       <td>{vendor}</td>
@@ -449,7 +449,7 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
                       </td>
                       <td>
                         {r.cargoId ? (
-                          <span className="badge badge-info"><Truck size={12} style={{ marginRight: "4px" }} /> {r.cargoId}</span>
+                          <span className="badge badge-info"><Truck size={12} style={{ marginRight: "4px" }} /> {cargo?.cargoDetail || "Cargo Shipment"}</span>
                         ) : (
                           <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>Not in Cargo</span>
                         )}
@@ -533,17 +533,33 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
 
         <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
           <div>
-            <select className="form-control" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} style={{ fontSize: "0.85rem" }}>
-              <option value="All">All Categories</option>
+            <input 
+              type="text" 
+              list="im-cat-list"
+              className="form-control" 
+              placeholder="Type or Select Category..." 
+              value={categoryFilter === "All" ? "" : categoryFilter}
+              onChange={e => setCategoryFilter(e.target.value || "All")}
+              style={{ fontSize: "0.85rem", minWidth: "180px" }}
+            />
+            <datalist id="im-cat-list">
               {categories.filter(c => c !== "All").map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            </datalist>
           </div>
 
           <div>
-            <select className="form-control" value={vendorFilter} onChange={e => setVendorFilter(e.target.value)} style={{ fontSize: "0.85rem" }}>
-              <option value="All">All Vendors (Made By)</option>
+            <input 
+              type="text" 
+              list="im-vendor-list"
+              className="form-control" 
+              placeholder="Type or Select Vendor..." 
+              value={vendorFilter === "All" ? "" : vendorFilter}
+              onChange={e => setVendorFilter(e.target.value || "All")}
+              style={{ fontSize: "0.85rem", minWidth: "180px" }}
+            />
+            <datalist id="im-vendor-list">
               {vendorNames.filter(v => v !== "All").map(v => <option key={v} value={v}>{v}</option>)}
-            </select>
+            </datalist>
           </div>
 
           <div>

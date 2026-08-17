@@ -262,6 +262,12 @@ export default function App() {
       }
     }
     localStorage.removeItem("makpower_session_id");
+    localStorage.removeItem("makpower_active_view");
+    localStorage.removeItem("makpower_purchaser_tab");
+    localStorage.removeItem("makpower_admin_subtab");
+    localStorage.removeItem("makpower_nitin_tab");
+    localStorage.removeItem("makpower_rahul_tab");
+    localStorage.removeItem("makpower_coord_tab");
     setCurrentUser(null);
     setActiveView("login");
   };
@@ -637,7 +643,7 @@ export default function App() {
     return res;
   };
 
-  const purgeAllData = async (purgeItems = false) => {
+  const purgeAllData = async (purgeItems = true) => {
     const res = await postData("/api/data/purge", { purgeItems });
     if (res && res.success) {
       setRequests([]);
