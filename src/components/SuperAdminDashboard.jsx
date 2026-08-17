@@ -32,7 +32,9 @@ export default function SuperAdminDashboard({
   onDeleteItems,
   onPurgeAllData,
   onUpdateItem,
-  onMergeItems
+  onMergeItems,
+  designations = [],
+  onAddDesignation
 }) {
   const [subTab, setSubTab] = useState(() => {
     return localStorage.getItem("makpower_admin_subtab") || "purchasers";
