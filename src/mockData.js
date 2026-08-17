@@ -3,7 +3,7 @@ export const initialUsers = [
     id: "u-admin",
     name: "Super Admin",
     email: "admin@makpowerindia.com",
-    password: "112233",
+    password: "MakPower#Admin2026!",
     role: "superadmin",
     designation: "System Admin",
     status: "active"

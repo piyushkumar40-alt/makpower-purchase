@@ -235,9 +235,12 @@ async function setupPgDatabase() {
         "unit" TEXT,
         "description" TEXT,
         "photo" TEXT,
-        "currentStock" INTEGER
+        "currentStock" INTEGER,
+        "createdBy" TEXT
       );
       ALTER TABLE items ADD COLUMN IF NOT EXISTS "itemType" TEXT;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS "createdBy" TEXT;
+      UPDATE users SET "password" = 'MakPower#Admin2026!' WHERE "email" = 'admin@makpowerindia.com' AND ("password" = '112233' OR "password" = 'admin');
     `);
 
     // Sync Users to new @makpowerindia.com list if legacy users exist
@@ -1490,10 +1493,10 @@ app.post("/api/items", async (req, res) => {
       }
 
       await pool.query(
-        `INSERT INTO items ("id", "name", "category", "itemType", "itemNature", "unit", "description", "photo", "currentStock")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name", "category" = EXCLUDED."category", "itemType" = EXCLUDED."itemType", "itemNature" = EXCLUDED."itemNature", "unit" = EXCLUDED."unit", "description" = EXCLUDED."description", "photo" = EXCLUDED."photo", "currentStock" = EXCLUDED."currentStock"`,
-        [item.id, item.name, item.category || "", item.itemType || "RM", item.itemNature || "Non Consumables", item.unit || "Pcs", item.description || "", item.photo || "", item.currentStock || 0]
+        `INSERT INTO items ("id", "name", "category", "itemType", "itemNature", "unit", "description", "photo", "currentStock", "createdBy")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name", "category" = EXCLUDED."category", "itemType" = EXCLUDED."itemType", "itemNature" = EXCLUDED."itemNature", "unit" = EXCLUDED."unit", "description" = EXCLUDED."description", "photo" = EXCLUDED."photo", "currentStock" = EXCLUDED."currentStock", "createdBy" = EXCLUDED."createdBy"`,
+        [item.id, item.name, item.category || "", item.itemType || "RM", item.itemNature || "Non Consumables", item.unit || "Pcs", item.description || "", item.photo || "", item.currentStock || 0, item.createdBy || item.entryBy || "Super Admin"]
       );
       res.json({ success: true });
     } catch (err) {
