@@ -337,19 +337,36 @@ export default function ItemCatalogPanel({
         let autoIdCounter = 1;
 
         jsonRows.forEach((row, idx) => {
+          const rowKeys = Object.keys(row);
+          if (rowKeys.length === 0) return;
+
           // Look for ID field (Item ID, ID, Sr No, Code, etc.)
           const rawId = getRowValue(row, ["itemid", "id", "srno", "sno", "code", "itemcode", "sr"]);
           
-          // Look for Name field (Item Name, Item Nam, Model, Name, Particulars, Title, Description, etc.)
-          let rawName = getRowValue(row, ["itemnam", "itemname", "name", "model", "particulars", "item", "title", "product"]);
+          // Look for Name field (Item Name, Item Nam, Model, Name, Particulars, Title, Product, etc.)
+          let rawName = "";
+          for (const k of rowKeys) {
+            const cleanKey = k.toLowerCase().trim().replace(/[^a-z0-9]/g, "");
+            // Skip ID-only columns like "itemid", "id", "srno" unless key has "name" or "nam"
+            if ((cleanKey.includes("id") || cleanKey.includes("srno") || cleanKey.includes("sno")) && !cleanKey.includes("name") && !cleanKey.includes("nam") && !cleanKey.includes("model")) {
+              continue;
+            }
+            if (cleanKey.includes("name") || cleanKey.includes("nam") || cleanKey.includes("model") || cleanKey.includes("particulars") || cleanKey.includes("title") || cleanKey.includes("product")) {
+              const val = row[k];
+              if (val !== undefined && val !== null && String(val).trim() !== "") {
+                rawName = String(val).trim();
+                break;
+              }
+            }
+          }
           
-          // Fallback for Name if header is non-standard (pick 1st non-ID text value in row)
-          if (!rawName) {
-            for (const k of Object.keys(row)) {
+          // Fallback for Name if header is non-standard or equal to rawId
+          if (!rawName || rawName === String(rawId)) {
+            for (const k of rowKeys) {
               const cleanK = k.toLowerCase().trim().replace(/[^a-z0-9]/g, "");
               if (!cleanK.includes("id") && !cleanK.includes("srno") && !cleanK.includes("sno")) {
                 const val = row[k];
-                if (val !== undefined && val !== null && String(val).trim() !== "") {
+                if (val !== undefined && val !== null && String(val).trim() !== "" && String(val).trim() !== String(rawId)) {
                   rawName = String(val).trim();
                   break;
                 }
@@ -837,7 +854,7 @@ export default function ItemCatalogPanel({
                   <tbody>
                     {bulkParsedItems.map((pi, idx) => (
                       <tr key={idx} style={{ opacity: pi.isDuplicate ? 0.65 : 1 }}>
-                        <td style={{ fontWeight: 700, color: "var(--primary)" }}>#{pi.id}</td>
+                        <td style={{ fontWeight: 700, color: "var(--primary)" }}>{pi.id}</td>
                         <td style={{ fontWeight: 600 }}>
                           {pi.name}
                           {pi.isDuplicate && (
@@ -927,9 +944,9 @@ export default function ItemCatalogPanel({
 
       {/* Master Items Table */}
       <div className="glass-panel" style={{ padding: "4px" }}>
-        <div className="table-container">
+        <div className="table-container" style={{ maxHeight: "65vh", overflowY: "auto", overflowX: "auto" }}>
           <table className="custom-table">
-            <thead>
+            <thead style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-card)" }}>
               <tr>
                 <th style={{ width: "40px", textAlign: "center" }}>
                   <input 
@@ -973,7 +990,7 @@ export default function ItemCatalogPanel({
                         />
                       </td>
                       <td style={{ fontWeight: 800, color: "var(--primary)", fontSize: "0.9rem" }}>
-                        #{item.id}
+                        {item.id}
                       </td>
                       <td style={{ fontWeight: 600, color: "var(--text-main)" }}>
                         {item.name}
