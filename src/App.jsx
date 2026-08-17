@@ -8,6 +8,8 @@ import NitinDashboard from "./components/NitinDashboard";
 import RahulDashboard from "./components/RahulDashboard";
 import CoordinatorDashboard from "./components/CoordinatorDashboard";
 import ItemMasterView from "./components/ItemMasterView";
+import ItemCatalogPanel from "./components/ItemCatalogPanel";
+import OwnerDashboard from "./components/OwnerDashboard";
 import HomePage from "./components/HomePage";
 import { initialUsers, initialVendors, initialRequests, initialCargoShipments, initialCargoCompanies } from "./mockData";
 
