@@ -417,15 +417,19 @@ export default function App() {
     }
   };
 
-  const addPurchaser = async (name, email, password, designation = "Purchaser") => {
+  const addPurchaser = async (name, email, password, designation = "Purchaser", explicitRole = null) => {
     const exists = users.some(u => u.email.toLowerCase() === email.toLowerCase());
     if (exists) return { success: false, message: "User with this email already exists." };
 
-    let role = "purchaser";
-    const dLower = (designation || "").toLowerCase();
-    if (dLower === "owner") role = "owner";
-    else if (dLower === "system admin" || dLower === "superadmin") role = "superadmin";
-    else if (dLower === "logistics") role = "coordinator";
+    let role = explicitRole || "purchaser";
+    if (!explicitRole) {
+      const dLower = (designation || "").toLowerCase();
+      if (dLower.includes("owner")) role = "owner";
+      else if (dLower.includes("admin") || dLower.includes("superadmin")) role = "superadmin";
+      else if (dLower.includes("logistics") || dLower.includes("coordinator")) role = "coordinator";
+      else if (dLower.includes("packing") || dLower.includes("nitin")) role = "nitin";
+      else if (dLower.includes("accounts") || dLower.includes("rahul")) role = "rahul";
+    }
 
     const newUser = {
       id: `u-${Date.now()}`,

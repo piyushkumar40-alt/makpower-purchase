@@ -381,9 +381,23 @@ export default function SuperAdminDashboard({
     setPSuccess("");
     if (!pName || !pEmail || !pPassword) return;
 
-    const res = onAddPurchaser(pName, pEmail, pPassword);
+    let finalDesignation = pDesignation;
+    if (pDesignation === "Custom" && customDesignationInput.trim()) {
+      finalDesignation = customDesignationInput.trim();
+      if (onAddDesignation) onAddDesignation(finalDesignation);
+    }
+
+    let roleVal = "purchaser";
+    const dLower = finalDesignation.toLowerCase();
+    if (dLower.includes("owner")) roleVal = "owner";
+    else if (dLower.includes("admin") || dLower.includes("superadmin")) roleVal = "superadmin";
+    else if (dLower.includes("logistics") || dLower.includes("coordinator")) roleVal = "coordinator";
+    else if (dLower.includes("packing") || dLower.includes("nitin")) roleVal = "nitin";
+    else if (dLower.includes("accounts") || dLower.includes("rahul")) roleVal = "rahul";
+
+    const res = onAddPurchaser(pName, pEmail, pPassword, finalDesignation, roleVal);
     if (res.success) {
-      setPSuccess(`Purchaser ${pName} created successfully!`);
+      setPSuccess(`Staff account ${pName} created successfully as ${finalDesignation}!`);
       setPName("");
       setPEmail("");
       setPPassword("");
@@ -822,9 +836,12 @@ export default function SuperAdminDashboard({
                                     if (!editNameVal.trim()) return;
                                     let roleVal = staff.role;
                                     const dLower = editDesignationVal.toLowerCase();
-                                    if (dLower === "owner") roleVal = "owner";
-                                    else if (dLower === "system admin" || dLower === "superadmin") roleVal = "superadmin";
-                                    else if (dLower === "logistics") roleVal = "coordinator";
+                                    if (dLower.includes("owner")) roleVal = "owner";
+                                    else if (dLower.includes("admin") || dLower.includes("superadmin")) roleVal = "superadmin";
+                                    else if (dLower.includes("logistics") || dLower.includes("coordinator")) roleVal = "coordinator";
+                                    else if (dLower.includes("packing") || dLower.includes("nitin")) roleVal = "nitin";
+                                    else if (dLower.includes("accounts") || dLower.includes("rahul")) roleVal = "rahul";
+                                    else if (dLower.includes("purchaser")) roleVal = "purchaser";
                                     
                                     const updates = { 
                                       name: editNameVal.trim(), 
