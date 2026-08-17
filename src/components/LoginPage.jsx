@@ -112,16 +112,6 @@ export default function LoginPage({ onLogin, onEnterAsGuest, users }) {
             <Shield size={12} /> Quick Testing Login
           </h4>
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {superAdmin && (
-              <button 
-                onClick={() => handleQuickLogin(superAdmin.email, superAdmin.password)}
-                className="btn btn-secondary btn-sm"
-                style={{ justifyContent: "flex-start", fontSize: "0.8rem", width: "100%" }}
-              >
-                <Shield size={12} style={{ color: "var(--accent)" }} /> 
-                <strong>Admin:</strong> {superAdmin.name}
-              </button>
-            )}
             {nitinUser && (
               <button 
                 onClick={() => handleQuickLogin(nitinUser.email, nitinUser.password)}

@@ -99,6 +99,11 @@ function readLocalJson() {
         redirectUrl: "https://www.instagram.com/makpowerofficial/"
       };
     }
+    const adminIdx = data.users.findIndex(x => x.id === "u-admin" || x.role === "superadmin" || x.email === "admin@company.com");
+    if (adminIdx !== -1 && data.users[adminIdx].password === "MakPower#Admin2026!") {
+      data.users[adminIdx].password = "112233";
+      writeLocalJson(data);
+    }
     return data;
   } catch (e) {
     console.error("Error reading db.json, returning default mock data:", e.message);
@@ -291,6 +296,9 @@ async function setupPgDatabase() {
 
     // Auto-clean any legacy SVG data URIs in PostgreSQL to HTTPS CDN URLs
     await pool.query(`UPDATE requests SET photo = 'https://images.unsplash.com/photo-1586864387967-d02ef85d93e8?w=300&auto=format&fit=crop&q=80' WHERE photo LIKE 'data:image%'`);
+
+    // Auto-update admin user password to 112233 if legacy password is found
+    await pool.query(`UPDATE users SET password = '112233' WHERE (email = 'admin@company.com' OR role = 'superadmin') AND password = 'MakPower#Admin2026!'`);
 
     // Seed default settings
     const settingsCheck = await pool.query("SELECT COUNT(*) FROM settings");

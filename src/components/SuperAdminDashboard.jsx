@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Users, Building, Database, FileText, Plus, UserMinus, RefreshCw, Download, Upload, Eye, Truck, ChevronRight, Sliders, Package, ShieldCheck, Clock, UserX, LogOut, Folder, HardDrive, Trash2, Copy, ExternalLink } from "lucide-react";
+import { Users, Building, Database, FileText, Plus, UserMinus, RefreshCw, Download, Upload, Eye, Truck, ChevronRight, Sliders, Package, ShieldCheck, Clock, UserX, LogOut, Folder, HardDrive, Trash2, Copy, ExternalLink, Key } from "lucide-react";
 import TransferModal from "./TransferModal";
 import { getCurrencySymbol, CargoCompaniesPanel, VendorDetailModal, CargoCompanyDetailModal } from "./PurchaserDashboard";
 import ItemMasterView from "./ItemMasterView";
@@ -146,6 +146,43 @@ export default function SuperAdminDashboard({
   // System Settings State
   const [redirectUrlInput, setRedirectUrlInput] = useState(settings.redirectUrl || "https://www.instagram.com/makpowerofficial/");
   const [settingsSuccessMsg, setSettingsSuccessMsg] = useState("");
+
+  // Admin Password Update State
+  const [newAdminPassword, setNewAdminPassword] = useState("");
+  const [confirmAdminPassword, setConfirmAdminPassword] = useState("");
+  const [adminPassMsg, setAdminPassMsg] = useState({ text: "", type: "" });
+  const [updatingAdminPass, setUpdatingAdminPass] = useState(false);
+
+  const handleUpdateAdminPassword = async (e) => {
+    e.preventDefault();
+    setAdminPassMsg({ text: "", type: "" });
+
+    if (!newAdminPassword || newAdminPassword.trim().length === 0) {
+      setAdminPassMsg({ text: "Please enter a new password.", type: "danger" });
+      return;
+    }
+    if (newAdminPassword !== confirmAdminPassword) {
+      setAdminPassMsg({ text: "Passwords do not match. Please verify.", type: "danger" });
+      return;
+    }
+
+    setUpdatingAdminPass(true);
+    try {
+      const adminUser = users.find(u => u.role === "superadmin" || u.id === "u-admin") || { id: "u-admin" };
+      const res = await onUpdateUserInfo(adminUser.id, { password: newAdminPassword.trim() });
+      if (res && res.success) {
+        setAdminPassMsg({ text: "✅ Admin password updated successfully! Use your new password on next login.", type: "success" });
+        setNewAdminPassword("");
+        setConfirmAdminPassword("");
+      } else {
+        setAdminPassMsg({ text: `❌ Update failed: ${res?.message || "Unknown error"}`, type: "danger" });
+      }
+    } catch (err) {
+      setAdminPassMsg({ text: `❌ Error: ${err.message}`, type: "danger" });
+    } finally {
+      setUpdatingAdminPass(false);
+    }
+  };
 
   // Google Sheets Integration State
   const [sheetWebhookUrl, setSheetWebhookUrl] = useState(settings.googleSheetWebhookUrl || "");
@@ -1176,6 +1213,58 @@ export default function SuperAdminDashboard({
             <h2 style={{ fontSize: "1.8rem", marginBottom: "20px" }}>System Settings</h2>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))", gap: "30px", alignItems: "start" }}>
+              
+              {/* Admin Password Management Panel */}
+              <div className="glass-panel" style={{ padding: "24px" }}>
+                <h3 style={{ fontSize: "1.2rem", marginBottom: "12px", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Key size={20} style={{ color: "#38bdf8" }} /> Update Admin Password
+                </h3>
+                
+                <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "16px" }}>
+                  Update the master password for the Super Admin account (<code>admin@company.com</code>).
+                </p>
+
+                {adminPassMsg.text && (
+                  <div className={`alert-strip alert-${adminPassMsg.type}`} style={{ marginBottom: "16px" }}>
+                    {adminPassMsg.text}
+                  </div>
+                )}
+
+                <form onSubmit={handleUpdateAdminPassword} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">New Admin Password</label>
+                    <input 
+                      type="password"
+                      className="form-control"
+                      placeholder="Enter new password"
+                      value={newAdminPassword}
+                      onChange={e => setNewAdminPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Confirm New Admin Password</label>
+                    <input 
+                      type="password"
+                      className="form-control"
+                      placeholder="Re-enter new password"
+                      value={confirmAdminPassword}
+                      onChange={e => setConfirmAdminPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={updatingAdminPass}
+                    className="btn btn-primary"
+                    style={{ width: "100%", padding: "12px", fontSize: "0.9rem" }}
+                  >
+                    {updatingAdminPass ? "Updating Admin Password..." : "Update Admin Password"}
+                  </button>
+                </form>
+              </div>
               
               {/* Visibility Controller Panel */}
               <div className="glass-panel" style={{ padding: "24px" }}>
