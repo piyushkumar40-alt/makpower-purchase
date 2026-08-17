@@ -1776,6 +1776,76 @@ app.post("/api/items/update", async (req, res) => {
   }
 });
 
+// POST /api/items/update-photo - Upload/replace item image, maintains 6-month photo history log
+app.post("/api/items/update-photo", async (req, res) => {
+  const { itemId, photoUrl, updatedBy } = req.body;
+  if (!itemId || !photoUrl) {
+    return res.status(400).json({ error: "itemId and photoUrl are required." });
+  }
+
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setDate(sixMonthsAgo.getDate() - 180);
+
+  if (isPg) {
+    try {
+      const itemRes = await pool.query('SELECT * FROM items WHERE "id" = $1', [itemId]);
+      if (itemRes.rows.length === 0) return res.status(404).json({ error: "Item not found" });
+
+      const item = itemRes.rows[0];
+      const oldPhoto = item.photo;
+      let photoHistory = [];
+      try {
+        photoHistory = typeof item.photo_history === "string" ? JSON.parse(item.photo_history) : (item.photo_history || []);
+      } catch (e) {
+        photoHistory = [];
+      }
+
+      if (oldPhoto && oldPhoto !== photoUrl) {
+        photoHistory.unshift({
+          id: `ph-${Date.now()}`,
+          photoUrl: oldPhoto,
+          updatedBy: updatedBy || "Purchaser",
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      // Retain logs strictly for 6 months (180 days)
+      const prunedHistory = photoHistory.filter(h => new Date(h.updatedAt || h.timestamp || Date.now()) >= sixMonthsAgo);
+
+      await pool.query(
+        'UPDATE items SET "photo" = $1, "photo_history" = $2 WHERE "id" = $3',
+        [photoUrl, JSON.stringify(prunedHistory), itemId]
+      );
+      return res.json({ success: true, photoHistory: prunedHistory });
+    } catch (err) {
+      console.error("Error updating photo in PG:", err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.items) data.items = [];
+    const item = data.items.find(i => i.id === itemId);
+    if (item) {
+      const oldPhoto = item.photo;
+      if (!item.photoHistory) item.photoHistory = [];
+      if (oldPhoto && oldPhoto !== photoUrl) {
+        item.photoHistory.unshift({
+          id: `ph-${Date.now()}`,
+          photoUrl: oldPhoto,
+          updatedBy: updatedBy || "Purchaser",
+          updatedAt: new Date().toISOString()
+        });
+      }
+      item.photoHistory = (item.photoHistory || []).filter(h => new Date(h.updatedAt || h.timestamp || Date.now()) >= sixMonthsAgo);
+      item.photo = photoUrl;
+      writeLocalJson(data);
+      res.json({ success: true, photoHistory: item.photoHistory });
+    } else {
+      res.status(404).json({ error: "Item not found." });
+    }
+  }
+});
+
 // POST /api/items/merge - Merge 2 items into 1 (Super Admin only)
 app.post("/api/items/merge", async (req, res) => {
   const { sourceId, targetId } = req.body;

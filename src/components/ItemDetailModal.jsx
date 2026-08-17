@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import { 
   X, Package, MapPin, Truck, Calendar, User, DollarSign, Clock, 
   CheckCircle2, AlertTriangle, ExternalLink, Layers, Building2, 
-  ZoomIn, ArrowRight, ArrowLeft, ShieldCheck, Tag, Info, History
+  ZoomIn, ArrowRight, ArrowLeft, ShieldCheck, Tag, Info, History,
+  Camera, Upload, Image, RotateCcw, AlertCircle
 } from "lucide-react";
 
 export default function ItemDetailModal({ 
@@ -14,12 +15,56 @@ export default function ItemDetailModal({
   cargos = [], 
   vendors = [], 
   users = [], 
-  cargoCompanies = [] 
+  cargoCompanies = [],
+  currentUser,
+  onUpdateItemPhoto
 }) {
   const [enlargedImage, setEnlargedImage] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState("overview"); // "overview" | "orders" | "cargos" | "vendors"
+  const [activeSubTab, setActiveSubTab] = useState("overview"); // "overview" | "orders" | "cargos" | "vendors" | "photoHistory"
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [inputPhotoUrl, setInputPhotoUrl] = useState("");
+  const [photoMsg, setPhotoMsg] = useState("");
+  const [savingPhoto, setSavingPhoto] = useState(false);
+
+  const isSuperAdmin = currentUser?.role === "superadmin";
 
   if (!item) return null;
+
+  // Filter 6 months photo logs
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setDate(sixMonthsAgo.getDate() - 180);
+  const validPhotoHistory = (item.photoHistory || []).filter(h => new Date(h.updatedAt || h.timestamp || Date.now()) >= sixMonthsAgo);
+
+  const handleSavePhoto = async (e) => {
+    e.preventDefault();
+    if (!inputPhotoUrl.trim()) {
+      setPhotoMsg("Please provide an image URL or upload an image file.");
+      return;
+    }
+    setSavingPhoto(true);
+    setPhotoMsg("");
+    try {
+      if (onUpdateItemPhoto) {
+        await onUpdateItemPhoto(item.id, inputPhotoUrl.trim(), currentUser?.name || "Purchaser");
+      }
+      setShowPhotoModal(false);
+      setInputPhotoUrl("");
+    } catch (err) {
+      setPhotoMsg(`Error updating photo: ${err.message}`);
+    } finally {
+      setSavingPhoto(false);
+    }
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      setInputPhotoUrl(evt.target.result);
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Match purchase requests for this item by Item ID or Name/Model
   const itemKey = (item.name || "").trim().toLowerCase();
@@ -242,14 +287,93 @@ export default function ItemDetailModal({
             </div>
           </div>
 
-          <button 
-            onClick={onClose}
-            className="btn btn-secondary btn-sm"
-            style={{ borderRadius: "50%", width: "36px", height: "36px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
-          >
-            <X size={20} />
-          </button>
+          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            {currentUser && (
+              <button 
+                onClick={() => { setShowPhotoModal(true); setInputPhotoUrl(""); setPhotoMsg(""); }}
+                className="btn btn-secondary btn-sm"
+                style={{ borderColor: "#10b981", color: "#a7f3d0", fontSize: "0.82rem" }}
+              >
+                <Camera size={14} style={{ color: "#10b981" }} /> Upload / Replace Image
+              </button>
+            )}
+
+            <button 
+              onClick={onClose}
+              className="btn btn-secondary btn-sm"
+              style={{ borderRadius: "50%", width: "36px", height: "36px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
+
+        {/* Upload / Replace Photo Modal Dialog */}
+        {showPhotoModal && (
+          <div className="modal-backdrop" style={{ zIndex: 1400, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+            <div className="glass-panel" style={{ maxWidth: "500px", width: "100%", padding: "24px", borderRadius: "16px", border: "1px solid #10b981" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                <h3 style={{ fontSize: "1.1rem", color: "#a7f3d0", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Camera size={18} /> Upload / Replace Item Image
+                </h3>
+                <button onClick={() => setShowPhotoModal(false)} className="btn btn-secondary btn-sm">Close</button>
+              </div>
+
+              {photoMsg && (
+                <div className="alert-strip alert-danger" style={{ marginBottom: "16px" }}>
+                  <AlertCircle size={16} /> {photoMsg}
+                </div>
+              )}
+
+              <form onSubmit={handleSavePhoto} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Option A: Select Image File from Device</label>
+                  <input 
+                    type="file" 
+                    accept="image/*"
+                    className="form-control"
+                    onChange={handleFileUpload}
+                    style={{ padding: "6px" }}
+                  />
+                </div>
+
+                <div style={{ textAlign: "center", fontSize: "0.8rem", color: "var(--text-muted)", margin: "-4px 0" }}>
+                  — OR —
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Option B: Image / Photo URL</label>
+                  <input 
+                    type="text" 
+                    className="form-control"
+                    placeholder="https://example.com/item-photo.jpg"
+                    value={inputPhotoUrl}
+                    onChange={e => setInputPhotoUrl(e.target.value)}
+                  />
+                </div>
+
+                {inputPhotoUrl && (
+                  <div style={{ textAlign: "center", padding: "12px", background: "rgba(0,0,0,0.2)", borderRadius: "8px" }}>
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "6px" }}>New Image Preview:</div>
+                    <img 
+                      src={inputPhotoUrl} 
+                      alt="Preview" 
+                      style={{ maxHeight: "140px", maxWidth: "100%", borderRadius: "8px", objectFit: "contain" }}
+                      onError={(e) => setPhotoMsg("Invalid image URL or unable to load image preview.")}
+                    />
+                  </div>
+                )}
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "8px" }}>
+                  <button type="button" onClick={() => setShowPhotoModal(false)} className="btn btn-secondary">Cancel</button>
+                  <button type="submit" disabled={savingPhoto || !inputPhotoUrl} className="btn btn-primary" style={{ background: "linear-gradient(135deg, #10b981, #059669)" }}>
+                    {savingPhoto ? "Saving Image..." : "Save New Image"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* Live Status Banners ("Now Item is Where") */}
         <div style={{ padding: "16px 24px", background: "rgba(0, 0, 0, 0.2)", borderBottom: "1px solid var(--border-color)" }}>
@@ -305,7 +429,7 @@ export default function ItemDetailModal({
         </div>
 
         {/* Sub-Navigation Tabs */}
-        <div style={{ display: "flex", gap: "8px", padding: "12px 24px 0", borderBottom: "1px solid var(--border-color)", background: "rgba(0,0,0,0.1)" }}>
+        <div style={{ display: "flex", gap: "8px", padding: "12px 24px 0", borderBottom: "1px solid var(--border-color)", background: "rgba(0,0,0,0.1)", flexWrap: "wrap" }}>
           <button 
             onClick={() => setActiveSubTab("overview")}
             className={`btn btn-sm ${activeSubTab === "overview" ? "btn-primary" : "btn-secondary"}`}
@@ -337,6 +461,16 @@ export default function ItemDetailModal({
           >
             <Building2 size={14} /> Vendor Supply History ({vendorList.length})
           </button>
+
+          {isSuperAdmin && (
+            <button 
+              onClick={() => setActiveSubTab("photoHistory")}
+              className={`btn btn-sm ${activeSubTab === "photoHistory" ? "btn-primary" : "btn-secondary"}`}
+              style={{ borderRadius: "8px 8px 0 0", padding: "8px 16px", fontSize: "0.85rem", borderColor: "#f59e0b", color: activeSubTab === "photoHistory" ? "#fff" : "#fcd34d" }}
+            >
+              <Camera size={14} /> Photo Log (6 Months) ({validPhotoHistory.length})
+            </button>
+          )}
         </div>
 
         {/* Modal Scrollable Body */}
@@ -583,6 +717,59 @@ export default function ItemDetailModal({
                       })}
                     </tbody>
                   </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 5: SUPER ADMIN PHOTO CHANGE HISTORY LOG (LAST 6 MONTHS ONLY) */}
+          {activeSubTab === "photoHistory" && isSuperAdmin && (
+            <div>
+              <h4 style={{ fontSize: "1rem", color: "#f59e0b", marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <Camera size={18} /> Item Photo Change History Log (Last 6 Months)
+              </h4>
+
+              <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "16px" }}>
+                Super Admin Audit Log: Below are all previous images uploaded or replaced by purchasers and staff for <strong>"{item.name}"</strong> over the last 6 months. Logs older than 6 months are automatically pruned.
+              </p>
+
+              {validPhotoHistory.length === 0 ? (
+                <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }} className="glass-panel">
+                  No previous photo changes recorded in the last 6 months.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "16px" }}>
+                  {validPhotoHistory.map((h, idx) => {
+                    const formattedDate = new Date(h.updatedAt || h.timestamp || Date.now()).toLocaleString();
+                    return (
+                      <div key={h.id || idx} className="glass-panel" style={{ padding: "14px", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: "12px", textAlign: "center" }}>
+                        <img 
+                          src={h.photoUrl} 
+                          alt={`History ${idx}`} 
+                          style={{ width: "100%", height: "130px", objectFit: "contain", borderRadius: "8px", background: "rgba(0,0,0,0.3)", marginBottom: "10px" }} 
+                        />
+                        <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "4px" }}>
+                          Updated By: <span style={{ color: "#f59e0b" }}>{h.updatedBy || "Staff"}</span>
+                        </div>
+                        <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginBottom: "10px" }}>
+                          {formattedDate}
+                        </div>
+                        <button 
+                          onClick={async () => {
+                            if (window.confirm("Restore this old picture as the active item photo?")) {
+                              if (onUpdateItemPhoto) {
+                                await onUpdateItemPhoto(item.id, h.photoUrl, `${currentUser?.name} (Restored Log)`);
+                              }
+                            }
+                          }}
+                          className="btn btn-sm btn-secondary"
+                          style={{ width: "100%", fontSize: "0.75rem", borderColor: "#f59e0b", color: "#fcd34d" }}
+                        >
+                          <RotateCcw size={12} /> Restore Picture
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -635,6 +635,32 @@ export default function App() {
     return res;
   };
 
+  const updateItemPhoto = async (itemId, newPhotoUrl, authorName) => {
+    const updatedBy = authorName || currentUser?.name || "Purchaser";
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setDate(sixMonthsAgo.getDate() - 180);
+
+    const existingItem = items.find(i => i.id === itemId);
+    if (!existingItem) return { success: false, error: "Item not found" };
+
+    const oldPhoto = existingItem.photo;
+    let photoHistory = Array.isArray(existingItem.photoHistory) ? [...existingItem.photoHistory] : [];
+    if (oldPhoto && oldPhoto !== newPhotoUrl) {
+      photoHistory.unshift({
+        id: `ph-${Date.now()}`,
+        photoUrl: oldPhoto,
+        updatedBy: updatedBy,
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    const prunedHistory = photoHistory.filter(h => new Date(h.updatedAt || h.timestamp || Date.now()) >= sixMonthsAgo);
+
+    const res = await postData("/api/items/update-photo", { itemId, photoUrl: newPhotoUrl, updatedBy });
+    setItems(prev => prev.map(i => i.id === itemId ? { ...i, photo: newPhotoUrl, photoHistory: prunedHistory } : i));
+    return res || { success: true };
+  };
+
   const mergeItems = async (sourceId, targetId) => {
     const res = await postData("/api/items/merge", { sourceId, targetId });
     if (res && res.success) {
@@ -1075,6 +1101,7 @@ export default function App() {
               users={users}
               cargoCompanies={cargoCompanies}
               onViewItemDetail={handleOpenItemDetail}
+              onUpdateItemPhoto={updateItemPhoto}
             />
           </div>
         )}
@@ -1082,7 +1109,7 @@ export default function App() {
         {activeView === "itemdetail" && selectedItemForDetail && (
           <div style={{ flex: 1, padding: "24px", maxWidth: "1400px", margin: "0 auto", width: "100%" }}>
             <ItemDetailModal 
-              item={selectedItemForDetail}
+              item={items.find(i => i.id === selectedItemForDetail.id) || selectedItemForDetail}
               onClose={handleBackFromItemDetail}
               onBack={handleBackFromItemDetail}
               isFullPage={true}
@@ -1091,6 +1118,8 @@ export default function App() {
               vendors={vendors}
               users={users}
               cargoCompanies={cargoCompanies}
+              currentUser={currentUser}
+              onUpdateItemPhoto={updateItemPhoto}
             />
           </div>
         )}

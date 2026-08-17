@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Layers, Plus, Upload, Trash2, Search, CheckSquare, Square, FileSpreadsheet, Package, AlertCircle, RefreshCw, GitMerge, Edit3, Info, Download, Image, ListPlus, Eye, User } from "lucide-react";
+import { Layers, Plus, Upload, Trash2, Search, CheckSquare, Square, FileSpreadsheet, Package, AlertCircle, RefreshCw, GitMerge, Edit3, Info, Download, Image, ListPlus, Eye, User, Camera } from "lucide-react";
 import ItemDetailModal from "./ItemDetailModal";
 
 // Normalize item names for fuzzy duplicate detection (e.g. DC02, DC 02, DC2, DC-2, DC-02 -> DC2)
@@ -18,6 +18,7 @@ export default function ItemCatalogPanel({
   onDeleteItems,
   onUpdateItem,
   onMergeItems,
+  onUpdateItemPhoto,
   currentUser = {},
   requests = [],
   cargos = [],
@@ -1461,13 +1462,15 @@ export default function ItemCatalogPanel({
       {/* Item Detail Modal Popup */}
       {selectedItemDetail && (
         <ItemDetailModal 
-          item={selectedItemDetail}
+          item={items.find(i => i.id === selectedItemDetail.id) || selectedItemDetail}
           onClose={() => setSelectedItemDetail(null)}
           requests={requests}
           cargos={cargos}
           vendors={vendors}
           users={users}
           cargoCompanies={cargoCompanies}
+          currentUser={currentUser}
+          onUpdateItemPhoto={onUpdateItemPhoto}
         />
       )}
 
