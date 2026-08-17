@@ -534,7 +534,7 @@ export default function SuperAdminDashboard({
                 </div>
               ) : (
                 <div style={{ overflowX: "auto" }}>
-                  <table className="table" style={{ width: "100%", tableLayout: "fixed" }}>
+                  <table className="table" style={{ width: "100%", minWidth: "650px" }}>
                     <thead>
                       <tr>
                         <th style={{ width: "20%", textAlign: "center" }}>Status</th>
@@ -591,7 +591,7 @@ export default function SuperAdminDashboard({
                 </div>
               ) : (
                 <div style={{ overflowX: "auto", maxHeight: "450px" }}>
-                  <table className="table" style={{ width: "100%", tableLayout: "fixed" }}>
+                  <table className="table" style={{ width: "100%", minWidth: "650px" }}>
                     <thead style={{ position: "sticky", top: 0, zIndex: 2 }}>
                       <tr>
                         <th style={{ width: "24%", textAlign: "center" }}>Date & Time</th>

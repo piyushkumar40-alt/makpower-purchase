@@ -331,7 +331,9 @@ select.form-control {
 /* Tables */
 .table-container {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   width: 100%;
+  max-width: 100%;
   margin-top: 10px;
   border-radius: 10px;
   border: 1px solid var(--border-glass);
@@ -340,6 +342,7 @@ select.form-control {
 .custom-table,
 .table {
   width: 100%;
+  min-width: 680px;
   table-layout: auto;
   border-collapse: collapse;
   text-align: left;
@@ -357,8 +360,8 @@ select.form-control {
   font-weight: 700;
   font-size: 0.82rem;
   padding: 8px 10px;
-  white-space: normal;
-  word-break: break-word;
+  white-space: nowrap;
+  word-break: normal;
   letter-spacing: 0.01em;
 }
 
@@ -369,9 +372,22 @@ select.form-control {
   color: var(--text-main);
   vertical-align: middle;
   white-space: normal;
-  word-break: break-word;
+  word-break: normal;
+  overflow-wrap: break-word;
   font-size: 0.82rem;
   font-family: var(--font-body);
+}
+
+.custom-table .btn,
+.table .btn,
+.custom-table .badge,
+.table .badge,
+.custom-table input,
+.table input,
+.custom-table select,
+.table select {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .custom-table tbody tr,
@@ -801,12 +817,24 @@ select.form-control {
     margin-bottom: 12px;
   }
 
-  .custom-table th, .custom-table td,
-  .table th, .table td {
+  .custom-table,
+  .table {
+    min-width: 680px;
+  }
+
+  .custom-table th, .table th {
+    padding: 6px 8px;
+    font-size: 0.76rem;
+    white-space: nowrap;
+    word-break: normal;
+  }
+
+  .custom-table td, .table td {
     padding: 6px 8px;
     font-size: 0.76rem;
     white-space: normal;
-    word-break: break-word;
+    word-break: normal;
+    overflow-wrap: break-word;
   }
 
   .tab-btn {
@@ -1370,6 +1398,7 @@ select.form-control {
 [data-theme="light"] .table {
   border: 1px solid #cbd5e1 !important;
   background: #ffffff !important;
+  min-width: 680px;
 }
 
 [data-theme="light"] .custom-table th,
@@ -1381,8 +1410,8 @@ select.form-control {
   font-weight: 700 !important;
   font-size: 0.82rem !important;
   padding: 8px 10px !important;
-  white-space: normal !important;
-  word-break: break-word !important;
+  white-space: nowrap !important;
+  word-break: normal !important;
 }
 
 [data-theme="light"] .custom-table td,
@@ -1393,7 +1422,8 @@ select.form-control {
   font-size: 0.82rem !important;
   padding: 8px 10px !important;
   white-space: normal !important;
-  word-break: break-word !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
 }
 
 [data-theme="light"] .custom-table tbody tr:nth-child(even),
