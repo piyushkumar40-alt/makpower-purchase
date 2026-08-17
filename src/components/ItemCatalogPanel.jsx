@@ -312,23 +312,58 @@ export default function ItemCatalogPanel({
           return;
         }
 
-        // Map columns intelligently (supports headers like: ID, Item ID, Name, Item Name, Model, Category, Nature, Unit, Description)
+        // Ultra-flexible Excel column header matcher (handles truncated headers like 'Item Nam', 'Description.', whitespace, etc.)
+        const getRowValue = (rowObj, keywords) => {
+          if (!rowObj) return "";
+          const rowKeys = Object.keys(rowObj);
+          for (const k of rowKeys) {
+            const cleanKey = k.toLowerCase().trim().replace(/[^a-z0-9]/g, "");
+            for (const kw of keywords) {
+              const cleanKw = kw.toLowerCase().trim().replace(/[^a-z0-9]/g, "");
+              if (cleanKey === cleanKw || cleanKey.includes(cleanKw) || cleanKw.includes(cleanKey)) {
+                const val = rowObj[k];
+                if (val !== undefined && val !== null && String(val).trim() !== "") {
+                  return String(val).trim();
+                }
+              }
+            }
+          }
+          return "";
+        };
+
         const existingIds = new Set(items.map(i => String(i.id).trim().toUpperCase()));
         const existingNameKeys = new Map(items.map(i => [normalizeItemKey(i.name), i]));
         const parsed = [];
         let autoIdCounter = 1;
 
         jsonRows.forEach((row, idx) => {
-          // Look for ID field
-          const rawId = row["ID"] || row["Item ID"] || row["id"] || row["itemId"] || row["Item_ID"] || row["Sr No"] || row["S.No"];
-          const rawName = row["Name"] || row["Item Name"] || row["Model"] || row["name"] || row["Item"];
-          const rawCategory = row["Category"] || row["category"] || row["Group"] || "General";
-          const rawType = row["Item Type"] || row["Type"] || row["itemType"] || row["FG/RM"] || row["FG"] || row["RM"] || "RM";
-          const rawNature = row["Nature"] || row["Item Nature"] || row["itemNature"] || "Non Consumables";
-          const rawUnit = row["Unit"] || row["UOM"] || row["unit"] || "Pcs";
-          const rawDesc = row["Description"] || row["Notes"] || row["Specs"] || row["description"] || "";
+          // Look for ID field (Item ID, ID, Sr No, Code, etc.)
+          const rawId = getRowValue(row, ["itemid", "id", "srno", "sno", "code", "itemcode", "sr"]);
+          
+          // Look for Name field (Item Name, Item Nam, Model, Name, Particulars, Title, Description, etc.)
+          let rawName = getRowValue(row, ["itemnam", "itemname", "name", "model", "particulars", "item", "title", "product"]);
+          
+          // Fallback for Name if header is non-standard (pick 1st non-ID text value in row)
+          if (!rawName) {
+            for (const k of Object.keys(row)) {
+              const cleanK = k.toLowerCase().trim().replace(/[^a-z0-9]/g, "");
+              if (!cleanK.includes("id") && !cleanK.includes("srno") && !cleanK.includes("sno")) {
+                const val = row[k];
+                if (val !== undefined && val !== null && String(val).trim() !== "") {
+                  rawName = String(val).trim();
+                  break;
+                }
+              }
+            }
+          }
 
           if (!rawName) return; // Skip empty rows
+
+          const rawCategory = getRowValue(row, ["category", "cat", "group", "class"]) || "General";
+          const rawType = getRowValue(row, ["itemtype", "type", "fgrm", "fg", "rm"]) || "RM";
+          const rawNature = getRowValue(row, ["itemnature", "nature", "consumable"]) || "Non Consumables";
+          const rawUnit = getRowValue(row, ["unit", "uom", "pcs"]) || "Pcs";
+          const rawDesc = getRowValue(row, ["desc", "description", "specification", "specs", "notes"]) || "";
 
           const cleanName = String(rawName).trim();
           const nameKey = normalizeItemKey(cleanName);
@@ -369,7 +404,7 @@ export default function ItemCatalogPanel({
             name: cleanName,
             category: String(rawCategory).trim(),
             itemType: finalType,
-            itemNature: String(rawNature).includes("Consumable") ? "Consumables" : "Non Consumables",
+            itemNature: String(rawNature).includes("Consumable") || String(rawNature).includes("Consumab") ? "Consumables" : "Non Consumables",
             unit: String(rawUnit).trim() || "Pcs",
             description: String(rawDesc).trim(),
             currentStock: 0,
