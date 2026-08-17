@@ -1608,6 +1608,134 @@ app.post("/api/items/delete", async (req, res) => {
   }
 });
 
+// POST /api/items/update - Update existing item details (Super Admin only)
+app.post("/api/items/update", async (req, res) => {
+  const { id, name, category, itemType, itemNature, unit, description } = req.body;
+  if (!id || !name) {
+    return res.status(400).json({ error: "Item ID and Name are required for update." });
+  }
+
+  const targetKey = normalizeItemKey(name);
+
+  if (isPg) {
+    try {
+      const existingRes = await pool.query("SELECT * FROM items");
+      const match = existingRes.rows.find(i => i.id !== id && normalizeItemKey(i.name) === targetKey);
+      if (match) {
+        return res.status(400).json({
+          error: `Cannot rename item! An item with name "${match.name}" (Item ID #${match.id}) already exists.`
+        });
+      }
+
+      await pool.query(
+        `UPDATE items SET "name" = $1, "category" = $2, "itemType" = $3, "itemNature" = $4, "unit" = $5, "description" = $6 WHERE "id" = $7`,
+        [name.trim(), category || "", itemType || "RM", itemNature || "Non Consumables", unit || "Pcs", description || "", id]
+      );
+      res.json({ success: true });
+    } catch (err) {
+      console.error("POST /api/items/update error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.items) data.items = [];
+    const match = data.items.find(i => i.id !== id && normalizeItemKey(i.name) === targetKey);
+    if (match) {
+      return res.status(400).json({
+        error: `Cannot rename item! An item with name "${match.name}" (Item ID #${match.id}) already exists.`
+      });
+    }
+
+    const idx = data.items.findIndex(i => i.id === id);
+    if (idx !== -1) {
+      data.items[idx] = {
+        ...data.items[idx],
+        name: name.trim(),
+        category: category || "",
+        itemType: itemType || "RM",
+        itemNature: itemNature || "Non Consumables",
+        unit: unit || "Pcs",
+        description: description || ""
+      };
+      writeLocalJson(data);
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: "Item not found." });
+    }
+  }
+});
+
+// POST /api/items/merge - Merge 2 items into 1 (Super Admin only)
+app.post("/api/items/merge", async (req, res) => {
+  const { sourceId, targetId } = req.body;
+  if (!sourceId || !targetId || sourceId === targetId) {
+    return res.status(400).json({ error: "Invalid source and target item IDs for merge." });
+  }
+
+  if (isPg) {
+    try {
+      const sourceRes = await pool.query("SELECT * FROM items WHERE id = $1", [sourceId]);
+      const targetRes = await pool.query("SELECT * FROM items WHERE id = $1", [targetId]);
+
+      if (sourceRes.rows.length === 0 || targetRes.rows.length === 0) {
+        return res.status(404).json({ error: "Source or Target item not found." });
+      }
+
+      const sourceItem = sourceRes.rows[0];
+      const targetItem = targetRes.rows[0];
+
+      // Update any orders/requests pointing to source item name to target item name
+      const reqUpdateRes = await pool.query(
+        'UPDATE requests SET "model" = $1 WHERE "model" = $2 OR "model" = $3',
+        [targetItem.name, sourceItem.name, sourceItem.id]
+      );
+
+      // Delete source item from items table
+      await pool.query("DELETE FROM items WHERE id = $1", [sourceId]);
+
+      res.json({
+        success: true,
+        message: `Successfully merged "${sourceItem.name}" (#${sourceId}) into "${targetItem.name}" (#${targetId}). Updated ${reqUpdateRes.rowCount || 0} order records.`
+      });
+    } catch (err) {
+      console.error("POST /api/items/merge error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.items) data.items = [];
+    const sourceIdx = data.items.findIndex(i => i.id === sourceId);
+    const targetIdx = data.items.findIndex(i => i.id === targetId);
+
+    if (sourceIdx === -1 || targetIdx === -1) {
+      return res.status(404).json({ error: "Source or Target item not found." });
+    }
+
+    const sourceItem = data.items[sourceIdx];
+    const targetItem = data.items[targetIdx];
+
+    // Update requests
+    let updatedCount = 0;
+    if (data.requests) {
+      data.requests.forEach(r => {
+        if (r.model === sourceItem.name || r.model === sourceItem.id) {
+          r.model = targetItem.name;
+          updatedCount++;
+        }
+      });
+    }
+
+    // Delete source item
+    data.items.splice(sourceIdx, 1);
+    writeLocalJson(data);
+
+    res.json({
+      success: true,
+      message: `Successfully merged "${sourceItem.name}" (#${sourceId}) into "${targetItem.name}" (#${targetId}). Updated ${updatedCount} order records.`
+    });
+  }
+});
+
 // POST /api/data/purge - Reset all sample/operational data
 app.post("/api/data/purge", async (req, res) => {
   const { purgeItems } = req.body || {};

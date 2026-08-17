@@ -1,3 +1,6 @@
+import React, { useState } from "react";
+import { Layers, Plus, Upload, Trash2, Search, CheckSquare, Square, FileSpreadsheet, Package, AlertCircle, RefreshCw, GitMerge, Edit3, Info } from "lucide-react";
+
 // Normalize item names for fuzzy duplicate detection (e.g. DC02, DC 02, DC2, DC-2, DC-02 -> DC2)
 export function normalizeItemKey(str) {
   if (!str) return "";
@@ -12,8 +15,12 @@ export default function ItemCatalogPanel({
   onAddItem,
   onBulkAddItems,
   onDeleteItems,
+  onUpdateItem,
+  onMergeItems,
   currentUser = {}
 }) {
+  const isSuperAdmin = currentUser && currentUser.role === "superadmin";
+
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   
@@ -39,6 +46,23 @@ export default function ItemCatalogPanel({
   const [bulkParsedItems, setBulkParsedItems] = useState([]);
   const [bulkError, setBulkError] = useState("");
   const [uploadingBulk, setUploadingBulk] = useState(false);
+
+  // Edit Item Modal state (Super Admin only)
+  const [editingItem, setEditingItem] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editCategory, setEditCategory] = useState("");
+  const [editType, setEditType] = useState("RM");
+  const [editNature, setEditNature] = useState("Non Consumables");
+  const [editUnit, setEditUnit] = useState("Pcs");
+  const [editDescription, setEditDescription] = useState("");
+  const [editMsg, setEditMsg] = useState("");
+
+  // Merge Items Modal state (Super Admin only)
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [sourceId, setSourceId] = useState("");
+  const [targetId, setTargetId] = useState("");
+  const [mergeMsg, setMergeMsg] = useState("");
+  const [merging, setMerging] = useState(false);
 
   // Auto-generate next unique ID when opening add form
   const handleOpenAddForm = () => {
@@ -136,10 +160,106 @@ export default function ItemCatalogPanel({
 
   // Bulk Delete
   const handleBulkDelete = async () => {
+    if (!isSuperAdmin) return;
     if (selectedIds.length === 0) return;
     if (!window.confirm(`⚠️ ARE YOU SURE? This will permanently delete ${selectedIds.length} selected item(s) from the catalog.`)) return;
     await onDeleteItems(selectedIds);
     setSelectedIds([]);
+  };
+
+  // Open Edit Item modal (Super Admin only)
+  const handleOpenEditModal = (item) => {
+    if (!isSuperAdmin) return;
+    setEditingItem(item);
+    setEditName(item.name || "");
+    setEditCategory(item.category || "");
+    setEditType(item.itemType || "RM");
+    setEditNature(item.itemNature || "Non Consumables");
+    setEditUnit(item.unit || "Pcs");
+    setEditDescription(item.description || "");
+    setEditMsg("");
+  };
+
+  // Save Edit Item (Super Admin only)
+  const handleSaveEditItem = async (e) => {
+    e.preventDefault();
+    if (!editingItem || !isSuperAdmin) return;
+    setEditMsg("");
+
+    const cleanName = editName.trim();
+    if (!cleanName) {
+      setEditMsg("Item Name is required.");
+      return;
+    }
+
+    const targetKey = normalizeItemKey(cleanName);
+    const match = items.find(i => i.id !== editingItem.id && normalizeItemKey(i.name) === targetKey);
+    if (match) {
+      setEditMsg(`⚠️ Cannot rename! An item with name "${match.name}" (Item ID #${match.id}) already exists.`);
+      return;
+    }
+
+    const updated = {
+      id: editingItem.id,
+      name: cleanName,
+      category: editCategory.trim(),
+      itemType: editType,
+      itemNature: editNature,
+      unit: editUnit.trim() || "Pcs",
+      description: editDescription.trim()
+    };
+
+    if (onUpdateItem) {
+      const res = await onUpdateItem(updated);
+      if (res && res.success) {
+        setEditingItem(null);
+      } else {
+        setEditMsg(`❌ Update failed: ${res?.error || "Server error"}`);
+      }
+    }
+  };
+
+  // Confirm Merge 2 Items (Super Admin only)
+  const handleConfirmMerge = async (e) => {
+    e.preventDefault();
+    if (!isSuperAdmin) return;
+    setMergeMsg("");
+
+    if (!sourceId || !targetId || sourceId === targetId) {
+      setMergeMsg("Please select 2 different items to merge.");
+      return;
+    }
+
+    const sourceItem = items.find(i => i.id === sourceId);
+    const targetItem = items.find(i => i.id === targetId);
+
+    if (!sourceItem || !targetItem) {
+      setMergeMsg("Selected items not found.");
+      return;
+    }
+
+    if (!window.confirm(`⚠️ ARE YOU SURE? This will MERGE "${sourceItem.name}" (#${sourceId}) into "${targetItem.name}" (#${targetId}). "${sourceItem.name}" will be deleted and all existing orders will be updated to "${targetItem.name}".`)) {
+      return;
+    }
+
+    setMerging(true);
+    try {
+      if (onMergeItems) {
+        const res = await onMergeItems(sourceId, targetId);
+        if (res && res.success) {
+          alert(res.message || `Successfully merged "${sourceItem.name}" into "${targetItem.name}".`);
+          setShowMergeModal(false);
+          setSourceId("");
+          setTargetId("");
+        } else {
+          setMergeMsg(`Merge failed: ${res?.error || "Server error"}`);
+        }
+      }
+    } catch (err) {
+      setMergeMsg(`Merge error: ${err.message}`);
+    } finally {
+      setMerging(false);
+    }
   };
 
   // Checkbox toggle
@@ -320,7 +440,17 @@ export default function ItemCatalogPanel({
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          {selectedIds.length > 0 && (
+          {isSuperAdmin && (
+            <button 
+              onClick={() => { setShowMergeModal(true); setMergeMsg(""); setSourceId(""); setTargetId(""); }}
+              className="btn btn-secondary"
+              style={{ fontSize: "0.85rem", borderColor: "#818cf8", color: "#c7d2fe" }}
+            >
+              <GitMerge size={16} style={{ color: "#818cf8" }} /> Merge 2 Items
+            </button>
+          )}
+
+          {isSuperAdmin && selectedIds.length > 0 && (
             <button 
               onClick={handleBulkDelete}
               className="btn btn-danger"
@@ -347,6 +477,174 @@ export default function ItemCatalogPanel({
           </button>
         </div>
       </div>
+
+      {/* Purchaser Info Strip */}
+      {!isSuperAdmin && (
+        <div className="alert-strip alert-info" style={{ marginBottom: "20px", display: "flex", alignItems: "center", gap: "8px" }}>
+          <Info size={18} />
+          <span style={{ fontSize: "0.85rem" }}>
+            <strong>Purchaser Access:</strong> You can create new catalog items with your ID prefix (e.g. <strong>{((currentUser.name || "Purchaser").trim().toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2) || "AN")}-#</strong>). Existing item editing, merging, and deletion are restricted to System Admin.
+          </span>
+        </div>
+      )}
+
+      {/* Edit Item Modal (Super Admin only) */}
+      {editingItem && isSuperAdmin && (
+        <div className="glass-panel" style={{ padding: "24px", marginBottom: "24px", border: "1px solid #38bdf8" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h3 style={{ fontSize: "1.1rem", color: "#38bdf8", display: "flex", alignItems: "center", gap: "8px" }}>
+              <Edit3 size={18} /> Edit Master Item Name & Details (#{editingItem.id})
+            </h3>
+            <button onClick={() => setEditingItem(null)} className="btn btn-secondary btn-sm">Cancel</button>
+          </div>
+
+          {editMsg && (
+            <div className="alert-strip alert-danger" style={{ marginBottom: "16px" }}>
+              <AlertCircle size={16} /> {editMsg}
+            </div>
+          )}
+
+          <form onSubmit={handleSaveEditItem} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Item ID (Read Only)</label>
+              <input type="text" className="form-control" value={editingItem.id} disabled style={{ opacity: 0.7 }} />
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Item Name / Model*</label>
+              <input 
+                type="text" 
+                className="form-control" 
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                required 
+              />
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Category</label>
+              <input 
+                type="text" 
+                className="form-control" 
+                value={editCategory}
+                onChange={e => setEditCategory(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Item Type (FG/RM)</label>
+              <select className="form-control" value={editType} onChange={e => setEditType(e.target.value)}>
+                <option value="RM">RM (Raw Material)</option>
+                <option value="FG">FG (Finished Goods)</option>
+              </select>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Nature</label>
+              <select className="form-control" value={editNature} onChange={e => setEditNature(e.target.value)}>
+                <option value="Non Consumables">Non Consumables</option>
+                <option value="Consumables">Consumables</option>
+              </select>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Unit (UOM)</label>
+              <input 
+                type="text" 
+                className="form-control" 
+                value={editUnit}
+                onChange={e => setEditUnit(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0, gridColumn: "1 / -1" }}>
+              <label className="form-label">Description / Specifications</label>
+              <input 
+                type="text" 
+                className="form-control" 
+                value={editDescription}
+                onChange={e => setEditDescription(e.target.value)}
+              />
+            </div>
+
+            <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
+              <button type="button" onClick={() => setEditingItem(null)} className="btn btn-secondary">Cancel</button>
+              <button type="submit" className="btn btn-primary">Save Changes</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Merge 2 Items Modal (Super Admin only) */}
+      {showMergeModal && isSuperAdmin && (
+        <div className="glass-panel" style={{ padding: "24px", marginBottom: "24px", border: "1px solid #818cf8" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h3 style={{ fontSize: "1.1rem", color: "#c7d2fe", display: "flex", alignItems: "center", gap: "8px" }}>
+              <GitMerge size={20} /> Merge 2 Master Items into 1
+            </h3>
+            <button onClick={() => setShowMergeModal(false)} className="btn btn-secondary btn-sm">Close</button>
+          </div>
+
+          <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "16px" }}>
+            Select a <strong>Source Item</strong> (to delete & merge) and a <strong>Target Item</strong> (to keep). All existing purchase orders referencing the source item will be updated to point to the target item name automatically.
+          </p>
+
+          {mergeMsg && (
+            <div className="alert-strip alert-danger" style={{ marginBottom: "16px" }}>
+              <AlertCircle size={16} /> {mergeMsg}
+            </div>
+          )}
+
+          <form onSubmit={handleConfirmMerge} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px" }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" style={{ color: "var(--danger)" }}>1. Select Item to MERGE & DELETE (Source)*</label>
+              <select 
+                className="form-control" 
+                value={sourceId}
+                onChange={e => setSourceId(e.target.value)}
+                required
+              >
+                <option value="">-- Select Source Item to Remove --</option>
+                {items.map(i => (
+                  <option key={i.id} value={i.id}>
+                    #{i.id} — {i.name} ({i.category || "General"})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" style={{ color: "#34d399" }}>2. Select Master Item to KEEP (Target)*</label>
+              <select 
+                className="form-control" 
+                value={targetId}
+                onChange={e => setTargetId(e.target.value)}
+                required
+              >
+                <option value="">-- Select Target Item to Keep --</option>
+                {items.filter(i => i.id !== sourceId).map(i => (
+                  <option key={i.id} value={i.id}>
+                    #{i.id} — {i.name} ({i.category || "General"})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {sourceId && targetId && sourceId !== targetId && (
+              <div style={{ gridColumn: "1 / -1", padding: "14px 18px", background: "rgba(129, 140, 248, 0.12)", border: "1px solid rgba(129, 140, 248, 0.3)", borderRadius: "8px", fontSize: "0.88rem" }}>
+                <strong>Merge Preview:</strong> Item <code>"{items.find(i => i.id === sourceId)?.name}"</code> (#{sourceId}) will be combined into <code>"{items.find(i => i.id === targetId)?.name}"</code> (#{targetId}). All purchase order records pointing to #{sourceId} will update to "{items.find(i => i.id === targetId)?.name}".
+              </div>
+            )}
+
+            <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+              <button type="button" onClick={() => setShowMergeModal(false)} className="btn btn-secondary">Cancel</button>
+              <button type="submit" disabled={merging || !sourceId || !targetId} className="btn btn-primary" style={{ background: "linear-gradient(135deg, #6366f1, #4f46e5)" }}>
+                {merging ? "Merging Items..." : "Confirm & Merge Items"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Add Item Modal / Inline Form */}
       {showAddForm && (
@@ -667,14 +965,31 @@ export default function ItemCatalogPanel({
                         {item.description || "-"}
                       </td>
                       <td style={{ textAlign: "center" }}>
-                        <button 
-                          onClick={() => handleDeleteSingle(item.id, item.name)}
-                          className="btn btn-sm btn-danger"
-                          title="Delete Item"
-                          style={{ padding: "4px 8px" }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        {isSuperAdmin ? (
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
+                            <button 
+                              onClick={() => handleOpenEditModal(item)}
+                              className="btn btn-sm btn-secondary"
+                              title="Edit Item Name / Details"
+                              style={{ padding: "4px 8px" }}
+                            >
+                              <Edit3 size={14} />
+                            </button>
+
+                            <button 
+                              onClick={() => handleDeleteSingle(item.id, item.name)}
+                              className="btn btn-sm btn-danger"
+                              title="Delete Item"
+                              style={{ padding: "4px 8px" }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", fontStyle: "italic" }}>
+                            View Only
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );

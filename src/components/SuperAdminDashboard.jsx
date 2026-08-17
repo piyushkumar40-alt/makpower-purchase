@@ -30,7 +30,9 @@ export default function SuperAdminDashboard({
   onAddItem,
   onBulkAddItems,
   onDeleteItems,
-  onPurgeAllData
+  onPurgeAllData,
+  onUpdateItem,
+  onMergeItems
 }) {
   const [subTab, setSubTab] = useState(() => {
     return localStorage.getItem("makpower_admin_subtab") || "purchasers";
@@ -681,6 +683,9 @@ export default function SuperAdminDashboard({
             onAddItem={onAddItem}
             onBulkAddItems={onBulkAddItems}
             onDeleteItems={onDeleteItems}
+            onUpdateItem={onUpdateItem}
+            onMergeItems={onMergeItems}
+            currentUser={{ role: "superadmin", name: "Admin" }}
           />
         )}
 

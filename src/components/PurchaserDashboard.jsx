@@ -28,7 +28,9 @@ export default function PurchaserDashboard({
   items = [],
   onAddItem,
   onBulkAddItems,
-  onDeleteItems
+  onDeleteItems,
+  onUpdateItem,
+  onMergeItems
 }) {
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem("makpower_purchaser_tab") || "alerts";
@@ -1115,6 +1117,8 @@ export default function PurchaserDashboard({
             onAddItem={onAddItem}
             onBulkAddItems={onBulkAddItems}
             onDeleteItems={onDeleteItems}
+            onUpdateItem={onUpdateItem}
+            onMergeItems={onMergeItems}
             currentUser={currentUser}
           />
         )}

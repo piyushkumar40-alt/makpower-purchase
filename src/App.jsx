@@ -573,6 +573,22 @@ export default function App() {
     return res;
   };
 
+  const updateItem = async (itemObj) => {
+    const res = await postData("/api/items/update", itemObj);
+    if (res && res.success) {
+      setItems(prev => prev.map(i => i.id === itemObj.id ? { ...i, ...itemObj } : i));
+    }
+    return res;
+  };
+
+  const mergeItems = async (sourceId, targetId) => {
+    const res = await postData("/api/items/merge", { sourceId, targetId });
+    if (res && res.success) {
+      setItems(prev => prev.filter(i => i.id !== sourceId));
+    }
+    return res;
+  };
+
   const purgeAllData = async (purgeItems = false) => {
     const res = await postData("/api/data/purge", { purgeItems });
     if (res && res.success) {
@@ -914,6 +930,8 @@ export default function App() {
             onAddItem={addItem}
             onBulkAddItems={bulkAddItems}
             onDeleteItems={deleteItems}
+            onUpdateItem={updateItem}
+            onMergeItems={mergeItems}
           />
         )}
 
@@ -953,6 +971,8 @@ export default function App() {
             onAddItem={addItem}
             onBulkAddItems={bulkAddItems}
             onDeleteItems={deleteItems}
+            onUpdateItem={updateItem}
+            onMergeItems={mergeItems}
             onPurgeAllData={purgeAllData}
           />
         )}
