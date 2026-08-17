@@ -739,7 +739,7 @@ export default function App() {
               <ShoppingCart size={14} /> Requester Portal
             </button>
 
-            {currentUser?.role !== "superadmin" && (
+            {currentUser && currentUser.role !== "superadmin" && (
               <button 
                 onClick={() => setActiveView("itemcatalog")} 
                 className={`btn btn-sm btn-secondary ${activeView === "itemcatalog" ? "active" : ""}`}
@@ -859,7 +859,7 @@ export default function App() {
                 <ShoppingCart size={18} /> <span>Requester Portal</span>
               </button>
 
-              {currentUser?.role !== "superadmin" && (
+              {currentUser && currentUser.role !== "superadmin" && (
                 <button 
                   onClick={() => { setActiveView("itemcatalog"); setMobileMenuOpen(false); }} 
                   className={`mobile-nav-item ${activeView === "itemcatalog" ? "active" : ""}`}
@@ -1059,7 +1059,7 @@ export default function App() {
           />
         )}
 
-        {activeView === "itemcatalog" && (
+        {activeView === "itemcatalog" && currentUser && (
           <div style={{ flex: 1, padding: "24px", maxWidth: "1400px", margin: "0 auto", width: "100%" }}>
             <ItemCatalogPanel 
               items={items}
