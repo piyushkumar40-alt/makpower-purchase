@@ -4,6 +4,7 @@ import TransferModal from "./TransferModal";
 import { getCurrencySymbol, CargoCompaniesPanel, VendorDetailModal, CargoCompanyDetailModal } from "./PurchaserDashboard";
 import ItemMasterView from "./ItemMasterView";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
+import ItemCatalogPanel from "./ItemCatalogPanel";
 
 export default function SuperAdminDashboard({
   users,
@@ -24,7 +25,12 @@ export default function SuperAdminDashboard({
   onUpdateUserInfo,
   settings = { isHidden: false, redirectUrl: "" },
   onUpdateSettings,
-  onBatchUpdateRequests
+  onBatchUpdateRequests,
+  items = [],
+  onAddItem,
+  onBulkAddItems,
+  onDeleteItems,
+  onPurgeAllData
 }) {
   const [subTab, setSubTab] = useState(() => {
     return localStorage.getItem("makpower_admin_subtab") || "purchasers";
@@ -670,15 +676,11 @@ export default function SuperAdminDashboard({
 
         {/* ITEM MASTER & STOCK TAB */}
         {subTab === "itemmaster" && (
-          <ItemMasterView 
-            requests={requests} 
-            vendors={vendors} 
-            cargos={cargos} 
-            cargoCompanies={cargoCompanies} 
-            purchasers={users.filter(u => u.role === "purchaser")} 
-            settings={settings}
-            onUpdateSettings={onUpdateSettings}
-            onBatchUpdateRequests={onBatchUpdateRequests}
+          <ItemCatalogPanel 
+            items={items}
+            onAddItem={onAddItem}
+            onBulkAddItems={onBulkAddItems}
+            onDeleteItems={onDeleteItems}
           />
         )}
 
@@ -1328,6 +1330,31 @@ export default function SuperAdminDashboard({
                 >
                   <RefreshCw size={16} className={migratingPhotos ? "spin" : ""} />
                   {migratingPhotos ? "Migrating All Photos to Cloudinary..." : "Migrate All Database Photos to Cloudinary CDN"}
+                </button>
+              </div>
+
+              {/* Data Purge / Wipe Panel */}
+              <div className="glass-panel" style={{ padding: "24px" }}>
+                <h3 style={{ fontSize: "1.2rem", marginBottom: "12px", color: "var(--danger)", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Trash2 size={20} style={{ color: "var(--danger)" }} /> Purge Operational Data
+                </h3>
+                
+                <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "16px" }}>
+                  Wipes all operational data (orders, requests, vendors, cargo shipments) starting fresh with 0 records. User accounts are preserved.
+                </p>
+
+                <button
+                  onClick={async () => {
+                    if (!window.confirm("⚠️ ARE YOU SURE? This will permanently delete ALL orders, vendors, and cargo shipments!")) return;
+                    if (onPurgeAllData) {
+                      await onPurgeAllData(false);
+                      alert("✅ All operational data has been purged successfully!");
+                    }
+                  }}
+                  className="btn btn-danger"
+                  style={{ width: "100%", padding: "12px", fontSize: "0.9rem" }}
+                >
+                  Purge All Orders, Vendors & Cargo Data
                 </button>
               </div>
 

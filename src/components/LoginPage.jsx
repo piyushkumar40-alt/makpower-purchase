@@ -6,20 +6,23 @@ export default function LoginPage({ onLogin, onEnterAsGuest, users }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    const result = onLogin(email, password);
-    if (!result.success) {
+    const result = await onLogin(email, password);
+    if (result && !result.success) {
       setError(result.message);
     }
   };
 
-  const handleQuickLogin = (presetEmail, presetPassword) => {
+  const handleQuickLogin = async (presetEmail, presetPassword) => {
     setEmail(presetEmail);
     setPassword(presetPassword);
     setError("");
-    onLogin(presetEmail, presetPassword);
+    const result = await onLogin(presetEmail, presetPassword);
+    if (result && !result.success) {
+      setError(result.message);
+    }
   };
 
   // Find active purchasers for quick login buttons
@@ -61,7 +64,7 @@ export default function LoginPage({ onLogin, onEnterAsGuest, users }) {
                 name="email"
                 autoComplete="username"
                 className="form-control" 
-                placeholder="you@company.com" 
+                placeholder="you@makpowerindia.com" 
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 required

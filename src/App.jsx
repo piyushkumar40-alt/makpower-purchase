@@ -36,6 +36,7 @@ export default function App() {
   const [requests, setRequests] = useState([]);
   const [cargos, setCargos] = useState([]);
   const [cargoCompanies, setCargoCompanies] = useState([]);
+  const [items, setItems] = useState([]);
   const [settings, setSettings] = useState({ isHidden: false, redirectUrl: "https://www.instagram.com/makpowerofficial/" });
   const [loading, setLoading] = useState(true);
 
@@ -82,6 +83,7 @@ export default function App() {
         setRequests(data.requests || []);
         setCargos(data.cargos || []);
         setCargoCompanies(data.cargoCompanies || []);
+        setItems(data.items || []);
         if (data.settings) {
           setSettings(data.settings);
         }
@@ -535,6 +537,54 @@ export default function App() {
     return { success: true };
   };
 
+  const addItem = async (newItem) => {
+    const res = await postData("/api/items", newItem);
+    if (res && res.success) {
+      setItems(prev => {
+        const idx = prev.findIndex(i => i.id === newItem.id);
+        if (idx !== -1) {
+          const updated = [...prev];
+          updated[idx] = newItem;
+          return updated;
+        }
+        return [...prev, newItem];
+      });
+    }
+    return res;
+  };
+
+  const bulkAddItems = async (itemList) => {
+    const res = await postData("/api/items/bulk", { items: itemList });
+    if (res && res.success) {
+      setItems(prev => {
+        const map = new Map(prev.map(i => [i.id, i]));
+        itemList.forEach(i => map.set(i.id, i));
+        return Array.from(map.values());
+      });
+    }
+    return res;
+  };
+
+  const deleteItems = async (itemIds) => {
+    const res = await postData("/api/items/delete", { ids: itemIds });
+    if (res && res.success) {
+      setItems(prev => prev.filter(i => !itemIds.includes(i.id)));
+    }
+    return res;
+  };
+
+  const purgeAllData = async (purgeItems = false) => {
+    const res = await postData("/api/data/purge", { purgeItems });
+    if (res && res.success) {
+      setRequests([]);
+      setCargos([]);
+      setVendors([]);
+      setCargoCompanies([]);
+      if (purgeItems) setItems([]);
+    }
+    return res;
+  };
+
   const exportBackupData = () => {
     return JSON.stringify({ users, vendors, requests, cargos, cargoCompanies });
   };
@@ -895,6 +945,11 @@ export default function App() {
             settings={settings}
             onUpdateSettings={handleUpdateSystemSettings}
             onBatchUpdateRequests={batchUpdateRequests}
+            items={items}
+            onAddItem={addItem}
+            onBulkAddItems={bulkAddItems}
+            onDeleteItems={deleteItems}
+            onPurgeAllData={purgeAllData}
           />
         )}
 

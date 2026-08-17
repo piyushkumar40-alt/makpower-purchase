@@ -225,6 +225,32 @@ async function setupPgDatabase() {
       );
     `);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS items (
+        "id" TEXT PRIMARY KEY,
+        "name" TEXT,
+        "category" TEXT,
+        "itemNature" TEXT,
+        "unit" TEXT,
+        "description" TEXT,
+        "photo" TEXT,
+        "currentStock" INTEGER
+      );
+    `);
+
+    // Sync Users to new @makpowerindia.com list if legacy users exist
+    const legacyUserCheck = await pool.query("SELECT COUNT(*) FROM users WHERE email LIKE '%@company.com'");
+    if (parseInt(legacyUserCheck.rows[0].count) > 0) {
+      await pool.query("DELETE FROM users");
+      for (const u of initialUsers) {
+        await pool.query(
+          `INSERT INTO users ("id", "name", "email", "password", "role", "status") VALUES ($1, $2, $3, $4, $5, $6)`,
+          [u.id, u.name, u.email, u.password, u.role, u.status]
+        );
+      }
+      console.log("Re-synced users to @makpowerindia.com domain.");
+    }
+
     // 2. Check if seeding is required
     const userCheck = await pool.query("SELECT COUNT(*) FROM users");
     const count = parseInt(userCheck.rows[0].count);
@@ -1023,6 +1049,7 @@ app.get("/api/state", async (req, res) => {
       const cargosRes = await pool.query("SELECT * FROM cargos");
       const requestsRes = await pool.query("SELECT * FROM requests");
       const settingsRes = await pool.query("SELECT * FROM settings");
+      const itemsRes = await pool.query("SELECT * FROM items ORDER BY CAST(NULLIF(regexp_replace(\"id\", '\\D', '', 'g'), '') AS INTEGER) ASC, \"id\" ASC");
 
       // Format types back
       const vendors = vendorsRes.rows.map(v => ({
@@ -1061,7 +1088,8 @@ app.get("/api/state", async (req, res) => {
         cargoCompanies: cargoCompaniesRes.rows,
         cargos,
         requests,
-        settings
+        settings,
+        items: itemsRes.rows || []
       });
     } catch (err) {
       console.error("GET /api/state error:", err.message);
@@ -1409,6 +1437,145 @@ app.post("/api/users/update", async (req, res) => {
     } else {
       res.status(404).json({ error: "User not found." });
     }
+  }
+});
+
+// ==================== MASTER ITEM CATALOG API ENDPOINTS ====================
+
+// GET /api/items - Retrieve all Master Items
+app.get("/api/items", async (req, res) => {
+  if (isPg) {
+    try {
+      const result = await pool.query(`SELECT * FROM items ORDER BY CAST(NULLIF(regexp_replace("id", '\\D', '', 'g'), '') AS INTEGER) ASC, "id" ASC`);
+      res.json(result.rows);
+    } catch (err) {
+      console.error("GET /api/items error:", err.message);
+      res.status(500).json({ error: "Failed to fetch items." });
+    }
+  } else {
+    const data = readLocalJson();
+    res.json(data.items || []);
+  }
+});
+
+// POST /api/items - Add or update a single Master Item
+app.post("/api/items", async (req, res) => {
+  const item = req.body;
+  if (!item.id || !item.name) {
+    return res.status(400).json({ error: "Item ID and Item Name are required." });
+  }
+  if (isPg) {
+    try {
+      await pool.query(
+        `INSERT INTO items ("id", "name", "category", "itemNature", "unit", "description", "photo", "currentStock")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name", "category" = EXCLUDED."category", "itemNature" = EXCLUDED."itemNature", "unit" = EXCLUDED."unit", "description" = EXCLUDED."description", "photo" = EXCLUDED."photo", "currentStock" = EXCLUDED."currentStock"`,
+        [item.id, item.name, item.category || "", item.itemNature || "Non Consumables", item.unit || "Pcs", item.description || "", item.photo || "", item.currentStock || 0]
+      );
+      res.json({ success: true });
+    } catch (err) {
+      console.error("POST /api/items error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.items) data.items = [];
+    const idx = data.items.findIndex(i => i.id === item.id);
+    if (idx !== -1) {
+      data.items[idx] = { ...data.items[idx], ...item };
+    } else {
+      data.items.push(item);
+    }
+    writeLocalJson(data);
+    res.json({ success: true });
+  }
+});
+
+// POST /api/items/bulk - Bulk add/update Master Items (from Excel upload)
+app.post("/api/items/bulk", async (req, res) => {
+  const items = req.body.items || [];
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: "No items provided for bulk upload." });
+  }
+  if (isPg) {
+    try {
+      for (const item of items) {
+        if (!item.id || !item.name) continue;
+        await pool.query(
+          `INSERT INTO items ("id", "name", "category", "itemNature", "unit", "description", "photo", "currentStock")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name", "category" = EXCLUDED."category", "itemNature" = EXCLUDED."itemNature", "unit" = EXCLUDED."unit", "description" = EXCLUDED."description", "photo" = EXCLUDED."photo", "currentStock" = EXCLUDED."currentStock"`,
+          [item.id, item.name, item.category || "", item.itemNature || "Non Consumables", item.unit || "Pcs", item.description || "", item.photo || "", item.currentStock || 0]
+        );
+      }
+      res.json({ success: true, count: items.length });
+    } catch (err) {
+      console.error("POST /api/items/bulk error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.items) data.items = [];
+    for (const item of items) {
+      if (!item.id || !item.name) continue;
+      const idx = data.items.findIndex(i => i.id === item.id);
+      if (idx !== -1) {
+        data.items[idx] = { ...data.items[idx], ...item };
+      } else {
+        data.items.push(item);
+      }
+    }
+    writeLocalJson(data);
+    res.json({ success: true, count: items.length });
+  }
+});
+
+// POST /api/items/delete - Single or bulk delete Master Items by ID
+app.post("/api/items/delete", async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: "No item IDs provided." });
+  }
+  if (isPg) {
+    try {
+      await pool.query(`DELETE FROM items WHERE "id" = ANY($1::text[])`, [ids]);
+      res.json({ success: true, count: ids.length });
+    } catch (err) {
+      console.error("POST /api/items/delete error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.items) data.items = [];
+    data.items = data.items.filter(i => !ids.includes(i.id));
+    writeLocalJson(data);
+    res.json({ success: true, count: ids.length });
+  }
+});
+
+// POST /api/data/purge - Reset all sample/operational data
+app.post("/api/data/purge", async (req, res) => {
+  const { purgeItems } = req.body || {};
+  if (isPg) {
+    try {
+      await pool.query("TRUNCATE TABLE requests, cargos, vendors, cargo_companies");
+      if (purgeItems) {
+        await pool.query("TRUNCATE TABLE items");
+      }
+      res.json({ success: true });
+    } catch (err) {
+      console.error("POST /api/data/purge error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    data.requests = [];
+    data.cargos = [];
+    data.vendors = [];
+    data.cargoCompanies = [];
+    if (purgeItems) data.items = [];
+    writeLocalJson(data);
+    res.json({ success: true });
   }
 });
 
