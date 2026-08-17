@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Layers, Plus, Upload, Trash2, Search, CheckSquare, Square, FileSpreadsheet, Package, AlertCircle, RefreshCw, GitMerge, Edit3, Info, Download, Image, ListPlus } from "lucide-react";
+import { Layers, Plus, Upload, Trash2, Search, CheckSquare, Square, FileSpreadsheet, Package, AlertCircle, RefreshCw, GitMerge, Edit3, Info, Download, Image, ListPlus, Eye } from "lucide-react";
+import ItemDetailModal from "./ItemDetailModal";
 
 // Normalize item names for fuzzy duplicate detection (e.g. DC02, DC 02, DC2, DC-2, DC-02 -> DC2)
 export function normalizeItemKey(str) {
@@ -17,10 +18,16 @@ export default function ItemCatalogPanel({
   onDeleteItems,
   onUpdateItem,
   onMergeItems,
-  currentUser = {}
+  currentUser = {},
+  requests = [],
+  cargos = [],
+  vendors = [],
+  users = [],
+  cargoCompanies = []
 }) {
   const isSuperAdmin = currentUser && currentUser.role === "superadmin";
 
+  const [selectedItemDetail, setSelectedItemDetail] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   
@@ -1308,7 +1315,7 @@ export default function ItemCatalogPanel({
                           style={{ cursor: "pointer" }}
                         />
                       </td>
-                      <td style={{ textAlign: "center" }}>
+                      <td style={{ textAlign: "center", cursor: "pointer" }} onClick={() => setSelectedItemDetail(item)}>
                         {item.photo ? (
                           <img 
                             src={item.photo} 
@@ -1322,59 +1329,66 @@ export default function ItemCatalogPanel({
                           </div>
                         )}
                       </td>
-                      <td style={{ fontWeight: 800, color: "var(--primary)", fontSize: "0.9rem" }}>
-                        {item.id}
+                      <td style={{ fontWeight: 800, color: "#38bdf8", fontSize: "0.9rem", cursor: "pointer" }} onClick={() => setSelectedItemDetail(item)} title="Click to view full item history & location details">
+                        #{item.id}
                       </td>
-                      <td style={{ fontWeight: 600, color: "var(--text-main)" }}>
+                      <td style={{ fontWeight: 600, color: "var(--text-main)", cursor: "pointer" }} onClick={() => setSelectedItemDetail(item)}>
                         {item.name}
                       </td>
-                      <td>
+                      <td style={{ cursor: "pointer" }} onClick={() => setSelectedItemDetail(item)}>
                         <span className="badge badge-secondary" style={{ fontSize: "0.75rem" }}>
                           {item.category || "General"}
                         </span>
                       </td>
-                      <td>
+                      <td style={{ cursor: "pointer" }} onClick={() => setSelectedItemDetail(item)}>
                         <span className="badge" style={{ fontSize: "0.75rem", fontWeight: 700, background: isFG ? "rgba(16, 185, 129, 0.18)" : "rgba(99, 102, 241, 0.18)", color: isFG ? "#34d399" : "#a5b4fc", border: `1px solid ${isFG ? "rgba(16, 185, 129, 0.3)" : "rgba(99, 102, 241, 0.3)"}` }}>
                           {isFG ? "FG (Finished)" : "RM (Raw Material)"}
                         </span>
                       </td>
-                      <td>
+                      <td style={{ cursor: "pointer" }} onClick={() => setSelectedItemDetail(item)}>
                         <span className={`badge ${item.itemNature === "Consumables" ? "badge-warning" : "badge-approved"}`} style={{ fontSize: "0.75rem" }}>
                           {item.itemNature || "Non Consumables"}
                         </span>
                       </td>
-                      <td style={{ fontWeight: 500 }}>
+                      <td style={{ fontWeight: 500, cursor: "pointer" }} onClick={() => setSelectedItemDetail(item)}>
                         {item.unit || "Pcs"}
                       </td>
-                      <td style={{ color: "var(--text-muted)", fontSize: "0.8rem", maxWidth: "250px" }}>
+                      <td style={{ color: "var(--text-muted)", fontSize: "0.8rem", maxWidth: "250px", cursor: "pointer" }} onClick={() => setSelectedItemDetail(item)}>
                         {item.description || "-"}
                       </td>
                       <td style={{ textAlign: "center" }}>
-                        {isSuperAdmin ? (
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
-                            <button 
-                              onClick={() => handleOpenEditModal(item)}
-                              className="btn btn-sm btn-secondary"
-                              title="Edit Item Name / Details"
-                              style={{ padding: "4px 8px" }}
-                            >
-                              <Edit3 size={14} />
-                            </button>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
+                          <button 
+                            onClick={() => setSelectedItemDetail(item)}
+                            className="btn btn-sm btn-primary"
+                            title="View Full Item Details, History & Tracking"
+                            style={{ padding: "4px 8px", fontSize: "0.75rem" }}
+                          >
+                            <Eye size={14} /> View
+                          </button>
 
-                            <button 
-                              onClick={() => handleDeleteSingle(item.id, item.name)}
-                              className="btn btn-sm btn-danger"
-                              title="Delete Item"
-                              style={{ padding: "4px 8px" }}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        ) : (
-                          <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", fontStyle: "italic" }}>
-                            View Only
-                          </span>
-                        )}
+                          {isSuperAdmin && (
+                            <>
+                              <button 
+                                onClick={() => handleOpenEditModal(item)}
+                                className="btn btn-sm btn-secondary"
+                                title="Edit Item Name / Details"
+                                style={{ padding: "4px 8px" }}
+                              >
+                                <Edit3 size={14} />
+                              </button>
+
+                              <button 
+                                onClick={() => handleDeleteSingle(item.id, item.name)}
+                                className="btn btn-sm btn-danger"
+                                title="Delete Item"
+                                style={{ padding: "4px 8px" }}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1384,6 +1398,19 @@ export default function ItemCatalogPanel({
           </table>
         </div>
       </div>
+
+      {/* Item Detail Modal Popup */}
+      {selectedItemDetail && (
+        <ItemDetailModal 
+          item={selectedItemDetail}
+          onClose={() => setSelectedItemDetail(null)}
+          requests={requests}
+          cargos={cargos}
+          vendors={vendors}
+          users={users}
+          cargoCompanies={cargoCompanies}
+        />
+      )}
 
     </div>
   );

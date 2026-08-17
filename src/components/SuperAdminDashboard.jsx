@@ -689,6 +689,11 @@ export default function SuperAdminDashboard({
             onUpdateItem={onUpdateItem}
             onMergeItems={onMergeItems}
             currentUser={{ role: "superadmin", name: "Admin" }}
+            requests={requests}
+            cargos={cargos}
+            vendors={vendors}
+            users={users}
+            cargoCompanies={cargoCompanies}
           />
         )}
 

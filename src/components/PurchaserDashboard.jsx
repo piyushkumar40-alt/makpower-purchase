@@ -1120,6 +1120,11 @@ export default function PurchaserDashboard({
             onUpdateItem={onUpdateItem}
             onMergeItems={onMergeItems}
             currentUser={currentUser}
+            requests={requests}
+            cargos={cargos}
+            vendors={vendors}
+            users={purchasers}
+            cargoCompanies={cargoCompanies}
           />
         )}
 
