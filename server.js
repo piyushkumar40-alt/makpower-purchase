@@ -245,6 +245,23 @@ async function setupPgDatabase() {
       UPDATE users SET "password" = 'MakPower#Admin2026!' WHERE "email" = 'admin@makpowerindia.com' AND ("password" = '112233' OR "password" = 'admin');
     `);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        "id" TEXT PRIMARY KEY,
+        "userId" TEXT,
+        "userName" TEXT,
+        "role" TEXT,
+        "action" TEXT,
+        "details" TEXT,
+        "entityType" TEXT,
+        "entityId" TEXT,
+        "oldData" TEXT,
+        "newData" TEXT,
+        "timestamp" TEXT,
+        "isoTime" TEXT
+      );
+    `);
+
     // Sync Users to new @makpowerindia.com list if legacy users exist
     const legacyUserCheck = await pool.query("SELECT COUNT(*) FROM users WHERE email LIKE '%@company.com'");
     if (parseInt(legacyUserCheck.rows[0].count) > 0) {
@@ -1440,10 +1457,70 @@ app.post("/api/users/update", async (req, res) => {
     if (index !== -1) {
       data.users[index] = { ...data.users[index], ...updates };
       writeLocalJson(data);
-      res.json({ success: true });
-    } else {
-      res.status(404).json({ error: "User not found." });
+      }
+  }
+});
+
+// ==================== SYSTEM AUDIT LOGS & VERSION HISTORY API ====================
+
+// GET /api/audit-logs - Retrieve all activity logs
+app.get("/api/audit-logs", async (req, res) => {
+  if (isPg) {
+    try {
+      const result = await pool.query(`SELECT * FROM audit_logs ORDER BY "isoTime" DESC LIMIT 2000`);
+      res.json(result.rows);
+    } catch (err) {
+      console.error("GET /api/audit-logs error:", err.message);
+      res.status(500).json({ error: "Failed to fetch audit logs." });
     }
+  } else {
+    const data = readLocalJson();
+    res.json(data.auditLogs || []);
+  }
+});
+
+// POST /api/audit-logs - Record new audit log entry
+app.post("/api/audit-logs", async (req, res) => {
+  const entry = req.body;
+  if (!entry || !entry.action) {
+    return res.status(400).json({ error: "Audit log action is required." });
+  }
+
+  const logObj = {
+    id: entry.id || `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+    userId: entry.userId || "system",
+    userName: entry.userName || "System User",
+    role: entry.role || "user",
+    action: entry.action || "ACTIVITY",
+    details: entry.details || "",
+    entityType: entry.entityType || "",
+    entityId: entry.entityId || "",
+    oldData: entry.oldData ? (typeof entry.oldData === "string" ? entry.oldData : JSON.stringify(entry.oldData)) : "",
+    newData: entry.newData ? (typeof entry.newData === "string" ? entry.newData : JSON.stringify(entry.newData)) : "",
+    timestamp: entry.timestamp || new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+    isoTime: entry.isoTime || new Date().toISOString()
+  };
+
+  if (isPg) {
+    try {
+      await pool.query(
+        `INSERT INTO audit_logs ("id", "userId", "userName", "role", "action", "details", "entityType", "entityId", "oldData", "newData", "timestamp", "isoTime")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         ON CONFLICT ("id") DO UPDATE SET "details" = EXCLUDED."details"`,
+        [logObj.id, logObj.userId, logObj.userName, logObj.role, logObj.action, logObj.details, logObj.entityType, logObj.entityId, logObj.oldData, logObj.newData, logObj.timestamp, logObj.isoTime]
+      );
+      res.json({ success: true, log: logObj });
+    } catch (err) {
+      console.error("POST /api/audit-logs error:", err.message);
+      res.status(500).json({ error: "Failed to record audit log." });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.auditLogs) data.auditLogs = [];
+    data.auditLogs.unshift(logObj);
+    if (data.auditLogs.length > 2000) data.auditLogs = data.auditLogs.slice(0, 2000);
+    writeLocalJson(data);
+    res.json({ success: true, log: logObj });
   }
 });
 

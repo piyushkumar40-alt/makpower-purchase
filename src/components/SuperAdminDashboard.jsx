@@ -5,7 +5,7 @@ import { getCurrencySymbol, CargoCompaniesPanel, VendorDetailModal, CargoCompany
 import ItemMasterView from "./ItemMasterView";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 import ItemCatalogPanel from "./ItemCatalogPanel";
-import { QuickCreateVendorModal, QuickCreateCargoCompanyModal, QuickCreateDesignationModal, QuickCreateUserModal } from "./QuickCreateModals";
+import AuditLogsPanel from "./AuditLogsPanel";
 
 export default function SuperAdminDashboard({
   users,
@@ -13,6 +13,7 @@ export default function SuperAdminDashboard({
   requests,
   cargos,
   cargoCompanies = [],
+  auditLogs = [],
   onAddPurchaser,
   onRemovePurchaser,
   onAddVendor,
@@ -1180,103 +1181,7 @@ export default function SuperAdminDashboard({
 
         {/* AUDIT LOG TAB */}
         {subTab === "audit" && (
-          <div className="card-fade-in">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
-              <h2 style={{ fontSize: "1.8rem" }}>Audit Logs</h2>
-              
-              <div style={{ display: "flex", gap: "10px" }}>
-                <select 
-                  className="form-control"
-                  style={{ width: "140px" }}
-                  value={auditFilter}
-                  onChange={e => setAuditFilter(e.target.value)}
-                >
-                  <option value="All" style={{ background: "#0f172a" }}>All Purchases</option>
-                  <option value="Local" style={{ background: "#0f172a" }}>Local Only</option>
-                  <option value="Import" style={{ background: "#0f172a" }}>Import Only</option>
-                </select>
-
-                <input 
-                  type="text"
-                  className="form-control"
-                  placeholder="Search model, purchaser..."
-                  style={{ width: "200px" }}
-                  value={auditSearch}
-                  onChange={e => setAuditSearch(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {/* Audit Table */}
-            <div className="glass-panel" style={{ padding: "20px" }}>
-              <div className="table-container">
-                <table className="custom-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Order Date</th>
-                      <th>Type</th>
-                      <th>Model</th>
-                      <th>Qty</th>
-                      <th>Total (RMB)</th>
-                      <th>Purchaser</th>
-                      <th>Vendor</th>
-                      <th>Material Rec?</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {requests
-                      .filter(r => {
-                        if (auditFilter !== "All" && r.type !== auditFilter) return false;
-                        if (auditSearch) {
-                          const searchLower = auditSearch.toLowerCase();
-                          const modelMatch = r.model.toLowerCase().includes(searchLower);
-                          
-                          const purchaserObj = users.find(u => u.id === r.purchaserId);
-                          const purchaserMatch = purchaserObj && purchaserObj.name ? purchaserObj.name.toLowerCase().includes(searchLower) : false;
-                          
-                          return modelMatch || purchaserMatch;
-                        }
-                        return true;
-                      })
-                      .map(r => {
-                        const pName = users.find(u => u.id === r.purchaserId)?.name || "Unknown";
-                        const vName = vendors.find(v => v.id === r.vendorId)?.name || "Unknown";
-                        
-                        let statusBadge = <span className="badge badge-pending">Pending Price</span>;
-                        if (r.isMaterialRec === "Yes") {
-                          statusBadge = <span className="badge badge-received">Received</span>;
-                        } else if (r.cargoId) {
-                          statusBadge = <span className="badge badge-cargo">Cargo In Transit</span>;
-                        } else if (r.priceRmb) {
-                          statusBadge = <span className="badge badge-approved">Price Set / Tracking</span>;
-                        }
-
-                        return (
-                          <tr key={r.id}>
-                            <td>{r.id}</td>
-                            <td>{r.orderDate}</td>
-                            <td>{r.type}</td>
-                            <td style={{ fontWeight: 500 }}>{r.model}</td>
-                            <td>{r.orderQuantity}</td>
-                            <td>{r.totalRmb ? `${getCurrencySymbol(r.currency)}${Number(r.totalRmb).toLocaleString()}` : "—"}</td>
-                            <td>{pName}</td>
-                            <td>{vName}</td>
-                            <td>
-                              <span style={{ color: r.isMaterialRec === "Yes" ? "var(--success)" : "var(--danger)" }}>
-                                {r.isMaterialRec}
-                              </span>
-                            </td>
-                            <td>{statusBadge}</td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+          <AuditLogsPanel auditLogs={auditLogs} users={users} requests={requests} vendors={vendors} />
         )}
 
         {/* DATABASE BACKUP TAB */}

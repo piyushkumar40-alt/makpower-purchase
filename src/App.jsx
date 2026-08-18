@@ -52,6 +52,7 @@ export default function App() {
   const [cargoCompanies, setCargoCompanies] = useState([]);
   const [items, setItems] = useState([]);
   const [designations, setDesignations] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
   const [settings, setSettings] = useState({ isHidden: false, redirectUrl: "https://www.instagram.com/makpowerofficial/" });
   const [loading, setLoading] = useState(true);
 
@@ -59,6 +60,30 @@ export default function App() {
     const saved = localStorage.getItem("makpower_current_user");
     return saved ? JSON.parse(saved) : null;
   });
+
+  // System Audit Activity Logger (Google Sheets-style version history)
+  const logSystemActivity = async (action, details, entityType = "", entityId = "", oldData = null, newData = null) => {
+    const entry = {
+      id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      userId: currentUser?.id || "system",
+      userName: currentUser?.name || currentUser?.email || "System User",
+      role: currentUser?.role || "user",
+      action,
+      details,
+      entityType,
+      entityId,
+      oldData: oldData ? (typeof oldData === "string" ? oldData : JSON.stringify(oldData)) : "",
+      newData: newData ? (typeof newData === "string" ? newData : JSON.stringify(newData)) : "",
+      timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "medium" }),
+      isoTime: new Date().toISOString()
+    };
+    try {
+      await postData("/api/audit-logs", entry);
+      setAuditLogs(prev => [entry, ...prev]);
+    } catch (err) {
+      console.error("Failed to record audit log:", err);
+    }
+  };
 
   // activeView: "login" | "home" | "requester" | "dashboard" | "admin" | "nitin" | "rahul" | "coordinator" | "itemcatalog" | "itemdetail"
   const [activeView, setActiveView] = useState(() => {
@@ -108,7 +133,10 @@ export default function App() {
   useEffect(() => {
     async function loadData(isInterval = false) {
       try {
-        const res = await fetch("/api/state");
+        const [res, auditRes] = await Promise.all([
+          fetch("/api/state"),
+          fetch("/api/audit-logs")
+        ]);
         const data = await res.json();
         setUsers(data.users || []);
         setVendors(data.vendors || []);
@@ -119,6 +147,11 @@ export default function App() {
         setDesignations(data.designations || []);
         if (data.settings) {
           setSettings(data.settings);
+        }
+
+        if (auditRes.ok) {
+          const aLogs = await auditRes.json();
+          setAuditLogs(aLogs || []);
         }
       } catch (err) {
         console.error("Failed to load state from database API:", err);
@@ -258,6 +291,7 @@ export default function App() {
       } else {
         setActiveView("dashboard");
       }
+      logSystemActivity("USER_LOGIN", `User "${user.name}" (${user.role}) logged in successfully`, "User Session", user.id);
       return { success: true };
     }
     return { success: false, message: "Invalid email, password, or inactive account." };
@@ -266,6 +300,7 @@ export default function App() {
   const handleLogout = async () => {
     const sessionId = localStorage.getItem("makpower_session_id");
     if (currentUser) {
+      logSystemActivity("USER_LOGOUT", `User "${currentUser.name}" signed out`, "User Session", currentUser.id);
       try {
         await postData("/api/auth/logout", { userId: currentUser.id, sessionId });
       } catch (err) {
@@ -321,15 +356,32 @@ export default function App() {
     });
     await postData("/api/requests/batch", reqsWithIds);
     setRequests(prev => [...reqsWithIds, ...prev]);
+    logSystemActivity("CREATE_REQUEST", `Created ${reqsWithIds.length} purchase requisition(s) (e.g. ${reqsWithIds[0]?.model || "Requisition"})`, "Requisition", reqsWithIds[0]?.id, null, reqsWithIds);
   };
 
   const updateRequest = async (updatedReq) => {
+    const oldReq = requests.find(r => r.id === updatedReq.id);
     const newReq = {
       ...updatedReq,
       actualReceivedDate: updatedReq.isMaterialRec === "Yes" ? (updatedReq.actualReceivedDate || "2026-06-11") : ""
     };
     await postData("/api/requests", newReq);
     setRequests(prev => prev.map(r => r.id === newReq.id ? newReq : r));
+
+    const vName = vendors.find(v => v.id === newReq.vendorId)?.name || "N/A";
+    let actionLabel = "UPDATE_REQUEST";
+    let detailText = `Updated requisition details for ${newReq.model} (#${newReq.id})`;
+    if (!oldReq?.priceRmb && newReq.priceRmb) {
+      actionLabel = "PRICE_REQUEST";
+      detailText = `Priced ${newReq.model} (#${newReq.id}): ¥${newReq.priceRmb} RMB | EDD: ${newReq.vendorEdd} | Vendor: ${vName}`;
+    } else if (!oldReq?.vendorReadyDate && newReq.vendorReadyDate) {
+      actionLabel = "VENDOR_READY";
+      detailText = `Marked vendor ready for ${newReq.model} (#${newReq.id}) on ${newReq.vendorReadyDate}`;
+    } else if (oldReq?.isMaterialRec !== "Yes" && newReq.isMaterialRec === "Yes") {
+      actionLabel = "MATERIAL_RECEIVED";
+      detailText = `Marked material received for ${newReq.model} (#${newReq.id})`;
+    }
+    logSystemActivity(actionLabel, detailText, "Requisition", newReq.id, oldReq, newReq);
   };
 
   const batchUpdateRequests = async (updatedReqs) => {
@@ -342,6 +394,7 @@ export default function App() {
       const match = mapped.find(x => x.id === r.id);
       return match ? match : r;
     }));
+    logSystemActivity("BATCH_UPDATE_REQUESTS", `Bulk updated ${mapped.length} requisition(s)`, "Requisition", mapped[0]?.id);
   };
 
   const cancelRequest = async (requestId, reason = "") => {
@@ -355,6 +408,7 @@ export default function App() {
     };
     await postData("/api/requests", updated);
     setRequests(prev => prev.map(r => r.id === requestId ? updated : r));
+    logSystemActivity("CANCEL_ORDER", `Cancelled purchase order ${target.model} (#${target.id}) ${reason ? `- Reason: ${reason}` : ""}`, "Requisition", target.id, target, updated);
   };
 
   const undoCargoAssignment = async (requestId) => {
@@ -363,6 +417,7 @@ export default function App() {
     const updated = { ...target, cargoId: "", cargoAssignedAt: "" };
     await postData("/api/requests", updated);
     setRequests(prev => prev.map(r => r.id === requestId ? updated : r));
+    logSystemActivity("UNDO_CARGO", `Undid cargo assignment for ${target.model} (#${target.id})`, "Requisition", target.id, target, updated);
   };
 
   const undoPricing = async (requestId) => {
@@ -382,6 +437,7 @@ export default function App() {
     };
     await postData("/api/requests", updated);
     setRequests(prev => prev.map(r => r.id === requestId ? updated : r));
+    logSystemActivity("UNDO_PRICING", `Undid pricing for ${target.model} (#${target.id})`, "Requisition", target.id, target, updated);
   };
 
   const addCargo = async (cargoDetails, selectedRequestIds) => {
@@ -409,9 +465,11 @@ export default function App() {
       const match = updatedItems.find(x => x.id === r.id);
       return match ? match : r;
     }));
+    logSystemActivity("CREATE_CARGO", `Created Cargo Shipment #${newCargoId} (${newCargo.cargoDetail || "Cargo"}) bundling ${selectedRequestIds.length} items`, "Cargo", newCargoId, null, newCargo);
   };
 
   const updateCargo = async (updatedCargo) => {
+    const oldCargo = cargos.find(c => c.id === updatedCargo.id);
     const cargoWithDate = {
       ...updatedCargo,
       receivedDate: updatedCargo.isMaterialRec === "Yes" ? (updatedCargo.receivedDate || "2026-06-11") : ""
@@ -432,6 +490,7 @@ export default function App() {
         return match ? match : r;
       }));
     }
+    logSystemActivity("UPDATE_CARGO", `Updated Cargo Shipment #${updatedCargo.id} (${updatedCargo.cargoDetail || "Cargo"})`, "Cargo", updatedCargo.id, oldCargo, cargoWithDate);
   };
 
   const addPurchaser = async (name, email, password, designation = "Purchaser", explicitRole = null) => {
@@ -531,32 +590,38 @@ export default function App() {
     const dbRes = await postData("/api/vendors", newVendor);
     if (dbRes && (dbRes.success || dbRes.id)) {
       setVendors(prev => [...prev, newVendor]);
+      logSystemActivity("CREATE_VENDOR", `Registered vendor "${newVendor.name}" (${newVendor.location || "China"})`, "Vendor", newVendor.id, null, newVendor);
       return { success: true, vendor: newVendor, message: `✅ Vendor "${newVendor.name}" saved to database successfully!` };
     }
     return { success: false, message: dbRes?.error || "Failed to save vendor to server database." };
   };
 
   const updateVendor = async (updatedVendor) => {
+    const oldVendor = vendors.find(v => v.id === updatedVendor.id);
     const exists = vendors.some(v => v.id !== updatedVendor.id && v.name.trim().toLowerCase() === updatedVendor.name.trim().toLowerCase());
     if (exists) {
       return { success: false, message: `Vendor "${updatedVendor.name}" already exists.` };
     }
     await postData("/api/vendors", updatedVendor);
     setVendors(prev => prev.map(v => v.id === updatedVendor.id ? updatedVendor : v));
+    logSystemActivity("UPDATE_VENDOR", `Updated vendor "${updatedVendor.name}"`, "Vendor", updatedVendor.id, oldVendor, updatedVendor);
     return { success: true, message: `✅ Vendor "${updatedVendor.name}" updated in database successfully!` };
   };
 
   const updateCargoCompany = async (updatedCompany) => {
+    const oldCompany = cargoCompanies.find(cc => cc.id === updatedCompany.id);
     const exists = cargoCompanies.some(cc => cc.id !== updatedCompany.id && cc.name.trim().toLowerCase() === updatedCompany.name.trim().toLowerCase());
     if (exists) {
       return { success: false, message: `Cargo company "${updatedCompany.name}" already exists.` };
     }
     await postData("/api/cargo-companies", updatedCompany);
     setCargoCompanies(prev => prev.map(cc => cc.id === updatedCompany.id ? updatedCompany : cc));
+    logSystemActivity("UPDATE_CARGO_COMPANY", `Updated transport company "${updatedCompany.name}"`, "Cargo Carrier", updatedCompany.id, oldCompany, updatedCompany);
     return { success: true, message: `✅ Transport company "${updatedCompany.name}" updated in database successfully!` };
   };
 
   const removeVendor = async (vendorId) => {
+    const target = vendors.find(v => v.id === vendorId);
     await deleteData(`/api/vendors/${vendorId}`);
     setVendors(prev => prev.filter(v => v.id !== vendorId));
 
@@ -578,6 +643,7 @@ export default function App() {
       return match ? match : c;
     }));
 
+    logSystemActivity("DELETE_VENDOR", `Removed vendor "${target?.name || vendorId}"`, "Vendor", vendorId);
     return { success: true };
   };
 
@@ -598,12 +664,14 @@ export default function App() {
     const dbRes = await postData("/api/cargo-companies", newCompany);
     if (dbRes && (dbRes.success || dbRes.id)) {
       setCargoCompanies(prev => [...prev, newCompany]);
+      logSystemActivity("CREATE_CARGO_COMPANY", `Registered transport company "${newCompany.name}"`, "Cargo Carrier", newCompany.id, null, newCompany);
       return { success: true, company: newCompany, message: `✅ Transport company "${newCompany.name}" saved to database successfully!` };
     }
     return { success: false, message: dbRes?.error || "Failed to save transport company to server database." };
   };
 
   const removeCargoCompany = async (companyId) => {
+    const target = cargoCompanies.find(cc => cc.id === companyId);
     await deleteData(`/api/cargo-companies/${companyId}`);
     setCargoCompanies(prev => prev.filter(cc => cc.id !== companyId));
 
@@ -616,10 +684,12 @@ export default function App() {
       return match ? match : c;
     }));
 
+    logSystemActivity("DELETE_CARGO_COMPANY", `Removed transport company "${target?.name || companyId}"`, "Cargo Carrier", companyId);
     return { success: true };
   };
 
   const addItem = async (newItem) => {
+    const oldItem = items.find(i => i.id === newItem.id);
     const res = await postData("/api/items", newItem);
     if (res && res.success) {
       setItems(prev => {
@@ -631,6 +701,7 @@ export default function App() {
         }
         return [...prev, newItem];
       });
+      logSystemActivity(oldItem ? "UPDATE_ITEM" : "CREATE_ITEM", `${oldItem ? "Updated" : "Added"} item "${newItem.name}" (${newItem.category}) in Master Catalog`, "Master Item", newItem.id, oldItem, newItem);
       return { ...res, item: newItem, message: `✅ Item "${newItem.name}" saved to database catalog successfully!` };
     }
     return res;

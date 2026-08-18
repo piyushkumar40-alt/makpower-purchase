@@ -5,7 +5,7 @@ import { uploadToCloudinary } from "../utils/upload";
 import ItemMasterView from "./ItemMasterView";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 import ItemCatalogPanel from "./ItemCatalogPanel";
-import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
+import AuditLogsPanel from "./AuditLogsPanel";
 
 export default function PurchaserDashboard({
   currentUser = {},
@@ -14,6 +14,7 @@ export default function PurchaserDashboard({
   cargos = [],
   cargoCompanies = [],
   purchasers = [],
+  auditLogs = [],
   onUpdateRequest,
   onCancelOrder,
   onUndoCargoAssignment,
@@ -210,6 +211,7 @@ export default function PurchaserDashboard({
                 <option value="vendors" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Vendor Registry</option>
                 <option value="cargocompanies" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Logistics Carriers</option>
                 <option value="itemmaster" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Item Catalog & Stock</option>
+                <option value="auditlogs" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>System Audit Logs & Version History ({auditLogs.length})</option>
               </select>
               <ChevronDown size={14} style={{ position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "var(--text-muted)" }} />
             </div>
@@ -1035,6 +1037,16 @@ export default function PurchaserDashboard({
               </div>
             </div>
           </div>
+        )}
+
+        {/* ==================== SYSTEM AUDIT LOGS & VERSION HISTORY TAB ==================== */}
+        {activeTab === "auditlogs" && (
+          <AuditLogsPanel 
+            auditLogs={auditLogs} 
+            users={purchasers.length > 0 ? purchasers : []} 
+            requests={requests} 
+            vendors={vendors} 
+          />
         )}
 
         {/* ==================== PENDING DOCUMENTS TAB ==================== */}
