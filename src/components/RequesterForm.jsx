@@ -128,11 +128,16 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
     }
   }, [currentUser]);
 
-  // Strict Validation: Item Model MUST match a valid model in combinedItems (if items exist in system)
-  const isValidModel = (modelName) => {
+  // Strict Validation: Item Model MUST match a valid model in combinedItems (if items exist in system) and match row's itemType (FG/RM)
+  const isValidModel = (modelName, rowItemType = null) => {
     if (!modelName || !modelName.trim()) return false;
     if (combinedItems.length > 0) {
-      return combinedItems.some(i => i.name.toLowerCase() === modelName.trim().toLowerCase());
+      const match = combinedItems.find(i => i.name.toLowerCase() === modelName.trim().toLowerCase());
+      if (!match) return false;
+      if (rowItemType && match.itemType) {
+        return match.itemType.toUpperCase() === rowItemType.toUpperCase();
+      }
+      return true;
     }
     return true;
   };
@@ -142,14 +147,14 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
     return rows.every(r => 
       r.category && 
       r.model && 
-      isValidModel(r.model) && 
+      isValidModel(r.model, r.itemType) && 
       r.orderQuantity && 
       r.requiredByDate && 
       r.purchaserId
     );
   };
 
-  const hasInvalidModel = rows.some(r => r.model && !isValidModel(r.model));
+  const hasInvalidModel = rows.some(r => r.model && !isValidModel(r.model, r.itemType));
 
   // Add row
   const addRow = () => {
@@ -558,7 +563,20 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                     />
                     {activeDropdown?.rowId === row.id && activeDropdown?.field === "category" && (() => {
                       const query = (row.category || "").trim().toLowerCase();
-                      const filteredCats = catalogCategories.filter(cat => !query || cat.toLowerCase().includes(query));
+                      const rowItemType = (row.itemType || "RM").toUpperCase();
+
+                      // Filter items matching row's selected Item Type (FG or RM)
+                      const itemsForType = combinedItems.filter(i => 
+                        !i.itemType || i.itemType.toUpperCase() === rowItemType
+                      );
+
+                      // Get unique categories for this Item Type
+                      const catsForType = Array.from(
+                        new Set(itemsForType.map(i => i.category && i.category.trim()).filter(Boolean))
+                      ).sort();
+
+                      const candidateCats = catsForType.length > 0 ? catsForType : catalogCategories;
+                      const filteredCats = candidateCats.filter(cat => !query || cat.toLowerCase().includes(query));
 
                       return (
                         <div 
@@ -603,7 +621,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                             ))
                           ) : (
                             <div style={{ padding: "10px 12px", fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic" }}>
-                              {query ? `Custom category "${row.category}"` : "No saved categories"}
+                              {query ? `Custom category "${row.category}"` : `No saved ${row.itemType || "RM"} categories`}
                             </div>
                           )}
                         </div>
@@ -621,8 +639,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         fontSize: "0.85rem", 
                         height: "auto", 
                         textAlign: "left",
-                        borderColor: row.model && !isValidModel(row.model) ? "#ef4444" : undefined,
-                        boxShadow: row.model && !isValidModel(row.model) ? "0 0 8px rgba(239, 68, 68, 0.4)" : undefined
+                        borderColor: row.model && !isValidModel(row.model, row.itemType) ? "#ef4444" : undefined,
+                        boxShadow: row.model && !isValidModel(row.model, row.itemType) ? "0 0 8px rgba(239, 68, 68, 0.4)" : undefined
                       }}
                       placeholder="Type or Select Item Model..." 
                       value={row.model}
@@ -631,7 +649,10 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       onChange={e => {
                         const selectedName = e.target.value;
                         openDropdown(e, row.id, "model");
-                        const matchedItem = combinedItems.find(i => i.name.toLowerCase() === selectedName.toLowerCase());
+                        const matchedItem = combinedItems.find(i => 
+                          i.name.toLowerCase() === selectedName.toLowerCase() &&
+                          (!row.itemType || !i.itemType || i.itemType.toUpperCase() === (row.itemType || "RM").toUpperCase())
+                        );
                         if (matchedItem) {
                           setRows(prev => prev.map(r => {
                             if (r.id === row.id) {
@@ -640,6 +661,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                                 model: matchedItem.name,
                                 category: matchedItem.category || r.category,
                                 type: matchedItem.type || r.type,
+                                itemType: matchedItem.itemType || r.itemType || "RM",
                                 itemNature: matchedItem.itemNature || r.itemNature
                               };
                             }
@@ -651,19 +673,27 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       }}
                       required
                     />
-                    {row.model && !isValidModel(row.model) && (
+                    {row.model && !isValidModel(row.model, row.itemType) && (
                       <div style={{ fontSize: "0.72rem", color: "#fca5a5", marginTop: "2px", fontWeight: 500 }}>
-                        Invalid model name (select from dropdown)
+                        Invalid model for {row.itemType || "RM"} (select from dropdown)
                       </div>
                     )}
                     {activeDropdown?.rowId === row.id && activeDropdown?.field === "model" && (() => {
                       const modelQuery = (row.model || "").trim().toLowerCase();
                       const catQuery = (row.category || "").trim().toLowerCase();
+                      const rowItemType = (row.itemType || "RM").toUpperCase();
 
-                      // Filter items based on category (if specified) and model query
-                      let candidateItems = combinedItems;
+                      // 1. Filter items by row's selected Item Type (FG or RM)
+                      let candidateItems = combinedItems.filter(i =>
+                        !i.itemType || i.itemType.toUpperCase() === rowItemType
+                      );
+                      if (candidateItems.length === 0) {
+                        candidateItems = combinedItems;
+                      }
+
+                      // 2. Filter items by Category (if specified)
                       if (catQuery) {
-                        const inCat = combinedItems.filter(i => 
+                        const inCat = candidateItems.filter(i => 
                           i.category && (
                             i.category.toLowerCase().includes(catQuery) ||
                             catQuery.includes(i.category.toLowerCase())
@@ -674,6 +704,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         }
                       }
 
+                      // 3. Filter items by model name query
                       const filteredModels = candidateItems.filter(i =>
                         !modelQuery || i.name.toLowerCase().includes(modelQuery)
                       );
@@ -720,6 +751,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                                         model: item.name,
                                         category: item.category || r.category,
                                         type: item.type || r.type,
+                                        itemType: item.itemType || r.itemType || "RM",
                                         itemNature: item.itemNature || r.itemNature
                                       };
                                     }
@@ -733,14 +765,14 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                                 <span style={{ fontWeight: 600 }}>{item.name}</span>
                                 {item.category && (
                                   <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                                    {item.category} • {item.type || "Import"}
+                                    {item.category} • {item.itemType || "RM"} ({item.type || "Import"})
                                   </span>
                                 )}
                               </div>
                             ))
                           ) : (
                             <div style={{ padding: "10px 12px", fontSize: "0.8rem", color: "#fca5a5", fontStyle: "italic" }}>
-                              {modelQuery ? `"${row.model}" is invalid. Select from dropdown.` : "No saved items available"}
+                              {modelQuery ? `"${row.model}" is invalid for ${row.itemType || "RM"}. Select from dropdown.` : `No ${row.itemType || "RM"} items available`}
                             </div>
                           )}
                         </div>
