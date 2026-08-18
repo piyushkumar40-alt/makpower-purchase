@@ -1947,15 +1947,50 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           
           <div className="form-group">
-            <label className="form-label">Cargo Description / Detail</label>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+              <label className="form-label" style={{ margin: 0 }}>Cargo Description / Detail</label>
+              <button 
+                type="button" 
+                onClick={() => {
+                  const val = prompt("Enter new custom cargo detail / description template:");
+                  if (val && val.trim()) setDetail(val.trim());
+                }} 
+                style={{ 
+                  color: "#38bdf8", 
+                  cursor: "pointer", 
+                  fontSize: "0.8rem", 
+                  background: "none", 
+                  border: "none", 
+                  display: "inline-flex", 
+                  alignItems: "center", 
+                  gap: "4px",
+                  fontWeight: 600
+                }}
+              >
+                <Plus size={13} /> Create New Cargo Detail
+              </button>
+            </div>
             <input 
               type="text" 
+              list="cargo-details-list"
               className="form-control" 
-              placeholder="e.g. CNC Spindle shipment via Land" 
+              placeholder="Type or Select Cargo Detail (e.g. CNC Spindle shipment via Land)" 
               value={detail}
               onChange={e => setDetail(e.target.value)}
               required
             />
+            <datalist id="cargo-details-list">
+              {Array.from(new Set([
+                "CNC Spindle shipment via Land",
+                "Battery & Bottom Consignment via Sea",
+                "Precision Electrical Parts Air Freight",
+                "Heavy Machinery Components",
+                "Hardware Fittings & Accessories",
+                ...cargos.map(c => c.cargoDetail).filter(Boolean)
+              ])).map((desc, idx) => (
+                <option key={idx} value={desc} />
+              ))}
+            </datalist>
           </div>
 
           {/* Pricing parameters */}
@@ -2148,7 +2183,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
 }
 
 // 4. EDIT CARGO MODAL
-function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = [], onClose, onSave }) {
+function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = [], onAddCargoCompany, onClose, onSave }) {
   const [detail, setDetail] = useState(cargo.cargoDetail || "");
   const [currency, setCurrency] = useState(cargo.currency || "RMB");
   const [price, setPrice] = useState(cargo.cargoPrice || "");
@@ -2158,6 +2193,7 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
   const [cargoCompanyId, setCargoCompanyId] = useState(cargo.cargoCompanyId || "");
   const [shipDate, setShipDate] = useState(cargo.cargoShippingDate || "");
   const [eta, setEta] = useState(cargo.cargoEta || "");
+  const [showQuickCargoCompanyModal, setShowQuickCargoCompanyModal] = useState(false);
   // File state: keep existing filename/data OR allow new upload
   const [packingListFile, setPackingListFile] = useState(
     cargo.packingListFile ? { name: cargo.packingListFile, data: cargo.packingListData || "" } : null
@@ -2213,14 +2249,50 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           
           <div className="form-group">
-            <label className="form-label">Cargo Description / Detail</label>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+              <label className="form-label" style={{ margin: 0 }}>Cargo Description / Detail</label>
+              <button 
+                type="button" 
+                onClick={() => {
+                  const val = prompt("Enter new custom cargo detail / description template:");
+                  if (val && val.trim()) setDetail(val.trim());
+                }} 
+                style={{ 
+                  color: "#38bdf8", 
+                  cursor: "pointer", 
+                  fontSize: "0.8rem", 
+                  background: "none", 
+                  border: "none", 
+                  display: "inline-flex", 
+                  alignItems: "center", 
+                  gap: "4px",
+                  fontWeight: 600
+                }}
+              >
+                <Plus size={13} /> Create New Cargo Detail
+              </button>
+            </div>
             <input 
               type="text" 
+              list="cargo-details-edit-list"
               className="form-control" 
+              placeholder="Type or Select Cargo Detail..."
               value={detail}
               onChange={e => setDetail(e.target.value)}
               required
             />
+            <datalist id="cargo-details-edit-list">
+              {Array.from(new Set([
+                "CNC Spindle shipment via Land",
+                "Battery & Bottom Consignment via Sea",
+                "Precision Electrical Parts Air Freight",
+                "Heavy Machinery Components",
+                "Hardware Fittings & Accessories",
+                ...cargos.map(c => c.cargoDetail).filter(Boolean)
+              ])).map((desc, idx) => (
+                <option key={idx} value={desc} />
+              ))}
+            </datalist>
           </div>
 
           <div className="form-row">
@@ -2279,7 +2351,28 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
 
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Cargo Company</label>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                <label className="form-label" style={{ margin: 0 }}>Cargo Company</label>
+                {onAddCargoCompany && (
+                  <button 
+                    type="button" 
+                    onClick={() => setShowQuickCargoCompanyModal(true)} 
+                    style={{ 
+                      color: "#38bdf8", 
+                      cursor: "pointer", 
+                      fontSize: "0.8rem", 
+                      background: "none", 
+                      border: "none", 
+                      display: "inline-flex", 
+                      alignItems: "center", 
+                      gap: "4px",
+                      fontWeight: 600
+                    }}
+                  >
+                    <Plus size={13} /> Create New Transport Company
+                  </button>
+                )}
+              </div>
               <select 
                 className="form-control" 
                 value={cargoCompanyId} 
@@ -2374,6 +2467,15 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
           </div>
 
         </form>
+
+        <QuickCreateCargoCompanyModal
+          isOpen={showQuickCargoCompanyModal}
+          onClose={() => setShowQuickCargoCompanyModal(false)}
+          onAddCargoCompany={onAddCargoCompany}
+          onCompanyCreated={(newCompany) => {
+            if (newCompany?.id) setCargoCompanyId(newCompany.id);
+          }}
+        />
       </div>
     </div>
   );
