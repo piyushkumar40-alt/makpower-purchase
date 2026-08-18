@@ -292,10 +292,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
     setShowPasteModal(false);
   };
 
-  // Validation Check: Good to Go?
-  const isGoodToGo = () => {
-    return rows.every(r => r.category && r.model && r.orderQuantity && r.requiredByDate && r.purchaserId);
-  };
+
 
   // Submit all items
   const handleSubmitAll = () => {
