@@ -76,6 +76,119 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 220 });
   const [highlightedIndex, setHighlightedIndex] = useState(0);
 
+  // Excel-like Range Selection & Ctrl+D Fill Down State
+  const [selectedRange, setSelectedRange] = useState(null); // { startIdx, endIdx, field }
+  const [isCellDragging, setIsCellDragging] = useState(false);
+
+  const isCellSelected = (rowIndex, field) => {
+    if (!selectedRange || selectedRange.field !== field) return false;
+    const minIdx = Math.min(selectedRange.startIdx, selectedRange.endIdx);
+    const maxIdx = Math.max(selectedRange.startIdx, selectedRange.endIdx);
+    return rowIndex >= minIdx && rowIndex <= maxIdx;
+  };
+
+  const handleCellSelect = (rowIndex, field, isShift = false) => {
+    if (isShift && selectedRange && selectedRange.field === field) {
+      setSelectedRange(prev => ({
+        ...prev,
+        endIdx: rowIndex
+      }));
+    } else {
+      setSelectedRange({
+        startIdx: rowIndex,
+        endIdx: rowIndex,
+        field
+      });
+    }
+  };
+
+  const handleCellMouseDown = (rowIndex, field, isShift = false) => {
+    setIsCellDragging(true);
+    handleCellSelect(rowIndex, field, isShift);
+  };
+
+  const handleCellMouseEnter = (rowIndex, field) => {
+    if (isCellDragging && selectedRange && selectedRange.field === field) {
+      setSelectedRange(prev => ({
+        ...prev,
+        endIdx: rowIndex
+      }));
+    }
+  };
+
+  useEffect(() => {
+    const handleGlobalMouseUp = () => setIsCellDragging(false);
+    window.addEventListener("mouseup", handleGlobalMouseUp);
+    return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
+  }, []);
+
+  const handleFillDown = () => {
+    if (!selectedRange || !selectedRange.field) return;
+
+    const { startIdx, endIdx, field } = selectedRange;
+    const minIdx = Math.min(startIdx, endIdx);
+    const maxIdx = Math.max(startIdx, endIdx);
+
+    let sourceValue = "";
+
+    if (minIdx === maxIdx) {
+      // Single cell selected -> copy from row above
+      if (minIdx > 0 && rows[minIdx - 1]) {
+        sourceValue = rows[minIdx - 1][field];
+        setRows(prev => prev.map((r, idx) => {
+          if (idx === minIdx) {
+            if (field === "model") {
+              const matched = combinedItems.find(i => i.name.toLowerCase() === (sourceValue || "").toLowerCase());
+              return {
+                ...r,
+                model: sourceValue,
+                category: matched?.category || r.category,
+                type: matched?.type || r.type,
+                itemType: matched?.itemType || r.itemType || "FG",
+                itemNature: matched?.itemNature || r.itemNature
+              };
+            }
+            return { ...r, [field]: sourceValue };
+          }
+          return r;
+        }));
+      }
+    } else {
+      // Range selected (e.g. Row 2 to Row 6) -> copy top cell value down to all selected rows
+      const sourceRow = rows[minIdx];
+      sourceValue = sourceRow ? sourceRow[field] : "";
+
+      setRows(prev => prev.map((r, idx) => {
+        if (idx >= minIdx && idx <= maxIdx) {
+          if (field === "model") {
+            const matched = combinedItems.find(i => i.name.toLowerCase() === (sourceValue || "").toLowerCase());
+            return {
+              ...r,
+              model: sourceValue,
+              category: matched?.category || r.category,
+              type: matched?.type || r.type,
+              itemType: matched?.itemType || r.itemType || "FG",
+              itemNature: matched?.itemNature || r.itemNature
+            };
+          }
+          return { ...r, [field]: sourceValue };
+        }
+        return r;
+      }));
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+        e.preventDefault();
+        handleFillDown();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedRange, rows, combinedItems]);
+
   const openDropdown = (e, rowId, field) => {
     if (e && e.target) {
       const rect = e.target.getBoundingClientRect();
@@ -492,6 +605,10 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
           <button onClick={() => setShowPasteModal(true)} className="btn btn-secondary btn-sm" style={{ color: "var(--primary)", borderColor: "var(--primary-glow)" }}>
             <Clipboard size={14} /> Paste from Excel / Sheets
           </button>
+
+          <span style={{ fontSize: "0.78rem", color: "#38bdf8", background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.3)", padding: "5px 12px", borderRadius: "6px", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "6px" }}>
+            <Sparkles size={14} /> Shift+Click to select range & press Ctrl+D to Fill Down
+          </span>
           
           <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(255, 255, 255, 0.04)", padding: "6px 12px", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
             <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Entry By:</span>
@@ -531,13 +648,26 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                 <tr key={row.id}>
                   {/* Sno. */}
                   <td style={{ textAlign: "center", color: "var(--text-muted)", fontWeight: 600 }}>{index + 1}</td>
-                  
-                  {/* Purchase Type */}
-                  <td>
+                                   {/* Purchase Type */}
+                  <td 
+                    onMouseDown={(e) => handleCellMouseDown(index, "type", e.shiftKey)}
+                    onMouseEnter={() => handleCellMouseEnter(index, "type")}
+                    style={{
+                      background: isCellSelected(index, "type") ? "rgba(56, 189, 248, 0.18)" : undefined,
+                      boxShadow: isCellSelected(index, "type") ? "inset 0 0 0 2px #38bdf8" : undefined
+                    }}
+                  >
                     <select 
                       className="form-control" 
-                      style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+                      style={{ 
+                        padding: "4px 8px", 
+                        fontSize: "0.85rem", 
+                        height: "auto",
+                        background: isCellSelected(index, "type") ? "rgba(56, 189, 248, 0.25)" : undefined,
+                        borderColor: isCellSelected(index, "type") ? "#38bdf8" : undefined
+                      }}
                       value={row.type}
+                      onFocus={() => handleCellSelect(index, "type")}
                       onChange={e => updateCell(row.id, "type", e.target.value)}
                     >
                       <option value="Import" style={{ background: "#0f172a" }}>Import</option>
@@ -546,11 +676,25 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                   </td>
 
                   {/* Item Type */}
-                  <td>
+                  <td 
+                    onMouseDown={(e) => handleCellMouseDown(index, "itemType", e.shiftKey)}
+                    onMouseEnter={() => handleCellMouseEnter(index, "itemType")}
+                    style={{
+                      background: isCellSelected(index, "itemType") ? "rgba(56, 189, 248, 0.18)" : undefined,
+                      boxShadow: isCellSelected(index, "itemType") ? "inset 0 0 0 2px #38bdf8" : undefined
+                    }}
+                  >
                     <select 
                       className="form-control" 
-                      style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+                      style={{ 
+                        padding: "4px 8px", 
+                        fontSize: "0.85rem", 
+                        height: "auto",
+                        background: isCellSelected(index, "itemType") ? "rgba(56, 189, 248, 0.25)" : undefined,
+                        borderColor: isCellSelected(index, "itemType") ? "#38bdf8" : undefined
+                      }}
                       value={row.itemType || "FG"}
+                      onFocus={() => handleCellSelect(index, "itemType")}
                       onChange={e => updateCell(row.id, "itemType", e.target.value)}
                     >
                       <option value="FG" style={{ background: "#0f172a" }}>Finished Goods (FG)</option>
@@ -559,11 +703,25 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                   </td>
 
                   {/* Item Nature */}
-                  <td>
+                  <td 
+                    onMouseDown={(e) => handleCellMouseDown(index, "itemNature", e.shiftKey)}
+                    onMouseEnter={() => handleCellMouseEnter(index, "itemNature")}
+                    style={{
+                      background: isCellSelected(index, "itemNature") ? "rgba(56, 189, 248, 0.18)" : undefined,
+                      boxShadow: isCellSelected(index, "itemNature") ? "inset 0 0 0 2px #38bdf8" : undefined
+                    }}
+                  >
                     <select 
                       className="form-control" 
-                      style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+                      style={{ 
+                        padding: "4px 8px", 
+                        fontSize: "0.85rem", 
+                        height: "auto",
+                        background: isCellSelected(index, "itemNature") ? "rgba(56, 189, 248, 0.25)" : undefined,
+                        borderColor: isCellSelected(index, "itemNature") ? "#38bdf8" : undefined
+                      }}
                       value={row.itemNature}
+                      onFocus={() => handleCellSelect(index, "itemNature")}
                       onChange={e => updateCell(row.id, "itemNature", e.target.value)}
                     >
                       <option value="Non Consumables" style={{ background: "#0f172a" }}>Non Consumables</option>
@@ -572,14 +730,32 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                   </td>
 
                   {/* Category */}
-                  <td style={{ position: "relative" }}>
+                  <td 
+                    onMouseDown={(e) => handleCellMouseDown(index, "category", e.shiftKey)}
+                    onMouseEnter={() => handleCellMouseEnter(index, "category")}
+                    style={{ 
+                      position: "relative",
+                      background: isCellSelected(index, "category") ? "rgba(56, 189, 248, 0.18)" : undefined,
+                      boxShadow: isCellSelected(index, "category") ? "inset 0 0 0 2px #38bdf8" : undefined
+                    }}
+                  >
                     <input 
                       type="text" 
                       className="form-control" 
-                      style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto", textAlign: "left" }}
+                      style={{ 
+                        padding: "4px 8px", 
+                        fontSize: "0.85rem", 
+                        height: "auto", 
+                        textAlign: "left",
+                        background: isCellSelected(index, "category") ? "rgba(56, 189, 248, 0.25)" : undefined,
+                        borderColor: isCellSelected(index, "category") ? "#38bdf8" : undefined
+                      }}
                       placeholder="Type or Select Category..." 
                       value={row.category}
-                      onFocus={(e) => openDropdown(e, row.id, "category")}
+                      onFocus={(e) => {
+                        handleCellSelect(index, "category");
+                        openDropdown(e, row.id, "category");
+                      }}
                       onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
                       onChange={e => {
                         updateCell(row.id, "category", e.target.value);
@@ -680,7 +856,15 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                   </td>
 
                   {/* Item Name / Model */}
-                  <td style={{ position: "relative" }}>
+                  <td 
+                    onMouseDown={(e) => handleCellMouseDown(index, "model", e.shiftKey)}
+                    onMouseEnter={() => handleCellMouseEnter(index, "model")}
+                    style={{ 
+                      position: "relative",
+                      background: isCellSelected(index, "model") ? "rgba(56, 189, 248, 0.18)" : undefined,
+                      boxShadow: isCellSelected(index, "model") ? "inset 0 0 0 2px #38bdf8" : undefined
+                    }}
+                  >
                     <input 
                       type="text" 
                       className="form-control" 
@@ -689,12 +873,16 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         fontSize: "0.85rem", 
                         height: "auto", 
                         textAlign: "left",
-                        borderColor: row.model && !isValidModel(row.model, row.itemType) ? "#ef4444" : undefined,
+                        background: isCellSelected(index, "model") ? "rgba(56, 189, 248, 0.25)" : undefined,
+                        borderColor: isCellSelected(index, "model") ? "#38bdf8" : row.model && !isValidModel(row.model, row.itemType) ? "#ef4444" : undefined,
                         boxShadow: row.model && !isValidModel(row.model, row.itemType) ? "0 0 8px rgba(239, 68, 68, 0.4)" : undefined
                       }}
                       placeholder="Type or Select Item Model..." 
                       value={row.model}
-                      onFocus={(e) => openDropdown(e, row.id, "model")}
+                      onFocus={(e) => {
+                        handleCellSelect(index, "model");
+                        openDropdown(e, row.id, "model");
+                      }}
                       onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
                       onChange={e => {
                         const selectedName = e.target.value;
@@ -829,7 +1017,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                             ))
                           ) : (
                             <div style={{ padding: "10px 12px", fontSize: "0.8rem", color: "#fca5a5", fontStyle: "italic" }}>
-                              {modelQuery ? `"${row.model}" is invalid for ${row.itemType || "RM"}. Select from dropdown.` : `No ${row.itemType || "RM"} items available`}
+                              {modelQuery ? `"${row.model}" is invalid for ${row.itemType || "FG"}. Select from dropdown.` : `No ${row.itemType || "FG"} items available`}
                             </div>
                           )}
                         </div>
@@ -838,13 +1026,27 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                   </td>
 
                   {/* Qty */}
-                  <td>
+                  <td 
+                    onMouseDown={(e) => handleCellMouseDown(index, "orderQuantity", e.shiftKey)}
+                    onMouseEnter={() => handleCellMouseEnter(index, "orderQuantity")}
+                    style={{
+                      background: isCellSelected(index, "orderQuantity") ? "rgba(56, 189, 248, 0.18)" : undefined,
+                      boxShadow: isCellSelected(index, "orderQuantity") ? "inset 0 0 0 2px #38bdf8" : undefined
+                    }}
+                  >
                     <input 
                       type="number" 
                       className="form-control" 
-                      style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+                      style={{ 
+                        padding: "4px 8px", 
+                        fontSize: "0.85rem", 
+                        height: "auto",
+                        background: isCellSelected(index, "orderQuantity") ? "rgba(56, 189, 248, 0.25)" : undefined,
+                        borderColor: isCellSelected(index, "orderQuantity") ? "#38bdf8" : undefined
+                      }}
                       placeholder="Qty" 
                       value={row.orderQuantity}
+                      onFocus={() => handleCellSelect(index, "orderQuantity")}
                       onChange={e => updateCell(row.id, "orderQuantity", e.target.value)}
                       min="1"
                       required
@@ -852,23 +1054,51 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                   </td>
 
                   {/* Required By Date */}
-                  <td>
+                  <td 
+                    onMouseDown={(e) => handleCellMouseDown(index, "requiredByDate", e.shiftKey)}
+                    onMouseEnter={() => handleCellMouseEnter(index, "requiredByDate")}
+                    style={{
+                      background: isCellSelected(index, "requiredByDate") ? "rgba(56, 189, 248, 0.18)" : undefined,
+                      boxShadow: isCellSelected(index, "requiredByDate") ? "inset 0 0 0 2px #38bdf8" : undefined
+                    }}
+                  >
                     <input 
                       type="date" 
                       className="form-control" 
-                      style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+                      style={{ 
+                        padding: "4px 8px", 
+                        fontSize: "0.85rem", 
+                        height: "auto",
+                        background: isCellSelected(index, "requiredByDate") ? "rgba(56, 189, 248, 0.25)" : undefined,
+                        borderColor: isCellSelected(index, "requiredByDate") ? "#38bdf8" : undefined
+                      }}
                       value={row.requiredByDate}
+                      onFocus={() => handleCellSelect(index, "requiredByDate")}
                       onChange={e => updateCell(row.id, "requiredByDate", e.target.value)}
                       required
                     />
                   </td>
 
                   {/* Assign To */}
-                  <td>
+                  <td 
+                    onMouseDown={(e) => handleCellMouseDown(index, "purchaserId", e.shiftKey)}
+                    onMouseEnter={() => handleCellMouseEnter(index, "purchaserId")}
+                    style={{
+                      background: isCellSelected(index, "purchaserId") ? "rgba(56, 189, 248, 0.18)" : undefined,
+                      boxShadow: isCellSelected(index, "purchaserId") ? "inset 0 0 0 2px #38bdf8" : undefined
+                    }}
+                  >
                     <select 
                       className="form-control" 
-                      style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+                      style={{ 
+                        padding: "4px 8px", 
+                        fontSize: "0.85rem", 
+                        height: "auto",
+                        background: isCellSelected(index, "purchaserId") ? "rgba(56, 189, 248, 0.25)" : undefined,
+                        borderColor: isCellSelected(index, "purchaserId") ? "#38bdf8" : undefined
+                      }}
                       value={row.purchaserId}
+                      onFocus={() => handleCellSelect(index, "purchaserId")}
                       onChange={e => updateCell(row.id, "purchaserId", e.target.value)}
                       required
                     >
