@@ -1323,6 +1323,10 @@ export const getEffectivePhoto = (request, items = [], requests = []) => {
 // 1. STEP 2: EDIT REQUEST DETAILS MODAL
 function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor, items = [], onUpdateItem, onAddItem, onClose, onSave }) {
   const [vendorId, setVendorId] = useState(request.vendorId || "");
+  const [vendorSearchText, setVendorSearchText] = useState(() => {
+    const match = vendors.find(v => v.id === request.vendorId);
+    return match ? match.name : "";
+  });
   const [currency, setCurrency] = useState(request.currency || "RMB");
   const [price, setPrice] = useState(request.priceRmb || "");
   const [advance, setAdvance] = useState(request.advancePayment || "");
@@ -1385,11 +1389,13 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!price || !edd || !vendorId) return;
+    const matched = vendors.find(v => v.id === vendorId || v.name.toLowerCase() === vendorSearchText.trim().toLowerCase());
+    const finalVendorId = matched ? matched.id : vendorId;
+    if (!price || !edd || !finalVendorId) return;
 
     onSave({
       ...request,
-      vendorId: vendorId,
+      vendorId: finalVendorId,
       currency: currency,
       priceRmb: parseFloat(price),
       totalRmb: totalRmb,
@@ -1403,7 +1409,7 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
     });
   };
 
-  const vName = vendors.find(v => v.id === vendorId)?.name || "Not Selected Yet";
+  const vName = vendorSearchText || vendors.find(v => v.id === vendorId)?.name || "Not Selected Yet";
 
   return (
     <div className="modal-overlay">
@@ -1435,7 +1441,7 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
                     fontWeight: 600
                   }}
                 >
-                  <Plus size={13} /> + Create New Vendor
+                  <Plus size={13} /> Create New Vendor
                 </button>
               )}
             </div>
@@ -1444,18 +1450,19 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
               list="pricing-vendor-list"
               className="form-control"
               placeholder="Type or Select Vendor..."
-              value={vendors.find(v => v.id === vendorId)?.name || ""}
+              value={vendorSearchText}
               onChange={e => {
                 const val = e.target.value;
+                setVendorSearchText(val);
                 const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
-                setVendorId(matched ? matched.id : "");
+                setVendorId(matched ? matched.id : val);
               }}
               required
             />
             <datalist id="pricing-vendor-list">
               {vendors
                 .filter(v => v.status !== "Inactive")
-                .filter(v => currentUser.role === "superadmin" || v.purchaserIds?.includes(currentUser.id))
+                .filter(v => currentUser.role === "superadmin" || !v.purchaserIds?.length || v.purchaserIds?.includes(currentUser.id))
                 .map(v => (
                   <option key={v.id} value={v.name}>
                     {v.name} ({v.location || "Supplier"})
@@ -1470,7 +1477,10 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
             onAddVendor={onAddVendor}
             currentUser={currentUser}
             onVendorCreated={(newVendor) => {
-              if (newVendor?.id) setVendorId(newVendor.id);
+              if (newVendor) {
+                setVendorId(newVendor.id || "");
+                setVendorSearchText(newVendor.name || "");
+              }
             }}
           />
           
@@ -2014,7 +2024,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
                       fontWeight: 600
                     }}
                   >
-                    <Plus size={13} /> + Create New Transport Company
+                    <Plus size={13} /> Create New Transport Company
                   </button>
                 )}
               </div>

@@ -742,7 +742,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
           </button>
 
           <button onClick={() => setShowQuickItemModal(true)} className="btn btn-secondary btn-sm" style={{ color: "#38bdf8", borderColor: "#38bdf8" }}>
-            <Plus size={14} /> + Create New Item
+            <Plus size={14} /> Create New Item
           </button>
 
           <span style={{ fontSize: "0.78rem", color: "#38bdf8", background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.3)", padding: "5px 12px", borderRadius: "6px", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "6px" }}>

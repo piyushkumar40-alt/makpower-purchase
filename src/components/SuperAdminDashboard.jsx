@@ -960,7 +960,7 @@ export default function SuperAdminDashboard({
                           fontWeight: 600
                         }}
                       >
-                        <Plus size={13} /> + Create New Designation
+                        <Plus size={13} /> Create New Designation
                       </button>
                     </div>
                     <select 

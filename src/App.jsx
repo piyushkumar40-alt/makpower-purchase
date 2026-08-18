@@ -505,18 +505,25 @@ export default function App() {
   };
 
   const addVendor = async (name, purchaserIds, location = "", phone = "", history = "") => {
-    const exists = vendors.some(v => v.name.trim().toLowerCase() === name.trim().toLowerCase());
-    if (exists) {
-      return { success: false, message: `Vendor "${name}" already exists.` };
+    const trimmedName = name.trim();
+    const existing = vendors.find(v => v.name.trim().toLowerCase() === trimmedName.toLowerCase());
+    if (existing) {
+      return { success: true, vendor: existing };
     }
+
+    const allPurchaserIds = users.filter(u => u.role === "purchaser").map(u => u.id);
+    const validPurchaserIds = Array.isArray(purchaserIds) && purchaserIds.length > 0 
+      ? purchaserIds 
+      : allPurchaserIds;
+
     const newVendor = {
       id: `v-${Date.now()}`,
-      name: name.trim(),
+      name: trimmedName,
       location: location.trim(),
       phone: phone.trim(),
       history: history.trim(),
       status: "Active",
-      purchaserIds: Array.isArray(purchaserIds) ? purchaserIds : [purchaserIds]
+      purchaserIds: validPurchaserIds
     };
     await postData("/api/vendors", newVendor);
     setVendors(prev => [...prev, newVendor]);
