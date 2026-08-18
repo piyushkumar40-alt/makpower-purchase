@@ -1405,6 +1405,10 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
       {/* ==================== QUICK ITEM MODAL ==================== */}
       <QuickCreateItemModal 
         isOpen={showQuickItemModal}
