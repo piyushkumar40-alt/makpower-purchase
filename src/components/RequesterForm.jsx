@@ -189,15 +189,31 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
     }
   };
 
+  // Handle keyboard shortcuts (Ctrl+D Fill Down & Escape Deselect) and click outside deselect
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
         e.preventDefault();
+        e.stopPropagation();
         handleFillDown();
+      } else if (e.key === "Escape") {
+        setSelectedRange(null);
+        setActiveDropdown(null);
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+
+    const handleClickOutside = (e) => {
+      if (!e.target.closest(".custom-table") && !e.target.closest(".table-container")) {
+        setSelectedRange(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("mousedown", handleClickOutside);
+    };
   }, [selectedRange, rows, combinedItems]);
 
   const openDropdown = (e, rowId, field) => {

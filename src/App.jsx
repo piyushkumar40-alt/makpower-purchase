@@ -28,6 +28,17 @@ export default function App() {
     localStorage.setItem("makpower_theme", theme);
   }, [theme]);
 
+  // Disable browser default Ctrl+D bookmarking globally app-wide
+  useEffect(() => {
+    const disableCtrlD = (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", disableCtrlD, true);
+    return () => window.removeEventListener("keydown", disableCtrlD, true);
+  }, []);
+
   const toggleTheme = () => {
     setTheme(prev => (prev === "dark" ? "light" : "dark"));
   };
