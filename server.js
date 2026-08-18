@@ -721,8 +721,8 @@ async function formatAllRequestsForGoogleSheets() {
     cargos = memoryDb.cargos || [];
   }
 
-  // Include all non-cancelled requests in Google Sheets sync so delivered/packing updates are synced
-  const activeRequests = requests.filter(r => r.status !== "Cancelled");
+  // Exclude cancelled and received orders from Google Sheets export as requested
+  const activeRequests = requests.filter(r => r.status !== "Cancelled" && r.isMaterialRec !== "Yes");
 
   const rows = activeRequests.map(r => {
     const purchaserObj = users.find(u => u.id === r.purchaserId);
