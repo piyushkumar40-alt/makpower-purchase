@@ -394,7 +394,7 @@ export default function PurchaserDashboard({
                     setCheckedRequestIds([]);
                   }}
                 >
-                  <option value="" style={{ background: "#0f172a" }}>Select Vendor...</option>
+                  <option value="">Select Vendor...</option>
                   {vendors
                     .filter(v => v.status !== "Inactive")
                     .filter(v => currentUser.role === "superadmin" || v.purchaserIds?.includes(currentUser.id))
@@ -404,7 +404,7 @@ export default function PurchaserDashboard({
                         ? `Rating: Pending — Insufficient History [${metrics.completedCount}/5 completed]`
                         : `Rating: ${metrics.score}/100`;
                       return (
-                        <option key={v.id} value={v.id} style={{ background: "#0f172a" }}>
+                        <option key={v.id} value={v.id}>
                           {v.name} ({scoreText})
                         </option>
                       );
@@ -1594,9 +1594,9 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
                 value={currency}
                 onChange={e => setCurrency(e.target.value)}
               >
-                <option value="RMB" style={{ background: "#0f172a" }}>RMB (¥)</option>
-                <option value="USD" style={{ background: "#0f172a" }}>USD ($)</option>
-                <option value="INR" style={{ background: "#0f172a" }}>INR (₹)</option>
+                <option value="RMB">RMB (¥)</option>
+                <option value="USD">USD ($)</option>
+                <option value="INR">INR (₹)</option>
               </select>
             </div>
 
@@ -1962,11 +1962,11 @@ function ReceiveCargoModal({ cargo, requests, onClose, onConfirm }) {
               const shortage = Math.max(0, expected - currentRec);
 
               return (
-                <div key={r.id} style={{ background: "rgba(255,255,255,0.04)", padding: "10px 12px", borderRadius: "6px", border: "1px solid var(--border-glass)" }}>
+                <div key={r.id} style={{ background: "var(--bg-input, #ffffff)", padding: "12px 14px", borderRadius: "8px", border: "1px solid var(--border-glass, #e2e8f0)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
                     <div>
-                      <strong>{r.model}</strong>
-                      <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>Cargo Picked Qty: {expected} Pcs</div>
+                      <strong style={{ color: "var(--text-main)", fontSize: "0.92rem" }}>{r.model}</strong>
+                      <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>Cargo Picked Qty: <strong>{expected} Pcs</strong></div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
                       <span style={{ fontSize: "0.72rem", color: "var(--success)", fontWeight: 600 }}>Actual Received Qty:</span>
@@ -2173,30 +2173,30 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
           </div>
 
           {/* Item Breakdown & Pickup Quantity */}
-          <div style={{ background: "rgba(15,23,42,0.6)", padding: "14px", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
-            <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary)", marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span>📦 Item Quantity Picked for Cargo</span>
-              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 400 }}>Unpicked qty stays pending at vendor</span>
+          <div style={{ background: "var(--bg-card, #f8fafc)", padding: "16px", borderRadius: "10px", border: "1px solid var(--border-glass, rgba(226, 232, 240, 0.8))" }}>
+            <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--primary)", marginBottom: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>📦 Item Quantity Picked for Cargo</span>
+              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", fontWeight: 400 }}>Unpicked qty stays pending at vendor</span>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "150px", overflowY: "auto" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "180px", overflowY: "auto" }}>
               {combinedRequests.map(r => {
                 const vendorQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0);
                 const currentPicked = itemPickedQtyMap[r.id] ?? vendorQty;
                 const remaining = Math.max(0, vendorQty - currentPicked);
                 return (
-                  <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", fontSize: "0.82rem", background: "rgba(255,255,255,0.03)", padding: "8px 12px", borderRadius: "6px" }}>
+                  <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", fontSize: "0.85rem", background: "var(--bg-input, #ffffff)", padding: "10px 14px", borderRadius: "8px", border: "1px solid var(--border-glass, #e2e8f0)" }}>
                     <div>
-                      <strong>{r.model}</strong>
-                      <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Vendor Confirmed Qty: {vendorQty} Pcs</div>
+                      <strong style={{ color: "var(--text-main)", fontSize: "0.92rem" }}>{r.model}</strong>
+                      <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>Vendor Confirmed Qty: <strong>{vendorQty} Pcs</strong></div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                        <span style={{ fontSize: "0.72rem", color: "#38bdf8", fontWeight: 600 }}>Qty Picked for Cargo:</span>
+                        <span style={{ fontSize: "0.74rem", color: "var(--primary)", fontWeight: 700, marginBottom: "2px" }}>Qty Picked for Cargo:</span>
                         <input 
                           type="number" 
                           min="1" 
                           max={vendorQty}
-                          style={{ width: "95px", padding: "4px 8px", fontSize: "0.82rem", fontWeight: 700 }}
+                          style={{ width: "95px", padding: "5px 10px", fontSize: "0.88rem", fontWeight: 700, textAlign: "center" }}
                           className="form-control"
                           value={currentPicked}
                           onChange={e => {
@@ -2206,7 +2206,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
                         />
                       </div>
                       {remaining > 0 && (
-                        <span className="badge badge-warning" style={{ fontSize: "0.72rem" }}>
+                        <span style={{ fontSize: "0.75rem", fontWeight: 700, background: "rgba(245,158,11,0.15)", color: "#b45309", border: "1px solid rgba(245,158,11,0.3)", padding: "4px 10px", borderRadius: "6px", whiteSpace: "nowrap" }}>
                           {remaining} Pcs stays at vendor
                         </span>
                       )}
@@ -2222,10 +2222,10 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
             <div className="form-group">
               <label className="form-label">Cargo Price</label>
               <div style={{ display: "flex", gap: "6px" }}>
-                <select className="form-control" style={{ width: "80px", flexShrink: 0 }} value={currency} onChange={e => setCurrency(e.target.value)}>
-                  <option value="RMB" style={{ background: "#0f172a" }}>RMB</option>
-                  <option value="USD" style={{ background: "#0f172a" }}>USD</option>
-                  <option value="INR" style={{ background: "#0f172a" }}>INR</option>
+                <select className="form-control" style={{ width: "95px", flexShrink: 0, fontWeight: 600 }} value={currency} onChange={e => setCurrency(e.target.value)}>
+                  <option value="RMB">RMB (¥)</option>
+                  <option value="USD">USD ($)</option>
+                  <option value="INR">INR (₹)</option>
                 </select>
                 <input 
                   type="number" 
@@ -2242,9 +2242,9 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
             <div className="form-group">
               <label className="form-label">Price Unit (UOM)</label>
               <select className="form-control" value={uom} onChange={e => setUom(e.target.value)}>
-                <option value="per CBM" style={{ background: "#0f172a" }}>per CBM</option>
-                <option value="Flat Rate" style={{ background: "#0f172a" }}>Flat Rate</option>
-                <option value="per KG" style={{ background: "#0f172a" }}>per KG</option>
+                <option value="per CBM">per CBM</option>
+                <option value="Flat Rate">Flat Rate</option>
+                <option value="per KG">per KG</option>
               </select>
             </div>
           </div>
@@ -2304,14 +2304,14 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
                 value={cargoCompanyId} 
                 onChange={e => setCargoCompanyId(e.target.value)}
               >
-                <option value="" style={{ background: "#0f172a" }}>Select Cargo Company...</option>
+                <option value="">Select Cargo Company...</option>
                 {cargoCompanies.filter(cc => cc.status !== "Inactive").map(cc => {
                   const metrics = calculateCargoCompanyMetrics(cc, cargos, requests);
                   const scoreText = metrics.scorePending
                     ? `Rating: Pending — Insufficient History [${metrics.completedCount}/5 completed]`
                     : `Rating: ${metrics.score}/100`;
                   return (
-                    <option key={cc.id} value={cc.id} style={{ background: "#0f172a" }}>
+                    <option key={cc.id} value={cc.id}>
                       {cc.name} ({scoreText})
                     </option>
                   );
@@ -2322,10 +2322,10 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
             <div className="form-group">
               <label className="form-label">Transport Mode</label>
               <select className="form-control" value={mode} onChange={e => setMode(e.target.value)}>
-                <option value="Sea" style={{ background: "#0f172a" }}>Sea Cargo</option>
-                <option value="Air" style={{ background: "#0f172a" }}>Air Freight</option>
-                <option value="Land" style={{ background: "#0f172a" }}>Land Delivery</option>
-                <option value="Express" style={{ background: "#0f172a" }}>Express / Courier</option>
+                <option value="Sea">Sea Cargo</option>
+                <option value="Air">Air Freight</option>
+                <option value="Land">Land Delivery</option>
+                <option value="Express">Express / Courier</option>
               </select>
             </div>
 
@@ -2380,8 +2380,8 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
           <div className="form-group">
             <label className="form-label">Is Cargo Received? (Bulk status)</label>
             <select className="form-control" value={isRec} onChange={e => setIsRec(e.target.value)}>
-              <option value="No" style={{ background: "#0f172a" }}>No - In Transit</option>
-              <option value="Yes" style={{ background: "#0f172a" }}>Yes - Received at Warehouse</option>
+              <option value="No">No - In Transit</option>
+              <option value="Yes">Yes - Received at Warehouse</option>
             </select>
           </div>
 
@@ -2523,10 +2523,10 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
             <div className="form-group">
               <label className="form-label">Cargo Price</label>
               <div style={{ display: "flex", gap: "6px" }}>
-                <select className="form-control" style={{ width: "80px", flexShrink: 0 }} value={currency} onChange={e => setCurrency(e.target.value)}>
-                  <option value="RMB" style={{ background: "#0f172a" }}>RMB</option>
-                  <option value="USD" style={{ background: "#0f172a" }}>USD</option>
-                  <option value="INR" style={{ background: "#0f172a" }}>INR</option>
+                <select className="form-control" style={{ width: "95px", flexShrink: 0, fontWeight: 600 }} value={currency} onChange={e => setCurrency(e.target.value)}>
+                  <option value="RMB">RMB (¥)</option>
+                  <option value="USD">USD ($)</option>
+                  <option value="INR">INR (₹)</option>
                 </select>
                 <input 
                   type="number" 
@@ -2542,9 +2542,9 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
             <div className="form-group">
               <label className="form-label">Price Unit (UOM)</label>
               <select className="form-control" value={uom} onChange={e => setUom(e.target.value)}>
-                <option value="per CBM" style={{ background: "#0f172a" }}>per CBM</option>
-                <option value="Flat Rate" style={{ background: "#0f172a" }}>Flat Rate</option>
-                <option value="per KG" style={{ background: "#0f172a" }}>per KG</option>
+                <option value="per CBM">per CBM</option>
+                <option value="Flat Rate">Flat Rate</option>
+                <option value="per KG">per KG</option>
               </select>
             </div>
           </div>
@@ -2602,14 +2602,14 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
                 value={cargoCompanyId} 
                 onChange={e => setCargoCompanyId(e.target.value)}
               >
-                <option value="" style={{ background: "#0f172a" }}>Select Cargo Company...</option>
+                <option value="">Select Cargo Company...</option>
                 {cargoCompanies.filter(cc => cc.status !== "Inactive").map(cc => {
                   const metrics = calculateCargoCompanyMetrics(cc, cargos, requests);
                   const scoreText = metrics.scorePending
                     ? `Rating: Pending — Insufficient History [${metrics.completedCount}/5 completed]`
                     : `Rating: ${metrics.score}/100`;
                   return (
-                    <option key={cc.id} value={cc.id} style={{ background: "#0f172a" }}>
+                    <option key={cc.id} value={cc.id}>
                       {cc.name} ({scoreText})
                     </option>
                   );
@@ -2620,10 +2620,10 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
             <div className="form-group">
               <label className="form-label">Transport Mode</label>
               <select className="form-control" value={mode} onChange={e => setMode(e.target.value)}>
-                <option value="Sea" style={{ background: "#0f172a" }}>Sea Cargo</option>
-                <option value="Air" style={{ background: "#0f172a" }}>Air Freight</option>
-                <option value="Land" style={{ background: "#0f172a" }}>Land Delivery</option>
-                <option value="Express" style={{ background: "#0f172a" }}>Express / Courier</option>
+                <option value="Sea">Sea Cargo</option>
+                <option value="Air">Air Freight</option>
+                <option value="Land">Land Delivery</option>
+                <option value="Express">Express / Courier</option>
               </select>
             </div>
 
@@ -2680,8 +2680,8 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
           <div className="form-group">
             <label className="form-label">Is Cargo Received? (Propagates to all bundled items)</label>
             <select className="form-control" value={isRec} onChange={e => setIsRec(e.target.value)}>
-              <option value="No" style={{ background: "#0f172a" }}>No - In Transit</option>
-              <option value="Yes" style={{ background: "#0f172a" }}>Yes - Received at Warehouse</option>
+              <option value="No">No - In Transit</option>
+              <option value="Yes">Yes - Received at Warehouse</option>
             </select>
           </div>
 
