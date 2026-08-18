@@ -1483,7 +1483,7 @@ export default function SuperAdminDashboard({
               <div className="glass-panel" style={{ padding: "24px", gridColumn: "1 / -1" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "12px" }}>
                   <h3 style={{ fontSize: "1.3rem", fontWeight: 700, color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px" }}>
-                    <FileText size={20} style={{ color: "#10b981" }} /> Google Sheets 27-Column Auto-Sync (Every 10 Mins)
+                    <FileText size={20} style={{ color: "#10b981" }} /> Google Sheets 27-Column Adaptive Auto-Sync (3 Min Active Throttle & Idle Backoff)
                   </h3>
 
                   {settings.lastGoogleSheetSyncTime && (
@@ -1494,7 +1494,7 @@ export default function SuperAdminDashboard({
                 </div>
 
                 <p style={{ color: "var(--text-muted)", fontSize: "0.88rem", marginBottom: "16px" }}>
-                  Automatically syncs all 27 purchase & cargo tracking columns to your Google Sheet every 10 minutes. If any information is missing, blank values (`""`) are sent.
+                  Intelligent Adaptive Sync: When activity occurs in app (e.g. Nitin packing orders, new requisitions), syncs every 3 minutes (min 3 min gap between runs). When idle (&lt;30m), syncs every 30 mins. After 30m idle, takes a 60 min gap, then increases gap up to 3 hours standing backup interval.
                 </p>
 
                 {sheetStatusMsg && (

@@ -673,19 +673,17 @@ async function formatAllRequestsForGoogleSheets() {
     cargos = cRes.rows || [];
   } else {
     requests = memoryDb.requests || [];
-    users = memoryDb.users || [];
+  users = memoryDb.users || [];
     vendors = memoryDb.vendors || [];
     cargos = memoryDb.cargos || [];
   }
 
-  // Exclude delivered orders from Google Sheets sync (only sync pending/in-transit items)
-  const activePendingRequests = requests.filter(r => {
-    const isDelivered = (r.isMaterialRec === "Yes" || Boolean(r.actualReceivedDate && r.actualReceivedDate.trim() !== "") || r.status === "Delivered");
-    return !isDelivered;
-  });
+  // Include all non-cancelled requests in Google Sheets sync so delivered/packing updates are synced
+  const activeRequests = requests.filter(r => r.status !== "Cancelled");
 
-  const rows = activePendingRequests.map(r => {
-    const purchaser = users.find(u => u.id === r.purchaserId)?.name || "";
+  const rows = activeRequests.map(r => {
+    const purchaserObj = users.find(u => u.id === r.purchaserId);
+    const purchaser = purchaserObj ? purchaserObj.name : (r.purchaserName || r.assignedPurchaser || r.purchaserId || "");
     const vendor = vendors.find(v => v.id === r.vendorId)?.name || "";
     const cargo = cargos.find(c => c.id === r.cargoId) || {};
 
@@ -715,13 +713,85 @@ async function formatAllRequestsForGoogleSheets() {
       invoiceFile: cargo.invoiceFile || "",
       isMaterialRec: r.isMaterialRec || cargo.isMaterialRec || "",
       packingSlip: cargo.packingListFile || "",
-      packingOrderedByNitin: r.packingOrderedByNitin || "",
+      packingOrderedByNitin: r.packingOrderedByNitin === "Yes" ? "Packing Ordered" : "Pending Packing",
       purchaseUpdated: r.purchaseUpdated || ""
     };
   });
 
   return rows;
 }
+
+// ==================== ADAPTIVE ACTIVITY-DRIVEN GOOGLE SHEETS SYNC ENGINE ====================
+let lastGoogleSheetSyncTime = 0; // Timestamp of last Google Sheets sync execution
+let lastAppActivityTime = Date.now(); // Timestamp of last app activity (new order, Nitin packing, etc.)
+let isOrderDataDirty = true; // Initial sync flag
+
+function markAppActivity() {
+  lastAppActivityTime = Date.now();
+  isOrderDataDirty = true;
+  console.log(`[Google Sheets Engine] App activity detected! Reset sync frequency to 3-minute active interval.`);
+}
+
+// Background sync engine loop (checks every 15 seconds)
+setInterval(async () => {
+  try {
+    const now = Date.now();
+    const timeSinceLastSync = now - lastGoogleSheetSyncTime;
+    const timeSinceLastActivity = now - lastAppActivityTime;
+
+    // HARD RULE 1: Cannot run before 3 minutes (180,000 ms) of last run
+    const MIN_SYNC_INTERVAL = 3 * 60 * 1000;
+    if (timeSinceLastSync < MIN_SYNC_INTERVAL) {
+      return; // Respect 3-minute minimum gap
+    }
+
+    // ADAPTIVE RULES 2 & 3:
+    // - Something happens in app (or < 30m ago): run every 3 minutes
+    // - 30m to 90m of inactivity: run with a 60-minute gap
+    // - > 90m of inactivity: run every 3 hours (180 minutes)
+    let requiredSyncInterval = 3 * 60 * 1000; // Default 3 mins
+
+    if (isOrderDataDirty || timeSinceLastActivity < 30 * 60 * 1000) {
+      requiredSyncInterval = 3 * 60 * 1000; // 3 minutes when something happens in app
+    } else if (timeSinceLastActivity < 90 * 60 * 1000) {
+      requiredSyncInterval = 60 * 60 * 1000; // 60 minutes gap if no activity for 30 mins
+    } else {
+      requiredSyncInterval = 3 * 60 * 60 * 1000; // 3 hours (180 minutes) gap if no activity for > 90 mins
+    }
+
+    if (timeSinceLastSync >= requiredSyncInterval) {
+      let settingsObj = {};
+      if (isPg) {
+        const res = await pool.query("SELECT * FROM settings");
+        (res.rows || []).forEach(r => { settingsObj[r.key] = r.value; });
+      } else {
+        settingsObj = memoryDb.settings || {};
+      }
+
+      const autoSyncEnabled = settingsObj.googleSheetAutoSyncEnabled === "true" || settingsObj.googleSheetAutoSyncEnabled === true;
+      if (autoSyncEnabled && settingsObj.googleSheetWebhookUrl) {
+        console.log(`[Google Sheets Adaptive Engine] Executing sync (Interval: ${requiredSyncInterval / 60000}m, Time since last sync: ${(timeSinceLastSync / 60000).toFixed(1)}m)...`);
+        const result = await performGoogleSheetSync();
+        if (result.success) {
+          lastGoogleSheetSyncTime = Date.now();
+          isOrderDataDirty = false;
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Adaptive Google Sheets sync engine error:", err.message);
+  }
+}, 15 * 1000);
+
+// Endpoint POST /api/google-sheets/sync (Manual instant sync)
+app.post("/api/google-sheets/sync", async (req, res) => {
+  const result = await performGoogleSheetSync();
+  if (result.success) {
+    lastGoogleSheetSyncTime = Date.now();
+    isOrderDataDirty = false;
+  }
+  return res.json(result);
+});
 
 async function performGoogleSheetSync() {
   try {
@@ -1176,6 +1246,7 @@ app.post("/api/requests", async (req, res) => {
         r.cancellationReason || "", r.cancelledAt || "", r.cargoAssignedAt || ""
       ];
       await pool.query(query, values);
+      markAppActivity();
       res.json({ success: true });
     } catch (err) {
       console.error("POST /api/requests error:", err.message);
@@ -1190,6 +1261,7 @@ app.post("/api/requests", async (req, res) => {
       data.requests.unshift(r); // Add to top
     }
     writeLocalJson(data);
+    markAppActivity();
     res.json({ success: true });
   }
 });
@@ -1253,6 +1325,7 @@ app.post("/api/requests/batch", async (req, res) => {
         await pool.query(query, values);
       }
       await pool.query("COMMIT");
+      markAppActivity();
       res.json({ success: true });
     } catch (err) {
       await pool.query("ROLLBACK");
@@ -1270,6 +1343,7 @@ app.post("/api/requests/batch", async (req, res) => {
       }
     });
     writeLocalJson(data);
+    markAppActivity();
     res.json({ success: true });
   }
 });
