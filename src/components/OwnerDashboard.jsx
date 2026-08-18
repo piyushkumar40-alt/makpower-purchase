@@ -3,7 +3,7 @@ import {
   Building2, TrendingUp, DollarSign, Package, Truck, AlertTriangle, 
   CheckCircle2, FileSpreadsheet, Download, Search, Filter, ShieldCheck, 
   Users, Award, ArrowUpRight, BarChart3, Clock, PieChart, RefreshCw,
-  Globe, Coins, Save, Check
+  Globe, Coins, Save, Check, Warehouse
 } from "lucide-react";
 
 export default function OwnerDashboard({
@@ -85,7 +85,7 @@ export default function OwnerDashboard({
     return matchesPurchaser && matchesCategory && matchesSearch;
   });
 
-  // 2. Compute Distinct Multi-Currency Totals
+  // 2. Compute Overall Spend Totals (RMB / USD / INR)
   let rmbTotalSpend = 0, usdTotalSpend = 0, inrTotalSpend = 0;
   let rmbAdvance = 0, usdAdvance = 0, inrAdvance = 0;
   let rmbBalance = 0, usdBalance = 0, inrBalance = 0;
@@ -111,33 +111,66 @@ export default function OwnerDashboard({
     }
   });
 
+  // 3. COMPUTATIONS FOR "MONEY AT VENDOR" VS "MONEY IN-TRANSIT"
+  // A. Money at Vendor (Orders currently at vendor factory / pending receipt / pending cargo)
+  const vendorPendingOrders = activeRequests.filter(r => r.isMaterialRec !== "Yes" && !r.cargoId);
+  let vendorRmbTotal = 0, vendorUsdTotal = 0, vendorInrTotal = 0;
+  let vendorRmbAdv = 0, vendorUsdAdv = 0, vendorInrAdv = 0;
+
+  vendorPendingOrders.forEach(r => {
+    const cur = (r.currency || "RMB").toUpperCase();
+    const tot = parseFloat(r.totalRmb || 0);
+    const adv = parseFloat(r.advancePayment || 0);
+    if (cur === "USD") { vendorUsdTotal += tot; vendorUsdAdv += adv; }
+    else if (cur === "INR") { vendorInrTotal += tot; vendorInrAdv += adv; }
+    else { vendorRmbTotal += tot; vendorRmbAdv += adv; }
+  });
+
+  const vendorInrTotalSpend = vendorPendingOrders.reduce((sum, r) => sum + convertToInr(r.totalRmb, r.currency), 0);
+  const vendorInrTotalAdv = vendorPendingOrders.reduce((sum, r) => sum + convertToInr(r.advancePayment, r.currency), 0);
+  const vendorInrTotalBal = vendorPendingOrders.reduce((sum, r) => sum + convertToInr(r.balancePayment, r.currency), 0);
+
+  // B. Money In-Transit (Goods assigned to cargos currently in-transit + cargo freight costs)
+  const inTransitOrders = activeRequests.filter(r => r.cargoId && r.isMaterialRec !== "Yes");
+  let transitGoodsRmb = 0, transitGoodsUsd = 0, transitGoodsInr = 0;
+  inTransitOrders.forEach(r => {
+    const cur = (r.currency || "RMB").toUpperCase();
+    const tot = parseFloat(r.totalRmb || 0);
+    if (cur === "USD") transitGoodsUsd += tot;
+    else if (cur === "INR") transitGoodsInr += tot;
+    else transitGoodsRmb += tot;
+  });
+
+  const transitGoodsInrTotal = inTransitOrders.reduce((sum, r) => sum + convertToInr(r.totalRmb, r.currency), 0);
+
+  const safeCargos = cargos || [];
+  const inTransitCargos = safeCargos.filter(c => c.isMaterialRec !== "Yes");
+  let transitFreightRmb = 0, transitFreightUsd = 0, transitFreightInr = 0;
+  inTransitCargos.forEach(c => {
+    const cur = (c.currency || "RMB").toUpperCase();
+    const price = parseFloat(c.totalCargoPrice || 0);
+    if (cur === "USD") transitFreightUsd += price;
+    else if (cur === "INR") transitFreightInr += price;
+    else transitFreightRmb += price;
+  });
+
+  const transitFreightInrTotal = inTransitCargos.reduce((sum, c) => sum + convertToInr(c.totalCargoPrice, c.currency), 0);
+  const transitCombinedInrTotal = transitGoodsInrTotal + transitFreightInrTotal;
+
+  // C. Money Received (Goods received at Warehouse)
+  const receivedOrders = activeRequests.filter(r => r.isMaterialRec === "Yes");
+  const receivedInrTotal = receivedOrders.reduce((sum, r) => sum + convertToInr(r.totalRmb, r.currency), 0);
+
   // Consolidated Net Total Spend in INR
   const totalInrConsolidatedSpend = activeRequests.reduce((sum, r) => sum + convertToInr(r.totalRmb, r.currency), 0);
   const totalInrAdvancePaid = activeRequests.reduce((sum, r) => sum + convertToInr(r.advancePayment, r.currency), 0);
   const totalInrBalanceDue = activeRequests.reduce((sum, r) => sum + convertToInr(r.balancePayment, r.currency), 0);
 
-  // Cargos & Freight
-  const safeCargos = cargos || [];
-  const inTransitCargos = safeCargos.filter(c => c.isMaterialRec !== "Yes");
-  
-  let rmbFreight = 0, usdFreight = 0, inrFreight = 0;
-  safeCargos.forEach(c => {
-    const cur = (c.currency || "RMB").toUpperCase();
-    const price = parseFloat(c.totalCargoPrice || 0);
-    if (cur === "USD") usdFreight += price;
-    else if (cur === "INR") inrFreight += price;
-    else rmbFreight += price;
-  });
-
-  const totalInrFreightSpend = safeCargos.reduce((sum, c) => sum + convertToInr(c.totalCargoPrice, c.currency), 0);
-
   const completedOrders = activeRequests.filter(r => r.isMaterialRec === "Yes");
   const pendingOrders = activeRequests.filter(r => r.isMaterialRec !== "Yes");
 
   // Category Spend Distribution
-  // Multi-currency category map
   const categoryMultiSpendMap = {};
-  // Consolidated INR category map
   const categoryInrSpendMap = {};
 
   activeRequests.forEach(r => {
@@ -217,18 +250,22 @@ export default function OwnerDashboard({
   const delayedCargos = safeCargos.filter(c => c.isMaterialRec !== "Yes" && c.cargoEta && c.cargoEta < today);
   const highValuePendingOrders = activeRequests.filter(r => r.isMaterialRec !== "Yes" && convertToInr(r.totalRmb, r.currency) > 200000);
 
-  // Export Report CSV
+  // Export Executive Summary Report CSV with Vendor vs In-Transit Breakdown
   const handleExportExecutiveReport = () => {
     const headers = [
       "PO Number", "Order Date", "Category", "Item Model", "Item Type", 
-      "Quantity", "Original Currency", "Original Price", "Original Total", 
+      "Quantity", "Current Stage / Location", "Original Currency", "Original Price", "Original Total", 
       "Converted Total (INR)", "Advance Paid", "Balance Due", 
-      "Vendor", "Delivery Status"
+      "Vendor Name", "Delivery Status"
     ];
 
     const rows = activeRequests.map(r => {
       const vendorObj = vendors.find(v => v.id === r.vendorId);
       const inrValue = convertToInr(r.totalRmb, r.currency);
+      let stage = "At Vendor Factory";
+      if (r.isMaterialRec === "Yes") stage = "Received at Warehouse";
+      else if (r.cargoId) stage = "In-Transit Cargo Shipment";
+
       return [
         `"${r.id}"`,
         `"${r.orderDate || ""}"`,
@@ -236,6 +273,7 @@ export default function OwnerDashboard({
         `"${(r.model || "").replace(/"/g, '""')}"`,
         `"${r.type || "RM"}"`,
         r.orderQuantity || 0,
+        `"${stage}"`,
         `"${r.currency || "RMB"}"`,
         r.priceRmb || 0,
         r.totalRmb || 0,
@@ -247,7 +285,19 @@ export default function OwnerDashboard({
       ].join(",");
     });
 
-    const csvContent = [headers.join(","), ...rows].join("\n");
+    const summaryRows = [
+      `"=== EXECUTIVE ASSET ALLOCATION SUMMARY ==="`,
+      `"Total Money at Vendor Factories (INR)","","","","","","₹ ${vendorInrTotalSpend.toFixed(2)}"`,
+      `"Total Advance Deposited with Vendors (INR)","","","","","","₹ ${vendorInrTotalAdv.toFixed(2)}"`,
+      `"Total Goods Value In-Transit (INR)","","","","","","₹ ${transitGoodsInrTotal.toFixed(2)}"`,
+      `"Total Shipping Freight In-Transit (INR)","","","","","","₹ ${transitFreightInrTotal.toFixed(2)}"`,
+      `"Total Combined Money In-Transit (INR)","","","","","","₹ ${transitCombinedInrTotal.toFixed(2)}"`,
+      `"Total Warehouse Received Stock (INR)","","","","","","₹ ${receivedInrTotal.toFixed(2)}"`,
+      `"==========================================="`,
+      ""
+    ];
+
+    const csvContent = [...summaryRows, headers.join(","), ...rows].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -400,7 +450,7 @@ export default function OwnerDashboard({
         </div>
       )}
 
-      {/* Financial KPI Section */}
+      {/* Financial Executive KPI Cards Section */}
       {viewMode === "multicurrency" ? (
         /* MULTI-CURRENCY ORIGINAL BREAKDOWN CARDS */
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "16px", marginBottom: "28px" }}>
@@ -431,6 +481,51 @@ export default function OwnerDashboard({
             </div>
           </div>
 
+          {/* CARD 1: MONEY AT VENDOR FACTORIES */}
+          <div className="stat-card" style={{ borderTop: "4px solid #c084fc", background: "rgba(192, 132, 252, 0.04)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <span className="stat-label" style={{ color: "#e9d5ff", fontWeight: 700 }}>Money at Vendor (Factory Deposits)</span>
+              <div className="stat-icon" style={{ background: "rgba(192, 132, 252, 0.15)", color: "#c084fc" }}>
+                <Building2 size={20} />
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#38bdf8" }}>
+                ¥ {vendorRmbTotal.toLocaleString()} RMB <span style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 400 }}>(Adv: ¥{vendorRmbAdv.toLocaleString()})</span>
+              </div>
+              <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#fbbf24" }}>
+                $ {vendorUsdTotal.toLocaleString()} USD <span style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 400 }}>(Adv: ${vendorUsdAdv.toLocaleString()})</span>
+              </div>
+              <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#34d399" }}>
+                ₹ {vendorInrTotal.toLocaleString()} INR <span style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 400 }}>(Adv: ₹{vendorInrAdv.toLocaleString()})</span>
+              </div>
+            </div>
+            <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "8px", borderTop: "1px dashed var(--border-glass)", paddingTop: "6px" }}>
+              Total PO value in production / pending at vendor hands.
+            </div>
+          </div>
+
+          {/* CARD 2: MONEY IN-TRANSIT (SHIPMENTS & FREIGHT) */}
+          <div className="stat-card" style={{ borderTop: "4px solid #f59e0b", background: "rgba(245, 158, 11, 0.04)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <span className="stat-label" style={{ color: "#fef3c7", fontWeight: 700 }}>Money In-Transit (Goods & Freight)</span>
+              <div className="stat-icon" style={{ background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" }}>
+                <Truck size={20} />
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <div style={{ fontSize: "0.82rem", color: "var(--text-main)", fontWeight: 700 }}>
+                Goods Value: <span style={{ color: "#38bdf8" }}>¥{transitGoodsRmb.toLocaleString()}</span> | <span style={{ color: "#fbbf24" }}>${transitGoodsUsd.toLocaleString()}</span> | <span style={{ color: "#34d399" }}>₹{transitGoodsInr.toLocaleString()}</span>
+              </div>
+              <div style={{ fontSize: "0.82rem", color: "var(--text-main)", fontWeight: 700 }}>
+                Freight Spend: <span style={{ color: "#38bdf8" }}>¥{transitFreightRmb.toLocaleString()}</span> | <span style={{ color: "#fbbf24" }}>${transitFreightUsd.toLocaleString()}</span> | <span style={{ color: "#34d399" }}>₹{transitFreightInr.toLocaleString()}</span>
+              </div>
+            </div>
+            <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "8px", borderTop: "1px dashed var(--border-glass)", paddingTop: "6px" }}>
+              Across <strong>{inTransitCargos.length}</strong> active cargo shipments currently on the move.
+            </div>
+          </div>
+
           {/* Active Orders */}
           <div className="stat-card" style={{ borderTop: "4px solid #818cf8" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -444,38 +539,6 @@ export default function OwnerDashboard({
             </div>
             <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
               Received: <strong style={{ color: "#34d399" }}>{completedOrders.length}</strong> | Pending: <strong style={{ color: "#fbbf24" }}>{pendingOrders.length}</strong>
-            </div>
-          </div>
-
-          {/* Cargos In-Transit */}
-          <div className="stat-card" style={{ borderTop: "4px solid #f59e0b" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span className="stat-label">Cargos & Freight Spend</span>
-              <div className="stat-icon" style={{ background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" }}>
-                <Truck size={20} />
-              </div>
-            </div>
-            <div className="stat-value" style={{ color: "#f59e0b", margin: "10px 0", fontSize: "1.2rem" }}>
-              {inTransitCargos.length} Shipments In-Transit
-            </div>
-            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-              Freight Spend: <strong>¥{rmbFreight.toLocaleString()}</strong> | <strong>${usdFreight.toLocaleString()}</strong> | <strong>₹{inrFreight.toLocaleString()}</strong>
-            </div>
-          </div>
-
-          {/* Vendors & Catalog */}
-          <div className="stat-card" style={{ borderTop: "4px solid #34d399" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span className="stat-label">Vendors & Catalog</span>
-              <div className="stat-icon" style={{ background: "rgba(52, 211, 153, 0.15)", color: "#34d399" }}>
-                <Building2 size={20} />
-              </div>
-            </div>
-            <div className="stat-value" style={{ color: "#34d399", margin: "12px 0" }}>
-              {vendors.length} <span style={{ fontSize: "1rem", fontWeight: 500 }}>Vendors</span>
-            </div>
-            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-              Master Items in Catalog: <strong>{items.length}</strong>
             </div>
           </div>
 
@@ -500,56 +563,112 @@ export default function OwnerDashboard({
             </div>
           </div>
 
-          {/* Active Orders */}
-          <div className="stat-card" style={{ borderTop: "4px solid #818cf8" }}>
+          {/* CARD 1: CONSOLIDATED MONEY AT VENDOR (INR) */}
+          <div className="stat-card" style={{ borderTop: "4px solid #c084fc", background: "rgba(192, 132, 252, 0.04)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span className="stat-label">Active Purchase Orders</span>
-              <div className="stat-icon" style={{ background: "rgba(129, 140, 248, 0.15)", color: "#818cf8" }}>
-                <Package size={20} />
+              <span className="stat-label" style={{ color: "#e9d5ff", fontWeight: 700 }}>Money at Vendor Factories (INR)</span>
+              <div className="stat-icon" style={{ background: "rgba(192, 132, 252, 0.15)", color: "#c084fc" }}>
+                <Building2 size={20} />
               </div>
             </div>
-            <div className="stat-value" style={{ color: "#818cf8", margin: "10px 0" }}>
-              {activeRequests.length} POs
+            <div className="stat-value" style={{ color: "#e9d5ff", fontSize: "1.6rem", margin: "10px 0" }}>
+              ₹ {vendorInrTotalSpend.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-              Received: <strong style={{ color: "#34d399" }}>{completedOrders.length}</strong> | Pending: <strong style={{ color: "#fbbf24" }}>{pendingOrders.length}</strong>
+              Advance Deposited: <strong style={{ color: "#34d399" }}>₹ {vendorInrTotalAdv.toLocaleString()}</strong> | Bal: <strong>₹ {vendorInrTotalBal.toLocaleString()}</strong>
             </div>
           </div>
 
-          {/* Freight Spend (INR) */}
-          <div className="stat-card" style={{ borderTop: "4px solid #f59e0b" }}>
+          {/* CARD 2: CONSOLIDATED MONEY IN-TRANSIT (INR) */}
+          <div className="stat-card" style={{ borderTop: "4px solid #f59e0b", background: "rgba(245, 158, 11, 0.04)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span className="stat-label">Total Freight Spend (INR)</span>
+              <span className="stat-label" style={{ color: "#fef3c7", fontWeight: 700 }}>Total Money In-Transit (INR)</span>
               <div className="stat-icon" style={{ background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" }}>
                 <Truck size={20} />
               </div>
             </div>
-            <div className="stat-value" style={{ color: "#f59e0b", margin: "10px 0" }}>
-              ₹ {totalInrFreightSpend.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+            <div className="stat-value" style={{ color: "#fcd34d", fontSize: "1.6rem", margin: "10px 0" }}>
+              ₹ {transitCombinedInrTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-              Across {inTransitCargos.length} In-Transit Cargos
+              Goods Value: <strong>₹ {transitGoodsInrTotal.toLocaleString()}</strong> | Freight: <strong>₹ {transitFreightInrTotal.toLocaleString()}</strong>
             </div>
           </div>
 
-          {/* Vendors & Catalog */}
+          {/* Received Stock (INR) */}
           <div className="stat-card" style={{ borderTop: "4px solid #34d399" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span className="stat-label">Registered Vendors & Items</span>
+              <span className="stat-label">Warehouse Received Stock (INR)</span>
               <div className="stat-icon" style={{ background: "rgba(52, 211, 153, 0.15)", color: "#34d399" }}>
-                <Building2 size={20} />
+                <Warehouse size={20} />
               </div>
             </div>
-            <div className="stat-value" style={{ color: "#34d399", margin: "10px 0" }}>
-              {vendors.length} Vendors
+            <div className="stat-value" style={{ color: "#34d399", fontSize: "1.6rem", margin: "10px 0" }}>
+              ₹ {receivedInrTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
             </div>
             <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-              Catalog Items: <strong>{items.length}</strong>
+              Across {completedOrders.length} Received Purchase Orders
             </div>
           </div>
 
         </div>
       )}
+
+      {/* FINANCIAL ASSET ALLOCATION WIDGET: AT VENDOR VS IN-TRANSIT VS WAREHOUSE RECEIVED */}
+      <div className="glass-panel" style={{ padding: "20px", marginBottom: "28px" }}>
+        <h3 style={{ fontSize: "1.15rem", fontWeight: 700, color: "var(--text-main)", display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
+          <TrendingUp size={20} style={{ color: "#38bdf8" }} /> Capital Allocation Summary: Money at Vendor vs In-Transit vs Warehouse
+        </h3>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
+          
+          {/* Stage 1: Money at Vendor */}
+          <div style={{ background: "rgba(192, 132, 252, 0.08)", padding: "16px", borderRadius: "10px", border: "1px solid rgba(192, 132, 252, 0.3)" }}>
+            <div style={{ fontSize: "0.82rem", color: "#c084fc", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              STAGE 1: MONEY AT VENDOR FACTORIES
+            </div>
+            <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#e9d5ff", margin: "8px 0" }}>
+              ₹ {vendorInrTotalSpend.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+            </div>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: "3px" }}>
+              <div>Advance Deposited: <strong style={{ color: "#34d399" }}>₹ {vendorInrTotalAdv.toLocaleString()}</strong></div>
+              <div>Balance Remaining: <strong>₹ {vendorInrTotalBal.toLocaleString()}</strong></div>
+              <div>Pending PO Count: <strong>{vendorPendingOrders.length} POs</strong></div>
+            </div>
+          </div>
+
+          {/* Stage 2: Money In-Transit */}
+          <div style={{ background: "rgba(245, 158, 11, 0.08)", padding: "16px", borderRadius: "10px", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
+            <div style={{ fontSize: "0.82rem", color: "#f59e0b", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              STAGE 2: MONEY IN-TRANSIT (SHIPMENTS & FREIGHT)
+            </div>
+            <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#fcd34d", margin: "8px 0" }}>
+              ₹ {transitCombinedInrTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+            </div>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: "3px" }}>
+              <div>In-Transit Goods Value: <strong>₹ {transitGoodsInrTotal.toLocaleString()}</strong></div>
+              <div>In-Transit Freight Cost: <strong>₹ {transitFreightInrTotal.toLocaleString()}</strong></div>
+              <div>Active Shipments: <strong>{inTransitCargos.length} Cargos</strong> ({inTransitOrders.length} POs)</div>
+            </div>
+          </div>
+
+          {/* Stage 3: Warehouse Received */}
+          <div style={{ background: "rgba(52, 211, 153, 0.08)", padding: "16px", borderRadius: "10px", border: "1px solid rgba(52, 211, 153, 0.3)" }}>
+            <div style={{ fontSize: "0.82rem", color: "#34d399", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              STAGE 3: WAREHOUSE RECEIVED INVENTORY
+            </div>
+            <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#a7f3d0", margin: "8px 0" }}>
+              ₹ {receivedInrTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+            </div>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: "3px" }}>
+              <div>Completed Orders: <strong>{completedOrders.length} POs</strong></div>
+              <div>Safety Stock Asset Value: <strong>Fully Fulfilled</strong></div>
+              <div>Risk Level: <strong style={{ color: "#34d399" }}>Zero Risk (In-Hand)</strong></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
 
       {/* Critical Executive Risk Alerts Strip */}
       {(delayedCargos.length > 0 || highValuePendingOrders.length > 0) && (
@@ -787,7 +906,7 @@ export default function OwnerDashboard({
                 <th>Order Date</th>
                 <th>Category</th>
                 <th>Item Model / Name</th>
-                <th>Type</th>
+                <th>Stage / Location</th>
                 <th>Qty</th>
                 <th>{viewMode === "inr_consolidated" ? "Original Price" : "Currency"}</th>
                 <th>{viewMode === "inr_consolidated" ? "Converted Total (INR ₹)" : "Total Spend"}</th>
@@ -810,6 +929,13 @@ export default function OwnerDashboard({
                   const inrTot = convertToInr(tot, r.currency);
                   const inrAdv = convertToInr(adv, r.currency);
 
+                  let stageBadge = <span className="badge" style={{ background: "rgba(192, 132, 252, 0.15)", color: "#c084fc", border: "1px solid rgba(192, 132, 252, 0.3)" }}>At Vendor Factory</span>;
+                  if (r.isMaterialRec === "Yes") {
+                    stageBadge = <span className="badge badge-success">Received Stock</span>;
+                  } else if (r.cargoId) {
+                    stageBadge = <span className="badge badge-cargo">Cargo In-Transit</span>;
+                  }
+
                   return (
                     <tr key={r.id}>
                       <td style={{ fontWeight: 800, color: "var(--primary)" }}>{r.id}</td>
@@ -820,11 +946,7 @@ export default function OwnerDashboard({
                         </span>
                       </td>
                       <td style={{ fontWeight: 600 }}>{r.model}</td>
-                      <td>
-                        <span className={`badge ${r.type === "FG" ? "badge-success" : "badge-secondary"}`} style={{ fontSize: "0.72rem" }}>
-                          {r.type || "RM"}
-                        </span>
-                      </td>
+                      <td>{stageBadge}</td>
                       <td>{r.orderQuantity}</td>
                       
                       {viewMode === "inr_consolidated" ? (
