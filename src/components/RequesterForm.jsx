@@ -249,6 +249,10 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
       }
       return r;
     }));
+    setActiveDropdown(null);
+    setHighlightedIndex(0);
+  };
+
   // Handle direct Excel/Google Sheets copy-paste into table grid cells
   const handleCellPaste = (e, startRowIdx, targetField) => {
     const clipboardData = e.clipboardData || window.clipboardData;
