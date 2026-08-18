@@ -6,6 +6,8 @@ import {
   Globe, Coins, Save, Check, Warehouse
 } from "lucide-react";
 
+import CapitalPipelineStudio from "./CapitalPipelineStudio";
+
 export default function OwnerDashboard({
   currentUser = {},
   requests = [],
@@ -361,9 +363,29 @@ export default function OwnerDashboard({
         >
           <Coins size={18} /> 🇮🇳 Consolidated INR Report & Currency Rate Manager
         </button>
+
+        <button 
+          onClick={() => setViewMode("studiopipeline")} 
+          className={`btn ${viewMode === "studiopipeline" ? "btn-primary" : "btn-secondary"}`}
+          style={{ flex: "1 1 200px", padding: "10px 16px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", background: viewMode === "studiopipeline" ? "linear-gradient(135deg, #7c3aed, #a855f7)" : "var(--bg-card)", borderColor: "#a855f7" }}
+        >
+          <BarChart2 size={18} /> 📊 Looker Studio: Money Flow & Capital Allocation Studio
+        </button>
       </div>
 
-      {/* Exchange Rate Controller Bar (Visible in INR Consolidated Mode) */}
+      {viewMode === "studiopipeline" && (
+        <CapitalPipelineStudio 
+          requests={requests}
+          cargos={cargos}
+          vendors={vendors}
+          users={users}
+          settings={settings}
+        />
+      )}
+
+      {viewMode !== "studiopipeline" && (
+        <>
+          {/* Exchange Rate Controller Bar (Visible in INR Consolidated Mode) */}
       {viewMode === "inr_consolidated" && (
         <div className="glass-panel" style={{ padding: "20px", marginBottom: "28px", border: "1px solid rgba(16, 185, 129, 0.4)", background: "rgba(16, 185, 129, 0.05)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
@@ -990,6 +1012,8 @@ export default function OwnerDashboard({
           </table>
         </div>
       </div>
+      </>
+      )}
 
     </div>
   );

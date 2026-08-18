@@ -6,6 +6,7 @@ import ItemMasterView from "./ItemMasterView";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
+import CapitalPipelineStudio from "./CapitalPipelineStudio";
 
 export default function PurchaserDashboard({
   currentUser = {},
@@ -212,6 +213,7 @@ export default function PurchaserDashboard({
                 <option value="cargocompanies" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Logistics Carriers</option>
                 <option value="itemmaster" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Item Catalog & Stock</option>
                 <option value="auditlogs" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>System Audit Logs & Version History ({auditLogs.length})</option>
+                <option value="studiopipeline" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>📊 Money Flow & Capital Allocation Studio</option>
               </select>
               <ChevronDown size={14} style={{ position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "var(--text-muted)" }} />
             </div>
@@ -1046,6 +1048,16 @@ export default function PurchaserDashboard({
             users={purchasers.length > 0 ? purchasers : []} 
             requests={requests} 
             vendors={vendors} 
+          />
+        )}
+
+        {/* ==================== MONEY FLOW & CAPITAL ALLOCATION STUDIO TAB ==================== */}
+        {activeTab === "studiopipeline" && (
+          <CapitalPipelineStudio 
+            requests={requests}
+            cargos={cargos}
+            vendors={vendors}
+            users={purchasers}
           />
         )}
 
