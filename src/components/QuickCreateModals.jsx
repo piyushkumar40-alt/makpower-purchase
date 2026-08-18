@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Plus, X, Sparkles, Building2, Truck, Package, UserPlus, Tag } from "lucide-react";
+import { Plus, X, Sparkles, Building2, Truck, Package, UserPlus, Tag, CheckCircle2, Loader2 } from "lucide-react";
 
 // ==================== 1. QUICK VENDOR MODAL ====================
 export function QuickCreateVendorModal({ isOpen, onClose, onAddVendor, currentUser, onVendorCreated }) {
@@ -7,6 +7,7 @@ export function QuickCreateVendorModal({ isOpen, onClose, onAddVendor, currentUs
   const [location, setLocation] = useState("");
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   if (!isOpen) return null;
@@ -14,25 +15,44 @@ export function QuickCreateVendorModal({ isOpen, onClose, onAddVendor, currentUs
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    if (!name.trim()) {
-      setError("Vendor name is required.");
+    setSuccessMsg("");
+
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("Vendor / Supplier name is required.");
       return;
     }
+
     setSubmitting(true);
     try {
       const purchaserIds = currentUser?.id ? [currentUser.id] : [];
-      const res = await onAddVendor(name.trim(), purchaserIds, location.trim(), phone.trim());
+      const res = await onAddVendor(trimmedName, purchaserIds, location.trim(), phone.trim());
+
       if (res && res.success === false) {
-        setError(res.message || "Failed to create vendor.");
+        setError(res.message || "Failed to create vendor in database.");
       } else {
-        const created = res?.vendor || { id: `v-${Date.now()}`, name: name.trim() };
-        if (onVendorCreated) onVendorCreated(created);
-        onClose();
+        const createdVendor = res?.vendor || { id: `v-${Date.now()}`, name: trimmedName };
+        const msg = res?.message || `✅ Vendor "${createdVendor.name}" saved to database successfully!`;
+        setSuccessMsg(msg);
+        
+        if (onVendorCreated) {
+          onVendorCreated(createdVendor);
+        }
+
+        setTimeout(() => {
+          onClose();
+          setName("");
+          setLocation("");
+          setPhone("");
+          setSuccessMsg("");
+          setSubmitting(false);
+        }, 1200);
       }
     } catch (err) {
-      setError("An error occurred while creating vendor.");
+      console.error("Vendor creation error:", err);
+      setError("Server database error while saving vendor.");
     } finally {
-      setSubmitting(false);
+      if (!successMsg) setSubmitting(false);
     }
   };
 
@@ -47,6 +67,11 @@ export function QuickCreateVendorModal({ isOpen, onClose, onAddVendor, currentUs
         </div>
 
         {error && <div className="alert-strip alert-danger" style={{ marginBottom: "14px" }}>{error}</div>}
+        {successMsg && (
+          <div className="alert-strip alert-success" style={{ marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px", fontWeight: 600 }}>
+            <CheckCircle2 size={18} /> {successMsg}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <div className="form-group">
@@ -59,6 +84,7 @@ export function QuickCreateVendorModal({ isOpen, onClose, onAddVendor, currentUs
               onChange={e => setName(e.target.value)}
               required
               autoFocus
+              disabled={submitting || !!successMsg}
             />
           </div>
 
@@ -70,6 +96,7 @@ export function QuickCreateVendorModal({ isOpen, onClose, onAddVendor, currentUs
               placeholder="e.g. Shenzhen, China"
               value={location}
               onChange={e => setLocation(e.target.value)}
+              disabled={submitting || !!successMsg}
             />
           </div>
 
@@ -81,13 +108,23 @@ export function QuickCreateVendorModal({ isOpen, onClose, onAddVendor, currentUs
               placeholder="e.g. +86 755 88889999"
               value={phone}
               onChange={e => setPhone(e.target.value)}
+              disabled={submitting || !!successMsg}
             />
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-            <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
-              {submitting ? "Creating..." : "Create & Auto-Select"}
+            <button type="button" onClick={onClose} className="btn btn-secondary" disabled={submitting || !!successMsg}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={submitting || !!successMsg} style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+              {submitting ? (
+                <>
+                  <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                  Saving to Database...
+                </>
+              ) : successMsg ? (
+                "Saved!"
+              ) : (
+                "Create & Auto-Select"
+              )}
             </button>
           </div>
         </form>
@@ -102,6 +139,7 @@ export function QuickCreateCargoCompanyModal({ isOpen, onClose, onAddCargoCompan
   const [location, setLocation] = useState("");
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   if (!isOpen) return null;
@@ -109,24 +147,42 @@ export function QuickCreateCargoCompanyModal({ isOpen, onClose, onAddCargoCompan
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    if (!name.trim()) {
-      setError("Company name is required.");
+    setSuccessMsg("");
+
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("Cargo Company name is required.");
       return;
     }
+
     setSubmitting(true);
     try {
-      const res = await onAddCargoCompany(name.trim(), location.trim(), phone.trim());
+      const res = await onAddCargoCompany(trimmedName, location.trim(), phone.trim());
       if (res && res.success === false) {
-        setError(res.message || "Failed to create cargo company.");
+        setError(res.message || "Failed to create transport company in database.");
       } else {
-        const created = res?.company || { id: `cc-${Date.now()}`, name: name.trim() };
-        if (onCompanyCreated) onCompanyCreated(created);
-        onClose();
+        const created = res?.company || { id: `cc-${Date.now()}`, name: trimmedName };
+        const msg = res?.message || `✅ Transport Company "${created.name}" saved to database successfully!`;
+        setSuccessMsg(msg);
+        
+        if (onCompanyCreated) {
+          onCompanyCreated(created);
+        }
+
+        setTimeout(() => {
+          onClose();
+          setName("");
+          setLocation("");
+          setPhone("");
+          setSuccessMsg("");
+          setSubmitting(false);
+        }, 1200);
       }
     } catch (err) {
-      setError("An error occurred while creating cargo company.");
+      console.error("Cargo company creation error:", err);
+      setError("Server database error while saving cargo company.");
     } finally {
-      setSubmitting(false);
+      if (!successMsg) setSubmitting(false);
     }
   };
 
@@ -141,6 +197,11 @@ export function QuickCreateCargoCompanyModal({ isOpen, onClose, onAddCargoCompan
         </div>
 
         {error && <div className="alert-strip alert-danger" style={{ marginBottom: "14px" }}>{error}</div>}
+        {successMsg && (
+          <div className="alert-strip alert-success" style={{ marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px", fontWeight: 600 }}>
+            <CheckCircle2 size={18} /> {successMsg}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <div className="form-group">
@@ -153,6 +214,7 @@ export function QuickCreateCargoCompanyModal({ isOpen, onClose, onAddCargoCompan
               onChange={e => setName(e.target.value)}
               required
               autoFocus
+              disabled={submitting || !!successMsg}
             />
           </div>
 
@@ -164,6 +226,7 @@ export function QuickCreateCargoCompanyModal({ isOpen, onClose, onAddCargoCompan
               placeholder="e.g. Guangzhou Warehouse"
               value={location}
               onChange={e => setLocation(e.target.value)}
+              disabled={submitting || !!successMsg}
             />
           </div>
 
@@ -175,13 +238,14 @@ export function QuickCreateCargoCompanyModal({ isOpen, onClose, onAddCargoCompan
               placeholder="e.g. +86 20 87654321"
               value={phone}
               onChange={e => setPhone(e.target.value)}
+              disabled={submitting || !!successMsg}
             />
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-            <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
-              {submitting ? "Creating..." : "Create & Auto-Select"}
+            <button type="button" onClick={onClose} className="btn btn-secondary" disabled={submitting || !!successMsg}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={submitting || !!successMsg}>
+              {submitting ? "Saving to Database..." : successMsg ? "Saved!" : "Create & Auto-Select"}
             </button>
           </div>
         </form>
@@ -198,6 +262,7 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
   const [type, setType] = useState("Import");
   const [itemNature, setItemNature] = useState("Non Consumables");
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   if (!isOpen) return null;
@@ -205,11 +270,15 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    if (!name.trim()) {
+    setSuccessMsg("");
+
+    const trimmedName = name.trim();
+    const trimmedCat = category.trim();
+    if (!trimmedName) {
       setError("Item Model Name is required.");
       return;
     }
-    if (!category.trim()) {
+    if (!trimmedCat) {
       setError("Category is required.");
       return;
     }
@@ -218,22 +287,40 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
     try {
       const newItem = {
         id: `item-${Date.now()}`,
-        name: name.trim(),
-        category: category.trim(),
+        name: trimmedName,
+        category: trimmedCat,
         itemType,
         type,
         itemNature,
         createdAt: new Date().toISOString()
       };
+
+      let res = null;
       if (onAddItem) {
-        await onAddItem(newItem);
+        res = await onAddItem(newItem);
       }
-      if (onItemCreated) onItemCreated(newItem);
-      onClose();
+
+      if (res && res.error) {
+        setError(res.error);
+      } else {
+        const msg = res?.message || `✅ Item "${newItem.name}" saved to database catalog successfully!`;
+        setSuccessMsg(msg);
+
+        if (onItemCreated) onItemCreated(newItem);
+
+        setTimeout(() => {
+          onClose();
+          setName("");
+          setCategory("");
+          setSuccessMsg("");
+          setSubmitting(false);
+        }, 1200);
+      }
     } catch (err) {
-      setError("Failed to create item.");
+      console.error("Item creation error:", err);
+      setError("Server database error while saving item.");
     } finally {
-      setSubmitting(false);
+      if (!successMsg) setSubmitting(false);
     }
   };
 
@@ -248,6 +335,11 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
         </div>
 
         {error && <div className="alert-strip alert-danger" style={{ marginBottom: "14px" }}>{error}</div>}
+        {successMsg && (
+          <div className="alert-strip alert-success" style={{ marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px", fontWeight: 600 }}>
+            <CheckCircle2 size={18} /> {successMsg}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <div className="form-group">
@@ -260,6 +352,7 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
               onChange={e => setName(e.target.value)}
               required
               autoFocus
+              disabled={submitting || !!successMsg}
             />
           </div>
 
@@ -272,13 +365,14 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
               value={category}
               onChange={e => setCategory(e.target.value)}
               required
+              disabled={submitting || !!successMsg}
             />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
             <div className="form-group">
               <label className="form-label">Item Type</label>
-              <select className="form-control" value={itemType} onChange={e => setItemType(e.target.value)}>
+              <select className="form-control" value={itemType} onChange={e => setItemType(e.target.value)} disabled={submitting || !!successMsg}>
                 <option value="FG" style={{ background: "#0f172a" }}>Finished Goods (FG)</option>
                 <option value="RM" style={{ background: "#0f172a" }}>Raw Material (RM)</option>
               </select>
@@ -286,7 +380,7 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
 
             <div className="form-group">
               <label className="form-label">Purchase Type</label>
-              <select className="form-control" value={type} onChange={e => setType(e.target.value)}>
+              <select className="form-control" value={type} onChange={e => setType(e.target.value)} disabled={submitting || !!successMsg}>
                 <option value="Import" style={{ background: "#0f172a" }}>Import</option>
                 <option value="Local" style={{ background: "#0f172a" }}>Local</option>
               </select>
@@ -295,16 +389,16 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
 
           <div className="form-group">
             <label className="form-label">Item Nature</label>
-            <select className="form-control" value={itemNature} onChange={e => setItemNature(e.target.value)}>
+            <select className="form-control" value={itemNature} onChange={e => setItemNature(e.target.value)} disabled={submitting || !!successMsg}>
               <option value="Non Consumables" style={{ background: "#0f172a" }}>Non Consumables</option>
               <option value="Consumables" style={{ background: "#0f172a" }}>Consumables</option>
             </select>
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-            <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
-              {submitting ? "Creating..." : "Save to Catalog & Use"}
+            <button type="button" onClick={onClose} className="btn btn-secondary" disabled={submitting || !!successMsg}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={submitting || !!successMsg}>
+              {submitting ? "Saving to Database..." : successMsg ? "Saved!" : "Save to Catalog & Use"}
             </button>
           </div>
         </form>
@@ -320,6 +414,7 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
   const [password, setPassword] = useState("MakPower#2026!");
   const [designation, setDesignation] = useState("Purchaser");
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   if (!isOpen) return null;
@@ -327,6 +422,8 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setSuccessMsg("");
+
     if (!name.trim() || !email.trim() || !password.trim()) {
       setError("Name, Email and Password are required.");
       return;
@@ -336,16 +433,27 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
     try {
       const res = await onAddPurchaser(name.trim(), email.trim(), password.trim(), designation);
       if (res && res.success === false) {
-        setError(res.message || "Failed to create user.");
+        setError(res.message || "Failed to create user in database.");
       } else {
         const created = res?.user || { id: `u-${Date.now()}`, name: name.trim() };
+        const msg = res?.message || `✅ User "${created.name}" created in database successfully!`;
+        setSuccessMsg(msg);
+
         if (onUserCreated) onUserCreated(created);
-        onClose();
+
+        setTimeout(() => {
+          onClose();
+          setName("");
+          setEmail("");
+          setSuccessMsg("");
+          setSubmitting(false);
+        }, 1200);
       }
     } catch (err) {
-      setError("Failed to create purchaser account.");
+      console.error("User creation error:", err);
+      setError("Failed to create purchaser account in database.");
     } finally {
-      setSubmitting(false);
+      if (!successMsg) setSubmitting(false);
     }
   };
 
@@ -360,6 +468,11 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
         </div>
 
         {error && <div className="alert-strip alert-danger" style={{ marginBottom: "14px" }}>{error}</div>}
+        {successMsg && (
+          <div className="alert-strip alert-success" style={{ marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px", fontWeight: 600 }}>
+            <CheckCircle2 size={18} /> {successMsg}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <div className="form-group">
@@ -372,6 +485,7 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
               onChange={e => setName(e.target.value)}
               required
               autoFocus
+              disabled={submitting || !!successMsg}
             />
           </div>
 
@@ -384,6 +498,7 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
+              disabled={submitting || !!successMsg}
             />
           </div>
 
@@ -396,6 +511,7 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
+                disabled={submitting || !!successMsg}
               />
             </div>
 
@@ -406,14 +522,15 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
                 className="form-control" 
                 value={designation}
                 onChange={e => setDesignation(e.target.value)}
+                disabled={submitting || !!successMsg}
               />
             </div>
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-            <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
-              {submitting ? "Creating..." : "Create & Auto-Select"}
+            <button type="button" onClick={onClose} className="btn btn-secondary" disabled={submitting || !!successMsg}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={submitting || !!successMsg}>
+              {submitting ? "Saving to Database..." : successMsg ? "Saved!" : "Create & Auto-Select"}
             </button>
           </div>
         </form>
@@ -428,6 +545,7 @@ export function QuickCreateDesignationModal({ isOpen, onClose, onAddDesignation,
   const [description, setDescription] = useState("");
   const [role, setRole] = useState("purchaser");
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   if (!isOpen) return null;
@@ -435,22 +553,38 @@ export function QuickCreateDesignationModal({ isOpen, onClose, onAddDesignation,
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    if (!title.trim()) {
+    setSuccessMsg("");
+
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
       setError("Designation Title is required.");
       return;
     }
 
     setSubmitting(true);
     try {
+      let res = null;
       if (onAddDesignation) {
-        await onAddDesignation({ title: title.trim(), description: description.trim(), role });
+        res = await onAddDesignation({ title: trimmedTitle, description: description.trim(), role });
       }
-      if (onDesignationCreated) onDesignationCreated(title.trim());
-      onClose();
+
+      const msg = res?.message || `✅ Designation "${trimmedTitle}" saved to database successfully!`;
+      setSuccessMsg(msg);
+
+      if (onDesignationCreated) onDesignationCreated(trimmedTitle);
+
+      setTimeout(() => {
+        onClose();
+        setTitle("");
+        setDescription("");
+        setSuccessMsg("");
+        setSubmitting(false);
+      }, 1200);
     } catch (err) {
-      setError("Failed to create designation.");
+      console.error("Designation creation error:", err);
+      setError("Failed to save designation in database.");
     } finally {
-      setSubmitting(false);
+      if (!successMsg) setSubmitting(false);
     }
   };
 
@@ -465,6 +599,11 @@ export function QuickCreateDesignationModal({ isOpen, onClose, onAddDesignation,
         </div>
 
         {error && <div className="alert-strip alert-danger" style={{ marginBottom: "14px" }}>{error}</div>}
+        {successMsg && (
+          <div className="alert-strip alert-success" style={{ marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px", fontWeight: 600 }}>
+            <CheckCircle2 size={18} /> {successMsg}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <div className="form-group">
@@ -477,6 +616,7 @@ export function QuickCreateDesignationModal({ isOpen, onClose, onAddDesignation,
               onChange={e => setTitle(e.target.value)}
               required
               autoFocus
+              disabled={submitting || !!successMsg}
             />
           </div>
 
@@ -488,12 +628,13 @@ export function QuickCreateDesignationModal({ isOpen, onClose, onAddDesignation,
               placeholder="e.g. In charge of material inspection and vendor quality"
               value={description}
               onChange={e => setDescription(e.target.value)}
+              disabled={submitting || !!successMsg}
             />
           </div>
 
           <div className="form-group">
             <label className="form-label">System Access Role</label>
-            <select className="form-control" value={role} onChange={e => setRole(e.target.value)}>
+            <select className="form-control" value={role} onChange={e => setRole(e.target.value)} disabled={submitting || !!successMsg}>
               <option value="purchaser" style={{ background: "#0f172a" }}>Purchaser (Standard Access)</option>
               <option value="coordinator" style={{ background: "#0f172a" }}>Logistics Coordinator</option>
               <option value="owner" style={{ background: "#0f172a" }}>Company Executive / Owner</option>
@@ -502,9 +643,9 @@ export function QuickCreateDesignationModal({ isOpen, onClose, onAddDesignation,
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-            <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
-              {submitting ? "Creating..." : "Save Designation"}
+            <button type="button" onClick={onClose} className="btn btn-secondary" disabled={submitting || !!successMsg}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={submitting || !!successMsg}>
+              {submitting ? "Saving to Database..." : successMsg ? "Saved!" : "Save Designation"}
             </button>
           </div>
         </form>

@@ -1469,6 +1469,18 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
                   </option>
                 ))}
             </datalist>
+            {(() => {
+              const matched = vendors.find(v => v.id === vendorId || v.name.toLowerCase() === vendorSearchText.trim().toLowerCase());
+              return matched ? (
+                <div style={{ fontSize: "0.78rem", color: "var(--success)", marginTop: "6px", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px" }}>
+                  <CheckCircle2 size={13} /> Verified Database Vendor: <strong>{matched.name}</strong> {matched.location ? `(${matched.location})` : ""}
+                </div>
+              ) : vendorSearchText ? (
+                <div style={{ fontSize: "0.78rem", color: "var(--warning)", marginTop: "6px", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px" }}>
+                  ⚠️ New Vendor "{vendorSearchText}" — click "+ Create New Vendor" to save to database
+                </div>
+              ) : null;
+            })()}
           </div>
 
           <QuickCreateVendorModal

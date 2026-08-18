@@ -457,9 +457,12 @@ export default function App() {
       designation: designation || "Purchaser",
       status: "active"
     };
-    await postData("/api/users", newUser);
-    setUsers(prev => [...prev, newUser]);
-    return { success: true };
+    const dbRes = await postData("/api/users", newUser);
+    if (dbRes && (dbRes.success || dbRes.id)) {
+      setUsers(prev => [...prev, newUser]);
+      return { success: true, user: newUser, message: `✅ Staff account "${newUser.name}" saved to database successfully!` };
+    }
+    return { success: false, message: dbRes?.error || "Failed to save user account to database." };
   };
 
   const removePurchaser = async (purchaserId, transferDestId) => {
@@ -508,7 +511,7 @@ export default function App() {
     const trimmedName = name.trim();
     const existing = vendors.find(v => v.name.trim().toLowerCase() === trimmedName.toLowerCase());
     if (existing) {
-      return { success: true, vendor: existing };
+      return { success: true, vendor: existing, message: `✅ Vendor "${existing.name}" is active and ready in database.` };
     }
 
     const allPurchaserIds = users.filter(u => u.role === "purchaser").map(u => u.id);
@@ -525,9 +528,12 @@ export default function App() {
       status: "Active",
       purchaserIds: validPurchaserIds
     };
-    await postData("/api/vendors", newVendor);
-    setVendors(prev => [...prev, newVendor]);
-    return { success: true, vendor: newVendor };
+    const dbRes = await postData("/api/vendors", newVendor);
+    if (dbRes && (dbRes.success || dbRes.id)) {
+      setVendors(prev => [...prev, newVendor]);
+      return { success: true, vendor: newVendor, message: `✅ Vendor "${newVendor.name}" saved to database successfully!` };
+    }
+    return { success: false, message: dbRes?.error || "Failed to save vendor to server database." };
   };
 
   const updateVendor = async (updatedVendor) => {
@@ -537,7 +543,7 @@ export default function App() {
     }
     await postData("/api/vendors", updatedVendor);
     setVendors(prev => prev.map(v => v.id === updatedVendor.id ? updatedVendor : v));
-    return { success: true };
+    return { success: true, message: `✅ Vendor "${updatedVendor.name}" updated in database successfully!` };
   };
 
   const updateCargoCompany = async (updatedCompany) => {
@@ -547,7 +553,7 @@ export default function App() {
     }
     await postData("/api/cargo-companies", updatedCompany);
     setCargoCompanies(prev => prev.map(cc => cc.id === updatedCompany.id ? updatedCompany : cc));
-    return { success: true };
+    return { success: true, message: `✅ Transport company "${updatedCompany.name}" updated in database successfully!` };
   };
 
   const removeVendor = async (vendorId) => {
@@ -576,21 +582,25 @@ export default function App() {
   };
 
   const addCargoCompany = async (name, location = "", phone = "", history = "") => {
-    const exists = cargoCompanies.some(cc => cc.name.trim().toLowerCase() === name.trim().toLowerCase());
-    if (exists) {
-      return { success: false, message: `Cargo company "${name}" already exists.` };
+    const trimmedName = name.trim();
+    const existing = cargoCompanies.find(cc => cc.name.trim().toLowerCase() === trimmedName.toLowerCase());
+    if (existing) {
+      return { success: true, company: existing, message: `✅ Transport company "${existing.name}" is active and ready in database.` };
     }
     const newCompany = {
       id: `cc-${Date.now()}`,
-      name: name.trim(),
+      name: trimmedName,
       location: location.trim(),
       phone: phone.trim(),
       history: history.trim(),
       status: "Active"
     };
-    await postData("/api/cargo-companies", newCompany);
-    setCargoCompanies(prev => [...prev, newCompany]);
-    return { success: true, company: newCompany };
+    const dbRes = await postData("/api/cargo-companies", newCompany);
+    if (dbRes && (dbRes.success || dbRes.id)) {
+      setCargoCompanies(prev => [...prev, newCompany]);
+      return { success: true, company: newCompany, message: `✅ Transport company "${newCompany.name}" saved to database successfully!` };
+    }
+    return { success: false, message: dbRes?.error || "Failed to save transport company to server database." };
   };
 
   const removeCargoCompany = async (companyId) => {
@@ -621,6 +631,7 @@ export default function App() {
         }
         return [...prev, newItem];
       });
+      return { ...res, item: newItem, message: `✅ Item "${newItem.name}" saved to database catalog successfully!` };
     }
     return res;
   };
