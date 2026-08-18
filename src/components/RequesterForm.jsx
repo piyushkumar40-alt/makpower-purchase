@@ -249,8 +249,90 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
       }
       return r;
     }));
-    setActiveDropdown(null);
-    setHighlightedIndex(0);
+  // Handle direct Excel/Google Sheets copy-paste into table grid cells
+  const handleCellPaste = (e, startRowIdx, targetField) => {
+    const clipboardData = e.clipboardData || window.clipboardData;
+    if (!clipboardData) return;
+
+    const pastedText = clipboardData.getData("text");
+    if (!pastedText) return;
+
+    const lines = pastedText.split(/\r?\n/).filter(line => line.trim() !== "");
+    if (lines.length === 0) return;
+
+    const firstLineCols = lines[0].split("\t");
+    // Intercept if multi-row or multi-column paste
+    if (lines.length > 1 || firstLineCols.length > 1) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const fieldOrder = ["type", "itemType", "itemNature", "category", "model", "orderQuantity", "requiredByDate", "purchaserId"];
+      const startFieldIdx = Math.max(0, fieldOrder.indexOf(targetField));
+
+      const neededRowCount = startRowIdx + lines.length;
+      const rowPurchaserId = currentUser?.role === "purchaser" ? currentUser.id : (purchasers[0]?.id || "");
+
+      setRows(prevRows => {
+        let currentRows = [...prevRows];
+
+        while (currentRows.length < neededRowCount) {
+          currentRows.push({
+            id: Date.now() + currentRows.length,
+            type: "Import",
+            itemType: "FG",
+            itemNature: "Non Consumables",
+            category: "",
+            model: "",
+            orderQuantity: "",
+            requiredByDate: "",
+            purchaserId: rowPurchaserId
+          });
+        }
+
+        const updatedRows = currentRows.map((r, rIdx) => {
+          if (rIdx >= startRowIdx && rIdx < startRowIdx + lines.length) {
+            const lineIdx = rIdx - startRowIdx;
+            const cols = lines[lineIdx].split("\t");
+
+            let updatedRow = { ...r };
+
+            cols.forEach((colVal, cIdx) => {
+              const fieldName = fieldOrder[startFieldIdx + cIdx];
+              if (!fieldName) return;
+
+              let val = colVal.trim();
+              if (fieldName === "orderQuantity") {
+                const parsedQty = parseInt(val.replace(/,/g, ""), 10);
+                val = isNaN(parsedQty) ? "" : parsedQty;
+              } else if (fieldName === "requiredByDate") {
+                val = parseExcelDate(val);
+              } else if (fieldName === "itemType") {
+                val = ["FG", "Finished Goods"].includes(val) ? "FG" : ["RM", "Raw Material"].includes(val) ? "RM" : val;
+              } else if (fieldName === "purchaserId") {
+                val = matchPurchaser(val);
+              }
+
+              updatedRow[fieldName] = val;
+
+              if (fieldName === "model" && val) {
+                const matched = combinedItems.find(i => i.name.toLowerCase() === val.toLowerCase());
+                if (matched) {
+                  updatedRow.category = matched.category || updatedRow.category;
+                  updatedRow.type = matched.type || updatedRow.type;
+                  updatedRow.itemType = matched.itemType || updatedRow.itemType || "FG";
+                  updatedRow.itemNature = matched.itemNature || updatedRow.itemNature;
+                }
+              }
+            });
+
+            return updatedRow;
+          }
+          return r;
+        });
+
+        return updatedRows;
+      });
+    }
   };
 
   // Scroll/resize listener to keep fixed dropdown position updated relative to active input
@@ -696,6 +778,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       value={row.type}
                       onFocus={() => handleCellFocus(index, "type")}
                       onChange={e => updateCell(row.id, "type", e.target.value)}
+                      onPaste={e => handleCellPaste(e, index, "type")}
                       onKeyDown={e => {
                         if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
                           e.preventDefault();
@@ -729,6 +812,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       value={row.itemType || "FG"}
                       onFocus={() => handleCellFocus(index, "itemType")}
                       onChange={e => updateCell(row.id, "itemType", e.target.value)}
+                      onPaste={e => handleCellPaste(e, index, "itemType")}
                       onKeyDown={e => {
                         if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
                           e.preventDefault();
@@ -762,6 +846,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       value={row.itemNature}
                       onFocus={() => handleCellFocus(index, "itemNature")}
                       onChange={e => updateCell(row.id, "itemNature", e.target.value)}
+                      onPaste={e => handleCellPaste(e, index, "itemNature")}
                       onKeyDown={e => {
                         if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
                           e.preventDefault();
@@ -806,6 +891,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         updateCell(row.id, "category", e.target.value);
                         openDropdown(e, row.id, "category");
                       }}
+                      onPaste={e => handleCellPaste(e, index, "category")}
                       onKeyDown={e => {
                         if (activeDropdown?.rowId === row.id && activeDropdown?.field === "category") {
                           const query = (row.category || "").trim().toLowerCase();
@@ -942,6 +1028,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                           updateCell(row.id, "model", selectedName);
                         }
                       }}
+                      onPaste={e => handleCellPaste(e, index, "model")}
                       onKeyDown={e => {
                         if (activeDropdown?.rowId === row.id && activeDropdown?.field === "model") {
                           const modelQuery = (row.model || "").trim().toLowerCase();
@@ -1093,6 +1180,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       value={row.orderQuantity}
                       onFocus={() => handleCellFocus(index, "orderQuantity")}
                       onChange={e => updateCell(row.id, "orderQuantity", e.target.value)}
+                      onPaste={e => handleCellPaste(e, index, "orderQuantity")}
                       onKeyDown={e => {
                         if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
                           e.preventDefault();
@@ -1126,6 +1214,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       value={row.requiredByDate}
                       onFocus={() => handleCellFocus(index, "requiredByDate")}
                       onChange={e => updateCell(row.id, "requiredByDate", e.target.value)}
+                      onPaste={e => handleCellPaste(e, index, "requiredByDate")}
                       onKeyDown={e => {
                         if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
                           e.preventDefault();
@@ -1157,6 +1246,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       value={row.purchaserId}
                       onFocus={() => handleCellFocus(index, "purchaserId")}
                       onChange={e => updateCell(row.id, "purchaserId", e.target.value)}
+                      onPaste={e => handleCellPaste(e, index, "purchaserId")}
                       onKeyDown={e => {
                         if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
                           e.preventDefault();
