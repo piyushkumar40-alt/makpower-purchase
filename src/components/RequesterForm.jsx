@@ -62,6 +62,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
     {
       id: 1,
       type: "Import",
+      itemType: "RM",
       itemNature: "Non Consumables",
       category: "",
       model: "",
@@ -158,6 +159,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
       {
         id: Date.now(),
         type: "Import",
+        itemType: "RM",
         itemNature: "Non Consumables",
         category: "",
         model: "",
@@ -176,6 +178,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
       newRows.push({
         id: Date.now() + i,
         type: "Import",
+        itemType: "RM",
         itemNature: "Non Consumables",
         category: "",
         model: "",
@@ -196,6 +199,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
         {
           id: Date.now(),
           type: "Import",
+          itemType: "RM",
           itemNature: "Non Consumables",
           category: "",
           model: "",
@@ -263,18 +267,40 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
       }
 
       if (cols.length >= 5) {
-        // Map Excel columns: Type | Nature | Category | Item Name | Qty | Date | Assign To
-        const type = cols[0]?.trim() || "Import";
-        const itemNature = cols[1]?.trim() || "Non Consumables";
-        const category = cols[2]?.trim() || "";
-        const model = cols[3]?.trim() || "";
-        const qty = cols[4] ? parseInt(cols[4].replace(/,/g, ""), 10) : "";
-        const dateStr = cols[5]?.trim() || "";
-        const assignee = cols[6]?.trim() || "";
+        // Map Excel columns: Purchase Type | Item Type | Item Nature | Category | Item Name | Qty | Date | Assign To
+        // Handle both 7-col and 8-col pasted formats
+        let type = "Import";
+        let itemType = "RM";
+        let itemNature = "Non Consumables";
+        let category = "";
+        let model = "";
+        let qty = "";
+        let dateStr = "";
+        let assignee = "";
+
+        if (cols.length >= 8) {
+          type = cols[0]?.trim() || "Import";
+          itemType = cols[1]?.trim() || "RM";
+          itemNature = cols[2]?.trim() || "Non Consumables";
+          category = cols[3]?.trim() || "";
+          model = cols[4]?.trim() || "";
+          qty = cols[5] ? parseInt(cols[5].replace(/,/g, ""), 10) : "";
+          dateStr = cols[6]?.trim() || "";
+          assignee = cols[7]?.trim() || "";
+        } else {
+          type = cols[0]?.trim() || "Import";
+          itemNature = cols[1]?.trim() || "Non Consumables";
+          category = cols[2]?.trim() || "";
+          model = cols[3]?.trim() || "";
+          qty = cols[4] ? parseInt(cols[4].replace(/,/g, ""), 10) : "";
+          dateStr = cols[5]?.trim() || "";
+          assignee = cols[6]?.trim() || "";
+        }
 
         parsedRows.push({
           id: Date.now() + idx,
           type: ["Import", "Local"].includes(type) ? type : "Import",
+          itemType: ["FG", "Finished Goods"].includes(itemType) ? "FG" : "RM",
           itemNature: ["Consumables", "Non Consumables"].includes(itemNature) ? itemNature : "Non Consumables",
           category,
           model,
@@ -305,6 +331,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
         vendorId: "", // Reset vendor - will be selected by purchaser in Step 2!
         orderDate: new Date().toISOString().split("T")[0],
         type: r.type,
+        itemType: r.itemType || "RM",
         itemNature: r.itemNature,
         category: r.category,
         model: r.model,
@@ -458,6 +485,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
               <tr style={{ background: "rgba(15, 23, 42, 0.8)" }}>
                 <th style={{ width: "50px", textAlign: "center" }}>Sno.</th>
                 <th style={{ width: "130px" }}>Purchase Type</th>
+                <th style={{ width: "160px" }}>Item Type</th>
                 <th style={{ width: "160px" }}>Item Nature</th>
                 <th style={{ width: "220px" }}>Category</th>
                 <th>Item Name / Model</th>
@@ -483,6 +511,19 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                     >
                       <option value="Import" style={{ background: "#0f172a" }}>Import</option>
                       <option value="Local" style={{ background: "#0f172a" }}>Local</option>
+                    </select>
+                  </td>
+
+                  {/* Item Type */}
+                  <td>
+                    <select 
+                      className="form-control" 
+                      style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+                      value={row.itemType || "RM"}
+                      onChange={e => updateCell(row.id, "itemType", e.target.value)}
+                    >
+                      <option value="RM" style={{ background: "#0f172a" }}>Raw Material (RM)</option>
+                      <option value="FG" style={{ background: "#0f172a" }}>Finished Goods (FG)</option>
                     </select>
                   </td>
 
@@ -841,7 +882,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
 
             <p style={{ color: "var(--text-muted)", fontSize: "0.8rem", marginBottom: "14px", lineHeight: "1.4" }}>
               Copy columns directly from your tracking sheet and paste below. Make sure columns are in this exact order: <br />
-              <strong style={{ color: "var(--primary)" }}>Purchase Type | Item Nature | Category | Item Name | Qty | Required Date | Assign To</strong>
+              <strong style={{ color: "var(--primary)" }}>Purchase Type | Item Type | Item Nature | Category | Item Name | Qty | Required Date | Assign To</strong>
             </p>
 
             <div className="form-group" style={{ marginBottom: "20px" }}>
