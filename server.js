@@ -428,19 +428,48 @@ let activeSessions = []; // [{ sessionId, userId, userName, role, loginTime, las
 let authAuditLogs = [];  // [{ id, userId, userName, role, action, timestamp, details }]
 let revokedUserIds = new Set();
 
-function recordAuthAuditLog(userId, userName, role, action, details = "") {
+async function recordAuthAuditLog(userId, userName, role, action, details = "", entityType = "System", entityId = "") {
   const logEntry = {
     id: "log_" + Date.now() + "_" + Math.random().toString(36).substr(2, 4),
-    userId,
-    userName,
-    role,
-    action,
-    timestamp: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
-    isoTime: new Date().toISOString(),
-    details
+    userId: userId || "system",
+    userName: userName || "System User",
+    role: role || "user",
+    action: action || "ACTIVITY",
+    details: details || "",
+    entityType: entityType || "System",
+    entityId: entityId || "",
+    oldData: "",
+    newData: "",
+    timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+    isoTime: new Date().toISOString()
   };
+
   authAuditLogs.unshift(logEntry);
   if (authAuditLogs.length > 500) authAuditLogs = authAuditLogs.slice(0, 500);
+
+  if (isPg) {
+    try {
+      await pool.query(
+        `INSERT INTO audit_logs ("id", "userId", "userName", "role", "action", "details", "entityType", "entityId", "oldData", "newData", "timestamp", "isoTime")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         ON CONFLICT ("id") DO NOTHING`,
+        [logEntry.id, logEntry.userId, logEntry.userName, logEntry.role, logEntry.action, logEntry.details, logEntry.entityType, logEntry.entityId, logEntry.oldData, logEntry.newData, logEntry.timestamp, logEntry.isoTime]
+      );
+    } catch (err) {
+      console.error("Failed to insert auth audit log into PG audit_logs table:", err.message);
+    }
+  } else {
+    try {
+      const data = readLocalJson();
+      if (!data.auditLogs) data.auditLogs = [];
+      data.auditLogs.unshift(logEntry);
+      if (data.auditLogs.length > 2000) data.auditLogs = data.auditLogs.slice(0, 2000);
+      writeLocalJson(data);
+    } catch (err) {
+      console.error("Failed to write auth audit log to local JSON:", err.message);
+    }
+  }
+
   return logEntry;
 }
 
