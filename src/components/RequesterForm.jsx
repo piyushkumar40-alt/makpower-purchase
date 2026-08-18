@@ -102,6 +102,17 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
     }
   };
 
+  const handleCellFocus = (rowIndex, field) => {
+    if (selectedRange && selectedRange.field === field && Math.abs(selectedRange.startIdx - selectedRange.endIdx) > 0) {
+      return; // Do not collapse range selection if user selected multiple rows!
+    }
+    setSelectedRange({
+      startIdx: rowIndex,
+      endIdx: rowIndex,
+      field
+    });
+  };
+
   const handleCellMouseDown = (rowIndex, field, isShift = false) => {
     setIsCellDragging(true);
     handleCellSelect(rowIndex, field, isShift);
@@ -667,8 +678,14 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         borderColor: isCellSelected(index, "type") ? "#38bdf8" : undefined
                       }}
                       value={row.type}
-                      onFocus={() => handleCellSelect(index, "type")}
+                      onFocus={() => handleCellFocus(index, "type")}
                       onChange={e => updateCell(row.id, "type", e.target.value)}
+                      onKeyDown={e => {
+                        if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+                          e.preventDefault();
+                          handleFillDown();
+                        }
+                      }}
                     >
                       <option value="Import" style={{ background: "#0f172a" }}>Import</option>
                       <option value="Local" style={{ background: "#0f172a" }}>Local</option>
@@ -694,8 +711,14 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         borderColor: isCellSelected(index, "itemType") ? "#38bdf8" : undefined
                       }}
                       value={row.itemType || "FG"}
-                      onFocus={() => handleCellSelect(index, "itemType")}
+                      onFocus={() => handleCellFocus(index, "itemType")}
                       onChange={e => updateCell(row.id, "itemType", e.target.value)}
+                      onKeyDown={e => {
+                        if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+                          e.preventDefault();
+                          handleFillDown();
+                        }
+                      }}
                     >
                       <option value="FG" style={{ background: "#0f172a" }}>Finished Goods (FG)</option>
                       <option value="RM" style={{ background: "#0f172a" }}>Raw Material (RM)</option>
@@ -721,8 +744,14 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         borderColor: isCellSelected(index, "itemNature") ? "#38bdf8" : undefined
                       }}
                       value={row.itemNature}
-                      onFocus={() => handleCellSelect(index, "itemNature")}
+                      onFocus={() => handleCellFocus(index, "itemNature")}
                       onChange={e => updateCell(row.id, "itemNature", e.target.value)}
+                      onKeyDown={e => {
+                        if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+                          e.preventDefault();
+                          handleFillDown();
+                        }
+                      }}
                     >
                       <option value="Non Consumables" style={{ background: "#0f172a" }}>Non Consumables</option>
                       <option value="Consumables" style={{ background: "#0f172a" }}>Consumables</option>
@@ -1046,8 +1075,14 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       }}
                       placeholder="Qty" 
                       value={row.orderQuantity}
-                      onFocus={() => handleCellSelect(index, "orderQuantity")}
+                      onFocus={() => handleCellFocus(index, "orderQuantity")}
                       onChange={e => updateCell(row.id, "orderQuantity", e.target.value)}
+                      onKeyDown={e => {
+                        if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+                          e.preventDefault();
+                          handleFillDown();
+                        }
+                      }}
                       min="1"
                       required
                     />
@@ -1073,8 +1108,14 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         borderColor: isCellSelected(index, "requiredByDate") ? "#38bdf8" : undefined
                       }}
                       value={row.requiredByDate}
-                      onFocus={() => handleCellSelect(index, "requiredByDate")}
+                      onFocus={() => handleCellFocus(index, "requiredByDate")}
                       onChange={e => updateCell(row.id, "requiredByDate", e.target.value)}
+                      onKeyDown={e => {
+                        if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+                          e.preventDefault();
+                          handleFillDown();
+                        }
+                      }}
                       required
                     />
                   </td>
@@ -1098,8 +1139,14 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         borderColor: isCellSelected(index, "purchaserId") ? "#38bdf8" : undefined
                       }}
                       value={row.purchaserId}
-                      onFocus={() => handleCellSelect(index, "purchaserId")}
+                      onFocus={() => handleCellFocus(index, "purchaserId")}
                       onChange={e => updateCell(row.id, "purchaserId", e.target.value)}
+                      onKeyDown={e => {
+                        if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+                          e.preventDefault();
+                          handleFillDown();
+                        }
+                      }}
                       required
                     >
                       {purchasers.map(p => (
