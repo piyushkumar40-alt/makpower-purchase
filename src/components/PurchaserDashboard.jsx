@@ -651,7 +651,14 @@ export default function PurchaserDashboard({
                                 />
                               </td>
                               <td style={{ fontWeight: 600 }}>{r.model}</td>
-                              <td>{r.orderQuantity}</td>
+                              <td>
+                                <div><strong>{r.vendorOrderQuantity || r.orderQuantity}</strong> Pcs</div>
+                                {r.vendorOrderQuantity && r.vendorOrderQuantity !== r.orderQuantity ? (
+                                  <span style={{ fontSize: "0.72rem", color: "#38bdf8", display: "block" }}>
+                                    (Req: {r.orderQuantity} Pcs)
+                                  </span>
+                                ) : null}
+                              </td>
                               <td>{vName}</td>
                               <td>{r.orderDate}</td>
                               <td>{r.vendorEdd || "—"}</td>
@@ -798,7 +805,19 @@ export default function PurchaserDashboard({
                                 />
                               </td>
                               <td style={{ fontWeight: 600 }}>{r.model}</td>
-                              <td>{r.orderQuantity}</td>
+                              <td>
+                                <div><strong>{r.vendorOrderQuantity || r.orderQuantity}</strong> Pcs</div>
+                                {r.vendorOrderQuantity && r.vendorOrderQuantity !== r.orderQuantity ? (
+                                  <span style={{ fontSize: "0.72rem", color: "#38bdf8", display: "block" }}>
+                                    (Req: {r.orderQuantity} Pcs)
+                                  </span>
+                                ) : null}
+                                {r.cargoPickedQty ? (
+                                  <span style={{ fontSize: "0.7rem", color: "#fbbf24", display: "block" }}>
+                                    Picked: {r.cargoPickedQty} Pcs
+                                  </span>
+                                ) : null}
+                              </td>
                               <td>{vName}</td>
                               <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{r.cargoId}</td>
                               <td style={{ color: "var(--success)", fontSize: "0.8rem" }}>{r.vendorReadyDate || "—"}</td>
@@ -1035,7 +1054,14 @@ export default function PurchaserDashboard({
                               <td style={{ color: "var(--success)", fontWeight: 600 }}>{r.actualReceivedDate || "—"}</td>
                               <td>{r.orderDate}</td>
                               <td style={{ fontWeight: 600 }}>{r.model}</td>
-                              <td>{r.orderQuantity}</td>
+                              <td>
+                                <div><strong>{r.receivedQuantity || r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity}</strong> Pcs</div>
+                                {r.vendorOrderQuantity && r.vendorOrderQuantity !== r.orderQuantity ? (
+                                  <span style={{ fontSize: "0.72rem", color: "#38bdf8", display: "block" }}>
+                                    (Req: {r.orderQuantity} Pcs)
+                                  </span>
+                                ) : null}
+                              </td>
                               <td>{vName}</td>
                               <td style={{ fontWeight: 500 }}>
                                 {r.priceRmb ? `${getCurrencySymbol(r.currency)}${Number(r.totalRmb).toLocaleString()}` : "—"}
@@ -1134,7 +1160,14 @@ export default function PurchaserDashboard({
                             <td style={{ fontWeight: 600 }}>
                               <span style={{ textDecoration: "line-through", opacity: 0.7 }}>{r.model}</span>
                             </td>
-                            <td>{r.orderQuantity}</td>
+                            <td>
+                              <div><strong>{r.vendorOrderQuantity || r.orderQuantity}</strong> Pcs</div>
+                              {r.vendorOrderQuantity && r.vendorOrderQuantity !== r.orderQuantity ? (
+                                <span style={{ fontSize: "0.72rem", color: "#38bdf8", display: "block" }}>
+                                  (Req: {r.orderQuantity} Pcs)
+                                </span>
+                              ) : null}
+                            </td>
                             <td>{vName}</td>
                             <td>
                               <span className="badge badge-pending" style={{ background: "rgba(239,68,68,0.15)", color: "var(--danger)" }}>
