@@ -676,7 +676,7 @@ export default function OwnerDashboard({
               </div>
 
               <div style={{ padding: "16px", borderRadius: "8px", background: "rgba(129, 140, 248, 0.08)", border: "1px solid rgba(129, 140, 248, 0.2)" }}>
-                <span style={{ fontSize: "0.8rem", color: "#818cf8", fontWeight 700 }}>RAW MATERIALS (RM)</span>
+                <span style={{ fontSize: "0.8rem", color: "#818cf8", fontWeight: 700 }}>RAW MATERIALS (RM)</span>
                 <h4 style={{ fontSize: "1.3rem", marginTop: "6px", color: "var(--text-main)" }}>
                   ₹ {rmInr.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                 </h4>
