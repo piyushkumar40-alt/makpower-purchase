@@ -15,7 +15,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
             id: i.id || name,
             name: name,
             category: i.category || "",
-            type: i.itemType || i.type || "Import",
+            type: i.type || "Import",
+            itemType: i.itemType || "FG",
             itemNature: i.itemNature || "Non Consumables"
           });
         }
@@ -31,6 +32,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
             name: name,
             category: r.category || "",
             type: r.type || "Import",
+            itemType: r.itemType || "FG",
             itemNature: r.itemNature || "Non Consumables"
           });
         }
@@ -230,7 +232,12 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
   };
 
   const selectCategoryOption = (rowId, categoryName) => {
-    updateCell(rowId, "category", categoryName);
+    const isRmCat = categoryName.toUpperCase() === "RM" || categoryName.toUpperCase().includes("RAW MATERIAL");
+    setRows(prev => prev.map(r => r.id === rowId ? {
+      ...r,
+      category: categoryName,
+      itemType: isRmCat ? "RM" : r.itemType
+    } : r));
     setActiveDropdown(null);
     setHighlightedIndex(0);
   };
@@ -238,12 +245,13 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
   const selectModelOption = (rowId, item) => {
     setRows(prev => prev.map(r => {
       if (r.id === rowId) {
+        const isRmItem = item.itemType === "RM" || (item.category && item.category.toUpperCase() === "RM") || item.name.toUpperCase().includes(" (RM)") || item.name.toUpperCase().startsWith("RM ");
         return {
           ...r,
           model: item.name,
           category: item.category || r.category,
           type: item.type || r.type,
-          itemType: item.itemType || r.itemType || "FG",
+          itemType: isRmItem ? "RM" : (item.itemType || r.itemType || "FG"),
           itemNature: item.itemNature || r.itemNature
         };
       }
@@ -316,15 +324,26 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                 val = matchPurchaser(val);
               }
 
-              updatedRow[fieldName] = val;
+              if (fieldName === "category" && val) {
+                if (val.toUpperCase() === "RM" || val.toUpperCase().includes("RAW MATERIAL")) {
+                  updatedRow.itemType = "RM";
+                }
+              }
 
               if (fieldName === "model" && val) {
                 const matched = combinedItems.find(i => i.name.toLowerCase() === val.toLowerCase());
                 if (matched) {
                   updatedRow.category = matched.category || updatedRow.category;
                   updatedRow.type = matched.type || updatedRow.type;
-                  updatedRow.itemType = matched.itemType || updatedRow.itemType || "FG";
+                  const isRmItem = matched.itemType === "RM" || (matched.category && matched.category.toUpperCase() === "RM") || val.toUpperCase().includes(" (RM)") || val.toUpperCase().startsWith("RM ");
+                  updatedRow.itemType = isRmItem ? "RM" : (matched.itemType || updatedRow.itemType || "FG");
                   updatedRow.itemNature = matched.itemNature || updatedRow.itemNature;
+                } else {
+                  const upperVal = val.toUpperCase();
+                  const upperCat = (updatedRow.category || "").toUpperCase();
+                  if (upperVal.includes("RM") || upperVal.includes("RAW MATERIAL") || upperCat === "RM" || upperCat.includes("RAW MATERIAL")) {
+                    updatedRow.itemType = "RM";
+                  }
                 }
               }
             });
