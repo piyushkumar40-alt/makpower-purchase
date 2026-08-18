@@ -23,12 +23,12 @@ export default function NitinDashboard({ currentUser, requests, vendors, cargos,
   // Thumbnail modal state
   const [viewPhoto, setViewPhoto] = useState(null);
 
-  // Filter requests: priced, vendor assigned, and type Import ONLY
-  const eligibleRequests = requests.filter(r => r.priceRmb && r.vendorId && r.type === "Import");
+  // Filter requests: All active non-cancelled requests needing packing (including delivered material)
+  const eligibleRequests = requests.filter(r => r.status !== "Cancelled");
 
   // Partitioned requests
-  const pendingRequests = eligibleRequests.filter(r => r.packingOrderedByNitin !== "Yes" && r.status !== "Cancelled");
-  const submittedRequests = eligibleRequests.filter(r => r.packingOrderedByNitin === "Yes" && r.status !== "Cancelled");
+  const pendingRequests = eligibleRequests.filter(r => r.packingOrderedByNitin !== "Yes");
+  const submittedRequests = eligibleRequests.filter(r => r.packingOrderedByNitin === "Yes");
 
   // Active requests for the current tab
   const currentTabRequests = activeTab === "pending" ? pendingRequests : submittedRequests;
@@ -307,9 +307,15 @@ export default function NitinDashboard({ currentUser, requests, vendors, cargos,
 
                       {/* Material Rec */}
                       <td>
-                        <span style={{ fontWeight: 600, color: r.isMaterialRec === "Yes" ? "var(--success)" : "var(--danger)" }}>
-                          {r.isMaterialRec}
-                        </span>
+                        {r.isMaterialRec === "Yes" ? (
+                          <span className="badge" style={{ background: "rgba(245, 158, 11, 0.2)", color: "#fbbf24", border: "1px solid rgba(245, 158, 11, 0.4)", fontWeight: 700, padding: "3px 8px" }}>
+                            ⚡ Delivered (Needs Packing)
+                          </span>
+                        ) : (
+                          <span style={{ fontWeight: 600, color: "var(--danger)", fontSize: "0.8rem" }}>
+                            No - In Transit / Factory
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );
