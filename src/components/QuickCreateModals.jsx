@@ -13,7 +13,10 @@ export function QuickCreateVendorModal({ isOpen, onClose, onAddVendor, currentUs
   if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setError("");
     setSuccessMsg("");
 
@@ -145,7 +148,10 @@ export function QuickCreateCargoCompanyModal({ isOpen, onClose, onAddCargoCompan
   if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setError("");
     setSuccessMsg("");
 
@@ -268,7 +274,10 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
   if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setError("");
     setSuccessMsg("");
 
@@ -420,7 +429,10 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
   if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setError("");
     setSuccessMsg("");
 
@@ -551,7 +563,10 @@ export function QuickCreateDesignationModal({ isOpen, onClose, onAddDesignation,
   if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setError("");
     setSuccessMsg("");
 

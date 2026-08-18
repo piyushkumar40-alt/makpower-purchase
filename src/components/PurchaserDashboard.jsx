@@ -1482,19 +1482,6 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
               ) : null;
             })()}
           </div>
-
-          <QuickCreateVendorModal
-            isOpen={showQuickVendorModal}
-            onClose={() => setShowQuickVendorModal(false)}
-            onAddVendor={onAddVendor}
-            currentUser={currentUser}
-            onVendorCreated={(newVendor) => {
-              if (newVendor) {
-                setVendorId(newVendor.id || "");
-                setVendorSearchText(newVendor.name || "");
-              }
-            }}
-          />
           
           {/* Currency selection & Price per unit */}
           <div className="form-row">
@@ -1629,6 +1616,19 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
           </div>
 
         </form>
+
+        <QuickCreateVendorModal
+          isOpen={showQuickVendorModal}
+          onClose={() => setShowQuickVendorModal(false)}
+          onAddVendor={onAddVendor}
+          currentUser={currentUser}
+          onVendorCreated={(newVendor) => {
+            if (newVendor) {
+              setVendorId(newVendor.id || "");
+              setVendorSearchText(newVendor.name || "");
+            }
+          }}
+        />
       </div>
     </div>
   );
@@ -2133,6 +2133,15 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
           </div>
 
         </form>
+
+        <QuickCreateCargoCompanyModal
+          isOpen={showQuickCargoCompanyModal}
+          onClose={() => setShowQuickCargoCompanyModal(false)}
+          onAddCargoCompany={onAddCargoCompany}
+          onCompanyCreated={(newCompany) => {
+            if (newCompany?.id) setCargoCompanyId(newCompany.id);
+          }}
+        />
       </div>
     </div>
   );
