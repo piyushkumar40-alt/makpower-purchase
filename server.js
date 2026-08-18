@@ -870,44 +870,6 @@ async function performGoogleSheetSync() {
   }
 }
 
-// Smart Activity-Driven Auto-Sync Engine (Only syncs if order activity occurred in last 10 mins)
-let isOrderDataDirty = true; // Initial sync on startup if enabled
-
-setInterval(async () => {
-  try {
-    let settingsObj = {};
-    if (isPg) {
-      const res = await pool.query("SELECT * FROM settings");
-      (res.rows || []).forEach(r => { settingsObj[r.key] = r.value; });
-    } else {
-      settingsObj = memoryDb.settings || {};
-    }
-
-    const autoSyncEnabled = settingsObj.googleSheetAutoSyncEnabled === "true" || settingsObj.googleSheetAutoSyncEnabled === true;
-    
-    if (autoSyncEnabled && settingsObj.googleSheetWebhookUrl) {
-      if (isOrderDataDirty) {
-        console.log("Order changes detected! Triggering 10-minute automated Google Sheets Sync...");
-        const result = await performGoogleSheetSync();
-        if (result.success) {
-          isOrderDataDirty = false; // Reset dirty flag after successful sync
-        }
-      } else {
-        console.log("No order activity in the last 10 minutes. Skipping Google Sheets sync.");
-      }
-    }
-  } catch (err) {
-    console.error("10-minute Smart Google Sheets cron error:", err);
-  }
-}, 10 * 60 * 1000);
-
-// Endpoint POST /api/google-sheets/sync (Manual instant sync)
-app.post("/api/google-sheets/sync", async (req, res) => {
-  const result = await performGoogleSheetSync();
-  if (result.success) isOrderDataDirty = false;
-  return res.json(result);
-});
-
 // ==================== STORAGE METRICS & FILE EXPLORER API ====================
 
 // GET /api/storage/metrics - Live PostgreSQL DB & Cloudinary Storage Stats
