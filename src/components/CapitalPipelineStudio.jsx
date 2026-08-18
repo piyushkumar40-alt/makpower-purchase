@@ -698,7 +698,15 @@ export default function CapitalPipelineStudio({
                       </span>
                     </td>
 
-                    <td style={{ fontWeight: 700 }}>{row.orderQuantity} Pcs</td>
+                    <td style={{ fontWeight: 700 }}>
+                      <div>{row.cargoPickedQty || row.vendorOrderQuantity || row.orderQuantity} Pcs</div>
+                      {row.vendorOrderQuantity && row.vendorOrderQuantity !== row.orderQuantity && (
+                        <div style={{ fontSize: "0.7rem", color: "#38bdf8" }}>Vendor: {row.vendorOrderQuantity} (Req: {row.orderQuantity})</div>
+                      )}
+                      {row.shortageQty ? (
+                        <div style={{ fontSize: "0.7rem", color: "#f87171" }}>Short: {row.shortageQty} Pcs</div>
+                      ) : null}
+                    </td>
 
                     <td style={{ fontWeight: 800, color: row.stageColor }}>
                       {viewCurrency === "inr" ? (

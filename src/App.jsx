@@ -451,55 +451,124 @@ export default function App() {
     logSystemActivity("UNDO_PRICING", `Undid pricing for ${target.model} (#${target.id})`, "Requisition", target.id, target, updated);
   };
 
-  const addCargo = async (cargoDetails, selectedRequestIds) => {
+  const addCargo = async (cargoDetails, selectedRequestIds, itemPickedQtyMap = {}) => {
     const newCargoId = `cargo-${Date.now()}`;
     const newCargo = {
       id: newCargoId,
       ...cargoDetails,
       isMaterialRec: cargoDetails.isMaterialRec || "No",
-      receivedDate: cargoDetails.isMaterialRec === "Yes" ? "2026-06-11" : ""
+      receivedDate: cargoDetails.isMaterialRec === "Yes" ? (cargoDetails.receivedDate || new Date().toISOString().split("T")[0]) : ""
     };
 
     await postData("/api/cargos", newCargo);
     setCargos(prev => [newCargo, ...prev]);
 
-    const updatedItems = requests.filter(r => selectedRequestIds.includes(r.id)).map(r => ({
-      ...r,
-      cargoId: newCargoId,
-      cargoAssignedAt: new Date().toISOString(),
-      isMaterialRec: newCargo.isMaterialRec,
-      actualReceivedDate: newCargo.isMaterialRec === "Yes" ? "2026-06-11" : ""
-    }));
+    const updatedItems = [];
+    const newRemainingItems = [];
 
-    await postData("/api/requests/batch", updatedItems);
-    setRequests(prev => prev.map(r => {
-      const match = updatedItems.find(x => x.id === r.id);
-      return match ? match : r;
-    }));
+    requests.filter(r => selectedRequestIds.includes(r.id)).forEach(r => {
+      const totalVendorQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0);
+      const pickedQty = itemPickedQtyMap[r.id] != null ? parseInt(itemPickedQtyMap[r.id]) : totalVendorQty;
+      const remainingQty = totalVendorQty > pickedQty ? totalVendorQty - pickedQty : 0;
+
+      const updatedReq = {
+        ...r,
+        cargoId: newCargoId,
+        cargoPickedQty: pickedQty,
+        vendorOrderQuantity: pickedQty,
+        cargoAssignedAt: new Date().toISOString(),
+        isMaterialRec: newCargo.isMaterialRec,
+        actualReceivedDate: newCargo.isMaterialRec === "Yes" ? (cargoDetails.receivedDate || new Date().toISOString().split("T")[0]) : "",
+        totalRmb: r.priceRmb ? parseFloat(r.priceRmb) * pickedQty : r.totalRmb
+      };
+      updatedItems.push(updatedReq);
+
+      if (remainingQty > 0) {
+        const remReq = {
+          ...r,
+          id: `req-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          orderQuantity: remainingQty,
+          vendorOrderQuantity: remainingQty,
+          cargoId: "",
+          cargoPickedQty: 0,
+          cargoAssignedAt: "",
+          isMaterialRec: "No",
+          actualReceivedDate: "",
+          parentRequestId: r.id,
+          status: "Active",
+          notes: `${r.notes ? r.notes + " | " : ""}Partial cargo pickup: ${pickedQty} Pcs loaded to Cargo #${newCargoId}, ${remainingQty} Pcs balance left at vendor`
+        };
+        newRemainingItems.push(remReq);
+      }
+    });
+
+    const allBatch = [...updatedItems, ...newRemainingItems];
+    await postData("/api/requests/batch", allBatch);
+
+    setRequests(prev => {
+      const remainingMap = new Map(updatedItems.map(x => [x.id, x]));
+      const updatedList = prev.map(r => remainingMap.has(r.id) ? remainingMap.get(r.id) : r);
+      return [...newRemainingItems, ...updatedList];
+    });
+
     logSystemActivity("CREATE_CARGO", `Created Cargo Shipment #${newCargoId} (${newCargo.cargoDetail || "Cargo"}) bundling ${selectedRequestIds.length} items`, "Cargo", newCargoId, null, newCargo);
   };
 
-  const updateCargo = async (updatedCargo) => {
+  const updateCargo = async (updatedCargo, itemReceiptMap = {}) => {
     const oldCargo = cargos.find(c => c.id === updatedCargo.id);
     const cargoWithDate = {
       ...updatedCargo,
-      receivedDate: updatedCargo.isMaterialRec === "Yes" ? (updatedCargo.receivedDate || "2026-06-11") : ""
+      receivedDate: updatedCargo.isMaterialRec === "Yes" ? (updatedCargo.receivedDate || new Date().toISOString().split("T")[0]) : ""
     };
     await postData("/api/cargos", cargoWithDate);
     setCargos(prev => prev.map(c => c.id === cargoWithDate.id ? cargoWithDate : c));
 
-    const updatedItems = requests.filter(r => r.cargoId === cargoWithDate.id).map(r => ({
-      ...r,
-      isMaterialRec: cargoWithDate.isMaterialRec,
-      actualReceivedDate: cargoWithDate.isMaterialRec === "Yes" ? (r.actualReceivedDate || "2026-06-11") : ""
-    }));
+    const updatedItems = [];
+    const newShortageItems = [];
 
-    if (updatedItems.length > 0) {
-      await postData("/api/requests/batch", updatedItems);
-      setRequests(prev => prev.map(r => {
-        const match = updatedItems.find(x => x.id === r.id);
-        return match ? match : r;
-      }));
+    requests.filter(r => r.cargoId === cargoWithDate.id).forEach(r => {
+      const expectedQty = parseInt(r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity || 0);
+      const recInfo = itemReceiptMap[r.id];
+      const receivedQty = (recInfo && recInfo.receivedQty != null) ? parseInt(recInfo.receivedQty) : (cargoWithDate.isMaterialRec === "Yes" ? expectedQty : (r.receivedQuantity || expectedQty));
+      const shortageAction = recInfo?.shortageAction || "cancel";
+      const shortageQty = expectedQty > receivedQty ? expectedQty - receivedQty : 0;
+
+      const updatedReq = {
+        ...r,
+        isMaterialRec: cargoWithDate.isMaterialRec,
+        actualReceivedDate: cargoWithDate.isMaterialRec === "Yes" ? (r.actualReceivedDate || cargoWithDate.receivedDate || new Date().toISOString().split("T")[0]) : "",
+        receivedQuantity: receivedQty,
+        shortageQty: shortageQty
+      };
+      updatedItems.push(updatedReq);
+
+      if (cargoWithDate.isMaterialRec === "Yes" && shortageQty > 0 && shortageAction === "reorder") {
+        const shortageReq = {
+          ...r,
+          id: `req-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          orderQuantity: shortageQty,
+          vendorOrderQuantity: shortageQty,
+          cargoId: "",
+          cargoPickedQty: 0,
+          cargoAssignedAt: "",
+          isMaterialRec: "No",
+          actualReceivedDate: "",
+          parentRequestId: r.id,
+          status: "Active",
+          notes: `${r.notes ? r.notes + " | " : ""}Shortage re-order: ${shortageQty} Pcs short from Cargo #${updatedCargo.id}`
+        };
+        newShortageItems.push(shortageReq);
+      }
+    });
+
+    if (updatedItems.length > 0 || newShortageItems.length > 0) {
+      const allBatch = [...updatedItems, ...newShortageItems];
+      await postData("/api/requests/batch", allBatch);
+      setRequests(prev => {
+        const updatedMap = new Map(updatedItems.map(x => [x.id, x]));
+        const updatedList = prev.map(r => updatedMap.has(r.id) ? updatedMap.get(r.id) : r);
+        return [...newShortageItems, ...updatedList];
+      });
     }
     logSystemActivity("UPDATE_CARGO", `Updated Cargo Shipment #${updatedCargo.id} (${updatedCargo.cargoDetail || "Cargo"})`, "Cargo", updatedCargo.id, oldCargo, cargoWithDate);
   };

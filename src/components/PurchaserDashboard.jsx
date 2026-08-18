@@ -478,7 +478,19 @@ export default function PurchaserDashboard({
                               </td>
                               <td>{r.orderDate}</td>
                               <td style={{ fontWeight: 600 }}>{r.model}</td>
-                              <td>{r.orderQuantity}</td>
+                              <td>
+                                <div><strong>{r.vendorOrderQuantity || r.orderQuantity}</strong> Pcs</div>
+                                {r.vendorOrderQuantity && r.vendorOrderQuantity !== r.orderQuantity && (
+                                  <span style={{ fontSize: "0.72rem", color: "#38bdf8", display: "block" }}>
+                                    (Req: {r.orderQuantity} Pcs)
+                                  </span>
+                                )}
+                                {r.parentRequestId && (
+                                  <span className="badge badge-warning" style={{ fontSize: "0.68rem" }}>
+                                    Partial Balance
+                                  </span>
+                                )}
+                              </td>
                               <td>{getCurrencySymbol(r.currency)}{Number(r.totalRmb).toLocaleString()}</td>
                               <td>{r.vendorEdd}</td>
                               <td style={{ color: r.vendorReadyDate ? "var(--success)" : "var(--text-muted)", fontSize: "0.8rem" }}>
@@ -1234,8 +1246,8 @@ export default function PurchaserDashboard({
           cargo={receivingCargo}
           requests={requests.filter(r => r.cargoId === receivingCargo.id)}
           onClose={() => setReceivingCargo(null)}
-          onConfirm={(receiveDate) => {
-            onUpdateCargo({ ...receivingCargo, isMaterialRec: "Yes", receivedDate: receiveDate });
+          onConfirm={(receiveDate, itemReceiptMap) => {
+            onUpdateCargo({ ...receivingCargo, isMaterialRec: "Yes", receivedDate: receiveDate }, itemReceiptMap);
             setReceivingCargo(null);
           }}
         />
@@ -1252,8 +1264,8 @@ export default function PurchaserDashboard({
           cargoCompanies={cargoCompanies}
           onAddCargoCompany={onAddCargoCompany}
           onClose={() => setCreatingCargo(false)}
-          onSave={(cargoDetails) => {
-            onAddCargo(cargoDetails, checkedRequestIds);
+          onSave={(cargoDetails, itemPickedQtyMap) => {
+            onAddCargo(cargoDetails, checkedRequestIds, itemPickedQtyMap);
             setCreatingCargo(false);
             setCheckedRequestIds([]);
             setActiveTab("cargopickup"); // Go to Cargo Pickup step next
@@ -1351,6 +1363,7 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
     const match = vendors.find(v => v.id === request.vendorId);
     return match ? match.name : "";
   });
+  const [vendorOrderQuantity, setVendorOrderQuantity] = useState(request.vendorOrderQuantity || request.orderQuantity || "");
   const [currency, setCurrency] = useState(request.currency || "RMB");
   const [price, setPrice] = useState(request.priceRmb || "");
   const [advance, setAdvance] = useState(request.advancePayment || "");
@@ -1360,7 +1373,8 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
   const [showQuickVendorModal, setShowQuickVendorModal] = useState(false);
 
   // Auto-calculated totals
-  const totalRmb = price ? parseFloat(price) * request.orderQuantity : 0;
+  const effectiveQty = vendorOrderQuantity ? parseFloat(vendorOrderQuantity) : request.orderQuantity;
+  const totalRmb = price ? parseFloat(price) * effectiveQty : 0;
   const balanceRmb = price ? totalRmb - (advance ? parseFloat(advance) : 0) : 0;
 
   // Master Catalog & historical photo lookup
@@ -1420,15 +1434,16 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
     onSave({
       ...request,
       vendorId: finalVendorId,
+      vendorOrderQuantity: parseInt(vendorOrderQuantity || request.orderQuantity),
       currency: currency,
       priceRmb: parseFloat(price),
       totalRmb: totalRmb,
       advancePayment: parseFloat(advance || 0),
       balancePayment: balanceRmb,
       vendorEdd: edd,
-      photo: photo,
+      photo: activePhoto,
       notes: notes,
-      // Stamp pricedAt only on first pricing (not on edits, to preserve 48h window)
+      purchaseUpdated: "Yes",
       pricedAt: request.pricedAt || new Date().toISOString()
     });
   };
@@ -1505,6 +1520,25 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
                 </div>
               ) : null;
             })()}
+          </div>
+
+          {/* Vendor Confirmed Quantity Field */}
+          <div className="form-group">
+            <label className="form-label" style={{ fontWeight: 700, color: "var(--primary)" }}>
+              Vendor Confirmed Quantity (Pcs)*
+            </label>
+            <input 
+              type="number"
+              className="form-control"
+              placeholder={`Requested: ${request.orderQuantity} Pcs`}
+              value={vendorOrderQuantity}
+              onChange={e => setVendorOrderQuantity(e.target.value)}
+              min="1"
+              required
+            />
+            <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px", display: "block" }}>
+              Requested Qty: <strong>{request.orderQuantity} Pcs</strong>. Enter actual quantity confirmed with vendor (e.g. 3,000 Pcs).
+            </span>
           </div>
           
           {/* Currency selection & Price per unit */}
@@ -1849,28 +1883,97 @@ function ReceiveCargoModal({ cargo, requests, onClose, onConfirm }) {
   const [receiveDate, setReceiveDate] = useState(new Date().toISOString().split("T")[0]);
   const activeItems = requests.filter(r => r.status !== "Cancelled");
 
+  const [itemReceiptMap, setItemReceiptMap] = useState(() => {
+    const map = {};
+    activeItems.forEach(r => {
+      const expected = parseInt(r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity || 0);
+      map[r.id] = {
+        receivedQty: expected,
+        shortageAction: "reorder" // 'reorder' (back to vendor) or 'cancel'
+      };
+    });
+    return map;
+  });
+
   return (
     <div className="modal-overlay">
-      <div className="glass-panel modal-content" style={{ maxWidth: "460px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px" }}>
+      <div className="glass-panel modal-content" style={{ maxWidth: "560px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
           <div style={{ background: "rgba(16,185,129,0.15)", borderRadius: "50%", padding: "10px", display: "flex" }}>
             <Check size={24} style={{ color: "var(--success)" }} />
           </div>
           <div>
-            <h3 style={{ fontSize: "1.3rem", fontWeight: 700 }}>Confirm Cargo Received</h3>
+            <h3 style={{ fontSize: "1.3rem", fontWeight: 700 }}>Confirm Cargo Receipt & Delivery Quantities</h3>
             <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Cargo: {cargo.id} — {activeItems.length} item(s)</p>
           </div>
         </div>
 
         <div className="glass-panel" style={{ padding: "14px", marginBottom: "18px", background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.2)" }}>
-          <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: "8px", fontWeight: 600, textTransform: "uppercase" }}>Items being received</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            {activeItems.map(r => (
-              <div key={r.id} style={{ fontSize: "0.85rem", display: "flex", justifyContent: "space-between" }}>
-                <span><strong>{r.model}</strong></span>
-                <span style={{ color: "var(--text-muted)" }}>Qty: {r.orderQuantity}</span>
-              </div>
-            ))}
+          <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: "10px", fontWeight: 600, textTransform: "uppercase" }}>Actual Delivery Quantities per Item</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxHeight: "220px", overflowY: "auto" }}>
+            {activeItems.map(r => {
+              const expected = parseInt(r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity || 0);
+              const info = itemReceiptMap[r.id] || { receivedQty: expected, shortageAction: "reorder" };
+              const currentRec = info.receivedQty;
+              const shortage = Math.max(0, expected - currentRec);
+
+              return (
+                <div key={r.id} style={{ background: "rgba(255,255,255,0.04)", padding: "10px 12px", borderRadius: "6px", border: "1px solid var(--border-glass)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                    <div>
+                      <strong>{r.model}</strong>
+                      <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>Cargo Picked Qty: {expected} Pcs</div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                      <span style={{ fontSize: "0.72rem", color: "var(--success)", fontWeight: 600 }}>Actual Received Qty:</span>
+                      <input 
+                        type="number"
+                        min="0"
+                        max={expected}
+                        style={{ width: "95px", padding: "4px 8px", fontSize: "0.82rem", fontWeight: 700 }}
+                        className="form-control"
+                        value={currentRec}
+                        onChange={e => {
+                          const val = parseInt(e.target.value || 0);
+                          setItemReceiptMap(prev => ({
+                            ...prev,
+                            [r.id]: { ...prev[r.id], receivedQty: val }
+                          }));
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {shortage > 0 && (
+                    <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px dashed rgba(239,68,68,0.3)", display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <div style={{ fontSize: "0.78rem", color: "#f87171", fontWeight: 600 }}>
+                        ⚠️ Shortage Detected: <strong>{shortage} Pcs missing</strong>
+                      </div>
+                      <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                        <label style={{ fontSize: "0.75rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", color: "var(--text-main)" }}>
+                          <input 
+                            type="radio" 
+                            name={`shortage_${r.id}`} 
+                            checked={info.shortageAction === "reorder"}
+                            onChange={() => setItemReceiptMap(prev => ({ ...prev, [r.id]: { ...prev[r.id], shortageAction: "reorder" } }))}
+                          />
+                          🔄 Re-order {shortage} Pcs to Vendor
+                        </label>
+                        <label style={{ fontSize: "0.75rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", color: "var(--text-muted)" }}>
+                          <input 
+                            type="radio" 
+                            name={`shortage_${r.id}`} 
+                            checked={info.shortageAction === "cancel"}
+                            onChange={() => setItemReceiptMap(prev => ({ ...prev, [r.id]: { ...prev[r.id], shortageAction: "cancel" } }))}
+                          />
+                          🛑 Cancel {shortage} Pcs Shortage
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -1888,7 +1991,7 @@ function ReceiveCargoModal({ cargo, requests, onClose, onConfirm }) {
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
           <button onClick={onClose} className="btn btn-secondary">Cancel</button>
           <button
-            onClick={() => receiveDate && onConfirm(receiveDate)}
+            onClick={() => receiveDate && onConfirm(receiveDate, itemReceiptMap)}
             disabled={!receiveDate}
             className="btn btn-success"
           >
@@ -1915,6 +2018,14 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
   const [invoiceFile, setInvoiceFile] = useState(null);           // { name, data }
   const [isRec, setIsRec] = useState("No");
   const [showQuickCargoCompanyModal, setShowQuickCargoCompanyModal] = useState(false);
+
+  const [itemPickedQtyMap, setItemPickedQtyMap] = useState(() => {
+    const map = {};
+    (requests || []).filter(r => selectedIds.includes(r.id)).forEach(r => {
+      map[r.id] = r.vendorOrderQuantity || r.orderQuantity || 1;
+    });
+    return map;
+  });
 
   const readFile = async (file) => {
     const url = await uploadToCloudinary(file, "makpower_docs");
@@ -1957,7 +2068,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
       invoiceFile: invoiceFile?.name || "",
       invoiceData: invoiceFile?.data || "",
       isMaterialRec: isRec
-    });
+    }, itemPickedQtyMap);
   };
 
   return (
@@ -2015,6 +2126,51 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
                 <option key={idx} value={desc} />
               ))}
             </datalist>
+          </div>
+
+          {/* Item Breakdown & Pickup Quantity */}
+          <div style={{ background: "rgba(15,23,42,0.6)", padding: "14px", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+            <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary)", marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>📦 Item Quantity Picked for Cargo</span>
+              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 400 }}>Unpicked qty stays pending at vendor</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "150px", overflowY: "auto" }}>
+              {combinedRequests.map(r => {
+                const vendorQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0);
+                const currentPicked = itemPickedQtyMap[r.id] ?? vendorQty;
+                const remaining = Math.max(0, vendorQty - currentPicked);
+                return (
+                  <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", fontSize: "0.82rem", background: "rgba(255,255,255,0.03)", padding: "8px 12px", borderRadius: "6px" }}>
+                    <div>
+                      <strong>{r.model}</strong>
+                      <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Vendor Confirmed Qty: {vendorQty} Pcs</div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                        <span style={{ fontSize: "0.72rem", color: "#38bdf8", fontWeight: 600 }}>Qty Picked for Cargo:</span>
+                        <input 
+                          type="number" 
+                          min="1" 
+                          max={vendorQty}
+                          style={{ width: "95px", padding: "4px 8px", fontSize: "0.82rem", fontWeight: 700 }}
+                          className="form-control"
+                          value={currentPicked}
+                          onChange={e => {
+                            const val = parseInt(e.target.value || 0);
+                            setItemPickedQtyMap(prev => ({ ...prev, [r.id]: val }));
+                          }}
+                        />
+                      </div>
+                      {remaining > 0 && (
+                        <span className="badge badge-warning" style={{ fontSize: "0.72rem" }}>
+                          {remaining} Pcs stays at vendor
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {/* Pricing parameters */}

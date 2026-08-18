@@ -223,8 +223,18 @@ async function setupPgDatabase() {
         "status" TEXT,
         "cancellationReason" TEXT,
         "cancelledAt" TEXT,
-        "cargoAssignedAt" TEXT
+        "cargoAssignedAt" TEXT,
+        "vendorOrderQuantity" INTEGER,
+        "cargoPickedQty" INTEGER,
+        "receivedQuantity" INTEGER,
+        "shortageQty" INTEGER,
+        "parentRequestId" TEXT
       );
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "vendorOrderQuantity" INTEGER;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "cargoPickedQty" INTEGER;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "receivedQuantity" INTEGER;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "shortageQty" INTEGER;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "parentRequestId" TEXT;
     `);
 
     await pool.query(`
@@ -1197,48 +1207,59 @@ app.post("/api/requests", async (req, res) => {
           "priceRmb", "totalRmb", "advancePayment", "balancePayment", "photo", "vendorEdd",
           "cargoId", "isMaterialRec", "actualReceivedDate", "notes", "itemNature", "category",
           "requiredByDate", "entryBy", "packingOrderedByNitin", "purchaseUpdated", "status",
-          "cancellationReason", "cancelledAt", "cargoAssignedAt"
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
-        ON CONFLICT ("id") DO UPDATE SET
-          "purchaserId" = EXCLUDED."purchaserId",
-          "vendorId" = EXCLUDED."vendorId",
-          "orderDate" = EXCLUDED."orderDate",
-          "type" = EXCLUDED."type",
-          "model" = EXCLUDED."model",
-          "orderQuantity" = EXCLUDED."orderQuantity",
-          "priceRmb" = EXCLUDED."priceRmb",
-          "totalRmb" = EXCLUDED."totalRmb",
-          "advancePayment" = EXCLUDED."advancePayment",
-          "balancePayment" = EXCLUDED."balancePayment",
-          "photo" = EXCLUDED."photo",
-          "vendorEdd" = EXCLUDED."vendorEdd",
-          "cargoId" = EXCLUDED."cargoId",
-          "isMaterialRec" = EXCLUDED."isMaterialRec",
-          "actualReceivedDate" = EXCLUDED."actualReceivedDate",
-          "notes" = EXCLUDED."notes",
-          "itemNature" = EXCLUDED."itemNature",
-          "category" = EXCLUDED."category",
-          "requiredByDate" = EXCLUDED."requiredByDate",
-          "entryBy" = EXCLUDED."entryBy",
-          "packingOrderedByNitin" = EXCLUDED."packingOrderedByNitin",
-          "purchaseUpdated" = EXCLUDED."purchaseUpdated",
-          "status" = EXCLUDED."status",
-          "cancellationReason" = EXCLUDED."cancellationReason",
-          "cancelledAt" = EXCLUDED."cancelledAt",
-          "cargoAssignedAt" = EXCLUDED."cargoAssignedAt"
-      `;
-      const values = [
-        r.id, r.purchaserId, r.vendorId, r.orderDate, r.type, r.model, parseInt(r.orderQuantity || 0),
-        r.priceRmb === "" ? null : parseFloat(r.priceRmb), r.totalRmb === "" ? null : parseFloat(r.totalRmb),
-        r.advancePayment === "" ? null : parseFloat(r.advancePayment), r.balancePayment === "" ? null : parseFloat(r.balancePayment),
-        r.photo || "", r.vendorEdd || "", r.cargoId || "", r.isMaterialRec || "No", r.actualReceivedDate || "",
-        r.notes || "", r.itemNature || "Non Consumables", r.category || "", r.requiredByDate || "", r.entryBy || "",
-        r.packingOrderedByNitin || "No", r.purchaseUpdated || "No", r.status || "Active",
-        r.cancellationReason || "", r.cancelledAt || "", r.cargoAssignedAt || ""
-      ];
-      await pool.query(query, values);
-      markAppActivity();
-      res.json({ success: true });
+            "cancellationReason", "cancelledAt", "cargoAssignedAt",
+            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)
+          ON CONFLICT ("id") DO UPDATE SET
+            "purchaserId" = EXCLUDED."purchaserId",
+            "vendorId" = EXCLUDED."vendorId",
+            "orderDate" = EXCLUDED."orderDate",
+            "type" = EXCLUDED."type",
+            "model" = EXCLUDED."model",
+            "orderQuantity" = EXCLUDED."orderQuantity",
+            "priceRmb" = EXCLUDED."priceRmb",
+            "totalRmb" = EXCLUDED."totalRmb",
+            "advancePayment" = EXCLUDED."advancePayment",
+            "balancePayment" = EXCLUDED."balancePayment",
+            "photo" = EXCLUDED."photo",
+            "vendorEdd" = EXCLUDED."vendorEdd",
+            "cargoId" = EXCLUDED."cargoId",
+            "isMaterialRec" = EXCLUDED."isMaterialRec",
+            "actualReceivedDate" = EXCLUDED."actualReceivedDate",
+            "notes" = EXCLUDED."notes",
+            "itemNature" = EXCLUDED."itemNature",
+            "category" = EXCLUDED."category",
+            "requiredByDate" = EXCLUDED."requiredByDate",
+            "entryBy" = EXCLUDED."entryBy",
+            "packingOrderedByNitin" = EXCLUDED."packingOrderedByNitin",
+            "purchaseUpdated" = EXCLUDED."purchaseUpdated",
+            "status" = EXCLUDED."status",
+            "cancellationReason" = EXCLUDED."cancellationReason",
+            "cancelledAt" = EXCLUDED."cancelledAt",
+            "cargoAssignedAt" = EXCLUDED."cargoAssignedAt",
+            "vendorOrderQuantity" = EXCLUDED."vendorOrderQuantity",
+            "cargoPickedQty" = EXCLUDED."cargoPickedQty",
+            "receivedQuantity" = EXCLUDED."receivedQuantity",
+            "shortageQty" = EXCLUDED."shortageQty",
+            "parentRequestId" = EXCLUDED."parentRequestId"
+        `;
+        const values = [
+          r.id, r.purchaserId, r.vendorId, r.orderDate, r.type, r.model, parseInt(r.orderQuantity || 0),
+          r.priceRmb === "" ? null : parseFloat(r.priceRmb), r.totalRmb === "" ? null : parseFloat(r.totalRmb),
+          r.advancePayment === "" ? null : parseFloat(r.advancePayment), r.balancePayment === "" ? null : parseFloat(r.balancePayment),
+          r.photo || "", r.vendorEdd || "", r.cargoId || "", r.isMaterialRec || "No", r.actualReceivedDate || "",
+          r.notes || "", r.itemNature || "Non Consumables", r.category || "", r.requiredByDate || "", r.entryBy || "",
+          r.packingOrderedByNitin || "No", r.purchaseUpdated || "No", r.status || "Active",
+          r.cancellationReason || "", r.cancelledAt || "", r.cargoAssignedAt || "",
+          r.vendorOrderQuantity != null ? parseInt(r.vendorOrderQuantity) : null,
+          r.cargoPickedQty != null ? parseInt(r.cargoPickedQty) : null,
+          r.receivedQuantity != null ? parseInt(r.receivedQuantity) : null,
+          r.shortageQty != null ? parseInt(r.shortageQty) : null,
+          r.parentRequestId || ""
+        ];
+        await pool.query(query, values);
+        markAppActivity();
+        res.json({ success: true });
     } catch (err) {
       console.error("POST /api/requests error:", err.message);
       res.status(500).json({ error: "Failed to upsert request." });
@@ -1274,8 +1295,9 @@ app.post("/api/requests/batch", async (req, res) => {
             "priceRmb", "totalRmb", "advancePayment", "balancePayment", "photo", "vendorEdd",
             "cargoId", "isMaterialRec", "actualReceivedDate", "notes", "itemNature", "category",
             "requiredByDate", "entryBy", "packingOrderedByNitin", "purchaseUpdated", "status",
-            "cancellationReason", "cancelledAt", "cargoAssignedAt"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+            "cancellationReason", "cancelledAt", "cargoAssignedAt",
+            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)
           ON CONFLICT ("id") DO UPDATE SET
             "purchaserId" = EXCLUDED."purchaserId",
             "vendorId" = EXCLUDED."vendorId",
@@ -1302,7 +1324,12 @@ app.post("/api/requests/batch", async (req, res) => {
             "status" = EXCLUDED."status",
             "cancellationReason" = EXCLUDED."cancellationReason",
             "cancelledAt" = EXCLUDED."cancelledAt",
-            "cargoAssignedAt" = EXCLUDED."cargoAssignedAt"
+            "cargoAssignedAt" = EXCLUDED."cargoAssignedAt",
+            "vendorOrderQuantity" = EXCLUDED."vendorOrderQuantity",
+            "cargoPickedQty" = EXCLUDED."cargoPickedQty",
+            "receivedQuantity" = EXCLUDED."receivedQuantity",
+            "shortageQty" = EXCLUDED."shortageQty",
+            "parentRequestId" = EXCLUDED."parentRequestId"
         `;
         const values = [
           r.id, r.purchaserId, r.vendorId, r.orderDate, r.type, r.model, parseInt(r.orderQuantity || 0),
@@ -1311,7 +1338,12 @@ app.post("/api/requests/batch", async (req, res) => {
           r.photo || "", r.vendorEdd || "", r.cargoId || "", r.isMaterialRec || "No", r.actualReceivedDate || "",
           r.notes || "", r.itemNature || "Non Consumables", r.category || "", r.requiredByDate || "", r.entryBy || "",
           r.packingOrderedByNitin || "No", r.purchaseUpdated || "No", r.status || "Active",
-          r.cancellationReason || "", r.cancelledAt || "", r.cargoAssignedAt || ""
+          r.cancellationReason || "", r.cancelledAt || "", r.cargoAssignedAt || "",
+          r.vendorOrderQuantity != null ? parseInt(r.vendorOrderQuantity) : null,
+          r.cargoPickedQty != null ? parseInt(r.cargoPickedQty) : null,
+          r.receivedQuantity != null ? parseInt(r.receivedQuantity) : null,
+          r.shortageQty != null ? parseInt(r.shortageQty) : null,
+          r.parentRequestId || ""
         ];
         await pool.query(query, values);
       }
