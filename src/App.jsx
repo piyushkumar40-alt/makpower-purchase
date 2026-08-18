@@ -1252,6 +1252,7 @@ export default function App() {
             cargoCompanies={cargoCompanies}
             purchasers={users.filter(u => u.role === "purchaser" && u.status === "active")}
             onUpdateRequest={updateRequest}
+            batchUpdateRequests={batchUpdateRequests}
             onCancelOrder={cancelRequest}
             onUndoCargoAssignment={undoCargoAssignment}
             onUndoPricing={undoPricing}

@@ -18,6 +18,7 @@ export default function PurchaserDashboard({
   purchasers = [],
   auditLogs = [],
   onUpdateRequest,
+  batchUpdateRequests,
   onCancelOrder,
   onUndoCargoAssignment,
   onUndoPricing,
@@ -584,10 +585,18 @@ export default function PurchaserDashboard({
               <button
                 disabled={vrChecked.length === 0 || !vrDate}
                 onClick={() => {
+                  const toUpdate = [];
                   vrChecked.forEach(id => {
                     const r = myRequests.find(x => x.id === id);
-                    if (r) onUpdateRequest({ ...r, vendorReadyDate: vrDate });
+                    if (r) toUpdate.push({ ...r, vendorReadyDate: vrDate });
                   });
+                  if (toUpdate.length > 0) {
+                    if (batchUpdateRequests) {
+                      batchUpdateRequests(toUpdate, "VENDOR_READY", `Marked ${toUpdate.length} item(s) as Vendor Ready for ${vrDate}`);
+                    } else {
+                      toUpdate.forEach(item => onUpdateRequest(item));
+                    }
+                  }
                   setVrChecked([]);
                 }}
                 className="btn btn-success"
