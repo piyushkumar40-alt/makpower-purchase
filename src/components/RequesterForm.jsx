@@ -62,7 +62,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
     {
       id: 1,
       type: "Import",
-      itemType: "RM",
+      itemType: "FG",
       itemNature: "Non Consumables",
       category: "",
       model: "",
@@ -103,7 +103,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
           model: item.name,
           category: item.category || r.category,
           type: item.type || r.type,
-          itemType: item.itemType || r.itemType || "RM",
+          itemType: item.itemType || r.itemType || "FG",
           itemNature: item.itemNature || r.itemNature
         };
       }
@@ -190,7 +190,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
       {
         id: Date.now(),
         type: "Import",
-        itemType: "RM",
+        itemType: "FG",
         itemNature: "Non Consumables",
         category: "",
         model: "",
@@ -209,7 +209,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
       newRows.push({
         id: Date.now() + i,
         type: "Import",
-        itemType: "RM",
+        itemType: "FG",
         itemNature: "Non Consumables",
         category: "",
         model: "",
@@ -230,7 +230,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
         {
           id: Date.now(),
           type: "Import",
-          itemType: "RM",
+          itemType: "FG",
           itemNature: "Non Consumables",
           category: "",
           model: "",
@@ -550,11 +550,11 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                     <select 
                       className="form-control" 
                       style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
-                      value={row.itemType || "RM"}
+                      value={row.itemType || "FG"}
                       onChange={e => updateCell(row.id, "itemType", e.target.value)}
                     >
-                      <option value="RM" style={{ background: "#0f172a" }}>Raw Material (RM)</option>
                       <option value="FG" style={{ background: "#0f172a" }}>Finished Goods (FG)</option>
+                      <option value="RM" style={{ background: "#0f172a" }}>Raw Material (RM)</option>
                     </select>
                   </td>
 
@@ -588,7 +588,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       onKeyDown={e => {
                         if (activeDropdown?.rowId === row.id && activeDropdown?.field === "category") {
                           const query = (row.category || "").trim().toLowerCase();
-                          const rowItemType = (row.itemType || "RM").toUpperCase();
+                          const rowItemType = (row.itemType || "FG").toUpperCase();
                           const itemsForType = combinedItems.filter(i => !i.itemType || i.itemType.toUpperCase() === rowItemType);
                           const catsForType = Array.from(new Set(itemsForType.map(i => i.category && i.category.trim()).filter(Boolean))).sort();
                           const candidateCats = catsForType.length > 0 ? catsForType : catalogCategories;
@@ -613,7 +613,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                     />
                     {activeDropdown?.rowId === row.id && activeDropdown?.field === "category" && (() => {
                       const query = (row.category || "").trim().toLowerCase();
-                      const rowItemType = (row.itemType || "RM").toUpperCase();
+                      const rowItemType = (row.itemType || "FG").toUpperCase();
 
                       // Filter items matching row's selected Item Type (FG or RM)
                       const itemsForType = combinedItems.filter(i => 
@@ -671,7 +671,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                             ))
                           ) : (
                             <div style={{ padding: "10px 12px", fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic" }}>
-                              {query ? `Custom category "${row.category}"` : `No saved ${row.itemType || "RM"} categories`}
+                              {query ? `Custom category "${row.category}"` : `No saved ${row.itemType || "FG"} categories`}
                             </div>
                           )}
                         </div>
@@ -701,7 +701,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         openDropdown(e, row.id, "model");
                         const matchedItem = combinedItems.find(i => 
                           i.name.toLowerCase() === selectedName.toLowerCase() &&
-                          (!row.itemType || !i.itemType || i.itemType.toUpperCase() === (row.itemType || "RM").toUpperCase())
+                          (!row.itemType || !i.itemType || i.itemType.toUpperCase() === (row.itemType || "FG").toUpperCase())
                         );
                         if (matchedItem) {
                           selectModelOption(row.id, matchedItem);
@@ -713,7 +713,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         if (activeDropdown?.rowId === row.id && activeDropdown?.field === "model") {
                           const modelQuery = (row.model || "").trim().toLowerCase();
                           const catQuery = (row.category || "").trim().toLowerCase();
-                          const rowItemType = (row.itemType || "RM").toUpperCase();
+                          const rowItemType = (row.itemType || "FG").toUpperCase();
 
                           let candidateItems = combinedItems.filter(i =>
                             !i.itemType || i.itemType.toUpperCase() === rowItemType
@@ -744,13 +744,13 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                     />
                     {row.model && !isValidModel(row.model, row.itemType) && (
                       <div style={{ fontSize: "0.72rem", color: "#fca5a5", marginTop: "2px", fontWeight: 500 }}>
-                        Invalid model for {row.itemType || "RM"} (select from dropdown)
+                        Invalid model for {row.itemType || "FG"} (select from dropdown)
                       </div>
                     )}
                     {activeDropdown?.rowId === row.id && activeDropdown?.field === "model" && (() => {
                       const modelQuery = (row.model || "").trim().toLowerCase();
                       const catQuery = (row.category || "").trim().toLowerCase();
-                      const rowItemType = (row.itemType || "RM").toUpperCase();
+                      const rowItemType = (row.itemType || "FG").toUpperCase();
 
                       // 1. Filter items by row's selected Item Type (FG or RM)
                       let candidateItems = combinedItems.filter(i =>
