@@ -7,6 +7,7 @@ import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
+import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
 
 export default function PurchaserDashboard({
   currentUser = {},
