@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { 
   Building2, TrendingUp, DollarSign, Package, Truck, AlertTriangle, 
   CheckCircle2, FileSpreadsheet, Download, Search, Filter, ShieldCheck, 
-  Users, Award, ArrowUpRight, BarChart3, Clock, PieChart, RefreshCw,
+  Users, Award, ArrowUpRight, BarChart3, BarChart2, Clock, PieChart, RefreshCw,
   Globe, Coins, Save, Check, Warehouse
 } from "lucide-react";
 
