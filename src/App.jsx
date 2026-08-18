@@ -994,6 +994,7 @@ export default function App() {
             requests={requests}
             vendors={vendors}
             cargos={cargos}
+            items={items}
             onBatchUpdateRequests={batchUpdateRequests}
             onLogout={handleLogout}
           />

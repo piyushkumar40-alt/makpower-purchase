@@ -1165,6 +1165,9 @@ export default function PurchaserDashboard({
           vendors={vendors}
           currentUser={currentUser}
           onAddVendor={onAddVendor}
+          items={items}
+          onUpdateItem={onUpdateItem}
+          onAddItem={onAddItem}
           onClose={() => setEditingRequest(null)}
           onSave={(updated) => {
             onUpdateRequest(updated);
@@ -1181,6 +1184,8 @@ export default function PurchaserDashboard({
           cargos={cargos}
           cargoCompanies={cargoCompanies}
           purchasers={purchasers}
+          items={items}
+          requests={requests}
           onClose={() => setViewingRequest(null)}
           onCancelOrder={viewingRequest.status !== "Cancelled" && viewingRequest.isMaterialRec !== "Yes" ? (req) => { setViewingRequest(null); setCancellingRequest(req); } : null}
         />
@@ -1295,15 +1300,34 @@ export const convertToRmb = (amount, currency) => {
   return num;
 };
 
+export const getEffectivePhoto = (request, items = [], requests = []) => {
+  if (!request) return "";
+  if (request.photo) return request.photo;
+
+  const modelLower = (request.model || "").trim().toLowerCase();
+  if (!modelLower) return "";
+
+  if (Array.isArray(items)) {
+    const matchItem = items.find(i => (i.name || i.model || "").trim().toLowerCase() === modelLower && (i.photo || i.photoUrl));
+    if (matchItem) return matchItem.photo || matchItem.photoUrl;
+  }
+
+  if (Array.isArray(requests)) {
+    const matchReq = requests.find(r => (r.model || "").trim().toLowerCase() === modelLower && r.photo);
+    if (matchReq) return matchReq.photo;
+  }
+
+  return "";
+};
+
 // 1. STEP 2: EDIT REQUEST DETAILS MODAL
-function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor, onClose, onSave }) {
+function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor, items = [], onUpdateItem, onAddItem, onClose, onSave }) {
   const [vendorId, setVendorId] = useState(request.vendorId || "");
   const [currency, setCurrency] = useState(request.currency || "RMB");
   const [price, setPrice] = useState(request.priceRmb || "");
   const [advance, setAdvance] = useState(request.advancePayment || "");
   const [edd, setEdd] = useState(request.vendorEdd || "");
   const [photo, setPhoto] = useState(request.photo || "");
-  const [useHistoryPhoto, setUseHistoryPhoto] = useState(true);
   const [notes, setNotes] = useState(request.notes || "");
   const [showQuickVendorModal, setShowQuickVendorModal] = useState(false);
 
@@ -1311,19 +1335,20 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
   const totalRmb = price ? parseFloat(price) * request.orderQuantity : 0;
   const balanceRmb = price ? totalRmb - (advance ? parseFloat(advance) : 0) : 0;
 
-  // Historical photo lookup
-  const historicalPhoto = React.useMemo(() => {
-    // Find requests for the same model that have a photo
-    const match = requests.find(r => r.model.toLowerCase() === request.model.toLowerCase() && r.photo);
-    return match ? match.photo : null;
-  }, [request.model, requests]);
+  // Master Catalog & historical photo lookup
+  const catalogPhoto = React.useMemo(() => {
+    return getEffectivePhoto(request, items, requests);
+  }, [request, items, requests]);
 
-  // Set default photo to historical if available and none uploaded yet
+  // Active photo (custom uploaded or synced from catalog)
+  const activePhoto = photo || catalogPhoto || "";
+
+  // Auto-sync initial photo from catalog if request has no photo set
   React.useEffect(() => {
-    if (historicalPhoto && !request.photo && useHistoryPhoto) {
-      setPhoto(historicalPhoto);
+    if (catalogPhoto && !photo) {
+      setPhoto(catalogPhoto);
     }
-  }, [historicalPhoto, request.photo, useHistoryPhoto]);
+  }, [catalogPhoto, photo]);
 
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
@@ -1334,7 +1359,23 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
     try {
       const url = await uploadToCloudinary(file, "makpower_photos");
       setPhoto(url);
-      setUseHistoryPhoto(false);
+
+      // Auto-sync photo to Master Catalog item so it reflects everywhere
+      const modelLower = (request.model || "").trim().toLowerCase();
+      const existingItem = (items || []).find(i => (i.name || i.model || "").trim().toLowerCase() === modelLower);
+      if (existingItem && onUpdateItem) {
+        onUpdateItem({ ...existingItem, photo: url });
+      } else if (onAddItem) {
+        onAddItem({
+          id: `item-${Date.now()}`,
+          name: request.model,
+          category: request.category || "",
+          itemType: request.itemType || "FG",
+          type: request.type || "Import",
+          itemNature: request.itemNature || "Non Consumables",
+          photo: url
+        });
+      }
     } catch (err) {
       console.error("Photo upload failed:", err);
     } finally {
@@ -1500,56 +1541,51 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
             />
           </div>
 
-          {/* Delivery & Photo */}
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Vendor EDD (Delivery Date)</label>
-              <input 
-                type="date" 
-                className="form-control" 
-                value={edd}
-                onChange={e => setEdd(e.target.value)}
-                required
-              />
-            </div>
-            
-            <div className="form-group">
-              <label className="form-label">Model Photo</label>
-              <label className="doc-upload-btn" style={{ height: "42px", padding: "8px", opacity: uploadingPhoto ? 0.7 : 1 }}>
-                <Upload size={14} /> <span>{uploadingPhoto ? "Uploading to Cloudinary..." : "Upload Photo"}</span>
-                <input type="file" accept="image/*" onChange={handlePhotoUpload} disabled={uploadingPhoto} style={{ display: "none" }} />
-              </label>
-            </div>
+          {/* Delivery Date */}
+          <div className="form-group">
+            <label className="form-label">Vendor EDD (Delivery Date)</label>
+            <input 
+              type="date" 
+              className="form-control" 
+              value={edd}
+              onChange={e => setEdd(e.target.value)}
+              required
+            />
           </div>
 
-          {/* Photo Preview & Lookup alert */}
-          {historicalPhoto && !request.photo && (
-            <div className="glass-panel" style={{ padding: "12px", background: "rgba(56, 189, 248, 0.05)", display: "flex", gap: "10px", alignItems: "center" }}>
-              <img src={historicalPhoto} alt="Historical" style={{ width: "40px", height: "40px", borderRadius: "4px", objectFit: "cover" }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: "0.8rem", fontWeight: 600 }}>Previous Photo Found!</div>
-                <label className="checkbox-label" style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                  <input 
-                    type="checkbox" 
-                    className="checkbox-input" 
-                    checked={useHistoryPhoto} 
-                    onChange={e => {
-                      setUseHistoryPhoto(e.target.checked);
-                      if (e.target.checked) setPhoto(historicalPhoto);
-                      else setPhoto("");
-                    }} 
-                  /> Use historical photo
-                </label>
+          {/* Model Photo Section */}
+          <div className="form-group" style={{ marginBottom: "10px" }}>
+            <label className="form-label">Model Photo</label>
+            
+            {activePhoto ? (
+              <div className="glass-panel" style={{ padding: "14px", background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(56, 189, 248, 0.3)", borderRadius: "8px", display: "flex", gap: "16px", alignItems: "center" }}>
+                <a href={activePhoto} target="_blank" rel="noopener noreferrer" title="Click to open full image">
+                  <img 
+                    src={activePhoto} 
+                    alt={request.model} 
+                    style={{ width: "84px", height: "84px", borderRadius: "8px", objectFit: "cover", border: "2px solid #38bdf8", boxShadow: "0 4px 14px rgba(56, 189, 248, 0.25)" }} 
+                  />
+                </a>
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "#38bdf8", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Sparkles size={14} /> Active Image for {request.model}
+                  </div>
+                  <div style={{ fontSize: "0.76rem", color: "var(--text-muted)" }}>
+                    This image is synced with Master Catalog and will show everywhere for {request.model}.
+                  </div>
+                  <label className="btn btn-secondary btn-sm" style={{ alignSelf: "flex-start", marginTop: "4px", color: "#38bdf8", borderColor: "#38bdf8", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.8rem" }}>
+                    <Upload size={14} /> <span>{uploadingPhoto ? "Uploading to Cloudinary..." : "Update / Change Image"}</span>
+                    <input type="file" accept="image/*" onChange={handlePhotoUpload} disabled={uploadingPhoto} style={{ display: "none" }} />
+                  </label>
+                </div>
               </div>
-            </div>
-          )}
-
-          {photo && (
-            <div style={{ textAlign: "center" }}>
-              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Photo Preview:</span>
-              <img src={photo} className="photo-preview-large" alt="Product" />
-            </div>
-          )}
+            ) : (
+              <label className="doc-upload-btn" style={{ height: "46px", padding: "10px", opacity: uploadingPhoto ? 0.7 : 1, width: "100%" }}>
+                <Upload size={16} /> <span>{uploadingPhoto ? "Uploading to Cloudinary..." : "Upload Model Photo"}</span>
+                <input type="file" accept="image/*" onChange={handlePhotoUpload} disabled={uploadingPhoto} style={{ display: "none" }} />
+              </label>
+            )}
+          </div>
 
 
 
@@ -1577,12 +1613,13 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
 }
 
 // 2. DETAILED READ-ONLY VIEW MODAL (ALL 27 FIELDS)
-function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purchasers, onClose, onCancelOrder }) {
+function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purchasers, items = [], requests = [], onClose, onCancelOrder }) {
   const pName = purchasers.find(p => p.id === request.purchaserId)?.name || "Unknown";
   const vName = vendors.find(v => v.id === request.vendorId)?.name || "Unknown";
   
   // Find linked Cargo details
   const cargo = cargos.find(c => c.id === request.cargoId);
+  const effectivePhoto = getEffectivePhoto(request, items, requests);
 
   // Stepper calculations
   let currentStep = 1; // Submitted
@@ -1686,10 +1723,12 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
             )}
 
             {/* Photo display */}
-            {request.photo && (
+            {effectivePhoto && (
               <div style={{ marginTop: "20px" }}>
                 <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px" }}>Product Photo:</div>
-                <img src={request.photo} className="photo-preview-large" alt="Product thumbnail" />
+                <a href={effectivePhoto} target="_blank" rel="noopener noreferrer" title="Click to view full photo">
+                  <img src={effectivePhoto} className="photo-preview-large" alt="Product thumbnail" style={{ cursor: "pointer" }} />
+                </a>
               </div>
             )}
           </div>

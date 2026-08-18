@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { LogOut, Filter, CheckSquare, Square, CheckCircle, PackageOpen, Eye, X } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
+import { getEffectivePhoto } from "./PurchaserDashboard";
 
-export default function NitinDashboard({ currentUser, requests, vendors, cargos, onBatchUpdateRequests, onLogout }) {
+export default function NitinDashboard({ currentUser, requests, vendors, cargos, items = [], onBatchUpdateRequests, onLogout }) {
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem("makpower_nitin_tab") || "pending";
   });
@@ -292,9 +293,9 @@ export default function NitinDashboard({ currentUser, requests, vendors, cargos,
 
                       {/* Photo Thumbnail */}
                       <td>
-                        {r.photo ? (
-                          <div style={{ position: "relative", cursor: "pointer" }} onClick={() => setViewPhoto(r.photo)}>
-                            <img src={r.photo} alt="Thumbnail" style={{ width: "36px", height: "36px", borderRadius: "6px", objectFit: "cover", border: "1px solid var(--border-glass)" }} />
+                        {getEffectivePhoto(r, items, requests) ? (
+                          <div style={{ position: "relative", cursor: "pointer" }} onClick={() => setViewPhoto(getEffectivePhoto(r, items, requests))}>
+                            <img src={getEffectivePhoto(r, items, requests)} alt="Thumbnail" style={{ width: "36px", height: "36px", borderRadius: "6px", objectFit: "cover", border: "1px solid var(--border-glass)" }} />
                             <div style={{ position: "absolute", bottom: 0, right: 0, background: "rgba(0,0,0,0.6)", borderRadius: "3px", padding: "1px" }}>
                               <Eye size={10} style={{ color: "#fff" }} />
                             </div>
