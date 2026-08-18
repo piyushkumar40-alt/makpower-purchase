@@ -5,6 +5,7 @@ import { uploadToCloudinary } from "../utils/upload";
 import ItemMasterView from "./ItemMasterView";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 import ItemCatalogPanel from "./ItemCatalogPanel";
+import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
 
 export default function PurchaserDashboard({
   currentUser = {},
@@ -1163,6 +1164,7 @@ export default function PurchaserDashboard({
           requests={requests}
           vendors={vendors}
           currentUser={currentUser}
+          onAddVendor={onAddVendor}
           onClose={() => setEditingRequest(null)}
           onSave={(updated) => {
             onUpdateRequest(updated);
@@ -1219,6 +1221,7 @@ export default function PurchaserDashboard({
           requests={myRequests}
           cargos={cargos}
           cargoCompanies={cargoCompanies}
+          onAddCargoCompany={onAddCargoCompany}
           onClose={() => setCreatingCargo(false)}
           onSave={(cargoDetails) => {
             onAddCargo(cargoDetails, checkedRequestIds);
@@ -1293,7 +1296,7 @@ export const convertToRmb = (amount, currency) => {
 };
 
 // 1. STEP 2: EDIT REQUEST DETAILS MODAL
-function EditRequestModal({ request, requests, vendors, currentUser, onClose, onSave }) {
+function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor, onClose, onSave }) {
   const [vendorId, setVendorId] = useState(request.vendorId || "");
   const [currency, setCurrency] = useState(request.currency || "RMB");
   const [price, setPrice] = useState(request.priceRmb || "");
@@ -1302,6 +1305,7 @@ function EditRequestModal({ request, requests, vendors, currentUser, onClose, on
   const [photo, setPhoto] = useState(request.photo || "");
   const [useHistoryPhoto, setUseHistoryPhoto] = useState(true);
   const [notes, setNotes] = useState(request.notes || "");
+  const [showQuickVendorModal, setShowQuickVendorModal] = useState(false);
 
   // Auto-calculated totals
   const totalRmb = price ? parseFloat(price) * request.orderQuantity : 0;
@@ -1372,7 +1376,28 @@ function EditRequestModal({ request, requests, vendors, currentUser, onClose, on
           
           {/* Vendor Selection (Required) */}
           <div className="form-group">
-            <label className="form-label">Vendor / Supplier</label>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+              <label className="form-label" style={{ margin: 0 }}>Vendor / Supplier</label>
+              {onAddVendor && (
+                <button 
+                  type="button" 
+                  onClick={() => setShowQuickVendorModal(true)} 
+                  style={{ 
+                    color: "#38bdf8", 
+                    cursor: "pointer", 
+                    fontSize: "0.8rem", 
+                    background: "none", 
+                    border: "none", 
+                    display: "inline-flex", 
+                    alignItems: "center", 
+                    gap: "4px",
+                    fontWeight: 600
+                  }}
+                >
+                  <Plus size={13} /> + Create New Vendor
+                </button>
+              )}
+            </div>
             <input 
               type="text" 
               list="pricing-vendor-list"
@@ -1397,6 +1422,16 @@ function EditRequestModal({ request, requests, vendors, currentUser, onClose, on
                 ))}
             </datalist>
           </div>
+
+          <QuickCreateVendorModal
+            isOpen={showQuickVendorModal}
+            onClose={() => setShowQuickVendorModal(false)}
+            onAddVendor={onAddVendor}
+            currentUser={currentUser}
+            onVendorCreated={(newVendor) => {
+              if (newVendor?.id) setVendorId(newVendor.id);
+            }}
+          />
           
           {/* Currency selection & Price per unit */}
           <div className="form-row">
@@ -1781,7 +1816,7 @@ function ReceiveCargoModal({ cargo, requests, onClose, onConfirm }) {
 }
 
 // 3. CREATE CARGO BUNDLE MODAL
-function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos = [], cargoCompanies = [], onClose, onSave }) {
+function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos = [], cargoCompanies = [], onAddCargoCompany, onClose, onSave }) {
   const [detail, setDetail] = useState("");
   const [currency, setCurrency] = useState("RMB");
   const [price, setPrice] = useState("");
@@ -1794,6 +1829,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
   const [packingListFile, setPackingListFile] = useState(null);   // { name, data }
   const [invoiceFile, setInvoiceFile] = useState(null);           // { name, data }
   const [isRec, setIsRec] = useState("No");
+  const [showQuickCargoCompanyModal, setShowQuickCargoCompanyModal] = useState(false);
 
   const readFile = async (file) => {
     const url = await uploadToCloudinary(file, "makpower_docs");
@@ -1921,7 +1957,28 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
           {/* Shipping logistics */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Cargo Company / Shipper</label>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                <label className="form-label" style={{ margin: 0 }}>Cargo Company / Shipper</label>
+                {onAddCargoCompany && (
+                  <button 
+                    type="button" 
+                    onClick={() => setShowQuickCargoCompanyModal(true)} 
+                    style={{ 
+                      color: "#38bdf8", 
+                      cursor: "pointer", 
+                      fontSize: "0.8rem", 
+                      background: "none", 
+                      border: "none", 
+                      display: "inline-flex", 
+                      alignItems: "center", 
+                      gap: "4px",
+                      fontWeight: 600
+                    }}
+                  >
+                    <Plus size={13} /> + Create New Transport Company
+                  </button>
+                )}
+              </div>
               <select 
                 className="form-control" 
                 value={cargoCompanyId} 

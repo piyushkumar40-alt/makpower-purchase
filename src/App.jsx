@@ -520,7 +520,7 @@ export default function App() {
     };
     await postData("/api/vendors", newVendor);
     setVendors(prev => [...prev, newVendor]);
-    return { success: true };
+    return { success: true, vendor: newVendor };
   };
 
   const updateVendor = async (updatedVendor) => {
@@ -583,7 +583,7 @@ export default function App() {
     };
     await postData("/api/cargo-companies", newCompany);
     setCargoCompanies(prev => [...prev, newCompany]);
-    return { success: true };
+    return { success: true, company: newCompany };
   };
 
   const removeCargoCompany = async (companyId) => {
@@ -982,6 +982,8 @@ export default function App() {
               cargoCompanies={cargoCompanies}
               currentUser={currentUser}
               items={items}
+              onAddItem={addItem}
+              onAddPurchaser={addPurchaser}
             />
           </div>
         )}

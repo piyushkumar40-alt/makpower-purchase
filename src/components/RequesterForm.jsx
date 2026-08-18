@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Plus, Trash2, CheckCircle2, Clipboard, ShieldAlert, Sparkles, X, Package } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
+import { QuickCreateItemModal, QuickCreateUserModal } from "./QuickCreateModals";
 
-export default function RequesterForm({ onAddRequests, purchasers, vendors, currentUser, requests = [], cargos = [], cargoCompanies = [], items = [] }) {
+export default function RequesterForm({ onAddRequests, purchasers, vendors, currentUser, requests = [], cargos = [], cargoCompanies = [], items = [], onAddItem, onAddPurchaser }) {
   // Combine items from items prop and requests prop so dropdown has options even if master catalog isn't populated
   const combinedItems = useMemo(() => {
     const map = new Map();
@@ -385,6 +386,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
     return currentUser ? currentUser.name : "Mr. Himanshu";
   });
   const [showPasteModal, setShowPasteModal] = useState(false);
+  const [showQuickItemModal, setShowQuickItemModal] = useState(false);
+  const [showQuickUserModal, setShowQuickUserModal] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [submittedCount, setSubmittedCount] = useState(0);
@@ -736,6 +739,10 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
         <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={() => setShowPasteModal(true)} className="btn btn-secondary btn-sm" style={{ color: "var(--primary)", borderColor: "var(--primary-glow)" }}>
             <Clipboard size={14} /> Paste from Excel / Sheets
+          </button>
+
+          <button onClick={() => setShowQuickItemModal(true)} className="btn btn-secondary btn-sm" style={{ color: "#38bdf8", borderColor: "#38bdf8" }}>
+            <Plus size={14} /> + Create New Item
           </button>
 
           <span style={{ fontSize: "0.78rem", color: "#38bdf8", background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.3)", padding: "5px 12px", borderRadius: "6px", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "6px" }}>
@@ -1398,9 +1405,42 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
               </button>
             </div>
 
-          </div>
-        </div>
-      )}
+      {/* ==================== QUICK ITEM MODAL ==================== */}
+      <QuickCreateItemModal 
+        isOpen={showQuickItemModal}
+        onClose={() => setShowQuickItemModal(false)}
+        onAddItem={onAddItem}
+        onItemCreated={(newItem) => {
+          if (newItem && newItem.name) {
+            setRows(prev => {
+              const updated = [...prev];
+              if (updated.length > 0) {
+                updated[0] = {
+                  ...updated[0],
+                  model: newItem.name,
+                  category: newItem.category || updated[0].category,
+                  type: newItem.type || updated[0].type,
+                  itemType: newItem.itemType || updated[0].itemType,
+                  itemNature: newItem.itemNature || updated[0].itemNature
+                };
+              }
+              return updated;
+            });
+          }
+        }}
+      />
+
+      {/* ==================== QUICK USER MODAL ==================== */}
+      <QuickCreateUserModal
+        isOpen={showQuickUserModal}
+        onClose={() => setShowQuickUserModal(false)}
+        onAddPurchaser={onAddPurchaser}
+        onUserCreated={(newUser) => {
+          if (newUser && newUser.id) {
+            setRows(prev => prev.map(r => ({ ...r, purchaserId: newUser.id })));
+          }
+        }}
+      />
 
     </div>
   );

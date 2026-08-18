@@ -5,6 +5,7 @@ import { getCurrencySymbol, CargoCompaniesPanel, VendorDetailModal, CargoCompany
 import ItemMasterView from "./ItemMasterView";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 import ItemCatalogPanel from "./ItemCatalogPanel";
+import { QuickCreateVendorModal, QuickCreateCargoCompanyModal, QuickCreateDesignationModal, QuickCreateUserModal } from "./QuickCreateModals";
 
 export default function SuperAdminDashboard({
   users,
@@ -372,6 +373,7 @@ export default function SuperAdminDashboard({
   const [selectedCargoCompanyForDetail, setSelectedCargoCompanyForDetail] = useState(null);
   const [showInactiveVendors, setShowInactiveVendors] = useState(false);
   const [showInactiveCarriers, setShowInactiveCarriers] = useState(false);
+  const [showQuickDesignationModal, setShowQuickDesignationModal] = useState(false);
 
   const activePurchasers = users.filter(u => u.role === "purchaser" && u.status === "active");
 
@@ -941,7 +943,26 @@ export default function SuperAdminDashboard({
                   </div>
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Designation</label>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                      <label className="form-label" style={{ margin: 0 }}>Designation</label>
+                      <button 
+                        type="button" 
+                        onClick={() => setShowQuickDesignationModal(true)} 
+                        style={{ 
+                          color: "#38bdf8", 
+                          cursor: "pointer", 
+                          fontSize: "0.8rem", 
+                          background: "none", 
+                          border: "none", 
+                          display: "inline-flex", 
+                          alignItems: "center", 
+                          gap: "4px",
+                          fontWeight: 600
+                        }}
+                      >
+                        <Plus size={13} /> + Create New Designation
+                      </button>
+                    </div>
                     <select 
                       className="form-control"
                       value={pDesignation}
@@ -961,6 +982,15 @@ export default function SuperAdminDashboard({
                       <option value="Custom">+ Write-in Custom Designation</option>
                     </select>
                   </div>
+
+                  <QuickCreateDesignationModal
+                    isOpen={showQuickDesignationModal}
+                    onClose={() => setShowQuickDesignationModal(false)}
+                    onAddDesignation={onAddDesignation}
+                    onDesignationCreated={(title) => {
+                      if (title) setPDesignation(title);
+                    }}
+                  />
 
                   {pDesignation === "Custom" && (
                     <div className="form-group" style={{ marginBottom: 0 }}>
