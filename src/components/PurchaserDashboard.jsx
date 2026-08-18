@@ -1366,8 +1366,9 @@ export default function PurchaserDashboard({
 
 // Helper for currency symbols
 export const getCurrencySymbol = (currency) => {
-  if (currency === "USD") return "$";
-  if (currency === "INR") return "₹";
+  const c = (currency || "").toString().toUpperCase().trim();
+  if (c === "USD" || c === "$") return "$";
+  if (c === "INR" || c === "RS" || c === "₹") return "₹";
   return "¥"; // Default RMB
 };
 

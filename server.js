@@ -229,7 +229,8 @@ async function setupPgDatabase() {
         "receivedQuantity" INTEGER,
         "shortageQty" INTEGER,
         "parentRequestId" TEXT,
-        "vendorReadyDate" TEXT
+        "vendorReadyDate" TEXT,
+        "currency" TEXT
       );
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "vendorOrderQuantity" INTEGER;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "cargoPickedQty" INTEGER;
@@ -237,6 +238,7 @@ async function setupPgDatabase() {
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "shortageQty" INTEGER;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "parentRequestId" TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "vendorReadyDate" TEXT;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "currency" TEXT;
     `);
 
     await pool.query(`
@@ -1210,8 +1212,8 @@ app.post("/api/requests", async (req, res) => {
           "cargoId", "isMaterialRec", "actualReceivedDate", "notes", "itemNature", "category",
           "requiredByDate", "entryBy", "packingOrderedByNitin", "purchaseUpdated", "status",
             "cancellationReason", "cancelledAt", "cargoAssignedAt",
-            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)
+            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
           ON CONFLICT ("id") DO UPDATE SET
             "purchaserId" = EXCLUDED."purchaserId",
             "vendorId" = EXCLUDED."vendorId",
@@ -1244,7 +1246,8 @@ app.post("/api/requests", async (req, res) => {
             "receivedQuantity" = EXCLUDED."receivedQuantity",
             "shortageQty" = EXCLUDED."shortageQty",
             "parentRequestId" = EXCLUDED."parentRequestId",
-            "vendorReadyDate" = EXCLUDED."vendorReadyDate"
+            "vendorReadyDate" = EXCLUDED."vendorReadyDate",
+            "currency" = EXCLUDED."currency"
         `;
         const values = [
           r.id, r.purchaserId, r.vendorId, r.orderDate, r.type, r.model, parseInt(r.orderQuantity || 0),
@@ -1259,7 +1262,8 @@ app.post("/api/requests", async (req, res) => {
           r.receivedQuantity != null ? parseInt(r.receivedQuantity) : null,
           r.shortageQty != null ? parseInt(r.shortageQty) : null,
           r.parentRequestId || "",
-          r.vendorReadyDate || ""
+          r.vendorReadyDate || "",
+          r.currency || "RMB"
         ];
         await pool.query(query, values);
         markAppActivity();
@@ -1300,8 +1304,8 @@ app.post("/api/requests/batch", async (req, res) => {
             "cargoId", "isMaterialRec", "actualReceivedDate", "notes", "itemNature", "category",
             "requiredByDate", "entryBy", "packingOrderedByNitin", "purchaseUpdated", "status",
             "cancellationReason", "cancelledAt", "cargoAssignedAt",
-            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)
+            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
           ON CONFLICT ("id") DO UPDATE SET
             "purchaserId" = EXCLUDED."purchaserId",
             "vendorId" = EXCLUDED."vendorId",
@@ -1334,7 +1338,8 @@ app.post("/api/requests/batch", async (req, res) => {
             "receivedQuantity" = EXCLUDED."receivedQuantity",
             "shortageQty" = EXCLUDED."shortageQty",
             "parentRequestId" = EXCLUDED."parentRequestId",
-            "vendorReadyDate" = EXCLUDED."vendorReadyDate"
+            "vendorReadyDate" = EXCLUDED."vendorReadyDate",
+            "currency" = EXCLUDED."currency"
         `;
         const values = [
           r.id, r.purchaserId, r.vendorId, r.orderDate, r.type, r.model, parseInt(r.orderQuantity || 0),
@@ -1349,7 +1354,8 @@ app.post("/api/requests/batch", async (req, res) => {
           r.receivedQuantity != null ? parseInt(r.receivedQuantity) : null,
           r.shortageQty != null ? parseInt(r.shortageQty) : null,
           r.parentRequestId || "",
-          r.vendorReadyDate || ""
+          r.vendorReadyDate || "",
+          r.currency || "RMB"
         ];
         await pool.query(query, values);
       }
