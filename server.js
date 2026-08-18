@@ -730,13 +730,17 @@ async function formatAllRequestsForGoogleSheets() {
     const vendor = vendors.find(v => v.id === r.vendorId)?.name || "";
     const cargo = cargos.find(c => c.id === r.cargoId) || {};
 
+    const effectiveQty = r.cargoId 
+      ? (r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity || 0)
+      : (r.vendorOrderQuantity || r.orderQuantity || 0);
+
     return {
       purchaser: purchaser || "",
       vendor: vendor || "",
       orderDate: r.orderDate || "",
       type: r.type || "",
       model: r.model || "",
-      orderQuantity: r.orderQuantity != null ? String(r.orderQuantity) : "",
+      orderQuantity: String(effectiveQty || 0),
       priceRmb: r.priceRmb != null ? String(r.priceRmb) : "",
       totalRmb: r.totalRmb != null ? String(r.totalRmb) : "",
       advancePayment: r.advancePayment != null ? String(r.advancePayment) : "",
