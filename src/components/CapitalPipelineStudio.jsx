@@ -455,7 +455,7 @@ export default function CapitalPipelineStudio({
             <div style={{ display: "flex", flexDirection: "column", gap: "4px", margin: "10px 0" }}>
               <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#38bdf8" }}>¥ {orderedRmb.toLocaleString()} RMB</div>
               <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#fbbf24" }}>$ {orderedUsd.toLocaleString()} USD</div>
-              <div style={{ fontSize: "1.05rem", fontWeight 800, color: "#34d399" }}>₹ {orderedInrVal.toLocaleString()} INR</div>
+              <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#34d399" }}>₹ {orderedInrVal.toLocaleString()} INR</div>
             </div>
           )}
 
