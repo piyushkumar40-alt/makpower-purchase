@@ -1,7 +1,7 @@
 import React from "react";
 import { Clock, Truck, AlertCircle, Award } from "lucide-react";
 
-export default function AnalyticsPanel({ requests, vendors, cargos }) {
+export default function AnalyticsPanel({ requests = [], vendors = [], cargos = [], onSelectTab }) {
   // 1. Calculations
   const pendingCount = requests.filter(r => !r.priceRmb).length;
   const awaitingCargoCount = requests.filter(r => r.priceRmb && !r.cargoId).length;
@@ -49,14 +49,26 @@ export default function AnalyticsPanel({ requests, vendors, cargos }) {
   });
 
   return (
-    <div className="card-fade-in" style={{ marginBottom: "30px" }}>
+    <div className="card-fade-in" style={{ marginBottom: "24px" }}>
       
       {/* Counters Grid */}
       <div className="dashboard-grid">
-        {/* Delayed of the Month */}
-        <div className="glass-panel metric-card" style={{ borderLeft: `4px solid ${delayedCount > 2 ? "var(--danger)" : delayedCount === 0 ? "var(--success)" : "var(--warning)"}` }}>
+        
+        {/* 1. Delayed of the Month */}
+        <div 
+          onClick={() => onSelectTab && onSelectTab("alerts")} 
+          className="glass-panel metric-card" 
+          style={{ 
+            borderLeft: `4px solid ${delayedCount > 2 ? "var(--danger)" : delayedCount === 0 ? "var(--success)" : "var(--warning)"}`,
+            cursor: "pointer",
+            transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+          }}
+          title="Click to navigate to Delayed Operations & Action Alerts tab"
+        >
           <div>
-            <div className="metric-label">Delayed of the Month</div>
+            <div className="metric-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              Delayed of the Month
+            </div>
             <div 
               className="metric-value" 
               style={{ 
@@ -79,8 +91,13 @@ export default function AnalyticsPanel({ requests, vendors, cargos }) {
           </div>
         </div>
 
-        {/* Pending Pricing */}
-        <div className="glass-panel metric-card" style={{ borderLeft: "4px solid var(--warning)" }}>
+        {/* 2. Pending Pricing (Step 1) */}
+        <div 
+          onClick={() => onSelectTab && onSelectTab("pending")} 
+          className="glass-panel metric-card" 
+          style={{ borderLeft: "4px solid var(--warning)", cursor: "pointer", transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)" }}
+          title="Click to navigate to Step 1: Awaiting Price tab"
+        >
           <div>
             <div className="metric-label">Step 1: Awaiting Price</div>
             <div className="metric-value" style={{ color: "var(--warning)" }}>
@@ -92,8 +109,13 @@ export default function AnalyticsPanel({ requests, vendors, cargos }) {
           </div>
         </div>
 
-        {/* Ready to Cargo */}
-        <div className="glass-panel metric-card" style={{ borderLeft: "4px solid var(--primary)" }}>
+        {/* 3. Ready to Cargo (Step 2) */}
+        <div 
+          onClick={() => onSelectTab && onSelectTab("planner")} 
+          className="glass-panel metric-card" 
+          style={{ borderLeft: "4px solid var(--primary)", cursor: "pointer", transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)" }}
+          title="Click to navigate to Step 2: Awaiting Cargo Consolidation tab"
+        >
           <div>
             <div className="metric-label">Step 2: Awaiting Cargo</div>
             <div className="metric-value" style={{ color: "var(--primary)" }}>
@@ -105,8 +127,13 @@ export default function AnalyticsPanel({ requests, vendors, cargos }) {
           </div>
         </div>
 
-        {/* Cargo In-Transit */}
-        <div className="glass-panel metric-card" style={{ borderLeft: "4px solid var(--secondary)" }}>
+        {/* 4. Cargo In-Transit (Step 3) */}
+        <div 
+          onClick={() => onSelectTab && onSelectTab("shipments")} 
+          className="glass-panel metric-card" 
+          style={{ borderLeft: "4px solid var(--secondary)", cursor: "pointer", transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)" }}
+          title="Click to navigate to Step 3: Cargo In-Transit tab"
+        >
           <div>
             <div className="metric-label">Step 3: Cargo In-Transit</div>
             <div className="metric-value" style={{ color: "var(--secondary)" }}>
@@ -117,6 +144,7 @@ export default function AnalyticsPanel({ requests, vendors, cargos }) {
             <Truck size={24} />
           </div>
         </div>
+
       </div>
 
     </div>

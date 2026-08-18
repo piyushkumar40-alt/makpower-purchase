@@ -97,6 +97,27 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: 0 15px 35px -10px rgba(0, 0, 0, 0.6);
 }
 
+/* Metric Card Clickable Interactive Styling */
+.metric-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 22px;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.metric-card:hover {
+  transform: translateY(-3px) scale(1.01);
+  box-shadow: 0 12px 25px -5px rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.4) !important;
+}
+
+.metric-card:active {
+  transform: translateY(0px) scale(0.99);
+}
+
 /* Button UI */
 .btn {
   display: inline-flex;

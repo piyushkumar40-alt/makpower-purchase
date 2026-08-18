@@ -231,7 +231,7 @@ export default function PurchaserDashboard({
 
       <div className="main-content" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
         {/* Core Analytics bar visible across all panels */}
-        <AnalyticsPanel requests={myRequests} vendors={vendors} cargos={cargos} />
+        <AnalyticsPanel requests={myRequests} vendors={vendors} cargos={cargos} onSelectTab={setActiveTab} />
 
         {/* ==================== ALERTS TAB ==================== */}
         {activeTab === "alerts" && (
