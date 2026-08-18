@@ -3,7 +3,17 @@ import { LogOut, Filter, CheckSquare, Square, CheckCircle, PackageOpen, Eye, X }
 import ItemMasterView from "./ItemMasterView";
 import { getEffectivePhoto } from "./PurchaserDashboard";
 
-export default function NitinDashboard({ currentUser, requests, vendors, cargos, items = [], onBatchUpdateRequests, onLogout }) {
+export default function NitinDashboard({ currentUser, requests, vendors, cargos, items = [], purchasers = [], onBatchUpdateRequests, onLogout }) {
+  const getPurchaserName = (r) => {
+    if (r.purchaserName) return r.purchaserName;
+    if (r.assignedPurchaser) return r.assignedPurchaser;
+    if (r.purchaserId) {
+      const found = (purchasers || []).find(p => p.id === r.purchaserId);
+      if (found) return found.name;
+    }
+    return "Himanshi Wadhwa";
+  };
+
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem("makpower_nitin_tab") || "pending";
   });
@@ -229,6 +239,7 @@ export default function NitinDashboard({ currentUser, requests, vendors, cargos,
                     </th>
                   )}
                   <th>Purchaser</th>
+                  <th>Required By</th>
                   <th>Vendor</th>
                   <th>Order Date</th>
                   <th>Type</th>
@@ -263,7 +274,8 @@ export default function NitinDashboard({ currentUser, requests, vendors, cargos,
                           />
                         </td>
                       )}
-                      <td style={{ fontSize: "0.85rem" }}>{r.entryBy || "Purchaser"}</td>
+                      <td style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary)" }}>{getPurchaserName(r)}</td>
+                      <td style={{ fontSize: "0.85rem", color: "#c084fc", fontWeight: 600 }}>{r.entryBy || r.requestedBy || "Requester"}</td>
                       <td style={{ fontWeight: 500 }}>{vName}</td>
                       <td>{r.orderDate}</td>
                       <td>

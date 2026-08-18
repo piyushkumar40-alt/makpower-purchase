@@ -2,7 +2,17 @@ import React, { useState } from "react";
 import { LogOut, Filter, CheckSquare, Square, CheckCircle, PackageOpen, Download } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
 
-export default function RahulDashboard({ currentUser, requests, vendors, cargos, onBatchUpdateRequests, onLogout }) {
+export default function RahulDashboard({ currentUser, requests, vendors, cargos, purchasers = [], onBatchUpdateRequests, onLogout }) {
+  const getPurchaserName = (r) => {
+    if (r.purchaserName) return r.purchaserName;
+    if (r.assignedPurchaser) return r.assignedPurchaser;
+    if (r.purchaserId) {
+      const found = (purchasers || []).find(p => p.id === r.purchaserId);
+      if (found) return found.name;
+    }
+    return "Himanshi Wadhwa";
+  };
+
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem("makpower_rahul_tab") || "pending";
   });
@@ -226,6 +236,7 @@ export default function RahulDashboard({ currentUser, requests, vendors, cargos,
                     </th>
                   )}
                   <th>Purchaser</th>
+                  <th>Required By</th>
                   <th>Vendor</th>
                   <th>Order Date</th>
                   <th>Type</th>
@@ -260,7 +271,8 @@ export default function RahulDashboard({ currentUser, requests, vendors, cargos,
                           />
                         </td>
                       )}
-                      <td style={{ fontSize: "0.85rem" }}>{r.entryBy || "Purchaser"}</td>
+                      <td style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary)" }}>{getPurchaserName(r)}</td>
+                      <td style={{ fontSize: "0.85rem", color: "#c084fc", fontWeight: 600 }}>{r.entryBy || r.requestedBy || "Requester"}</td>
                       <td style={{ fontWeight: 500 }}>{vName}</td>
                       <td>{r.orderDate}</td>
                       <td>

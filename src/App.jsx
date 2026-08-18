@@ -1084,6 +1084,7 @@ export default function App() {
             vendors={vendors}
             cargos={cargos}
             items={items}
+            purchasers={users.filter(u => u.role === "purchaser" && u.status === "active")}
             onBatchUpdateRequests={batchUpdateRequests}
             onLogout={handleLogout}
           />
@@ -1095,6 +1096,7 @@ export default function App() {
             requests={requests}
             vendors={vendors}
             cargos={cargos}
+            purchasers={users.filter(u => u.role === "purchaser" && u.status === "active")}
             onBatchUpdateRequests={batchUpdateRequests}
             onLogout={handleLogout}
           />
