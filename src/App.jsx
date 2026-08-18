@@ -961,7 +961,7 @@ export default function App() {
           )}
 
         {activeView === "requester" && (
-          <div style={{ display: "flex", flex: 1, justifyContent: "center", alignItems: "center", padding: "40px 20px" }}>
+          <div style={{ flex: 1, width: "100%", padding: "16px 24px" }}>
             <RequesterForm 
               onAddRequests={addRequests} 
               purchasers={users.filter(u => u.role === "purchaser" && u.status === "active")} 

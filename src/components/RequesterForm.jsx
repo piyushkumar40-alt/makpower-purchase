@@ -72,6 +72,43 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
   ]);
 
   const [activeDropdown, setActiveDropdown] = useState(null); // { rowId, field: "model" | "category" }
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 220 });
+
+  const openDropdown = (e, rowId, field) => {
+    if (e && e.target) {
+      const rect = e.target.getBoundingClientRect();
+      setDropdownPos({
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: Math.max(rect.width, 240)
+      });
+    }
+    setActiveDropdown({ rowId, field });
+  };
+
+  // Scroll/resize listener to keep fixed dropdown position updated relative to active input
+  useEffect(() => {
+    const handleScrollOrResize = () => {
+      if (activeDropdown) {
+        const activeEl = document.activeElement;
+        if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA")) {
+          const rect = activeEl.getBoundingClientRect();
+          setDropdownPos({
+            top: rect.bottom + 4,
+            left: rect.left,
+            width: Math.max(rect.width, 240)
+          });
+        }
+      }
+    };
+    window.addEventListener("scroll", handleScrollOrResize, true);
+    window.addEventListener("resize", handleScrollOrResize);
+    return () => {
+      window.removeEventListener("scroll", handleScrollOrResize, true);
+      window.removeEventListener("resize", handleScrollOrResize);
+    };
+  }, [activeDropdown]);
+
   const [entryBy, setEntryBy] = useState(() => {
     return currentUser ? currentUser.name : "Mr. Himanshu";
   });
@@ -89,6 +126,29 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
       }
     }
   }, [currentUser]);
+
+  // Strict Validation: Item Model MUST match a valid model in combinedItems (if items exist in system)
+  const isValidModel = (modelName) => {
+    if (!modelName || !modelName.trim()) return false;
+    if (combinedItems.length > 0) {
+      return combinedItems.some(i => i.name.toLowerCase() === modelName.trim().toLowerCase());
+    }
+    return true;
+  };
+
+  // Validation Check: Good to Go?
+  const isGoodToGo = () => {
+    return rows.every(r => 
+      r.category && 
+      r.model && 
+      isValidModel(r.model) && 
+      r.orderQuantity && 
+      r.requiredByDate && 
+      r.purchaserId
+    );
+  };
+
+  const hasInvalidModel = rows.some(r => r.model && !isValidModel(r.model));
 
   // Add row
   const addRow = () => {
@@ -338,7 +398,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
   }
 
   return (
-    <div className="glass-panel card-fade-in" style={{ padding: "28px", width: "100%", maxWidth: "1400px", margin: "20px auto" }}>
+    <div className="glass-panel card-fade-in" style={{ padding: "24px 28px", width: "100%", maxWidth: "100%", margin: "0" }}>
       
       {/* Sub Tab Navigation */}
       <div style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "10px" }}>
@@ -450,11 +510,11 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto", textAlign: "left" }}
                       placeholder="Type or Select Category..." 
                       value={row.category}
-                      onFocus={() => setActiveDropdown({ rowId: row.id, field: "category" })}
+                      onFocus={(e) => openDropdown(e, row.id, "category")}
                       onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
                       onChange={e => {
                         updateCell(row.id, "category", e.target.value);
-                        setActiveDropdown({ rowId: row.id, field: "category" });
+                        openDropdown(e, row.id, "category");
                       }}
                       required
                     />
@@ -466,18 +526,17 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         <div 
                           onMouseDown={(e) => e.preventDefault()}
                           style={{
-                            position: "absolute",
-                            top: "calc(100% + 2px)",
-                            left: 0,
-                            width: "100%",
-                            minWidth: "180px",
-                            maxHeight: "200px",
+                            position: "fixed",
+                            top: `${dropdownPos.top}px`,
+                            left: `${dropdownPos.left}px`,
+                            width: `${dropdownPos.width}px`,
+                            maxHeight: "220px",
                             overflowY: "auto",
                             background: "#0f172a",
                             border: "1px solid #38bdf8",
                             borderRadius: "8px",
-                            boxShadow: "0 10px 25px rgba(0,0,0,0.8)",
-                            zIndex: 9999,
+                            boxShadow: "0 12px 30px rgba(0,0,0,0.95)",
+                            zIndex: 99999,
                             textAlign: "left"
                           }}
                         >
@@ -519,14 +578,21 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                     <input 
                       type="text" 
                       className="form-control" 
-                      style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto", textAlign: "left" }}
+                      style={{ 
+                        padding: "4px 8px", 
+                        fontSize: "0.85rem", 
+                        height: "auto", 
+                        textAlign: "left",
+                        borderColor: row.model && !isValidModel(row.model) ? "#ef4444" : undefined,
+                        boxShadow: row.model && !isValidModel(row.model) ? "0 0 8px rgba(239, 68, 68, 0.4)" : undefined
+                      }}
                       placeholder="Type or Select Item Model..." 
                       value={row.model}
-                      onFocus={() => setActiveDropdown({ rowId: row.id, field: "model" })}
+                      onFocus={(e) => openDropdown(e, row.id, "model")}
                       onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
                       onChange={e => {
                         const selectedName = e.target.value;
-                        setActiveDropdown({ rowId: row.id, field: "model" });
+                        openDropdown(e, row.id, "model");
                         const matchedItem = combinedItems.find(i => i.name.toLowerCase() === selectedName.toLowerCase());
                         if (matchedItem) {
                           setRows(prev => prev.map(r => {
@@ -547,6 +613,11 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       }}
                       required
                     />
+                    {row.model && !isValidModel(row.model) && (
+                      <div style={{ fontSize: "0.72rem", color: "#fca5a5", marginTop: "2px", fontWeight: 500 }}>
+                        Invalid model name (select from dropdown)
+                      </div>
+                    )}
                     {activeDropdown?.rowId === row.id && activeDropdown?.field === "model" && (() => {
                       const modelQuery = (row.model || "").trim().toLowerCase();
                       const catQuery = (row.category || "").trim().toLowerCase();
@@ -573,18 +644,17 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         <div 
                           onMouseDown={(e) => e.preventDefault()}
                           style={{
-                            position: "absolute",
-                            top: "calc(100% + 2px)",
-                            left: 0,
-                            width: "100%",
-                            minWidth: "220px",
+                            position: "fixed",
+                            top: `${dropdownPos.top}px`,
+                            left: `${dropdownPos.left}px`,
+                            width: `${dropdownPos.width}px`,
                             maxHeight: "220px",
                             overflowY: "auto",
                             background: "#0f172a",
                             border: "1px solid #38bdf8",
                             borderRadius: "8px",
-                            boxShadow: "0 10px 25px rgba(0,0,0,0.8)",
-                            zIndex: 9999,
+                            boxShadow: "0 12px 30px rgba(0,0,0,0.95)",
+                            zIndex: 99999,
                             textAlign: "left"
                           }}
                         >
@@ -631,8 +701,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                               </div>
                             ))
                           ) : (
-                            <div style={{ padding: "10px 12px", fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic" }}>
-                              {modelQuery ? `Custom item model "${row.model}"` : "No saved items available"}
+                            <div style={{ padding: "10px 12px", fontSize: "0.8rem", color: "#fca5a5", fontStyle: "italic" }}>
+                              {modelQuery ? `"${row.model}" is invalid. Select from dropdown.` : "No saved items available"}
                             </div>
                           )}
                         </div>
@@ -728,14 +798,14 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
               fontSize: "0.9rem",
               textAlign: "center",
               transition: "0.3s all",
-              minWidth: "150px",
-              background: goodToGo ? "var(--success)" : "rgba(255, 255, 255, 0.03)",
-              color: goodToGo ? "var(--text-dark)" : "var(--text-muted)",
+              minWidth: "160px",
+              background: goodToGo ? "var(--success)" : hasInvalidModel ? "rgba(239, 68, 68, 0.2)" : "rgba(255, 255, 255, 0.03)",
+              color: goodToGo ? "var(--text-dark)" : hasInvalidModel ? "#fca5a5" : "var(--text-muted)",
               boxShadow: goodToGo ? "0 0 15px var(--success-glow)" : "none",
-              border: goodToGo ? "1.5px solid transparent" : "1.5px dashed var(--border-glass)"
+              border: goodToGo ? "1.5px solid transparent" : hasInvalidModel ? "1.5px solid rgba(239, 68, 68, 0.4)" : "1.5px dashed var(--border-glass)"
             }}
           >
-            {goodToGo ? "Good to Go" : "Fill All Cells"}
+            {goodToGo ? "Good to Go" : hasInvalidModel ? "Invalid Item Model" : "Fill All Cells"}
           </div>
 
           <button 
