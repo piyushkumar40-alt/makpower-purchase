@@ -356,7 +356,16 @@ export default function App() {
     });
     await postData("/api/requests/batch", reqsWithIds);
     setRequests(prev => [...reqsWithIds, ...prev]);
-    logSystemActivity("CREATE_REQUEST", `Created ${reqsWithIds.length} purchase requisition(s) (e.g. ${reqsWithIds[0]?.model || "Requisition"})`, "Requisition", reqsWithIds[0]?.id, null, reqsWithIds);
+    const creatorName = reqsWithIds[0]?.entryBy || currentUser?.name || "Requester";
+    const modelsSummary = reqsWithIds.map(r => `${r.model || "Item"} (${r.orderQuantity || 1} Pcs)`).join(", ");
+    logSystemActivity(
+      "CREATE_REQUEST", 
+      `"${creatorName}" submitted ${reqsWithIds.length} new requisition(s): ${modelsSummary}`, 
+      "Requisition", 
+      reqsWithIds[0]?.id, 
+      null, 
+      reqsWithIds
+    );
   };
 
   const updateRequest = async (updatedReq) => {
@@ -384,7 +393,7 @@ export default function App() {
     logSystemActivity(actionLabel, detailText, "Requisition", newReq.id, oldReq, newReq);
   };
 
-  const batchUpdateRequests = async (updatedReqs) => {
+  const batchUpdateRequests = async (updatedReqs, customAction = "BATCH_UPDATE_REQUESTS", customDetails = "") => {
     const mapped = updatedReqs.map(req => ({
       ...req,
       actualReceivedDate: req.isMaterialRec === "Yes" ? (req.actualReceivedDate || "2026-06-11") : ""
@@ -394,7 +403,9 @@ export default function App() {
       const match = mapped.find(x => x.id === r.id);
       return match ? match : r;
     }));
-    logSystemActivity("BATCH_UPDATE_REQUESTS", `Bulk updated ${mapped.length} requisition(s)`, "Requisition", mapped[0]?.id);
+    const modelsList = mapped.map(r => r.model).filter(Boolean).join(", ");
+    const detailText = customDetails || `Bulk updated ${mapped.length} requisition(s)${modelsList ? `: ${modelsList}` : ""}`;
+    logSystemActivity(customAction, detailText, "Requisition", mapped[0]?.id, null, mapped);
   };
 
   const cancelRequest = async (requestId, reason = "") => {

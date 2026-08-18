@@ -16,7 +16,16 @@ export default function AuditLogsPanel({ auditLogs = [], users = [], requests = 
     return auditLogs.filter(log => {
       // User Filter
       if (selectedUser !== "all") {
-        if (log.userId !== selectedUser && log.userName !== selectedUser) return false;
+        const uObj = (users || []).find(u => u.id === selectedUser || u.name === selectedUser);
+        const searchName = uObj ? uObj.name.toLowerCase() : selectedUser.toLowerCase();
+        const logUserId = (log.userId || "").toLowerCase();
+        const logUserName = (log.userName || "").toLowerCase();
+        const logDetails = (log.details || "").toLowerCase();
+
+        const matchId = logUserId === selectedUser.toLowerCase();
+        const matchName = logUserName.includes(searchName);
+        const matchDetails = logDetails.includes(searchName);
+        if (!matchId && !matchName && !matchDetails) return false;
       }
 
       // Action Filter
@@ -25,7 +34,7 @@ export default function AuditLogsPanel({ auditLogs = [], users = [], requests = 
         if (selectedAction === "PRICING" && !act.includes("PRICE") && !act.includes("FULFILL") && !act.includes("DETAILS")) return false;
         if (selectedAction === "CARGO" && !act.includes("CARGO")) return false;
         if (selectedAction === "VENDOR" && !act.includes("VENDOR")) return false;
-        if (selectedAction === "REQUEST" && !act.includes("REQUEST") && !act.includes("ORDER")) return false;
+        if (selectedAction === "REQUEST" && !act.includes("REQUEST") && !act.includes("ORDER") && !act.includes("PACKING") && !act.includes("BATCH") && !act.includes("CREATE")) return false;
         if (selectedAction === "ITEM" && !act.includes("ITEM") && !act.includes("CATALOG")) return false;
         if (selectedAction === "USER" && !act.includes("USER") && !act.includes("LOGIN") && !act.includes("LOGOUT")) return false;
       }
@@ -34,7 +43,11 @@ export default function AuditLogsPanel({ auditLogs = [], users = [], requests = 
       if (timeRange !== "all" && log.isoTime) {
         const logDate = new Date(log.isoTime);
         const diffDays = (now - logDate) / (1000 * 60 * 60 * 24);
-        if (timeRange === "today" && diffDays > 1) return false;
+        if (timeRange === "today") {
+          const todayStr = now.toISOString().slice(0, 10);
+          const logStr = logDate.toISOString().slice(0, 10);
+          if (logStr !== todayStr && diffDays > 1) return false;
+        }
         if (timeRange === "7days" && diffDays > 7) return false;
         if (timeRange === "30days" && diffDays > 30) return false;
       }

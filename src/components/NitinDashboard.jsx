@@ -79,7 +79,12 @@ export default function NitinDashboard({ currentUser, requests, vendors, cargos,
       ...r,
       packingOrderedByNitin: "Yes"
     }));
-    onBatchUpdateRequests(updated);
+    const modelsList = updated.map(r => r.model).filter(Boolean).join(", ");
+    onBatchUpdateRequests(
+      updated,
+      "PACKING_ORDERED",
+      `Nitin confirmed outer packing order for ${updated.length} item(s)${modelsList ? `: ${modelsList}` : ""}`
+    );
     setCheckedIds([]);
   };
 
