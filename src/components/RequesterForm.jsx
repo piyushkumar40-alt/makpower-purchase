@@ -1,9 +1,58 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Plus, Trash2, CheckCircle2, Clipboard, ShieldAlert, Sparkles, X, Package } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
 
 export default function RequesterForm({ onAddRequests, purchasers, vendors, currentUser, requests = [], cargos = [], cargoCompanies = [], items = [] }) {
-  const catalogCategories = Array.from(new Set((items || []).map(i => i.category).filter(Boolean)));
+  // Combine items from items prop and requests prop so dropdown has options even if master catalog isn't populated
+  const combinedItems = useMemo(() => {
+    const map = new Map();
+    (items || []).forEach(i => {
+      if (i && (i.name || i.model)) {
+        const name = (i.name || i.model).trim();
+        const key = name.toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, {
+            id: i.id || name,
+            name: name,
+            category: i.category || "",
+            type: i.itemType || i.type || "Import",
+            itemNature: i.itemNature || "Non Consumables"
+          });
+        }
+      }
+    });
+    (requests || []).forEach(r => {
+      if (r && r.model && r.status !== "Cancelled") {
+        const name = r.model.trim();
+        const key = name.toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, {
+            id: r.id || name,
+            name: name,
+            category: r.category || "",
+            type: r.type || "Import",
+            itemNature: r.itemNature || "Non Consumables"
+          });
+        }
+      }
+    });
+    return Array.from(map.values());
+  }, [items, requests]);
+
+  // Build a deduplicated list of categories from both items and requests
+  const catalogCategories = useMemo(() => {
+    const cats = new Set();
+    combinedItems.forEach(i => {
+      if (i.category && i.category.trim()) cats.add(i.category.trim());
+    });
+    (requests || []).forEach(r => {
+      if (r.category && r.category.trim()) cats.add(r.category.trim());
+    });
+    (items || []).forEach(i => {
+      if (i.category && i.category.trim()) cats.add(i.category.trim());
+    });
+    return Array.from(cats).sort();
+  }, [combinedItems, items, requests]);
   const [activeTab, setActiveTab] = useState("form"); // "form" | "catalog"
   // Determine default purchaser based on logged-in user
   const defaultPurchaserId = currentUser?.role === "purchaser" ? currentUser.id : (purchasers[0]?.id || "");
@@ -402,57 +451,67 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       placeholder="Type or Select Category..." 
                       value={row.category}
                       onFocus={() => setActiveDropdown({ rowId: row.id, field: "category" })}
-                      onBlur={() => setTimeout(() => setActiveDropdown(null), 150)}
+                      onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
                       onChange={e => {
                         updateCell(row.id, "category", e.target.value);
                         setActiveDropdown({ rowId: row.id, field: "category" });
                       }}
                       required
                     />
-                    {activeDropdown?.rowId === row.id && activeDropdown?.field === "category" && (
-                      <div 
-                        style={{
-                          position: "absolute",
-                          top: "calc(100% + 2px)",
-                          left: 0,
-                          width: "100%",
-                          minWidth: "160px",
-                          maxHeight: "200px",
-                          overflowY: "auto",
-                          background: "#0f172a",
-                          border: "1px solid #38bdf8",
-                          borderRadius: "8px",
-                          boxShadow: "0 10px 25px rgba(0,0,0,0.6)",
-                          zIndex: 9999,
-                          textAlign: "left"
-                        }}
-                      >
-                        {catalogCategories
-                          .filter(cat => !row.category || cat.toLowerCase().includes(row.category.toLowerCase()))
-                          .map(cat => (
-                            <div
-                              key={cat}
-                              style={{
-                                padding: "8px 12px",
-                                cursor: "pointer",
-                                fontSize: "0.83rem",
-                                color: "#f8fafc",
-                                textAlign: "left",
-                                borderBottom: "1px solid rgba(255,255,255,0.05)"
-                              }}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                updateCell(row.id, "category", cat);
-                                setActiveDropdown(null);
-                              }}
-                              onMouseEnter={(e) => e.target.style.background = "#1e293b"}
-                              onMouseLeave={(e) => e.target.style.background = "transparent"}
-                            >
-                              {cat}
+                    {activeDropdown?.rowId === row.id && activeDropdown?.field === "category" && (() => {
+                      const query = (row.category || "").trim().toLowerCase();
+                      const filteredCats = catalogCategories.filter(cat => !query || cat.toLowerCase().includes(query));
+
+                      return (
+                        <div 
+                          onMouseDown={(e) => e.preventDefault()}
+                          style={{
+                            position: "absolute",
+                            top: "calc(100% + 2px)",
+                            left: 0,
+                            width: "100%",
+                            minWidth: "180px",
+                            maxHeight: "200px",
+                            overflowY: "auto",
+                            background: "#0f172a",
+                            border: "1px solid #38bdf8",
+                            borderRadius: "8px",
+                            boxShadow: "0 10px 25px rgba(0,0,0,0.8)",
+                            zIndex: 9999,
+                            textAlign: "left"
+                          }}
+                        >
+                          {filteredCats.length > 0 ? (
+                            filteredCats.map(cat => (
+                              <div
+                                key={cat}
+                                style={{
+                                  padding: "8px 12px",
+                                  cursor: "pointer",
+                                  fontSize: "0.83rem",
+                                  color: "#f8fafc",
+                                  textAlign: "left",
+                                  borderBottom: "1px solid rgba(255,255,255,0.05)"
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  updateCell(row.id, "category", cat);
+                                  setActiveDropdown(null);
+                                }}
+                                onMouseEnter={(e) => e.target.style.background = "#1e293b"}
+                                onMouseLeave={(e) => e.target.style.background = "transparent"}
+                              >
+                                {cat}
+                              </div>
+                            ))
+                          ) : (
+                            <div style={{ padding: "10px 12px", fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic" }}>
+                              {query ? `Custom category "${row.category}"` : "No saved categories"}
                             </div>
-                          ))}
-                      </div>
-                    )}
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
 
                   {/* Item Name / Model */}
@@ -464,11 +523,11 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       placeholder="Type or Select Item Model..." 
                       value={row.model}
                       onFocus={() => setActiveDropdown({ rowId: row.id, field: "model" })}
-                      onBlur={() => setTimeout(() => setActiveDropdown(null), 150)}
+                      onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
                       onChange={e => {
                         const selectedName = e.target.value;
                         setActiveDropdown({ rowId: row.id, field: "model" });
-                        const matchedItem = (items || []).find(i => i.name.toLowerCase() === selectedName.toLowerCase());
+                        const matchedItem = combinedItems.find(i => i.name.toLowerCase() === selectedName.toLowerCase());
                         if (matchedItem) {
                           setRows(prev => prev.map(r => {
                             if (r.id === row.id) {
@@ -476,7 +535,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                                 ...r,
                                 model: matchedItem.name,
                                 category: matchedItem.category || r.category,
-                                type: matchedItem.itemType || r.type,
+                                type: matchedItem.type || r.type,
                                 itemNature: matchedItem.itemNature || r.itemNature
                               };
                             }
@@ -488,62 +547,97 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       }}
                       required
                     />
-                    {activeDropdown?.rowId === row.id && activeDropdown?.field === "model" && (
-                      <div 
-                        style={{
-                          position: "absolute",
-                          top: "calc(100% + 2px)",
-                          left: 0,
-                          width: "100%",
-                          minWidth: "180px",
-                          maxHeight: "220px",
-                          overflowY: "auto",
-                          background: "#0f172a",
-                          border: "1px solid #38bdf8",
-                          borderRadius: "8px",
-                          boxShadow: "0 10px 25px rgba(0,0,0,0.6)",
-                          zIndex: 9999,
-                          textAlign: "left"
-                        }}
-                      >
-                        {(items || [])
-                          .filter(i => !row.category || (i.category && i.category.toLowerCase() === row.category.toLowerCase()))
-                          .filter(i => !row.model || i.name.toLowerCase().includes(row.model.toLowerCase()))
-                          .map(item => (
-                            <div
-                              key={item.id || item.name}
-                              style={{
-                                padding: "8px 12px",
-                                cursor: "pointer",
-                                fontSize: "0.83rem",
-                                color: "#f8fafc",
-                                textAlign: "left",
-                                borderBottom: "1px solid rgba(255,255,255,0.05)"
-                              }}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                setRows(prev => prev.map(r => {
-                                  if (r.id === row.id) {
-                                    return {
-                                      ...r,
-                                      model: item.name,
-                                      category: item.category || r.category,
-                                      type: item.itemType || r.type,
-                                      itemNature: item.itemNature || r.itemNature
-                                    };
-                                  }
-                                  return r;
-                                }));
-                                setActiveDropdown(null);
-                              }}
-                              onMouseEnter={(e) => e.target.style.background = "#1e293b"}
-                              onMouseLeave={(e) => e.target.style.background = "transparent"}
-                            >
-                              {item.name}
+                    {activeDropdown?.rowId === row.id && activeDropdown?.field === "model" && (() => {
+                      const modelQuery = (row.model || "").trim().toLowerCase();
+                      const catQuery = (row.category || "").trim().toLowerCase();
+
+                      // Filter items based on category (if specified) and model query
+                      let candidateItems = combinedItems;
+                      if (catQuery) {
+                        const inCat = combinedItems.filter(i => 
+                          i.category && (
+                            i.category.toLowerCase().includes(catQuery) ||
+                            catQuery.includes(i.category.toLowerCase())
+                          )
+                        );
+                        if (inCat.length > 0) {
+                          candidateItems = inCat;
+                        }
+                      }
+
+                      const filteredModels = candidateItems.filter(i =>
+                        !modelQuery || i.name.toLowerCase().includes(modelQuery)
+                      );
+
+                      return (
+                        <div 
+                          onMouseDown={(e) => e.preventDefault()}
+                          style={{
+                            position: "absolute",
+                            top: "calc(100% + 2px)",
+                            left: 0,
+                            width: "100%",
+                            minWidth: "220px",
+                            maxHeight: "220px",
+                            overflowY: "auto",
+                            background: "#0f172a",
+                            border: "1px solid #38bdf8",
+                            borderRadius: "8px",
+                            boxShadow: "0 10px 25px rgba(0,0,0,0.8)",
+                            zIndex: 9999,
+                            textAlign: "left"
+                          }}
+                        >
+                          {filteredModels.length > 0 ? (
+                            filteredModels.map(item => (
+                              <div
+                                key={item.id || item.name}
+                                style={{
+                                  padding: "8px 12px",
+                                  cursor: "pointer",
+                                  fontSize: "0.83rem",
+                                  color: "#f8fafc",
+                                  textAlign: "left",
+                                  borderBottom: "1px solid rgba(255,255,255,0.05)",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: "2px"
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  setRows(prev => prev.map(r => {
+                                    if (r.id === row.id) {
+                                      return {
+                                        ...r,
+                                        model: item.name,
+                                        category: item.category || r.category,
+                                        type: item.type || r.type,
+                                        itemNature: item.itemNature || r.itemNature
+                                      };
+                                    }
+                                    return r;
+                                  }));
+                                  setActiveDropdown(null);
+                                }}
+                                onMouseEnter={(e) => e.target.style.background = "#1e293b"}
+                                onMouseLeave={(e) => e.target.style.background = "transparent"}
+                              >
+                                <span style={{ fontWeight: 600 }}>{item.name}</span>
+                                {item.category && (
+                                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                    {item.category} • {item.type || "Import"}
+                                  </span>
+                                )}
+                              </div>
+                            ))
+                          ) : (
+                            <div style={{ padding: "10px 12px", fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic" }}>
+                              {modelQuery ? `Custom item model "${row.model}"` : "No saved items available"}
                             </div>
-                          ))}
-                      </div>
-                    )}
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
 
                   {/* Qty */}
