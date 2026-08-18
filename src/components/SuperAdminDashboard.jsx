@@ -6,6 +6,7 @@ import ItemMasterView from "./ItemMasterView";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
+import { QuickCreateDesignationModal, QuickCreateVendorModal, QuickCreateCargoCompanyModal, QuickCreateItemModal, QuickCreateUserModal } from "./QuickCreateModals";
 
 export default function SuperAdminDashboard({
   users,
