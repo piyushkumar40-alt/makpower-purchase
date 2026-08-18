@@ -74,6 +74,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
 
   const [activeDropdown, setActiveDropdown] = useState(null); // { rowId, field: "model" | "category" }
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 220 });
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
 
   const openDropdown = (e, rowId, field) => {
     if (e && e.target) {
@@ -84,7 +85,32 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
         width: Math.max(rect.width, 240)
       });
     }
+    setHighlightedIndex(0);
     setActiveDropdown({ rowId, field });
+  };
+
+  const selectCategoryOption = (rowId, categoryName) => {
+    updateCell(rowId, "category", categoryName);
+    setActiveDropdown(null);
+    setHighlightedIndex(0);
+  };
+
+  const selectModelOption = (rowId, item) => {
+    setRows(prev => prev.map(r => {
+      if (r.id === rowId) {
+        return {
+          ...r,
+          model: item.name,
+          category: item.category || r.category,
+          type: item.type || r.type,
+          itemType: item.itemType || r.itemType || "RM",
+          itemNature: item.itemNature || r.itemNature
+        };
+      }
+      return r;
+    }));
+    setActiveDropdown(null);
+    setHighlightedIndex(0);
   };
 
   // Scroll/resize listener to keep fixed dropdown position updated relative to active input
@@ -559,6 +585,30 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         updateCell(row.id, "category", e.target.value);
                         openDropdown(e, row.id, "category");
                       }}
+                      onKeyDown={e => {
+                        if (activeDropdown?.rowId === row.id && activeDropdown?.field === "category") {
+                          const query = (row.category || "").trim().toLowerCase();
+                          const rowItemType = (row.itemType || "RM").toUpperCase();
+                          const itemsForType = combinedItems.filter(i => !i.itemType || i.itemType.toUpperCase() === rowItemType);
+                          const catsForType = Array.from(new Set(itemsForType.map(i => i.category && i.category.trim()).filter(Boolean))).sort();
+                          const candidateCats = catsForType.length > 0 ? catsForType : catalogCategories;
+                          const filteredCats = candidateCats.filter(cat => !query || cat.toLowerCase().includes(query));
+
+                          if (e.key === "ArrowDown") {
+                            e.preventDefault();
+                            setHighlightedIndex(prev => Math.min(prev + 1, Math.max(0, filteredCats.length - 1)));
+                          } else if (e.key === "ArrowUp") {
+                            e.preventDefault();
+                            setHighlightedIndex(prev => Math.max(prev - 1, 0));
+                          } else if (e.key === "Enter" || e.key === "Tab") {
+                            if (filteredCats.length > 0) {
+                              e.preventDefault();
+                              const selectedCat = filteredCats[highlightedIndex] || filteredCats[0];
+                              selectCategoryOption(row.id, selectedCat);
+                            }
+                          }
+                        }
+                      }}
                       required
                     />
                     {activeDropdown?.rowId === row.id && activeDropdown?.field === "category" && (() => {
@@ -597,7 +647,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                           }}
                         >
                           {filteredCats.length > 0 ? (
-                            filteredCats.map(cat => (
+                            filteredCats.map((cat, idx) => (
                               <div
                                 key={cat}
                                 style={{
@@ -606,15 +656,15 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                                   fontSize: "0.83rem",
                                   color: "#f8fafc",
                                   textAlign: "left",
-                                  borderBottom: "1px solid rgba(255,255,255,0.05)"
+                                  borderBottom: "1px solid rgba(255,255,255,0.05)",
+                                  background: idx === highlightedIndex ? "#1e293b" : "transparent",
+                                  borderLeft: idx === highlightedIndex ? "3px solid #38bdf8" : "3px solid transparent"
                                 }}
                                 onMouseDown={(e) => {
                                   e.preventDefault();
-                                  updateCell(row.id, "category", cat);
-                                  setActiveDropdown(null);
+                                  selectCategoryOption(row.id, cat);
                                 }}
-                                onMouseEnter={(e) => e.target.style.background = "#1e293b"}
-                                onMouseLeave={(e) => e.target.style.background = "transparent"}
+                                onMouseEnter={() => setHighlightedIndex(idx)}
                               >
                                 {cat}
                               </div>
@@ -654,21 +704,40 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                           (!row.itemType || !i.itemType || i.itemType.toUpperCase() === (row.itemType || "RM").toUpperCase())
                         );
                         if (matchedItem) {
-                          setRows(prev => prev.map(r => {
-                            if (r.id === row.id) {
-                              return {
-                                ...r,
-                                model: matchedItem.name,
-                                category: matchedItem.category || r.category,
-                                type: matchedItem.type || r.type,
-                                itemType: matchedItem.itemType || r.itemType || "RM",
-                                itemNature: matchedItem.itemNature || r.itemNature
-                              };
-                            }
-                            return r;
-                          }));
+                          selectModelOption(row.id, matchedItem);
                         } else {
                           updateCell(row.id, "model", selectedName);
+                        }
+                      }}
+                      onKeyDown={e => {
+                        if (activeDropdown?.rowId === row.id && activeDropdown?.field === "model") {
+                          const modelQuery = (row.model || "").trim().toLowerCase();
+                          const catQuery = (row.category || "").trim().toLowerCase();
+                          const rowItemType = (row.itemType || "RM").toUpperCase();
+
+                          let candidateItems = combinedItems.filter(i =>
+                            !i.itemType || i.itemType.toUpperCase() === rowItemType
+                          );
+                          if (candidateItems.length === 0) candidateItems = combinedItems;
+                          if (catQuery) {
+                            const inCat = candidateItems.filter(i => i.category && (i.category.toLowerCase().includes(catQuery) || catQuery.includes(i.category.toLowerCase())));
+                            if (inCat.length > 0) candidateItems = inCat;
+                          }
+                          const filteredModels = candidateItems.filter(i => !modelQuery || i.name.toLowerCase().includes(modelQuery));
+
+                          if (e.key === "ArrowDown") {
+                            e.preventDefault();
+                            setHighlightedIndex(prev => Math.min(prev + 1, Math.max(0, filteredModels.length - 1)));
+                          } else if (e.key === "ArrowUp") {
+                            e.preventDefault();
+                            setHighlightedIndex(prev => Math.max(prev - 1, 0));
+                          } else if (e.key === "Enter" || e.key === "Tab") {
+                            if (filteredModels.length > 0) {
+                              e.preventDefault();
+                              const selectedItem = filteredModels[highlightedIndex] || filteredModels[0];
+                              selectModelOption(row.id, selectedItem);
+                            }
+                          }
                         }
                       }}
                       required
@@ -728,7 +797,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                           }}
                         >
                           {filteredModels.length > 0 ? (
-                            filteredModels.map(item => (
+                            filteredModels.map((item, idx) => (
                               <div
                                 key={item.id || item.name}
                                 style={{
@@ -740,27 +809,15 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                                   borderBottom: "1px solid rgba(255,255,255,0.05)",
                                   display: "flex",
                                   flexDirection: "column",
-                                  gap: "2px"
+                                  gap: "2px",
+                                  background: idx === highlightedIndex ? "#1e293b" : "transparent",
+                                  borderLeft: idx === highlightedIndex ? "3px solid #38bdf8" : "3px solid transparent"
                                 }}
                                 onMouseDown={(e) => {
                                   e.preventDefault();
-                                  setRows(prev => prev.map(r => {
-                                    if (r.id === row.id) {
-                                      return {
-                                        ...r,
-                                        model: item.name,
-                                        category: item.category || r.category,
-                                        type: item.type || r.type,
-                                        itemType: item.itemType || r.itemType || "RM",
-                                        itemNature: item.itemNature || r.itemNature
-                                      };
-                                    }
-                                    return r;
-                                  }));
-                                  setActiveDropdown(null);
+                                  selectModelOption(row.id, item);
                                 }}
-                                onMouseEnter={(e) => e.target.style.background = "#1e293b"}
-                                onMouseLeave={(e) => e.target.style.background = "transparent"}
+                                onMouseEnter={() => setHighlightedIndex(idx)}
                               >
                                 <span style={{ fontWeight: 600 }}>{item.name}</span>
                                 {item.category && (
