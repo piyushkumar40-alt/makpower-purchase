@@ -1121,6 +1121,8 @@ export default function App() {
               users={users}
               items={items}
               cargoCompanies={cargoCompanies}
+              settings={settings}
+              onUpdateSettings={handleUpdateSystemSettings}
               onLogout={handleLogout}
             />
           </div>
