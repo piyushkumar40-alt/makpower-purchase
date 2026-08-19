@@ -82,6 +82,139 @@ export default function PurchaserDashboard({
   const [plannerVendorId, setPlannerVendorId] = useState("");
   const [checkedRequestIds, setCheckedRequestIds] = useState([]);
 
+  // Step 1 Batch Update & Paste State
+  const [step1CheckedIds, setStep1CheckedIds] = useState([]);
+  const [step1Mode, setStep1Mode] = useState("inline"); // "inline" | "standard"
+  const [step1InlineEdits, setStep1InlineEdits] = useState({}); // { [reqId]: { vendorId, vendorSearchText, priceRmb, vendorEdd } }
+  const [showStep1PasteModal, setShowStep1PasteModal] = useState(false);
+  const [step1PasteText, setStep1PasteText] = useState("");
+  const [step1BatchVendorId, setStep1BatchVendorId] = useState("");
+  const [step1BatchEdd, setStep1BatchEdd] = useState("");
+
+  const handleStep1PricePaste = (e, startRowIdx, pendingReqs) => {
+    const clipboardData = e.clipboardData || window.clipboardData;
+    if (!clipboardData) return;
+    const pastedText = clipboardData.getData("text");
+    if (!pastedText) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const lines = pastedText.split(/\r?\n/).filter(l => l.trim() !== "");
+    if (lines.length === 0) return;
+
+    setStep1InlineEdits(prev => {
+      const updated = { ...prev };
+      lines.forEach((line, lineIdx) => {
+        const targetReq = pendingReqs[startRowIdx + lineIdx];
+        if (!targetReq) return;
+
+        const cols = line.split("\t");
+        let priceStr = cols.length >= 2 ? cols[1].trim() : cols[0].trim();
+        const cleaned = priceStr.replace(/[¥$RMB\s,]/gi, "").replace(/[^0-9.]/g, "");
+        const parsedNum = parseFloat(cleaned);
+        if (!isNaN(parsedNum)) {
+          updated[targetReq.id] = {
+            ...updated[targetReq.id],
+            priceRmb: parsedNum
+          };
+        }
+      });
+      return updated;
+    });
+  };
+
+  const handleApplyStep1PasteModal = (pendingReqs) => {
+    if (!step1PasteText.trim()) return;
+    const lines = step1PasteText.split(/\r?\n/).filter(l => l.trim() !== "");
+
+    setStep1InlineEdits(prev => {
+      const updated = { ...prev };
+      lines.forEach((line, lineIdx) => {
+        const cols = line.split("\t");
+        if (cols.length >= 2) {
+          const modelName = cols[0].trim().toLowerCase();
+          const priceStr = cols[1].trim().replace(/[¥$RMB\s,]/gi, "").replace(/[^0-9.]/g, "");
+          const parsedNum = parseFloat(priceStr);
+          if (!isNaN(parsedNum)) {
+            const matchedReq = pendingReqs.find(r => (r.model || "").trim().toLowerCase() === modelName);
+            if (matchedReq) {
+              updated[matchedReq.id] = {
+                ...updated[matchedReq.id],
+                priceRmb: parsedNum
+              };
+            }
+          }
+        } else {
+          const targetReq = pendingReqs[lineIdx];
+          if (!targetReq) return;
+          const priceStr = cols[0].trim().replace(/[¥$RMB\s,]/gi, "").replace(/[^0-9.]/g, "");
+          const parsedNum = parseFloat(priceStr);
+          if (!isNaN(parsedNum)) {
+            updated[targetReq.id] = {
+              ...updated[targetReq.id],
+              priceRmb: parsedNum
+            };
+          }
+        }
+      });
+      return updated;
+    });
+    setStep1PasteText("");
+    setShowStep1PasteModal(false);
+  };
+
+  const handleSaveStep1Batch = (pendingReqs, reqIdsToSave = null) => {
+    const targetIds = reqIdsToSave || (step1CheckedIds.length > 0 ? step1CheckedIds : pendingReqs.map(r => r.id));
+    const toUpdate = [];
+
+    targetIds.forEach(id => {
+      const r = pendingReqs.find(x => x.id === id);
+      if (!r) return;
+
+      const edit = step1InlineEdits[id] || {};
+      const searchVendor = edit.vendorSearchText
+        ? vendors.find(v => v.name.toLowerCase() === edit.vendorSearchText.trim().toLowerCase())?.id
+        : null;
+      const finalVendorId = searchVendor || edit.vendorId || r.vendorId || (vendors[0]?.id || "");
+      const finalPrice = edit.priceRmb !== undefined ? edit.priceRmb : r.priceRmb;
+      const finalEdd = edit.vendorEdd || r.vendorEdd;
+
+      if (!finalVendorId || !finalPrice || !finalEdd) return;
+
+      const qty = parseInt(r.vendorOrderQuantity || r.orderQuantity, 10) || 1;
+      const priceNum = parseFloat(finalPrice);
+      const totalRmb = priceNum * qty;
+      const advance = parseFloat(r.advancePayment || 0);
+
+      toUpdate.push({
+        ...r,
+        vendorId: finalVendorId,
+        priceRmb: priceNum,
+        totalRmb: totalRmb,
+        advancePayment: advance,
+        balancePayment: totalRmb - advance,
+        vendorEdd: finalEdd,
+        purchaseUpdated: "Yes",
+        pricedAt: r.pricedAt || new Date().toISOString()
+      });
+    });
+
+    if (toUpdate.length > 0) {
+      if (batchUpdateRequests) {
+        batchUpdateRequests(toUpdate, "PRICE_REQUEST_BATCH", `Updated pricing & EDD for ${toUpdate.length} item(s)`);
+      } else {
+        toUpdate.forEach(item => onUpdateRequest(item));
+      }
+      setStep1CheckedIds([]);
+      setStep1InlineEdits(prev => {
+        const copy = { ...prev };
+        toUpdate.forEach(u => delete copy[u.id]);
+        return copy;
+      });
+    }
+  };
+
   // Calculate today's date for alerts & missed target checks
   const todayStr = "2026-06-11"; // Mock system date
   const today = new Date(todayStr);
@@ -335,60 +468,385 @@ export default function PurchaserDashboard({
         )}
 
         {/* ==================== AWAITING DETAILS (STEP 1) TAB ==================== */}
-        {activeTab === "pending" && (
-          <div className="card-fade-in">
-            <h3 style={{ fontSize: "1.4rem", marginBottom: "16px" }}>Step 1: Commercial & Timeline Specification</h3>
-            <div className="glass-panel" style={{ padding: "20px" }}>
-              <div className="table-container">
-                <table className="custom-table">
-                  <thead>
-                    <tr>
-                      <th>Order Date</th>
-                      <th>Model / Description</th>
-                      <th>Quantity</th>
-                      <th>Vendor</th>
-                      <th>Type</th>
-                      <th>Actions</th>
-                      <th>Cancel</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {myRequests.filter(r => !r.priceRmb).length === 0 ? (
-                      <tr>
-                        <td colSpan="7" style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
-                          No pending requests. All items have pricing details populated!
-                        </td>
+        {activeTab === "pending" && (() => {
+          const pendingReqs = myRequests.filter(r => !r.priceRmb && r.status !== "Cancelled");
+          const allStep1Checked = pendingReqs.length > 0 && step1CheckedIds.length === pendingReqs.length;
+
+          return (
+            <div className="card-fade-in">
+              {/* Header controls & Batch Edit toolbar */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
+                <div>
+                  <h3 style={{ fontSize: "1.4rem", margin: 0 }}>Step 1: Commercial & Timeline Specification</h3>
+                  <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px" }}>
+                    Assign Vendors, Prices (RMB), and Estimated Delivery Dates (EDD) for unpriced orders.
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                  {/* Paste Amounts from Excel Button */}
+                  <button 
+                    onClick={() => setShowStep1PasteModal(true)} 
+                    className="btn btn-secondary btn-sm"
+                    style={{ color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.4)" }}
+                  >
+                    <Clipboard size={14} /> Bulk Paste Amounts / Prices
+                  </button>
+
+                  {/* Toggle View Mode Button */}
+                  <button 
+                    onClick={() => setStep1Mode(prev => prev === "inline" ? "standard" : "inline")} 
+                    className="btn btn-secondary btn-sm"
+                    style={{ color: step1Mode === "inline" ? "var(--success)" : "var(--text-main)", borderColor: step1Mode === "inline" ? "rgba(16, 185, 129, 0.4)" : "var(--border-glass)" }}
+                  >
+                    {step1Mode === "inline" ? "⚡ Spreadsheet Batch Edit (ON)" : "📋 Standard Table View"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Batch Actions Toolbar for Checked Items */}
+              {pendingReqs.length > 0 && (
+                <div className="glass-panel" style={{ padding: "14px 20px", marginBottom: "16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(56, 189, 248, 0.25)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "#38bdf8" }}>
+                      Batch Controls ({step1CheckedIds.length > 0 ? `${step1CheckedIds.length} Selected` : "All Unpriced Items"}):
+                    </span>
+
+                    {/* Batch Vendor Selector */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Vendor:</span>
+                      <input 
+                        type="text" 
+                        list="batch-step1-vendor-list"
+                        className="form-control"
+                        placeholder="Select Vendor..."
+                        value={vendors.find(v => v.id === step1BatchVendorId)?.name || step1BatchVendorId}
+                        onChange={e => {
+                          const val = e.target.value;
+                          const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
+                          setStep1BatchVendorId(matched ? matched.id : val);
+                        }}
+                        style={{ width: "180px", padding: "4px 8px", fontSize: "0.82rem", height: "auto" }}
+                      />
+                      <datalist id="batch-step1-vendor-list">
+                        {vendors.filter(v => v.status !== "Inactive").map(v => (
+                          <option key={v.id} value={v.name}>{v.name}</option>
+                        ))}
+                      </datalist>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          if (!step1BatchVendorId) return;
+                          const targetIds = step1CheckedIds.length > 0 ? step1CheckedIds : pendingReqs.map(r => r.id);
+                          setStep1InlineEdits(prev => {
+                            const updated = { ...prev };
+                            targetIds.forEach(id => {
+                              updated[id] = { ...updated[id], vendorId: step1BatchVendorId };
+                            });
+                            return updated;
+                          });
+                        }}
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: "4px 10px", fontSize: "0.78rem" }}
+                      >
+                        Apply Vendor
+                      </button>
+                    </div>
+
+                    {/* Batch EDD Date Picker */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>EDD:</span>
+                      <input 
+                        type="date"
+                        className="form-control"
+                        value={step1BatchEdd}
+                        onChange={e => setStep1BatchEdd(e.target.value)}
+                        style={{ width: "140px", padding: "4px 8px", fontSize: "0.82rem", height: "auto" }}
+                      />
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          if (!step1BatchEdd) return;
+                          const targetIds = step1CheckedIds.length > 0 ? step1CheckedIds : pendingReqs.map(r => r.id);
+                          setStep1InlineEdits(prev => {
+                            const updated = { ...prev };
+                            targetIds.forEach(id => {
+                              updated[id] = { ...updated[id], vendorEdd: step1BatchEdd };
+                            });
+                            return updated;
+                          });
+                        }}
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: "4px 10px", fontSize: "0.78rem" }}
+                      >
+                        Apply EDD
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Save All Batch Updates Button */}
+                  <button 
+                    type="button"
+                    onClick={() => handleSaveStep1Batch(pendingReqs)}
+                    className="btn btn-success btn-sm"
+                    style={{ fontWeight: 700, padding: "8px 18px", boxShadow: "0 4px 14px rgba(16, 185, 129, 0.25)" }}
+                  >
+                    <CheckCircle2 size={16} /> Save All Updated Prices & Details
+                  </button>
+                </div>
+              )}
+
+              {/* Spreadsheet / Table View */}
+              <div className="glass-panel" style={{ padding: "4px" }}>
+                <div className="table-container" style={{ maxHeight: "60vh", overflowY: "auto" }}>
+                  <table className="custom-table" style={{ fontSize: "0.85rem" }}>
+                    <thead>
+                      <tr style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-card)" }}>
+                        <th style={{ width: "40px", textAlign: "center" }}>
+                          <input 
+                            type="checkbox"
+                            className="checkbox-input"
+                            checked={allStep1Checked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setStep1CheckedIds(pendingReqs.map(r => r.id));
+                              } else {
+                                setStep1CheckedIds([]);
+                              }
+                            }}
+                          />
+                        </th>
+                        <th style={{ width: "100px" }}>Order Date</th>
+                        <th>Model / Description</th>
+                        <th style={{ width: "80px" }}>Qty</th>
+                        <th style={{ minWidth: "180px" }}>Vendor / Supplier</th>
+                        <th style={{ minWidth: "130px" }}>Price (RMB / Amount)</th>
+                        <th style={{ minWidth: "130px" }}>Total (RMB)</th>
+                        <th style={{ minWidth: "140px" }}>Vendor EDD</th>
+                        <th style={{ width: "90px", textAlign: "center" }}>Actions</th>
+                        <th style={{ width: "70px", textAlign: "center" }}>Cancel</th>
                       </tr>
-                    ) : (
-                      myRequests.filter(r => !r.priceRmb).map(r => {
-                        const vName = vendors.find(v => v.id === r.vendorId)?.name || "Unknown";
-                        return (
-                          <tr key={r.id}>
-                            <td>{r.orderDate}</td>
-                            <td style={{ fontWeight: 600 }}>{r.model}</td>
-                            <td>{r.orderQuantity}</td>
-                            <td>{vName}</td>
-                            <td>{r.type}</td>
-                            <td>
-                              <button onClick={() => setEditingRequest(r)} className="btn btn-primary btn-sm">
-                                <Plus size={14} /> Add Price & EDD
-                              </button>
-                            </td>
-                            <td>
-                              <button onClick={() => setCancellingRequest(r)} className="btn btn-danger btn-sm">
-                                <XCircle size={14} /> Cancel
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {pendingReqs.length === 0 ? (
+                        <tr>
+                          <td colSpan="10" style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
+                            <CheckCircle2 size={28} style={{ color: "var(--success)", marginBottom: "8px", display: "inline" }} /><br />
+                            No pending unpriced requests! All items have pricing and supplier details populated.
+                          </td>
+                        </tr>
+                      ) : (
+                        pendingReqs.map((r, index) => {
+                          const isChecked = step1CheckedIds.includes(r.id);
+                          const edits = step1InlineEdits[r.id] || {};
+
+                          // Effective values (inline edit fallback to request state)
+                          const currentVendorId = edits.vendorId !== undefined ? edits.vendorId : (r.vendorId || "");
+                          const currentVendorText = edits.vendorSearchText !== undefined 
+                            ? edits.vendorSearchText 
+                            : (vendors.find(v => v.id === currentVendorId)?.name || "");
+                          const currentPrice = edits.priceRmb !== undefined ? edits.priceRmb : (r.priceRmb || "");
+                          const currentEdd = edits.vendorEdd !== undefined ? edits.vendorEdd : (r.vendorEdd || "");
+
+                          const qty = parseInt(r.vendorOrderQuantity || r.orderQuantity, 10) || 1;
+                          const priceNum = parseFloat(currentPrice);
+                          const totalCalc = !isNaN(priceNum) ? priceNum * qty : 0;
+
+                          if (step1Mode === "standard") {
+                            const vName = vendors.find(v => v.id === r.vendorId)?.name || "Unknown";
+                            return (
+                              <tr key={r.id} className={isChecked ? "planner-row-selected" : ""}>
+                                <td style={{ textAlign: "center" }}>
+                                  <input 
+                                    type="checkbox"
+                                    className="checkbox-input"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setStep1CheckedIds(prev => [...prev, r.id]);
+                                      } else {
+                                        setStep1CheckedIds(prev => prev.filter(id => id !== r.id));
+                                      }
+                                    }}
+                                  />
+                                </td>
+                                <td>{r.orderDate}</td>
+                                <td style={{ fontWeight: 600 }}>{r.model}</td>
+                                <td>{r.orderQuantity} Pcs</td>
+                                <td>{vName}</td>
+                                <td style={{ fontWeight: 700, color: r.priceRmb ? "var(--primary)" : "var(--text-muted)" }}>
+                                  {r.priceRmb ? `¥${r.priceRmb}` : "—"}
+                                </td>
+                                <td>{r.totalRmb ? `¥${r.totalRmb.toLocaleString()}` : "—"}</td>
+                                <td>{r.vendorEdd || "—"}</td>
+                                <td style={{ textAlign: "center" }}>
+                                  <button onClick={() => setEditingRequest(r)} className="btn btn-primary btn-sm">
+                                    <Plus size={14} /> Edit Details
+                                  </button>
+                                </td>
+                                <td style={{ textAlign: "center" }}>
+                                  <button onClick={() => setCancellingRequest(r)} className="btn btn-danger btn-sm" style={{ padding: "4px 6px" }}>
+                                    <XCircle size={14} />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          return (
+                            <tr key={r.id} className={isChecked ? "planner-row-selected" : ""}>
+                              <td style={{ textAlign: "center" }}>
+                                <input 
+                                  type="checkbox"
+                                  className="checkbox-input"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setStep1CheckedIds(prev => [...prev, r.id]);
+                                    } else {
+                                      setStep1CheckedIds(prev => prev.filter(id => id !== r.id));
+                                    }
+                                  }}
+                                />
+                              </td>
+                              <td>{r.orderDate}</td>
+                              <td style={{ fontWeight: 600, color: "var(--text-main)" }}>
+                                <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                  <span>{r.model}</span>
+                                  <button
+                                    type="button"
+                                    title="Copy Model Name"
+                                    onClick={(e) => handleCopyModelName(r.model, e)}
+                                    style={{
+                                      background: "rgba(255, 255, 255, 0.06)",
+                                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                                      color: copiedModelText === r.model ? "var(--success)" : "var(--text-muted)",
+                                      borderRadius: "4px",
+                                      padding: "2px 6px",
+                                      cursor: "pointer",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "3px",
+                                      fontSize: "0.72rem"
+                                    }}
+                                  >
+                                    {copiedModelText === r.model ? <Check size={11} /> : <Copy size={11} />}
+                                  </button>
+                                </div>
+                              </td>
+                              <td style={{ fontWeight: 700 }}>{qty} Pcs</td>
+
+                              {/* Vendor Selection (Inline) */}
+                              <td>
+                                <input 
+                                  type="text" 
+                                  list={`step1-vendor-list-${r.id}`}
+                                  className="form-control"
+                                  placeholder="Select Vendor..."
+                                  value={currentVendorText}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
+                                    setStep1InlineEdits(prev => ({
+                                      ...prev,
+                                      [r.id]: {
+                                        ...prev[r.id],
+                                        vendorSearchText: val,
+                                        vendorId: matched ? matched.id : prev[r.id]?.vendorId
+                                      }
+                                    }));
+                                  }}
+                                  style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+                                />
+                                <datalist id={`step1-vendor-list-${r.id}`}>
+                                  {vendors.filter(v => v.status !== "Inactive").map(v => (
+                                    <option key={v.id} value={v.name}>{v.name}</option>
+                                  ))}
+                                </datalist>
+                              </td>
+
+                              {/* Price (RMB) Input with Paste Handler */}
+                              <td>
+                                <input 
+                                  type="text" 
+                                  inputMode="decimal"
+                                  className="form-control"
+                                  placeholder="Price (¥)"
+                                  value={currentPrice}
+                                  onChange={e => {
+                                    const val = e.target.value.replace(/[^0-9.]/g, "");
+                                    setStep1InlineEdits(prev => ({
+                                      ...prev,
+                                      [r.id]: {
+                                        ...prev[r.id],
+                                        priceRmb: val
+                                      }
+                                    }));
+                                  }}
+                                  onPaste={e => handleStep1PricePaste(e, index, pendingReqs)}
+                                  style={{ 
+                                    padding: "4px 8px", 
+                                    fontSize: "0.85rem", 
+                                    height: "auto",
+                                    borderColor: currentPrice ? "rgba(16, 185, 129, 0.4)" : undefined,
+                                    background: currentPrice ? "rgba(16, 185, 129, 0.05)" : undefined
+                                  }}
+                                />
+                              </td>
+
+                              {/* Total Calculated RMB */}
+                              <td style={{ fontWeight: 700, color: totalCalc > 0 ? "var(--primary)" : "var(--text-muted)" }}>
+                                {totalCalc > 0 ? `¥${totalCalc.toLocaleString()}` : "—"}
+                              </td>
+
+                              {/* EDD Date Selector (Inline) */}
+                              <td>
+                                <input 
+                                  type="date"
+                                  className="form-control"
+                                  value={currentEdd}
+                                  onChange={e => {
+                                    setStep1InlineEdits(prev => ({
+                                      ...prev,
+                                      [r.id]: {
+                                        ...prev[r.id],
+                                        vendorEdd: e.target.value
+                                      }
+                                    }));
+                                  }}
+                                  style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+                                />
+                              </td>
+
+                              {/* Actions */}
+                              <td style={{ textAlign: "center" }}>
+                                <button 
+                                  onClick={() => handleSaveStep1Batch(pendingReqs, [r.id])} 
+                                  disabled={!currentPrice || !currentEdd || (!currentVendorId && !currentVendorText)}
+                                  className="btn btn-primary btn-sm"
+                                  style={{ padding: "4px 10px", fontSize: "0.78rem" }}
+                                >
+                                  Save
+                                </button>
+                              </td>
+
+                              {/* Cancel */}
+                              <td style={{ textAlign: "center" }}>
+                                <button onClick={() => setCancellingRequest(r)} className="btn btn-danger btn-sm" style={{ padding: "4px 6px" }}>
+                                  <XCircle size={14} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ==================== CARGO PLANNER (STEP 3) TAB ==================== */}
         {activeTab === "planner" && (
@@ -1357,17 +1815,57 @@ export default function PurchaserDashboard({
         />
       )}
 
-      {/* ==================== CARGO COMPANY DETAIL MODAL ==================== */}
-      {selectedCargoCompanyForDetail && (
-        <CargoCompanyDetailModal 
-          company={selectedCargoCompanyForDetail}
-          cargos={cargos}
-          requests={requests}
-          currentUser={currentUser}
-          onUpdateCargoCompany={onUpdateCargoCompany}
-          onRemoveCargoCompany={onRemoveCargoCompany}
-          onClose={() => setSelectedCargoCompanyForDetail(null)}
-        />
+      {/* ==================== BULK PASTE AMOUNTS / PRICES MODAL ==================== */}
+      {showStep1PasteModal && (
+        <div className="modal-overlay">
+          <div className="glass-panel modal-content" style={{ maxWidth: "600px", width: "90%" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+              <h3 style={{ fontSize: "1.3rem", margin: 0, color: "#38bdf8", display: "flex", alignItems: "center", gap: "8px" }}>
+                <Clipboard size={20} /> Bulk Paste Amounts & Prices
+              </h3>
+              <button 
+                onClick={() => setShowStep1PasteModal(false)}
+                className="btn btn-secondary btn-sm"
+                style={{ padding: "2px 8px" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "12px" }}>
+              Paste prices copied directly from your Excel sheet or tracking list. You can paste:
+              <br />
+              • <strong>Single Price Column</strong> (e.g. <code>15.5\n22.0\n18</code>) — maps sequentially down unpriced rows.
+              <br />
+              • <strong>Model & Price Columns</strong> (e.g. <code>39LX \t 15.5</code>) — auto-matches Model names to requests!
+            </p>
+
+            <textarea 
+              rows={8}
+              className="form-control"
+              placeholder={`Paste Excel rows here...\nExample 1:\n15.5\n22.0\n18.0\n\nExample 2:\n39LX\t15.5\n48DX\t22.0`}
+              value={step1PasteText}
+              onChange={e => setStep1PasteText(e.target.value)}
+              style={{ fontFamily: "monospace", fontSize: "0.88rem", marginBottom: "16px" }}
+            />
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+              <button 
+                onClick={() => setShowStep1PasteModal(false)} 
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => handleApplyStep1PasteModal(myRequests.filter(r => !r.priceRmb && r.status !== "Cancelled"))} 
+                className="btn btn-primary"
+                disabled={!step1PasteText.trim()}
+              >
+                Apply Pasted Prices
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>
