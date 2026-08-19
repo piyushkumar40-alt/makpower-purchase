@@ -59,6 +59,11 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: -0.02em;
 }
 
+input, textarea, select, table, td, th {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

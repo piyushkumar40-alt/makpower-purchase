@@ -3,7 +3,7 @@ import {
   X, Package, MapPin, Truck, Calendar, User, DollarSign, Clock, 
   CheckCircle2, AlertTriangle, ExternalLink, Layers, Building2, 
   ZoomIn, ArrowRight, ArrowLeft, ShieldCheck, Tag, Info, History,
-  Camera, Upload, Image, RotateCcw, AlertCircle
+  Camera, Upload, Image, RotateCcw, AlertCircle, Copy, Check
 } from "lucide-react";
 
 export default function ItemDetailModal({ 
@@ -25,6 +25,17 @@ export default function ItemDetailModal({
   const [inputPhotoUrl, setInputPhotoUrl] = useState("");
   const [photoMsg, setPhotoMsg] = useState("");
   const [savingPhoto, setSavingPhoto] = useState(false);
+  const [copiedModel, setCopiedModel] = useState(false);
+
+  const handleCopyModel = (name) => {
+    if (!name) return;
+    const cleanStr = String(name).replace(/^["'\s]+|["'\s]+$/g, "").trim();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(cleanStr);
+    }
+    setCopiedModel(true);
+    setTimeout(() => setCopiedModel(false), 2000);
+  };
 
   const isSuperAdmin = currentUser?.role === "superadmin";
 
@@ -259,10 +270,31 @@ export default function ItemDetailModal({
             )}
 
             <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                 <h2 style={{ fontSize: "1.4rem", fontWeight: 800, margin: 0, color: "var(--text-main)" }}>
                   {item.name}
                 </h2>
+                <button
+                  type="button"
+                  title="Copy Model Name to Clipboard"
+                  onClick={() => handleCopyModel(item.name)}
+                  style={{
+                    background: "rgba(56, 189, 248, 0.15)",
+                    border: "1px solid rgba(56, 189, 248, 0.3)",
+                    color: copiedModel ? "var(--success)" : "var(--primary)",
+                    borderRadius: "6px",
+                    padding: "3px 8px",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    fontSize: "0.78rem",
+                    fontWeight: 600
+                  }}
+                >
+                  {copiedModel ? <Check size={13} /> : <Copy size={13} />}
+                  {copiedModel ? "Copied Model!" : "Copy Model"}
+                </button>
                 <span className="badge badge-primary" style={{ fontSize: "0.85rem", fontWeight: 800 }}>
                   Master Specification
                 </span>

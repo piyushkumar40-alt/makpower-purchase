@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Trash2, CheckCircle2, Clipboard, ShieldAlert, Sparkles, X, Package } from "lucide-react";
+import { Plus, Trash2, CheckCircle2, Clipboard, ShieldAlert, Sparkles, X, Package, Copy, Check } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
 import { QuickCreateItemModal, QuickCreateUserModal } from "./QuickCreateModals";
 
@@ -78,6 +78,18 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
   const [activeDropdown, setActiveDropdown] = useState(null); // { rowId, field: "model" | "category" }
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 220 });
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [copiedModelText, setCopiedModelText] = useState("");
+
+  const handleCopyModelName = (modelName, e) => {
+    if (e) e.stopPropagation();
+    if (!modelName) return;
+    const cleanStr = String(modelName).replace(/^["'\s]+|["'\s]+$/g, "").trim();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(cleanStr);
+    }
+    setCopiedModelText(cleanStr);
+    setTimeout(() => setCopiedModelText(""), 2000);
+  };
 
   // Excel-like Range Selection & Ctrl+D Fill Down State
   const [selectedRange, setSelectedRange] = useState(null); // { startIdx, endIdx, field }
@@ -270,93 +282,111 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
     const pastedText = clipboardData.getData("text");
     if (!pastedText) return;
 
+    e.preventDefault();
+    e.stopPropagation();
+
+    const cleanPasteString = (str) => {
+      if (!str) return "";
+      return str
+        .replace(/^["'\s]+|["'\s]+$/g, "")
+        .replace(/[\r\n\t]+/g, " ")
+        .trim();
+    };
+
     const lines = pastedText.split(/\r?\n/).filter(line => line.trim() !== "");
     if (lines.length === 0) return;
 
-    const firstLineCols = lines[0].split("\t");
-    // Intercept if multi-row or multi-column paste
-    if (lines.length > 1 || firstLineCols.length > 1) {
-      e.preventDefault();
-      e.stopPropagation();
+    const fieldOrder = ["type", "itemType", "itemNature", "category", "model", "orderQuantity", "requiredByDate", "purchaserId"];
+    const startFieldIdx = Math.max(0, fieldOrder.indexOf(targetField));
 
-      const fieldOrder = ["type", "itemType", "itemNature", "category", "model", "orderQuantity", "requiredByDate", "purchaserId"];
-      const startFieldIdx = Math.max(0, fieldOrder.indexOf(targetField));
+    const neededRowCount = startRowIdx + lines.length;
+    const rowPurchaserId = currentUser?.role === "purchaser" ? currentUser.id : (purchasers[0]?.id || "");
 
-      const neededRowCount = startRowIdx + lines.length;
-      const rowPurchaserId = currentUser?.role === "purchaser" ? currentUser.id : (purchasers[0]?.id || "");
+    setRows(prevRows => {
+      let currentRows = [...prevRows];
 
-      setRows(prevRows => {
-        let currentRows = [...prevRows];
+      while (currentRows.length < neededRowCount) {
+        currentRows.push({
+          id: Date.now() + currentRows.length,
+          type: "Import",
+          itemType: "FG",
+          itemNature: "Non Consumables",
+          category: "",
+          model: "",
+          orderQuantity: "",
+          requiredByDate: "",
+          purchaserId: rowPurchaserId
+        });
+      }
 
-        while (currentRows.length < neededRowCount) {
-          currentRows.push({
-            id: Date.now() + currentRows.length,
-            type: "Import",
-            itemType: "FG",
-            itemNature: "Non Consumables",
-            category: "",
-            model: "",
-            orderQuantity: "",
-            requiredByDate: "",
-            purchaserId: rowPurchaserId
-          });
-        }
+      const updatedRows = currentRows.map((r, rIdx) => {
+        if (rIdx >= startRowIdx && rIdx < startRowIdx + lines.length) {
+          const lineIdx = rIdx - startRowIdx;
+          const cols = lines[lineIdx].split("\t");
 
-        const updatedRows = currentRows.map((r, rIdx) => {
-          if (rIdx >= startRowIdx && rIdx < startRowIdx + lines.length) {
-            const lineIdx = rIdx - startRowIdx;
-            const cols = lines[lineIdx].split("\t");
+          let updatedRow = { ...r };
 
-            let updatedRow = { ...r };
+          cols.forEach((colVal, cIdx) => {
+            const fieldName = fieldOrder[startFieldIdx + cIdx];
+            if (!fieldName) return;
 
-            cols.forEach((colVal, cIdx) => {
-              const fieldName = fieldOrder[startFieldIdx + cIdx];
-              if (!fieldName) return;
+            let val = cleanPasteString(colVal);
 
-              let val = colVal.trim();
-              if (fieldName === "orderQuantity") {
-                const parsedQty = parseInt(val.replace(/,/g, ""), 10);
-                val = isNaN(parsedQty) ? "" : parsedQty;
-              } else if (fieldName === "requiredByDate") {
-                val = parseExcelDate(val);
-              } else if (fieldName === "itemType") {
-                val = ["FG", "Finished Goods"].includes(val) ? "FG" : ["RM", "Raw Material"].includes(val) ? "RM" : val;
-              } else if (fieldName === "purchaserId") {
-                val = matchPurchaser(val);
-              }
-
-              if (fieldName === "category" && val) {
+            if (fieldName === "orderQuantity") {
+              const digitsOnly = val.replace(/,/g, "").replace(/[^0-9]/g, "");
+              const parsedQty = parseInt(digitsOnly, 10);
+              updatedRow.orderQuantity = isNaN(parsedQty) ? "" : parsedQty;
+            } else if (fieldName === "requiredByDate") {
+              updatedRow.requiredByDate = parseExcelDate(val);
+            } else if (fieldName === "type") {
+              updatedRow.type = ["Import", "Local"].includes(val) ? val : "Import";
+            } else if (fieldName === "itemType") {
+              updatedRow.itemType = ["FG", "Finished Goods"].includes(val) ? "FG" : ["RM", "Raw Material"].includes(val) ? "RM" : val;
+            } else if (fieldName === "itemNature") {
+              updatedRow.itemNature = ["Consumables", "Non Consumables"].includes(val) ? val : "Non Consumables";
+            } else if (fieldName === "purchaserId") {
+              updatedRow.purchaserId = matchPurchaser(val);
+            } else if (fieldName === "category") {
+              if (val) {
+                updatedRow.category = val;
                 if (val.toUpperCase() === "RM" || val.toUpperCase().includes("RAW MATERIAL")) {
                   updatedRow.itemType = "RM";
                 }
               }
-
-              if (fieldName === "model" && val) {
-                const matched = combinedItems.find(i => i.name.toLowerCase() === val.toLowerCase());
+            } else if (fieldName === "model") {
+              if (val) {
+                const matched = combinedItems.find(i => i.name.trim().toLowerCase() === val.toLowerCase());
                 if (matched) {
+                  updatedRow.model = matched.name;
                   updatedRow.category = matched.category || updatedRow.category;
                   updatedRow.type = matched.type || updatedRow.type;
                   const isRmItem = matched.itemType === "RM" || (matched.category && matched.category.toUpperCase() === "RM") || val.toUpperCase().includes(" (RM)") || val.toUpperCase().startsWith("RM ");
                   updatedRow.itemType = isRmItem ? "RM" : (matched.itemType || updatedRow.itemType || "FG");
                   updatedRow.itemNature = matched.itemNature || updatedRow.itemNature;
                 } else {
-                  const upperVal = val.toUpperCase();
-                  const upperCat = (updatedRow.category || "").toUpperCase();
-                  if (upperVal.includes("RM") || upperVal.includes("RAW MATERIAL") || upperCat === "RM" || upperCat.includes("RAW MATERIAL")) {
-                    updatedRow.itemType = "RM";
+                  const catMatch = catalogCategories.find(c => c.trim().toLowerCase() === val.toLowerCase());
+                  if (catMatch) {
+                    updatedRow.category = catMatch;
+                  } else {
+                    updatedRow.model = val;
+                    const upperVal = val.toUpperCase();
+                    const upperCat = (updatedRow.category || "").toUpperCase();
+                    if (upperVal.includes("RM") || upperVal.includes("RAW MATERIAL") || upperCat === "RM" || upperCat.includes("RAW MATERIAL")) {
+                      updatedRow.itemType = "RM";
+                    }
                   }
                 }
               }
-            });
+            }
+          });
 
-            return updatedRow;
-          }
-          return r;
-        });
-
-        return updatedRows;
+          return updatedRow;
+        }
+        return r;
       });
-    }
+
+      return updatedRows;
+    });
   };
 
   // Scroll/resize listener to keep fixed dropdown position updated relative to active input
@@ -404,9 +434,11 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
 
   // Strict Validation: Item Model MUST match a valid model in combinedItems (if items exist in system) and match row's itemType (FG/RM)
   const isValidModel = (modelName, rowItemType = null) => {
-    if (!modelName || !modelName.trim()) return false;
+    if (!modelName) return false;
+    const cleanStr = String(modelName).replace(/^["'\s]+|["'\s]+$/g, "").replace(/[\r\n\t]+/g, " ").trim();
+    if (!cleanStr) return false;
     if (combinedItems.length > 0) {
-      const match = combinedItems.find(i => i.name.toLowerCase() === modelName.trim().toLowerCase());
+      const match = combinedItems.find(i => i.name.trim().toLowerCase() === cleanStr.toLowerCase());
       if (!match) return false;
       if (rowItemType && match.itemType) {
         return match.itemType.toUpperCase() === rowItemType.toUpperCase();
@@ -729,7 +761,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
       {/* Header Info */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-glass)", paddingBottom: "16px", marginBottom: "20px", flexWrap: "wrap", gap: "15px" }}>
         <div>
-          <h2 style={{ fontSize: "1.6rem" }}>Mak Power Purchase Request</h2>
+          <h2 style={{ fontSize: "1.6rem" }}>Mak Power Purchase Request 2026</h2>
           <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "2px" }}>
             Enter multiple purchase items below or copy-paste directly from your tracking Excel sheets.
           </p>
@@ -806,6 +838,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         borderColor: isCellSelected(index, "type") ? "#38bdf8" : undefined
                       }}
                       value={row.type}
+                      onMouseDown={(e) => e.stopPropagation()}
                       onFocus={() => handleCellFocus(index, "type")}
                       onChange={e => updateCell(row.id, "type", e.target.value)}
                       onPaste={e => handleCellPaste(e, index, "type")}
@@ -840,6 +873,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         borderColor: isCellSelected(index, "itemType") ? "#38bdf8" : undefined
                       }}
                       value={row.itemType || "FG"}
+                      onMouseDown={(e) => e.stopPropagation()}
                       onFocus={() => handleCellFocus(index, "itemType")}
                       onChange={e => updateCell(row.id, "itemType", e.target.value)}
                       onPaste={e => handleCellPaste(e, index, "itemType")}
@@ -874,6 +908,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         borderColor: isCellSelected(index, "itemNature") ? "#38bdf8" : undefined
                       }}
                       value={row.itemNature}
+                      onMouseDown={(e) => e.stopPropagation()}
                       onFocus={() => handleCellFocus(index, "itemNature")}
                       onChange={e => updateCell(row.id, "itemNature", e.target.value)}
                       onPaste={e => handleCellPaste(e, index, "itemNature")}
@@ -912,6 +947,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       }}
                       placeholder="Type or Select Category..." 
                       value={row.category}
+                      onMouseDown={(e) => e.stopPropagation()}
                       onFocus={(e) => {
                         handleCellSelect(index, "category");
                         openDropdown(e, row.id, "category");
@@ -1040,22 +1076,23 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       }}
                       placeholder="Type or Select Item Model..." 
                       value={row.model}
+                      onMouseDown={(e) => e.stopPropagation()}
                       onFocus={(e) => {
                         handleCellSelect(index, "model");
                         openDropdown(e, row.id, "model");
                       }}
                       onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
                       onChange={e => {
-                        const selectedName = e.target.value;
+                        const rawVal = e.target.value;
+                        const cleanVal = rawVal.replace(/^["'\s]+|["'\s]+$/g, "").replace(/[\r\n\t]+/g, " ").trim();
                         openDropdown(e, row.id, "model");
                         const matchedItem = combinedItems.find(i => 
-                          i.name.toLowerCase() === selectedName.toLowerCase() &&
-                          (!row.itemType || !i.itemType || i.itemType.toUpperCase() === (row.itemType || "FG").toUpperCase())
+                          i.name.trim().toLowerCase() === (cleanVal || rawVal.trim()).toLowerCase()
                         );
                         if (matchedItem) {
                           selectModelOption(row.id, matchedItem);
                         } else {
-                          updateCell(row.id, "model", selectedName);
+                          updateCell(row.id, "model", rawVal);
                         }
                       }}
                       onPaste={e => handleCellPaste(e, index, "model")}
@@ -1158,8 +1195,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                                   textAlign: "left",
                                   borderBottom: "1px solid rgba(255,255,255,0.05)",
                                   display: "flex",
-                                  flexDirection: "column",
-                                  gap: "2px",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
                                   background: idx === highlightedIndex ? "#1e293b" : "transparent",
                                   borderLeft: idx === highlightedIndex ? "3px solid #38bdf8" : "3px solid transparent"
                                 }}
@@ -1169,12 +1206,35 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                                 }}
                                 onMouseEnter={() => setHighlightedIndex(idx)}
                               >
-                                <span style={{ fontWeight: 600 }}>{item.name}</span>
-                                {item.category && (
-                                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                                    {item.category} • {item.itemType || "RM"} ({item.type || "Import"})
-                                  </span>
-                                )}
+                                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                  <span style={{ fontWeight: 600 }}>{item.name}</span>
+                                  {item.category && (
+                                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                      {item.category} • {item.itemType || "RM"} ({item.type || "Import"})
+                                    </span>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  title="Copy Model Name"
+                                  onClick={(e) => handleCopyModelName(item.name, e)}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  style={{
+                                    background: "rgba(255,255,255,0.08)",
+                                    border: "1px solid rgba(255,255,255,0.15)",
+                                    color: copiedModelText === item.name ? "var(--success)" : "var(--text-muted)",
+                                    borderRadius: "4px",
+                                    padding: "2px 6px",
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                    fontSize: "0.72rem"
+                                  }}
+                                >
+                                  {copiedModelText === item.name ? <Check size={11} /> : <Copy size={11} />}
+                                  {copiedModelText === item.name ? "Copied" : "Copy"}
+                                </button>
                               </div>
                             ))
                           ) : (
@@ -1197,7 +1257,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                     }}
                   >
                     <input 
-                      type="number" 
+                      type="text" 
+                      inputMode="numeric"
                       className="form-control" 
                       style={{ 
                         padding: "4px 8px", 
@@ -1208,8 +1269,12 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       }}
                       placeholder="Qty" 
                       value={row.orderQuantity}
+                      onMouseDown={(e) => e.stopPropagation()}
                       onFocus={() => handleCellFocus(index, "orderQuantity")}
-                      onChange={e => updateCell(row.id, "orderQuantity", e.target.value)}
+                      onChange={e => {
+                        const digits = e.target.value.replace(/,/g, "").replace(/[^0-9]/g, "");
+                        updateCell(row.id, "orderQuantity", digits ? parseInt(digits, 10) : "");
+                      }}
                       onPaste={e => handleCellPaste(e, index, "orderQuantity")}
                       onKeyDown={e => {
                         if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
@@ -1242,6 +1307,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         borderColor: isCellSelected(index, "requiredByDate") ? "#38bdf8" : undefined
                       }}
                       value={row.requiredByDate}
+                      onMouseDown={(e) => e.stopPropagation()}
                       onFocus={() => handleCellFocus(index, "requiredByDate")}
                       onChange={e => updateCell(row.id, "requiredByDate", e.target.value)}
                       onPaste={e => handleCellPaste(e, index, "requiredByDate")}
@@ -1274,6 +1340,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         borderColor: isCellSelected(index, "purchaserId") ? "#38bdf8" : undefined
                       }}
                       value={row.purchaserId}
+                      onMouseDown={(e) => e.stopPropagation()}
                       onFocus={() => handleCellFocus(index, "purchaserId")}
                       onChange={e => updateCell(row.id, "purchaserId", e.target.value)}
                       onPaste={e => handleCellPaste(e, index, "purchaserId")}

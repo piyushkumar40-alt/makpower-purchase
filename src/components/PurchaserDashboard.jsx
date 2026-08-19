@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles } from "lucide-react";
+import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import { uploadToCloudinary } from "../utils/upload";
 import ItemMasterView from "./ItemMasterView";
@@ -47,6 +47,18 @@ export default function PurchaserDashboard({
 
   // Requirement 5: Missed Target Date Filter State
   const [missedTargetOnly, setMissedTargetOnly] = useState(false);
+  const [copiedModelText, setCopiedModelText] = useState("");
+
+  const handleCopyModelName = (name, e) => {
+    if (e) e.stopPropagation();
+    if (!name) return;
+    const cleanStr = String(name).replace(/^["'\s]+|["'\s]+$/g, "").trim();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(cleanStr);
+    }
+    setCopiedModelText(cleanStr);
+    setTimeout(() => setCopiedModelText(""), 2000);
+  };
   
   // Modals state
   const [editingRequest, setEditingRequest] = useState(null);

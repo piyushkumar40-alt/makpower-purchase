@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Layers, Plus, Upload, Trash2, Search, CheckSquare, Square, FileSpreadsheet, Package, AlertCircle, RefreshCw, GitMerge, Edit3, Info, Download, Image, ListPlus, Eye, User, Camera } from "lucide-react";
+import { Layers, Plus, Upload, Trash2, Search, CheckSquare, Square, FileSpreadsheet, Package, AlertCircle, RefreshCw, GitMerge, Edit3, Info, Download, Image, ListPlus, Eye, User, Camera, Copy, Check } from "lucide-react";
 import ItemDetailModal from "./ItemDetailModal";
 
 // Normalize item names for fuzzy duplicate detection (e.g. DC02, DC 02, DC2, DC-2, DC-02 -> DC2)
@@ -32,6 +32,18 @@ export default function ItemCatalogPanel({
   const [selectedItemDetail, setSelectedItemDetail] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [copiedId, setCopiedId] = useState(null);
+
+  const handleCopyModelName = (name, id, e) => {
+    if (e) e.stopPropagation();
+    if (!name) return;
+    const cleanStr = String(name).replace(/^["'\s]+|["'\s]+$/g, "").trim();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(cleanStr);
+    }
+    setCopiedId(id || name);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   const handleItemClick = (item) => {
     if (onViewItemDetail) {
@@ -1384,8 +1396,30 @@ export default function ItemCatalogPanel({
                           #{item.id}
                         </td>
                       )}
-                      <td style={{ fontWeight: 600, color: "var(--text-main)", cursor: "pointer" }} onClick={() => handleItemClick(item)}>
-                        {item.name}
+                      <td style={{ fontWeight: 600, color: "var(--text-main)" }}>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                          <span style={{ cursor: "pointer" }} onClick={() => handleItemClick(item)}>{item.name}</span>
+                          <button
+                            type="button"
+                            title="Copy Model Name"
+                            onClick={(e) => handleCopyModelName(item.name, item.id, e)}
+                            style={{
+                              background: "rgba(255, 255, 255, 0.06)",
+                              border: "1px solid rgba(255, 255, 255, 0.12)",
+                              color: copiedId === item.id ? "var(--success)" : "var(--text-muted)",
+                              borderRadius: "4px",
+                              padding: "2px 6px",
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              fontSize: "0.72rem"
+                            }}
+                          >
+                            {copiedId === item.id ? <Check size={11} /> : <Copy size={11} />}
+                            {copiedId === item.id ? "Copied" : "Copy"}
+                          </button>
+                        </div>
                       </td>
                       <td style={{ cursor: "pointer" }} onClick={() => handleItemClick(item)}>
                         <span className="badge badge-secondary" style={{ fontSize: "0.75rem" }}>
