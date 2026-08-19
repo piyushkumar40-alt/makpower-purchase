@@ -75,6 +75,14 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
     }
   ]);
 
+  const totalQty = useMemo(() => {
+    return rows.reduce((sum, r) => sum + (parseInt(r.orderQuantity, 10) || 0), 0);
+  }, [rows]);
+
+  const validRowCount = useMemo(() => {
+    return rows.filter(r => r.model || r.orderQuantity).length;
+  }, [rows]);
+
   const [activeDropdown, setActiveDropdown] = useState(null); // { rowId, field: "model" | "category" }
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 220 });
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -781,6 +789,10 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
             <Sparkles size={14} /> Shift+Click to select range & press Ctrl+D to Fill Down
           </span>
           
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(56, 189, 248, 0.15)", padding: "6px 14px", borderRadius: "8px", border: "1px solid #38bdf8", color: "#38bdf8", fontSize: "0.88rem", fontWeight: 700 }}>
+            <Package size={16} /> Total Qty: <span style={{ fontSize: "1rem", color: "#fff", fontWeight: 800 }}>{totalQty.toLocaleString()} Pcs</span>
+          </div>
+
           <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(255, 255, 255, 0.04)", padding: "6px 12px", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
             <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Entry By:</span>
             <input 
@@ -1374,6 +1386,20 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                 </tr>
               ))}
             </tbody>
+            <tfoot style={{ position: "sticky", bottom: 0, background: "#0f172a", borderTop: "2px solid #38bdf8", zIndex: 5 }}>
+              <tr>
+                <td colSpan={5} style={{ fontWeight: 700, textAlign: "right", color: "var(--text-muted)", padding: "8px 12px", fontSize: "0.82rem" }}>
+                  TOTAL SUMMARY ({validRowCount} active items):
+                </td>
+                <td style={{ fontWeight: 700, color: "var(--primary)", padding: "8px 12px", textAlign: "right" }}>
+                  Total Qty:
+                </td>
+                <td style={{ fontWeight: 800, fontSize: "0.92rem", color: "#38bdf8", background: "rgba(56, 189, 248, 0.18)", padding: "8px 12px", borderRadius: "4px" }}>
+                  {totalQty.toLocaleString()} Pcs
+                </td>
+                <td colSpan={3}></td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
@@ -1395,7 +1421,23 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
         </div>
 
         {/* Submit action block */}
-        <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap" }}>
+          {/* Total Quantity Summary Badge */}
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            background: "rgba(16, 185, 129, 0.12)",
+            border: "1px solid rgba(16, 185, 129, 0.3)",
+            color: "#34d399",
+            padding: "8px 16px",
+            borderRadius: "8px",
+            fontWeight: 700,
+            fontSize: "0.88rem"
+          }}>
+            Total Qty: <span style={{ fontSize: "1rem", color: "#fff", fontWeight: 800 }}>{totalQty.toLocaleString()} Units</span>
+          </div>
+
           {/* Status bar resembling the "Good to Go" Excel bar */}
           <div 
             style={{ 
@@ -1429,7 +1471,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
               fontWeight: 700
             }}
           >
-            Place Order ({rows.length} Items)
+            Place Order ({rows.length} Items | {totalQty.toLocaleString()} Pcs)
           </button>
         </div>
 
