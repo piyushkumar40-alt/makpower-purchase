@@ -1449,6 +1449,7 @@ export default function PurchaserDashboard({
                                   checked={vrChecked.includes(r.id)}
                                   onChange={e => setVrChecked(prev => e.target.checked ? [...prev, r.id] : prev.filter(id => id !== r.id))}
                                 />
+                              </td>
                               <td style={{ fontWeight: 600 }}>
                                 <button 
                                   type="button"
@@ -1621,6 +1622,7 @@ export default function PurchaserDashboard({
                                   checked={cpChecked.includes(r.id)}
                                   onChange={e => setCpChecked(prev => e.target.checked ? [...prev, r.id] : prev.filter(id => id !== r.id))}
                                 />
+                              </td>
                               <td style={{ fontWeight: 600 }}>
                                 <button 
                                   type="button"
