@@ -150,18 +150,19 @@ export default function CapitalPipelineStudio({
   const activeRequests = (requests || []).filter(r => r.status !== "Cancelled");
   const safeCargos = cargos || [];
 
-  // STAGE 1: MONEY AT ORDERED ITEMS (Only unprocessed new orders: pending pricing / vendor processing)
+  // STAGE 1: MONEY AT ORDERED ITEMS (New unassigned & unpriced requisitions)
   const orderedRequests = activeRequests.filter(r => 
     r.isMaterialRec !== "Yes" && 
     !r.cargoId && 
-    (!r.priceRmb || parseFloat(r.priceRmb || 0) === 0 || r.purchaseUpdated === "No" || !r.vendorId)
+    !r.vendorId && 
+    (!r.priceRmb || parseFloat(r.priceRmb || 0) === 0)
   );
   
-  // STAGE 2: MONEY AT VENDOR (Priced & confirmed with vendor, in production at factory, not yet shipped)
+  // STAGE 2: MONEY AT VENDOR (Vendor assigned or priced, in production at factory, not yet shipped)
   const vendorRequests = activeRequests.filter(r => 
     r.isMaterialRec !== "Yes" && 
     !r.cargoId && 
-    (r.priceRmb && parseFloat(r.priceRmb || 0) > 0 && r.purchaseUpdated !== "No" && r.vendorId)
+    (r.vendorId || (r.priceRmb && parseFloat(r.priceRmb || 0) > 0))
   );
 
   // STAGE 3: MONEY AT TRANSIT (Bundled in cargo shipment currently on the move)
@@ -265,7 +266,7 @@ export default function CapitalPipelineStudio({
         stageColor = "#38bdf8";
         stageBg = "rgba(56, 189, 248, 0.15)";
         stageBorder = "rgba(56, 189, 248, 0.3)";
-      } else if (r.priceRmb && parseFloat(r.priceRmb || 0) > 0 && r.purchaseUpdated !== "No" && r.vendorId) {
+      } else if (r.vendorId || (r.priceRmb && parseFloat(r.priceRmb || 0) > 0)) {
         stageKey = "vendor";
         stageName = "2. Money at Vendor";
         stageColor = "#fbbf24";
