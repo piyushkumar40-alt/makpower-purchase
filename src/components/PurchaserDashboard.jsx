@@ -12,9 +12,9 @@ import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCre
 
 // ==================== TOP-LEVEL UTILITIES & METRIC CALCULATION HELPERS ====================
 export const getCurrencySymbol = (cur) => {
-  const c = (cur || "RMB").toUpperCase();
-  if (c === "USD") return "$";
-  if (c === "INR") return "₹";
+  const c = (cur || "").toString().toUpperCase().trim();
+  if (c === "USD" || c === "$") return "$";
+  if (c === "INR" || c === "RS" || c === "₹") return "₹";
   return "¥";
 };
 
@@ -2064,14 +2064,6 @@ export default function PurchaserDashboard({
 }
 
 // --------------------- SUB COMPONENT MODALS ---------------------
-
-// Helper for currency symbols
-export const getCurrencySymbol = (currency) => {
-  const c = (currency || "").toString().toUpperCase().trim();
-  if (c === "USD" || c === "$") return "$";
-  if (c === "INR" || c === "RS" || c === "₹") return "₹";
-  return "¥"; // Default RMB
-};
 
 export const convertToRmb = (amount, currency) => {
   const num = parseFloat(amount || 0);
