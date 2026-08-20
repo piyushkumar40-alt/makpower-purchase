@@ -11,14 +11,14 @@ export default function TransferModal({ purchaser, activeUsers, requests, vendor
   const assignedVendorsCount = vendors.filter(v => v.purchaserId === purchaser.id).length;
 
   // Destination options: other active purchasers or the Super Admin
-  const potentialDestinations = activeUsers.filter(u => u.id !== purchaser.id);
+  const potentialDestinations = (activeUsers || []).filter(u => u && purchaser && u.id !== purchaser.id);
 
   // Set default selection to the first available user
   React.useEffect(() => {
     if (potentialDestinations.length > 0 && !transferDestId) {
       setTransferDestId(potentialDestinations[0].id);
     }
-  }, [potentialDestinations, transferDestId]);
+  }, [activeUsers, purchaser, transferDestId]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
