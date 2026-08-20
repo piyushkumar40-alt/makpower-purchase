@@ -11,6 +11,118 @@ import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
 
 // ==================== TOP-LEVEL UTILITIES & METRIC CALCULATION HELPERS ====================
+export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange, placeholder, accentColor = "var(--primary)" }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectedOpt = options.find(o => o.value === value);
+
+  return (
+    <div ref={dropdownRef} style={{ display: "flex", alignItems: "center", gap: "10px", flex: "1 1 280px", minWidth: "250px", position: "relative" }}>
+      {label && (
+        <label style={{ fontSize: "0.85rem", fontWeight: 700, color: accentColor, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "6px" }}>
+          {Icon && <Icon size={16} />} {label}:
+        </label>
+      )}
+      <div style={{ position: "relative", flex: 1 }}>
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="btn btn-secondary dropdown-toggle"
+          data-mdb-ripple-init
+          style={{
+            width: "100%",
+            textAlign: "left",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            fontWeight: 600,
+            fontSize: "0.88rem",
+            padding: "9px 14px",
+            borderRadius: "12px",
+            border: selectedOpt ? `1px solid ${accentColor}` : "1px solid var(--border-glass)",
+            boxShadow: selectedOpt ? `0 0 12px ${accentColor}33` : "none",
+            background: "var(--bg-card)",
+            color: selectedOpt ? "#ffffff" : "var(--text-muted)",
+            transition: "all 0.2s ease",
+            cursor: "pointer"
+          }}
+        >
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {selectedOpt ? selectedOpt.label : placeholder}
+          </span>
+          <ChevronDown size={14} style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease", color: "var(--text-muted)", flexShrink: 0, marginLeft: "8px" }} />
+        </button>
+
+        {isOpen && (
+          <ul
+            className="dropdown-menu show"
+            style={{
+              position: "absolute",
+              top: "100%",
+              left: 0,
+              right: 0,
+              marginTop: "6px",
+              zIndex: 9999,
+              background: "#1e293b",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              borderRadius: "12px",
+              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.6)",
+              padding: "6px 0",
+              maxHeight: "320px",
+              overflowY: "auto"
+            }}
+          >
+            {options.map((opt) => {
+              const isSelected = opt.value === value;
+              return (
+                <li key={opt.value}>
+                  <button
+                    type="button"
+                    className={`dropdown-item ${isSelected ? "active" : ""}`}
+                    onClick={() => {
+                      onChange(opt.value);
+                      setIsOpen(false);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "10px 16px",
+                      fontSize: "0.86rem",
+                      fontWeight: isSelected ? 700 : 500,
+                      color: isSelected ? "#38bdf8" : "#e2e8f0",
+                      background: isSelected ? "rgba(56, 189, 248, 0.15)" : "transparent",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                      border: "none",
+                      width: "100%",
+                      textAlign: "left"
+                    }}
+                  >
+                    <span>{opt.label}</span>
+                    {isSelected && <Check size={14} style={{ color: "#38bdf8" }} />}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export const getCurrencySymbol = (cur) => {
   const c = (cur || "").toString().toUpperCase().trim();
   if (c === "USD" || c === "$") return "$";
@@ -477,84 +589,42 @@ export default function PurchaserDashboard({
         <div style={{ maxWidth: "1400px", margin: "0 auto", width: "100%", display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
           
           {/* Dropdown 1: Workflow Steps & Order Stages */}
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: "1 1 280px", minWidth: "250px" }}>
-            <label style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary)", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "6px" }}>
-              <Layers size={16} /> Workflow Steps:
-            </label>
-            <div style={{ position: "relative", flex: 1 }}>
-              <select 
-                className="form-control"
-                style={{ 
-                  width: "100%",
-                  fontWeight: 600, 
-                  fontSize: "0.88rem",
-                  paddingRight: "32px",
-                  cursor: "pointer",
-                  borderRadius: "12px",
-                  borderColor: ["pending", "vendorready", "planner", "cargopickup", "shipments", "all", "cancelled"].includes(activeTab) ? "var(--primary)" : "var(--border-glass)",
-                  boxShadow: ["pending", "vendorready", "planner", "cargopickup", "shipments", "all", "cancelled"].includes(activeTab) ? "0 0 12px var(--primary-glow)" : "none",
-                  background: "var(--bg-card)",
-                  color: "var(--text-main)"
-                }}
-                value={["pending", "vendorready", "planner", "cargopickup", "shipments", "all", "cancelled"].includes(activeTab) ? activeTab : ""}
-                onChange={e => {
-                  if (e.target.value) setActiveTab(e.target.value);
-                }}
-              >
-                <option value="" disabled style={{ background: "var(--bg-card)", color: "var(--text-muted)" }}>-- Select Workflow Step --</option>
-                <option value="pending" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Step 1: Commercial & Timeline Specification</option>
-                <option value="vendorready" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Step 2: Vendor Ready</option>
-                <option value="planner" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Step 3: Cargo Consolidation</option>
-                <option value="cargopickup" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Step 4: Cargo Pickup</option>
-                <option value="shipments" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Step 5: Transit Tracking & Receipt</option>
-                <option value="all" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Received History</option>
-                <option value="cancelled" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Cancelled Orders</option>
-              </select>
-              <ChevronDown size={14} style={{ position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "var(--text-muted)" }} />
-            </div>
-          </div>
+          <MdbCustomDropdown
+            label="Workflow Steps"
+            icon={Layers}
+            options={[
+              { value: "pending", label: "Step 1: Commercial & Timeline Specification" },
+              { value: "vendorready", label: "Step 2: Vendor Ready" },
+              { value: "planner", label: "Step 3: Cargo Consolidation" },
+              { value: "cargopickup", label: "Step 4: Cargo Pickup" },
+              { value: "shipments", label: "Step 5: Transit Tracking & Receipt" },
+              { value: "all", label: "Received History" },
+              { value: "cancelled", label: "Cancelled Orders" }
+            ]}
+            value={["pending", "vendorready", "planner", "cargopickup", "shipments", "all", "cancelled"].includes(activeTab) ? activeTab : ""}
+            onChange={(val) => setActiveTab(val)}
+            placeholder="-- Select Workflow Step --"
+            accentColor="var(--primary)"
+          />
 
           {/* Dropdown 2: Directories, Records & Modules */}
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: "1 1 280px", minWidth: "250px" }}>
-            <label style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--secondary)", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "6px" }}>
-              <Folder size={16} /> Directories & Modules:
-            </label>
-            <div style={{ position: "relative", flex: 1 }}>
-              <select 
-                className="form-control"
-                style={{ 
-                  width: "100%",
-                  fontWeight: 600, 
-                  fontSize: "0.88rem",
-                  paddingRight: "32px",
-                  cursor: "pointer",
-                  borderRadius: "12px",
-                  borderColor: ["alerts", "docs", "vendors", "cargocompanies", "itemmaster"].includes(activeTab) ? "var(--secondary)" : "var(--border-glass)",
-                  boxShadow: ["alerts", "docs", "vendors", "cargocompanies", "itemmaster"].includes(activeTab) ? "0 0 12px rgba(129, 140, 248, 0.2)" : "none",
-                  background: "var(--bg-card)",
-                  color: "var(--text-main)"
-                }}
-                value={["alerts", "docs", "vendors", "cargocompanies", "itemmaster"].includes(activeTab) ? activeTab : ""}
-                onChange={e => {
-                  if (e.target.value) setActiveTab(e.target.value);
-                }}
-              >
-                <option value="" disabled style={{ background: "var(--bg-card)", color: "var(--text-muted)" }}>-- Select Directory / Module --</option>
-                <option value="alerts" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>
-                  Operations Alerts {totalAlertsCount > 0 ? `(${totalAlertsCount} Alerts)` : ""}
-                </option>
-                <option value="docs" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>
-                  Pending Documents {myCargos.filter(c => !c.packingListFile || !c.invoiceFile).length > 0 ? `(${myCargos.filter(c => !c.packingListFile || !c.invoiceFile).length} Missing)` : ""}
-                </option>
-                <option value="vendors" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Vendor Registry</option>
-                <option value="cargocompanies" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Logistics Carriers</option>
-                <option value="itemmaster" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>Item Catalog & Stock</option>
-                <option value="auditlogs" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>System Audit Logs & Version History ({auditLogs.length})</option>
-                <option value="studiopipeline" style={{ background: "var(--bg-card)", color: "var(--text-main)" }}>📊 Money Flow & Capital Allocation Studio</option>
-              </select>
-              <ChevronDown size={14} style={{ position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "var(--text-muted)" }} />
-            </div>
-          </div>
+          <MdbCustomDropdown
+            label="Directories & Modules"
+            icon={Folder}
+            options={[
+              { value: "alerts", label: `Operations Alerts ${totalAlertsCount > 0 ? `(${totalAlertsCount} Alerts)` : ""}` },
+              { value: "docs", label: `Pending Documents ${myCargos.filter(c => !c.packingListFile || !c.invoiceFile).length > 0 ? `(${myCargos.filter(c => !c.packingListFile || !c.invoiceFile).length} Missing)` : ""}` },
+              { value: "vendors", label: "Vendor Registry" },
+              { value: "cargocompanies", label: "Logistics Carriers" },
+              { value: "itemmaster", label: "Item Catalog & Stock" },
+              { value: "auditlogs", label: `System Audit Logs & Version History (${auditLogs.length})` },
+              { value: "studiopipeline", label: "📊 Money Flow & Capital Allocation Studio" }
+            ]}
+            value={["alerts", "docs", "vendors", "cargocompanies", "itemmaster", "auditlogs", "studiopipeline"].includes(activeTab) ? activeTab : ""}
+            onChange={(val) => setActiveTab(val)}
+            placeholder="-- Select Directory / Module --"
+            accentColor="var(--secondary)"
+          />
 
           {/* Quick Filter: Missed Target Date */}
           <button 
