@@ -28,6 +28,14 @@
   
   --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Bootstrap 5 Theme Variable Bridge */
+  --bs-body-bg: #070a13;
+  --bs-body-color: #f8fafc;
+  --bs-font-sans-serif: 'Inter', sans-serif;
+  --bs-link-color: #38bdf8;
+  --bs-link-hover-color: #7dd3fc;
+  --bs-border-color: rgba(255, 255, 255, 0.07);
 }
 
 * {
