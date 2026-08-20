@@ -2303,6 +2303,26 @@ app.post("/api/settings", async (req, res) => {
   }
 });
 
+// POST /api/settings/force-refresh - Triggers a force reload signal for all active webapp clients
+app.post("/api/settings/force-refresh", async (req, res) => {
+  const ts = Date.now().toString();
+  if (isPg) {
+    try {
+      await pool.query('INSERT INTO settings ("key", "value") VALUES ($1, $2) ON CONFLICT ("key") DO UPDATE SET "value" = $2', ["forceRefreshTimestamp", ts]);
+      res.json({ success: true, forceRefreshTimestamp: ts });
+    } catch (err) {
+      console.error("POST /api/settings/force-refresh error:", err.message);
+      res.status(500).json({ error: "Failed to set force refresh timestamp." });
+    }
+  } else {
+    const data = readLocalJson();
+    data.settings = data.settings || {};
+    data.settings.forceRefreshTimestamp = ts;
+    writeLocalJson(data);
+    res.json({ success: true, forceRefreshTimestamp: ts });
+  }
+});
+
 // Serve frontend compiled client assets in production
 app.use(express.static(path.join(__dirname, "dist")));
 

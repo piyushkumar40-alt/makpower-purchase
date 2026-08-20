@@ -129,6 +129,8 @@ export default function App() {
     setActiveView("home");
   };
 
+  const lastRefreshTsRef = React.useRef(null);
+
   // Fetch full state on mount & set up 10-second polling
   useEffect(() => {
     async function loadData(isInterval = false) {
@@ -147,6 +149,16 @@ export default function App() {
         setDesignations(data.designations || []);
         if (data.settings) {
           setSettings(data.settings);
+          if (data.settings.forceRefreshTimestamp) {
+            const incomingTs = Number(data.settings.forceRefreshTimestamp);
+            if (lastRefreshTsRef.current === null) {
+              lastRefreshTsRef.current = incomingTs;
+            } else if (incomingTs > lastRefreshTsRef.current) {
+              lastRefreshTsRef.current = incomingTs;
+              console.log("⚡ Server requested force client webapp refresh. Reloading...");
+              window.location.reload();
+            }
+          }
         }
 
         if (auditRes.ok) {

@@ -43,6 +43,9 @@ export default function SuperAdminDashboard({
     return localStorage.getItem("makpower_admin_subtab") || "purchasers";
   });
 
+  const [forceRefreshLoading, setForceRefreshLoading] = useState(false);
+  const [forceRefreshMsg, setForceRefreshMsg] = useState("");
+
   React.useEffect(() => {
     localStorage.setItem("makpower_admin_subtab", subTab);
   }, [subTab]);
@@ -1419,6 +1422,47 @@ export default function SuperAdminDashboard({
                   style={{ width: "100%", padding: "12px", fontSize: "0.9rem" }}
                 >
                   Purge All Orders, Vendors, Cargo & Items Data
+                </button>
+              </div>
+
+              {/* Force Client Webapp Refresh Panel */}
+              <div className="glass-panel" style={{ padding: "24px" }}>
+                <h3 style={{ fontSize: "1.2rem", marginBottom: "12px", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <RefreshCw size={20} style={{ color: "var(--primary)" }} /> Force Client Webapp Refresh
+                </h3>
+                
+                <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "16px" }}>
+                  Forces all active users' browsers (purchasers, managers, coordinator, owner, guests) to instantly reload and fetch the latest webapp updates.
+                </p>
+
+                {forceRefreshMsg && (
+                  <div className="alert-strip alert-success" style={{ marginBottom: "16px" }}>
+                    <Check size={16} /> {forceRefreshMsg}
+                  </div>
+                )}
+
+                <button
+                  onClick={async () => {
+                    if (!window.confirm("⚡ Are you sure you want to force ALL connected users' browsers to refresh/reload?")) return;
+                    try {
+                      setForceRefreshLoading(true);
+                      const res = await fetch("/api/settings/force-refresh", { method: "POST" });
+                      const json = await res.json();
+                      if (json.success) {
+                        setForceRefreshMsg("⚡ Force refresh signal sent! All connected browsers will reload.");
+                        setTimeout(() => setForceRefreshMsg(""), 5000);
+                      }
+                    } catch (err) {
+                      alert("Failed to send force refresh signal: " + err.message);
+                    } finally {
+                      setForceRefreshLoading(false);
+                    }
+                  }}
+                  disabled={forceRefreshLoading}
+                  className="btn btn-primary"
+                  style={{ width: "100%", padding: "12px", fontSize: "0.9rem", fontWeight: 700, background: "linear-gradient(135deg, #0284c7, #2563eb)" }}
+                >
+                  <RefreshCw size={16} className={forceRefreshLoading ? "spin" : ""} /> {forceRefreshLoading ? "Sending Signal..." : "⚡ Force Refresh All Connected Browsers"}
                 </button>
               </div>
 
