@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { LogOut, Filter, CheckSquare, Square, CheckCircle, PackageOpen, Download, RotateCcw } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
+import { useSortableData } from "../utils/useSortableData";
 
 export default function RahulDashboard({ currentUser, requests, vendors, cargos, purchasers = [], onBatchUpdateRequests, onLogout }) {
   const getPurchaserName = (r) => {
@@ -46,6 +47,8 @@ export default function RahulDashboard({ currentUser, requests, vendors, cargos,
     const categoryMatch = filterCategory === "" || (r.category && r.category.toLowerCase().includes(filterCategory.toLowerCase()));
     return cargoIdMatch && vendorMatch && categoryMatch;
   });
+
+  const { items: sortedDisplayRequests, RenderSortHeader } = useSortableData(filteredRequests);
 
   // Extract filter options dynamically
   const uniqueVendors = Array.from(new Set(eligibleRequests.map(r => r.vendorId)))
@@ -267,26 +270,26 @@ export default function RahulDashboard({ currentUser, requests, vendors, cargos,
                       />
                     </th>
                   )}
-                  <th>Purchaser</th>
-                  <th>Required By</th>
-                  <th>Vendor</th>
-                  <th>Order Date</th>
-                  <th>Type</th>
-                  <th>Model</th>
-                  <th>Qty</th>
-                  <th>EDD</th>
-                  <th>Cargo Date</th>
-                  <th>Cargo Detail</th>
-                  <th>Transport</th>
-                  <th>Ship Date</th>
-                  <th>ETA</th>
-                  <th>Purchase Updated</th>
-                  <th>Material Rec</th>
+                  <RenderSortHeader colKey="purchaser" title="Purchaser" getValue={r => getPurchaserName(r)} />
+                  <RenderSortHeader colKey="entryBy" title="Required By" getValue={r => r.entryBy || r.requestedBy || "Requester"} />
+                  <RenderSortHeader colKey="vendor" title="Vendor" getValue={r => vendors.find(v => v.id === r.vendorId)?.name || ""} />
+                  <RenderSortHeader colKey="orderDate" title="Order Date" />
+                  <RenderSortHeader colKey="type" title="Type" />
+                  <RenderSortHeader colKey="model" title="Model" />
+                  <RenderSortHeader colKey="orderQuantity" title="Qty" />
+                  <RenderSortHeader colKey="vendorEdd" title="EDD" />
+                  <RenderSortHeader colKey="cargoDate" title="Cargo Date" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoOrderDate || ""} />
+                  <RenderSortHeader colKey="cargoDetail" title="Cargo Detail" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoDetail || ""} />
+                  <RenderSortHeader colKey="modeOfTransport" title="Transport" getValue={r => cargos.find(c => c.id === r.cargoId)?.modeOfTransport || ""} />
+                  <RenderSortHeader colKey="cargoShippingDate" title="Ship Date" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoShippingDate || ""} />
+                  <RenderSortHeader colKey="cargoEta" title="ETA" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoEta || ""} />
+                  <RenderSortHeader colKey="purchaseUpdated" title="Purchase Updated" />
+                  <RenderSortHeader colKey="isMaterialRec" title="Material Rec" />
                   <th>Cargo Slip</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredRequests.map(r => {
+                {sortedDisplayRequests.map(r => {
                   const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
                   const cargo = cargos.find(c => c.id === r.cargoId);
                   const isChecked = checkedIds.includes(r.id);

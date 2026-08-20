@@ -4,6 +4,7 @@ import AnalyticsPanel from "./AnalyticsPanel";
 import { uploadToCloudinary } from "../utils/upload";
 import ItemMasterView from "./ItemMasterView";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
+import { useSortableData } from "../utils/useSortableData";
 import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
@@ -597,46 +598,50 @@ export default function PurchaserDashboard({
               )}
 
               {/* Spreadsheet / Table View */}
-              <div className="glass-panel" style={{ padding: "4px" }}>
-                <div className="table-container" style={{ maxHeight: "60vh", overflowY: "auto" }}>
-                  <table className="custom-table" style={{ fontSize: "0.85rem" }}>
-                    <thead>
-                      <tr style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-card)" }}>
-                        <th style={{ width: "40px", textAlign: "center" }}>
-                          <input 
-                            type="checkbox"
-                            className="checkbox-input"
-                            checked={allStep1Checked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setStep1CheckedIds(pendingReqs.map(r => r.id));
-                              } else {
-                                setStep1CheckedIds([]);
-                              }
-                            }}
-                          />
-                        </th>
-                        <th style={{ width: "100px" }}>Order Date</th>
-                        <th>Model / Description</th>
-                        <th style={{ width: "80px" }}>Qty</th>
-                        <th style={{ minWidth: "180px" }}>Vendor / Supplier</th>
-                        <th style={{ minWidth: "130px" }}>Price (RMB / Amount)</th>
-                        <th style={{ minWidth: "130px" }}>Total (RMB)</th>
-                        <th style={{ minWidth: "140px" }}>Vendor EDD</th>
-                        <th style={{ width: "90px", textAlign: "center" }}>Actions</th>
-                        <th style={{ width: "70px", textAlign: "center" }}>Cancel</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pendingReqs.length === 0 ? (
-                        <tr>
-                          <td colSpan="10" style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
-                            <CheckCircle2 size={28} style={{ color: "var(--success)", marginBottom: "8px", display: "inline" }} /><br />
-                            No pending unpriced requests! All items have pricing and supplier details populated.
-                          </td>
-                        </tr>
-                      ) : (
-                        pendingReqs.map((r, index) => {
+              {(() => {
+                const { items: sortedPendingReqs, RenderSortHeader } = useSortableData(pendingReqs);
+
+                return (
+                  <div className="glass-panel" style={{ padding: "4px" }}>
+                    <div className="table-container" style={{ maxHeight: "60vh", overflowY: "auto" }}>
+                      <table className="custom-table" style={{ fontSize: "0.85rem" }}>
+                        <thead>
+                          <tr style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-card)" }}>
+                            <th style={{ width: "40px", textAlign: "center" }}>
+                              <input 
+                                type="checkbox"
+                                className="checkbox-input"
+                                checked={allStep1Checked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setStep1CheckedIds(pendingReqs.map(r => r.id));
+                                  } else {
+                                    setStep1CheckedIds([]);
+                                  }
+                                }}
+                              />
+                            </th>
+                            <RenderSortHeader colKey="orderDate" title="Order Date" style={{ width: "100px" }} />
+                            <RenderSortHeader colKey="model" title="Model / Description" />
+                            <RenderSortHeader colKey="orderQuantity" title="Qty" style={{ width: "80px" }} />
+                            <RenderSortHeader colKey="vendorId" title="Vendor / Supplier" getValue={r => vendors.find(v => v.id === (step1InlineEdits[r.id]?.vendorId || r.vendorId))?.name || ""} style={{ minWidth: "180px" }} />
+                            <RenderSortHeader colKey="priceRmb" title="Price (RMB / Amount)" style={{ minWidth: "130px" }} />
+                            <RenderSortHeader colKey="totalRmb" title="Total (RMB)" style={{ minWidth: "130px" }} />
+                            <RenderSortHeader colKey="vendorEdd" title="Vendor EDD" style={{ minWidth: "140px" }} />
+                            <th style={{ width: "90px", textAlign: "center" }}>Actions</th>
+                            <th style={{ width: "70px", textAlign: "center" }}>Cancel</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sortedPendingReqs.length === 0 ? (
+                            <tr>
+                              <td colSpan="10" style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
+                                <CheckCircle2 size={28} style={{ color: "var(--success)", marginBottom: "8px", display: "inline" }} /><br />
+                                No pending unpriced requests! All items have pricing and supplier details populated.
+                              </td>
+                            </tr>
+                          ) : (
+                            sortedPendingReqs.map((r, index) => {
                           const isChecked = step1CheckedIds.includes(r.id);
                           const edits = step1InlineEdits[r.id] || {};
 

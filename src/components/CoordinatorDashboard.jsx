@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { LogOut, Filter, ShieldAlert, Clock, AlertTriangle, CheckCircle, Search, User } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
+import { useSortableData } from "../utils/useSortableData";
 
 export default function CoordinatorDashboard({ currentUser, requests, vendors, cargos, users, onLogout }) {
   const [activeTab, setActiveTab] = useState("pending"); // "pending" | "delayed"
@@ -296,30 +297,33 @@ export default function CoordinatorDashboard({ currentUser, requests, vendors, c
       </div>
 
       {/* Task List Table */}
-      {filteredTasks.length === 0 ? (
-        <div className="glass-panel" style={{ padding: "50px", textAlign: "center", color: "var(--text-muted)" }}>
-          <CheckCircle size={36} style={{ color: "var(--success)", marginBottom: "12px", display: "inline" }} /><br />
-          No pending or overdue tasks found matching your filters.
-        </div>
-      ) : (
-        <div className="glass-panel" style={{ padding: "4px" }}>
-          <div className="table-container">
-            <table className="custom-table">
-              <thead>
-                <tr>
-                  <th>Responsible Person</th>
-                  <th>Staff Role</th>
-                  <th>Task Action Required</th>
-                  <th>Item / Description</th>
-                  <th>Vendor</th>
-                  <th>Target Date</th>
-                  <th>Workflow Stage</th>
-                  {activeTab === "delayed" && <th>Overdue Days</th>}
-                  <th>Breach Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTasks.map(t => (
+      {(() => {
+        const { items: sortedTasks, RenderSortHeader } = useSortableData(filteredTasks);
+
+        return filteredTasks.length === 0 ? (
+          <div className="glass-panel" style={{ padding: "50px", textAlign: "center", color: "var(--text-muted)" }}>
+            <CheckCircle size={36} style={{ color: "var(--success)", marginBottom: "12px", display: "inline" }} /><br />
+            No pending or overdue tasks found matching your filters.
+          </div>
+        ) : (
+          <div className="glass-panel" style={{ padding: "4px" }}>
+            <div className="table-container">
+              <table className="custom-table">
+                <thead>
+                  <tr>
+                    <RenderSortHeader colKey="assigneeName" title="Responsible Person" />
+                    <RenderSortHeader colKey="assigneeRole" title="Staff Role" />
+                    <RenderSortHeader colKey="taskName" title="Task Action Required" />
+                    <RenderSortHeader colKey="itemDesc" title="Item / Description" />
+                    <RenderSortHeader colKey="vendor" title="Vendor" />
+                    <RenderSortHeader colKey="targetDate" title="Target Date" />
+                    <RenderSortHeader colKey="stage" title="Workflow Stage" />
+                    {activeTab === "delayed" && <RenderSortHeader colKey="daysOverdue" title="Overdue Days" />}
+                    <RenderSortHeader colKey="severity" title="Breach Status" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedTasks.map(t => (
                   <tr key={t.id} style={{ background: t.isDelayed ? "rgba(239, 68, 68, 0.02)" : "" }}>
                     <td style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
                       <User size={12} style={{ color: "var(--text-muted)" }} />
@@ -359,7 +363,8 @@ export default function CoordinatorDashboard({ currentUser, requests, vendors, c
             </table>
           </div>
         </div>
-      )}
+        );
+      })()}
       </>
       )}
     </div>

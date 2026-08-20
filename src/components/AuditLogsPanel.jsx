@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { History, User, Filter, Search, Download, Clock, ShieldCheck, Tag, FileText, ChevronRight, X, AlertCircle } from "lucide-react";
+import { useSortableData } from "../utils/useSortableData";
 
 export default function AuditLogsPanel({ auditLogs = [], users = [], requests = [], vendors = [] }) {
   const [selectedUser, setSelectedUser] = useState("all");
@@ -65,6 +66,8 @@ export default function AuditLogsPanel({ auditLogs = [], users = [], requests = 
       return true;
     });
   }, [auditLogs, selectedUser, selectedAction, timeRange, searchQuery]);
+
+  const { items: sortedLogs, RenderSortHeader } = useSortableData(filteredLogs);
 
   // Helper: Export to CSV
   const handleExportCsv = () => {
@@ -225,15 +228,15 @@ export default function AuditLogsPanel({ auditLogs = [], users = [], requests = 
             <table className="custom-table">
               <thead>
                 <tr>
-                  <th style={{ width: "170px" }}>Date & Time (IST)</th>
-                  <th style={{ width: "160px" }}>User (Who)</th>
-                  <th style={{ width: "130px" }}>Action</th>
-                  <th>Activity Description & Entity Details</th>
+                  <RenderSortHeader colKey="timestamp" title="Date & Time (IST)" getValue={log => log.isoTime || log.timestamp} style={{ width: "170px" }} />
+                  <RenderSortHeader colKey="userName" title="User (Who)" style={{ width: "160px" }} />
+                  <RenderSortHeader colKey="action" title="Action" style={{ width: "130px" }} />
+                  <RenderSortHeader colKey="details" title="Activity Description & Entity Details" />
                   <th style={{ width: "110px", textAlign: "center" }}>Version Snapshot</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredLogs.map(log => (
+                {sortedLogs.map(log => (
                   <tr key={log.id}>
                     <td style={{ fontSize: "0.8rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
                       <Clock size={12} style={{ marginRight: "4px", verticalAlign: "middle", opacity: 0.7 }} />

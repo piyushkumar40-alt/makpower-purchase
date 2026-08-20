@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Layers, Plus, Upload, Trash2, Search, CheckSquare, Square, FileSpreadsheet, Package, AlertCircle, RefreshCw, GitMerge, Edit3, Info, Download, Image, ListPlus, Eye, User, Camera, Copy, Check } from "lucide-react";
 import ItemDetailModal from "./ItemDetailModal";
+import { useSortableData } from "../utils/useSortableData";
 
 // Normalize item names for fuzzy duplicate detection (e.g. DC02, DC 02, DC2, DC-2, DC-02 -> DC2)
 export function normalizeItemKey(str) {
@@ -1300,42 +1301,46 @@ export default function ItemCatalogPanel({
       </div>
 
       {/* Master Items Table */}
-      <div className="glass-panel" style={{ padding: "4px" }}>
-        <div className="table-container" style={{ maxHeight: "65vh", overflowY: "auto", overflowX: "auto" }}>
-          <table className="custom-table">
-            <thead style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-card)" }}>
-              <tr>
-                <th style={{ width: "40px", textAlign: "center" }}>
-                  <input 
-                    type="checkbox"
-                    checked={filteredItems.length > 0 && selectedIds.length === filteredItems.length}
-                    onChange={toggleSelectAll}
-                    style={{ cursor: "pointer" }}
-                  />
-                </th>
-                <th style={{ width: "50px", textAlign: "center" }}>Image</th>
-                {isSuperAdmin && <th style={{ width: "90px" }}>Item ID</th>}
-                <th>Name / Model</th>
-                <th>Category</th>
-                <th>Type (FG/RM)</th>
-                <th>Nature</th>
-                <th>Unit (UOM)</th>
-                <th>Description / Specs</th>
-                {isSuperAdmin && <th>Created By</th>}
-                <th style={{ textAlign: "center" }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredItems.length === 0 ? (
-                <tr>
-                  <td colSpan={isSuperAdmin ? "11" : "9"} style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
-                    {searchQuery || categoryFilter !== "all" || typeFilter !== "all"
-                      ? "No catalog items match your search filter."
-                      : "Master Item Catalog is empty. Click 'Add Master Item' or 'Excel Bulk Upload' above to populate items!"}
-                  </td>
-                </tr>
-              ) : (
-                filteredItems.map(item => {
+      {(() => {
+        const { items: sortedCatalogItems, RenderSortHeader } = useSortableData(filteredItems);
+
+        return (
+          <div className="glass-panel" style={{ padding: "4px" }}>
+            <div className="table-container" style={{ maxHeight: "65vh", overflowY: "auto", overflowX: "auto" }}>
+              <table className="custom-table">
+                <thead style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-card)" }}>
+                  <tr>
+                    <th style={{ width: "40px", textAlign: "center" }}>
+                      <input 
+                        type="checkbox"
+                        checked={filteredItems.length > 0 && selectedIds.length === filteredItems.length}
+                        onChange={toggleSelectAll}
+                        style={{ cursor: "pointer" }}
+                      />
+                    </th>
+                    <th style={{ width: "50px", textAlign: "center" }}>Image</th>
+                    {isSuperAdmin && <RenderSortHeader colKey="id" title="Item ID" style={{ width: "90px" }} />}
+                    <RenderSortHeader colKey="name" title="Name / Model" />
+                    <RenderSortHeader colKey="category" title="Category" />
+                    <RenderSortHeader colKey="itemType" title="Type (FG/RM)" />
+                    <RenderSortHeader colKey="itemNature" title="Nature" />
+                    <RenderSortHeader colKey="unit" title="Unit (UOM)" />
+                    <RenderSortHeader colKey="description" title="Description / Specs" />
+                    {isSuperAdmin && <RenderSortHeader colKey="createdBy" title="Created By" />}
+                    <th style={{ textAlign: "center" }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedCatalogItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={isSuperAdmin ? "11" : "9"} style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
+                        {searchQuery || categoryFilter !== "all" || typeFilter !== "all"
+                          ? "No catalog items match your search filter."
+                          : "Master Item Catalog is empty. Click 'Add Master Item' or 'Excel Bulk Upload' above to populate items!"}
+                      </td>
+                    </tr>
+                  ) : (
+                    sortedCatalogItems.map(item => {
                   const isSelected = selectedIds.includes(item.id);
                   const isFG = item.itemType === "FG";
 
@@ -1492,6 +1497,8 @@ export default function ItemCatalogPanel({
           </table>
         </div>
       </div>
+        );
+      })()}
 
       {/* Item Detail Modal Popup */}
       {selectedItemDetail && (
