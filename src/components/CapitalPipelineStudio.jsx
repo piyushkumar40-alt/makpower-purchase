@@ -3,6 +3,7 @@ import {
   PieChart, DollarSign, Building2, Truck, Package, Search, Filter, 
   Download, ArrowUpRight, CheckCircle2, AlertCircle, Layers, Coins, Globe, RefreshCw, BarChart2, Warehouse
 } from "lucide-react";
+import { formatIndianCurrency } from "../utils/formatters";
 
 // Helper: Custom SVG Donut / Circle Chart Component
 function CategoryDonutChart({ title, dataMap, colorPalette, totalAmount, currencySymbol = "₹" }) {
@@ -45,7 +46,7 @@ function CategoryDonutChart({ title, dataMap, colorPalette, totalAmount, currenc
           <PieChart size={16} style={{ color: "#38bdf8" }} /> {title}
         </h4>
         <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#38bdf8" }}>
-          {currencySymbol} {total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          {formatIndianCurrency(total, currencySymbol)}
         </span>
       </div>
 
@@ -85,8 +86,8 @@ function CategoryDonutChart({ title, dataMap, colorPalette, totalAmount, currenc
             pointerEvents: "none"
           }}>
             <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Total Category</div>
-            <div style={{ fontSize: "1rem", fontWeight: 800, color: "#fff" }}>
-              {currencySymbol}{total >= 1000000 ? `${(total/100000).toFixed(1)}L` : `${Math.round(total).toLocaleString()}`}
+            <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#fff" }}>
+              {formatIndianCurrency(total, currencySymbol)}
             </div>
           </div>
         </div>
@@ -458,13 +459,13 @@ export default function CapitalPipelineStudio({
 
           {viewCurrency === "inr" ? (
             <div style={{ fontSize: "1.7rem", fontWeight: 800, color: "#e9d5ff", margin: "10px 0" }}>
-              ₹ {orderedMoneyInr.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              {formatIndianCurrency(orderedMoneyInr)}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "4px", margin: "10px 0" }}>
               <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#38bdf8" }}>¥ {orderedRmb.toLocaleString()} RMB</div>
               <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#fbbf24" }}>$ {orderedUsd.toLocaleString()} USD</div>
-              <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#34d399" }}>₹ {orderedInrVal.toLocaleString()} INR</div>
+              <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#34d399" }}>{formatIndianCurrency(orderedInrVal)} INR</div>
             </div>
           )}
 
@@ -492,19 +493,19 @@ export default function CapitalPipelineStudio({
 
           {viewCurrency === "inr" ? (
             <div style={{ fontSize: "1.7rem", fontWeight: 800, color: "#fef08a", margin: "10px 0" }}>
-              ₹ {vendorMoneyInr.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              {formatIndianCurrency(vendorMoneyInr)}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "4px", margin: "10px 0" }}>
               <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#38bdf8" }}>¥ {vendorRmb.toLocaleString()} RMB</div>
               <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#fbbf24" }}>$ {vendorUsd.toLocaleString()} USD</div>
-              <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#34d399" }}>₹ {vendorInrVal.toLocaleString()} INR</div>
+              <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#34d399" }}>{formatIndianCurrency(vendorInrVal)} INR</div>
             </div>
           )}
 
           <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", borderTop: "1px dashed var(--border-glass)", paddingTop: "8px", marginTop: "10px", display: "flex", justifyContent: "space-between" }}>
             <span>Advance Deposited:</span>
-            <strong style={{ color: "#34d399" }}>₹ {vendorAdvInr.toLocaleString()}</strong>
+            <strong style={{ color: "#34d399" }}>{formatIndianCurrency(vendorAdvInr)}</strong>
           </div>
         </div>
 
@@ -526,22 +527,22 @@ export default function CapitalPipelineStudio({
 
           {viewCurrency === "inr" ? (
             <div style={{ fontSize: "1.7rem", fontWeight: 800, color: "#7dd3fc", margin: "10px 0" }}>
-              ₹ {transitMoneyInrTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              {formatIndianCurrency(transitMoneyInrTotal)}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "4px", margin: "10px 0" }}>
               <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--text-main)" }}>
-                Goods Value: <span style={{ color: "#38bdf8" }}>¥{transitGoodsRmb.toLocaleString()}</span> | <span style={{ color: "#fbbf24" }}>${transitGoodsUsd.toLocaleString()}</span> | <span style={{ color: "#34d399" }}>₹{transitGoodsInrVal.toLocaleString()}</span>
+                Goods Value: <span style={{ color: "#38bdf8" }}>¥{transitGoodsRmb.toLocaleString()}</span> | <span style={{ color: "#fbbf24" }}>${transitGoodsUsd.toLocaleString()}</span> | <span style={{ color: "#34d399" }}>{formatIndianCurrency(transitGoodsInrVal)}</span>
               </div>
               <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--text-main)" }}>
-                Freight Cost: <span style={{ color: "#38bdf8" }}>¥{transitFreightRmb.toLocaleString()}</span> | <span style={{ color: "#fbbf24" }}>${transitFreightUsd.toLocaleString()}</span> | <span style={{ color: "#34d399" }}>₹{transitFreightInrVal.toLocaleString()}</span>
+                Freight Cost: <span style={{ color: "#38bdf8" }}>¥{transitFreightRmb.toLocaleString()}</span> | <span style={{ color: "#fbbf24" }}>${transitFreightUsd.toLocaleString()}</span> | <span style={{ color: "#34d399" }}>{formatIndianCurrency(transitFreightInrVal)}</span>
               </div>
             </div>
           )}
 
           <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", borderTop: "1px dashed var(--border-glass)", paddingTop: "8px", marginTop: "10px", display: "flex", justifyContent: "space-between" }}>
             <span>In-Transit Cargo Freight:</span>
-            <strong style={{ color: "#38bdf8" }}>₹ {transitFreightInr.toLocaleString()}</strong>
+            <strong style={{ color: "#38bdf8" }}>{formatIndianCurrency(transitFreightInr)}</strong>
           </div>
         </div>
 

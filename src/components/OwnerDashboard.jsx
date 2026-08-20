@@ -8,6 +8,7 @@ import {
 
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { useSortableData } from "../utils/useSortableData";
+import { formatIndianCurrency } from "../utils/formatters";
 
 export default function OwnerDashboard({
   currentUser = {},
@@ -582,10 +583,10 @@ export default function OwnerDashboard({
               </div>
             </div>
             <div className="stat-value" style={{ color: "#a7f3d0", fontSize: "1.7rem", margin: "10px 0" }}>
-              ₹ {totalInrConsolidatedSpend.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {formatIndianCurrency(totalInrConsolidatedSpend)}
             </div>
             <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-              Advance Paid: <strong>₹ {totalInrAdvancePaid.toLocaleString()}</strong> | Bal: <strong>₹ {totalInrBalanceDue.toLocaleString()}</strong>
+              Advance Paid: <strong>{formatIndianCurrency(totalInrAdvancePaid)}</strong> | Bal: <strong>{formatIndianCurrency(totalInrBalanceDue)}</strong>
             </div>
           </div>
 
@@ -598,10 +599,10 @@ export default function OwnerDashboard({
               </div>
             </div>
             <div className="stat-value" style={{ color: "#e9d5ff", fontSize: "1.6rem", margin: "10px 0" }}>
-              ₹ {vendorInrTotalSpend.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {formatIndianCurrency(vendorInrTotalSpend)}
             </div>
             <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-              Advance Deposited: <strong style={{ color: "#34d399" }}>₹ {vendorInrTotalAdv.toLocaleString()}</strong> | Bal: <strong>₹ {vendorInrTotalBal.toLocaleString()}</strong>
+              Advance Deposited: <strong style={{ color: "#34d399" }}>{formatIndianCurrency(vendorInrTotalAdv)}</strong> | Bal: <strong>{formatIndianCurrency(vendorInrTotalBal)}</strong>
             </div>
           </div>
 
@@ -614,10 +615,10 @@ export default function OwnerDashboard({
               </div>
             </div>
             <div className="stat-value" style={{ color: "#fcd34d", fontSize: "1.6rem", margin: "10px 0" }}>
-              ₹ {transitCombinedInrTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {formatIndianCurrency(transitCombinedInrTotal)}
             </div>
             <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-              Goods Value: <strong>₹ {transitGoodsInrTotal.toLocaleString()}</strong> | Freight: <strong>₹ {transitFreightInrTotal.toLocaleString()}</strong>
+              Goods Value: <strong>{formatIndianCurrency(transitGoodsInrTotal)}</strong> | Freight: <strong>{formatIndianCurrency(transitFreightInrTotal)}</strong>
             </div>
           </div>
 
@@ -630,7 +631,7 @@ export default function OwnerDashboard({
               </div>
             </div>
             <div className="stat-value" style={{ color: "#34d399", fontSize: "1.6rem", margin: "10px 0" }}>
-              ₹ {receivedInrTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+              {formatIndianCurrency(receivedInrTotal)}
             </div>
             <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
               Across {completedOrders.length} Received Purchase Orders
