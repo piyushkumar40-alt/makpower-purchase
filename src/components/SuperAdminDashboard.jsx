@@ -734,211 +734,208 @@ export default function SuperAdminDashboard({
               <div className="glass-panel" style={{ padding: "24px" }}>
                 <h3 style={{ fontSize: "1.2rem", marginBottom: "16px", color: "var(--primary)" }}>Active Staff Members</h3>
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                  {(() => {
-                    const activeStaff = users.filter(u => u.role !== "superadmin" && u.status === "active");
+                  {users.filter(u => u.role !== "superadmin" && u.status === "active").map(staff => {
                     const getRoleLabel = (role) => {
                       if (role === "nitin") return "Packing";
                       if (role === "rahul") return "Updates";
                       if (role === "coordinator") return "Coordinator";
                       return "Purchaser";
                     };
-                    return activeStaff.map(staff => {
-                      const isPurchaser = staff.role === "purchaser";
-                      const activeRequests = isPurchaser ? requests.filter(r => r.purchaserId === staff.id && r.isMaterialRec !== "Yes").length : 0;
-                      return (
-                        <div key={staff.id} className="glass-panel" style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: "10px", background: "rgba(255, 255, 255, 0.01)" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <div>
-                              <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
-                                {staff.name}
-                                <span className="badge" style={{ fontSize: "0.65rem", padding: "2px 8px", background: "rgba(56, 189, 248, 0.12)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)", fontWeight: 700 }}>
-                                  {staff.designation || getRoleLabel(staff.role)}
-                                </span>
-                              </div>
-                              <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "2px" }}>{staff.email}</div>
-                              {isPurchaser && (
-                                <div style={{ fontSize: "0.75rem", color: "var(--primary)", marginTop: "4px" }}>{activeRequests} active purchases in tracking</div>
-                              )}
+                    const isPurchaser = staff.role === "purchaser";
+                    const activeRequests = isPurchaser ? requests.filter(r => r.purchaserId === staff.id && r.isMaterialRec !== "Yes").length : 0;
+                    return (
+                      <div key={staff.id} className="glass-panel" style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: "10px", background: "rgba(255, 255, 255, 0.01)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div>
+                            <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+                              {staff.name}
+                              <span className="badge" style={{ fontSize: "0.65rem", padding: "2px 8px", background: "rgba(56, 189, 248, 0.12)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)", fontWeight: 700 }}>
+                                {staff.designation || getRoleLabel(staff.role)}
+                              </span>
                             </div>
+                            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "2px" }}>{staff.email}</div>
+                            {isPurchaser && (
+                              <div style={{ fontSize: "0.75rem", color: "var(--primary)", marginTop: "4px" }}>{activeRequests} active purchases in tracking</div>
+                            )}
+                          </div>
+                          
+                          <div style={{ display: "flex", gap: "6px" }}>
+                            <button 
+                              onClick={() => {
+                                setEditingStaffId(staff.id);
+                                let sal = "";
+                                let nm = staff.name || "";
+                                const match = nm.match(/^(Mr\.|Mrs\.|Miss|Ms\.)\s*(.*)$/i);
+                                if (match) {
+                                  sal = match[1];
+                                  nm = match[2];
+                                }
+                                setEditSalutationVal(sal);
+                                setEditNameVal(nm);
+                                setEditPasswordVal("");
+                                setEditDesignationVal(staff.designation || "Purchaser");
+                                setEditRoleVal(staff.role || "purchaser");
+                                setEditSuccessMsg("");
+                              }}
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: "6px 10px", fontSize: "0.75rem" }}
+                            >
+                              Edit Account
+                            </button>
                             
-                            <div style={{ display: "flex", gap: "6px" }}>
+                            {isPurchaser && (
                               <button 
-                                onClick={() => {
-                                  setEditingStaffId(staff.id);
-                                  let sal = "";
-                                  let nm = staff.name || "";
-                                  const match = nm.match(/^(Mr\.|Mrs\.|Miss|Ms\.)\s*(.*)$/i);
-                                  if (match) {
-                                    sal = match[1];
-                                    nm = match[2];
-                                  }
-                                  setEditSalutationVal(sal);
-                                  setEditNameVal(nm);
-                                  setEditPasswordVal("");
-                                  setEditDesignationVal(staff.designation || "Purchaser");
-                                  setEditRoleVal(staff.role || "purchaser");
-                                  setEditSuccessMsg("");
-                                }}
-                                className="btn btn-secondary btn-sm"
+                                onClick={() => setSelectedDeactivateUser(staff)}
+                                className="btn btn-danger btn-sm"
+                                title="Deactivate and transfer history"
                                 style={{ padding: "6px 10px", fontSize: "0.75rem" }}
                               >
-                                Edit Account
+                                <UserMinus size={12} /> Remove
                               </button>
-                              
-                              {isPurchaser && (
-                                <button 
-                                  onClick={() => setSelectedDeactivateUser(staff)}
-                                  className="btn btn-danger btn-sm"
-                                  title="Deactivate and transfer history"
-                                  style={{ padding: "6px 10px", fontSize: "0.75rem" }}
-                                >
-                                  <UserMinus size={12} /> Remove
-                                </button>
-                              )}
-                            </div>
+                            )}
                           </div>
+                        </div>
 
-                          {/* Inline Edit Form */}
-                          {editingStaffId === staff.id && (
-                            <div style={{ background: "rgba(0,0,0,0.25)", border: "1px solid var(--border-glass)", borderRadius: "8px", padding: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                              <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--primary)" }}>Edit Staff Account</div>
-                              
-                              <div style={{ display: "grid", gridTemplateColumns: "90px 1fr", gap: "8px" }}>
-                                <div className="form-group" style={{ marginBottom: 0, gap: "4px" }}>
-                                  <label className="form-label" style={{ fontSize: "0.72rem" }}>Salutation</label>
-                                  <select 
-                                    className="form-control" 
-                                    style={{ padding: "4px 6px", fontSize: "0.85rem", height: "32px" }}
-                                    value={editSalutationVal}
-                                    onChange={e => setEditSalutationVal(e.target.value)}
-                                  >
-                                    <option value="">(None)</option>
-                                    <option value="Mr.">Mr.</option>
-                                    <option value="Mrs.">Mrs.</option>
-                                    <option value="Miss">Miss</option>
-                                    <option value="Ms.">Ms.</option>
-                                  </select>
-                                </div>
-
-                                <div className="form-group" style={{ marginBottom: 0, gap: "4px" }}>
-                                  <label className="form-label" style={{ fontSize: "0.72rem" }}>Full Name</label>
-                                  <input 
-                                    type="text" 
-                                    className="form-control" 
-                                    style={{ padding: "6px 10px", fontSize: "0.85rem", height: "32px" }}
-                                    placeholder="Full Name"
-                                    value={editNameVal}
-                                    onChange={e => setEditNameVal(e.target.value)}
-                                  />
-                                </div>
-                              </div>
-
+                        {/* Inline Edit Form */}
+                        {editingStaffId === staff.id && (
+                          <div style={{ background: "rgba(0,0,0,0.25)", border: "1px solid var(--border-glass)", borderRadius: "8px", padding: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                            <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--primary)" }}>Edit Staff Account</div>
+                            
+                            <div style={{ display: "grid", gridTemplateColumns: "90px 1fr", gap: "8px" }}>
                               <div className="form-group" style={{ marginBottom: 0, gap: "4px" }}>
-                                <label className="form-label" style={{ fontSize: "0.72rem" }}>System Access Role (Permissions)</label>
+                                <label className="form-label" style={{ fontSize: "0.72rem" }}>Salutation</label>
                                 <select 
                                   className="form-control" 
-                                  style={{ padding: "4px 8px", fontSize: "0.85rem", height: "32px", fontWeight: 700, color: "var(--primary)" }}
-                                  value={editRoleVal}
-                                  onChange={e => {
-                                    const r = e.target.value;
-                                    setEditRoleVal(r);
-                                    if (r === "owner") setEditDesignationVal("Owner");
-                                    else if (r === "purchaser") setEditDesignationVal("Purchaser");
-                                    else if (r === "nitin") setEditDesignationVal("Packing");
-                                    else if (r === "rahul") setEditDesignationVal("Accounts and Updates");
-                                    else if (r === "coordinator") setEditDesignationVal("Logistics");
-                                  }}
+                                  style={{ padding: "4px 6px", fontSize: "0.85rem", height: "32px" }}
+                                  value={editSalutationVal}
+                                  onChange={e => setEditSalutationVal(e.target.value)}
                                 >
-                                  <option value="owner">👑 Owner (Executive Dashboard)</option>
-                                  <option value="purchaser">🛒 Purchaser (Order Processing)</option>
-                                  <option value="nitin">📦 Packing</option>
-                                  <option value="rahul">💰 Accounts & Updates</option>
-                                  <option value="coordinator">🚚 Logistics Coordinator</option>
-                                  <option value="superadmin">⚡ System Admin</option>
+                                  <option value="">(None)</option>
+                                  <option value="Mr.">Mr.</option>
+                                  <option value="Mrs.">Mrs.</option>
+                                  <option value="Miss">Miss</option>
+                                  <option value="Ms.">Ms.</option>
                                 </select>
                               </div>
 
                               <div className="form-group" style={{ marginBottom: 0, gap: "4px" }}>
-                                <label className="form-label" style={{ fontSize: "0.72rem" }}>Designation Title</label>
-                                <select 
-                                  className="form-control" 
-                                  style={{ padding: "4px 8px", fontSize: "0.85rem", height: "32px" }}
-                                  value={editDesignationVal}
-                                  onChange={e => setEditDesignationVal(e.target.value)}
-                                >
-                                  <option value="Purchaser">Purchaser</option>
-                                  <option value="Packing">Packing</option>
-                                  <option value="Accounts and Updates">Accounts and Updates</option>
-                                  <option value="Accounts">Accounts</option>
-                                  <option value="Warehouse">Warehouse</option>
-                                  <option value="Logistics">Logistics</option>
-                                  <option value="Owner">Owner (Executive Dashboard)</option>
-                                  <option value="System Admin">System Admin</option>
-                                  {(designations || []).map(d => (
-                                    <option key={d.id} value={d.title}>{d.title}</option>
-                                  ))}
-                                </select>
-                              </div>
-
-                              <div className="form-group" style={{ marginBottom: "4px", gap: "4px" }}>
-                                <label className="form-label" style={{ fontSize: "0.72rem" }}>New Password (leave blank to keep current)</label>
+                                <label className="form-label" style={{ fontSize: "0.72rem" }}>Full Name</label>
                                 <input 
                                   type="text" 
-                                  autoComplete="off"
                                   className="form-control" 
-                                  style={{ padding: "6px 10px", fontSize: "0.85rem", height: "32px", WebkitTextSecurity: "disc" }}
-                                  placeholder="New password"
-                                  value={editPasswordVal}
-                                  onChange={e => setEditPasswordVal(e.target.value)}
+                                  style={{ padding: "6px 10px", fontSize: "0.85rem", height: "32px" }}
+                                  placeholder="Full Name"
+                                  value={editNameVal}
+                                  onChange={e => setEditNameVal(e.target.value)}
                                 />
                               </div>
-
-                              <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
-                                <button 
-                                  onClick={() => {
-                                    if (!editNameVal.trim()) return;
-                                    const roleVal = editRoleVal || "purchaser";
-                                    
-                                    const cleanName = editNameVal.trim().replace(/^((mr\.|mrs\.|miss|ms\.)\s*)+/i, "");
-                                    const finalName = editSalutationVal ? `${editSalutationVal} ${cleanName}` : cleanName;
-                                    
-                                    const updates = { 
-                                      name: finalName, 
-                                      designation: editDesignationVal,
-                                      role: roleVal 
-                                    };
-                                    if (editPasswordVal.trim()) {
-                                      updates.password = editPasswordVal.trim();
-                                    }
-                                    onUpdateUserInfo(staff.id, updates);
-                                    setEditSuccessMsg("Account updated!");
-                                    setTimeout(() => {
-                                      setEditingStaffId(null);
-                                      setEditSuccessMsg("");
-                                    }, 1200);
-                                  }}
-                                  className="btn btn-success btn-sm"
-                                  style={{ padding: "6px 12px", height: "32px", fontSize: "0.8rem" }}
-                                >
-                                  Save
-                                </button>
-                                <button 
-                                  onClick={() => setEditingStaffId(null)}
-                                  className="btn btn-secondary btn-sm"
-                                  style={{ padding: "6px 12px", height: "32px", fontSize: "0.8rem" }}
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                              {editSuccessMsg && (
-                                <div style={{ color: "var(--success)", fontSize: "0.78rem", marginTop: "4px" }}>{editSuccessMsg}</div>
-                              )}
                             </div>
-                          )}
-                        </div>
-                      );
-                    });
-                  })()}
+
+                            <div className="form-group" style={{ marginBottom: 0, gap: "4px" }}>
+                              <label className="form-label" style={{ fontSize: "0.72rem" }}>System Access Role (Permissions)</label>
+                              <select 
+                                className="form-control" 
+                                style={{ padding: "4px 8px", fontSize: "0.85rem", height: "32px", fontWeight: 700, color: "var(--primary)" }}
+                                value={editRoleVal}
+                                onChange={e => {
+                                  const r = e.target.value;
+                                  setEditRoleVal(r);
+                                  if (r === "owner") setEditDesignationVal("Owner");
+                                  else if (r === "purchaser") setEditDesignationVal("Purchaser");
+                                  else if (r === "nitin") setEditDesignationVal("Packing");
+                                  else if (r === "rahul") setEditDesignationVal("Accounts and Updates");
+                                  else if (r === "coordinator") setEditDesignationVal("Logistics");
+                                }}
+                              >
+                                <option value="owner">👑 Owner (Executive Dashboard)</option>
+                                <option value="purchaser">🛒 Purchaser (Order Processing)</option>
+                                <option value="nitin">📦 Packing</option>
+                                <option value="rahul">💰 Accounts & Updates</option>
+                                <option value="coordinator">🚚 Logistics Coordinator</option>
+                                <option value="superadmin">⚡ System Admin</option>
+                              </select>
+                            </div>
+
+                            <div className="form-group" style={{ marginBottom: 0, gap: "4px" }}>
+                              <label className="form-label" style={{ fontSize: "0.72rem" }}>Designation Title</label>
+                              <select 
+                                className="form-control" 
+                                style={{ padding: "4px 8px", fontSize: "0.85rem", height: "32px" }}
+                                value={editDesignationVal}
+                                onChange={e => setEditDesignationVal(e.target.value)}
+                              >
+                                <option value="Purchaser">Purchaser</option>
+                                <option value="Packing">Packing</option>
+                                <option value="Accounts and Updates">Accounts and Updates</option>
+                                <option value="Accounts">Accounts</option>
+                                <option value="Warehouse">Warehouse</option>
+                                <option value="Logistics">Logistics</option>
+                                <option value="Owner">Owner (Executive Dashboard)</option>
+                                <option value="System Admin">System Admin</option>
+                                {(designations || []).map(d => (
+                                  <option key={d.id} value={d.title}>{d.title}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="form-group" style={{ marginBottom: "4px", gap: "4px" }}>
+                              <label className="form-label" style={{ fontSize: "0.72rem" }}>New Password (leave blank to keep current)</label>
+                              <input 
+                                type="text" 
+                                autoComplete="off"
+                                className="form-control" 
+                                style={{ padding: "6px 10px", fontSize: "0.85rem", height: "32px", WebkitTextSecurity: "disc" }}
+                                placeholder="New password"
+                                value={editPasswordVal}
+                                onChange={e => setEditPasswordVal(e.target.value)}
+                              />
+                            </div>
+
+                            <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
+                              <button 
+                                onClick={() => {
+                                  if (!editNameVal.trim()) return;
+                                  const roleVal = editRoleVal || "purchaser";
+                                  
+                                  const cleanName = editNameVal.trim().replace(/^((mr\.|mrs\.|miss|ms\.)\s*)+/i, "");
+                                  const finalName = editSalutationVal ? `${editSalutationVal} ${cleanName}` : cleanName;
+                                  
+                                  const updates = { 
+                                    name: finalName, 
+                                    designation: editDesignationVal,
+                                    role: roleVal 
+                                  };
+                                  if (editPasswordVal.trim()) {
+                                    updates.password = editPasswordVal.trim();
+                                  }
+                                  onUpdateUserInfo(staff.id, updates);
+                                  setEditSuccessMsg("Account updated!");
+                                  setTimeout(() => {
+                                    setEditingStaffId(null);
+                                    setEditSuccessMsg("");
+                                  }, 1200);
+                                }}
+                                className="btn btn-success btn-sm"
+                                style={{ padding: "6px 12px", height: "32px", fontSize: "0.8rem" }}
+                              >
+                                Save
+                              </button>
+                              <button 
+                                onClick={() => setEditingStaffId(null)}
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: "6px 12px", height: "32px", fontSize: "0.8rem" }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                            {editSuccessMsg && (
+                              <div style={{ color: "var(--success)", fontSize: "0.78rem", marginTop: "4px" }}>{editSuccessMsg}</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
