@@ -949,9 +949,14 @@ export default function App() {
 
       <header className="app-header">
         <div className="header-inner">
-          <div className="logo-area" onClick={handleGoHome} style={{ cursor: "pointer" }}>
-            <Package size={26} strokeWidth={2.5} />
-            <span>MAK POWER PURCHASE</span>
+          <div className="logo-area" onClick={handleGoHome} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ width: "32px", height: "32px", borderRadius: "10px", background: "linear-gradient(135deg, #0284c7, #6366f1)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 12px rgba(56, 189, 248, 0.4)" }}>
+              <span style={{ color: "#fff", fontWeight: 900, fontSize: "1.2rem", fontFamily: "var(--font-heading)" }}>M</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
+              <span style={{ fontWeight: 900, fontSize: "1.1rem", letterSpacing: "0.04em", color: "#fff" }}>MAK</span>
+              <span style={{ fontWeight: 800, fontSize: "0.72rem", letterSpacing: "0.18em", color: "#38bdf8" }}>POWER</span>
+            </div>
           </div>
 
           {/* Mobile hamburger menu toggle */}
@@ -1039,11 +1044,15 @@ export default function App() {
 
             {currentUser ? (
               <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                <span className="user-badge">
-                  <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: currentUser.role === "superadmin" ? "#f59e0b" : currentUser.role === "nitin" ? "#ec4899" : currentUser.role === "rahul" ? "#10b981" : "#38bdf8" }}></span>
-                  {currentUser.name} ({currentUser.role === "superadmin" ? "Admin" : currentUser.role === "nitin" ? "Nitin" : currentUser.role === "rahul" ? "Rahul" : "Purchaser"})
-                </span>
-                <button onClick={handleLogout} className="btn btn-sm btn-danger">
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(255, 255, 255, 0.05)", border: "1px solid rgba(255, 255, 255, 0.1)", borderRadius: "99px", padding: "4px 12px 4px 6px" }}>
+                  <div style={{ width: "28px", height: "28px", borderRadius: "50%", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff", fontWeight: 800, fontSize: "0.75rem", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 8px rgba(99, 102, 241, 0.4)" }}>
+                    {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : "AP"}
+                  </div>
+                  <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "#f8fafc" }}>
+                    {currentUser.name} <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>({currentUser.role === "superadmin" ? "Admin" : currentUser.role})</span>
+                  </span>
+                </div>
+                <button onClick={handleLogout} className="btn btn-sm btn-danger" style={{ borderRadius: "10px" }}>
                   <LogOut size={14} /> Logout
                 </button>
               </div>
