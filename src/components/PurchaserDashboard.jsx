@@ -486,10 +486,13 @@ export default function PurchaserDashboard({
       const finalVendorId = searchVendor || edit.vendorId || r.vendorId || (vendors[0]?.id || "");
       const finalPrice = edit.priceRmb !== undefined ? edit.priceRmb : r.priceRmb;
       const finalEdd = edit.vendorEdd || r.vendorEdd;
+      const finalVendorOrderQty = edit.vendorOrderQuantity !== undefined 
+        ? parseInt(edit.vendorOrderQuantity, 10) 
+        : (r.vendorOrderQuantity ? parseInt(r.vendorOrderQuantity, 10) : parseInt(r.orderQuantity, 10));
 
       if (!finalVendorId || !finalPrice || !finalEdd) return;
 
-      const qty = parseInt(r.vendorOrderQuantity || r.orderQuantity, 10) || 1;
+      const qty = finalVendorOrderQty || 1;
       const priceNum = parseFloat(finalPrice);
       const totalRmb = priceNum * qty;
       const advance = parseFloat(r.advancePayment || 0);
@@ -497,6 +500,7 @@ export default function PurchaserDashboard({
       toUpdate.push({
         ...r,
         vendorId: finalVendorId,
+        vendorOrderQuantity: finalVendorOrderQty,
         priceRmb: priceNum,
         totalRmb: totalRmb,
         advancePayment: advance,
@@ -917,8 +921,11 @@ export default function PurchaserDashboard({
                             : (vendors.find(v => v.id === currentVendorId)?.name || "");
                           const currentPrice = edits.priceRmb !== undefined ? edits.priceRmb : (r.priceRmb || "");
                           const currentEdd = edits.vendorEdd !== undefined ? edits.vendorEdd : (r.vendorEdd || "");
+                          const currentVendorOrderQty = edits.vendorOrderQuantity !== undefined 
+                            ? edits.vendorOrderQuantity 
+                            : (r.vendorOrderQuantity || r.orderQuantity || "");
 
-                          const qty = parseInt(r.vendorOrderQuantity || r.orderQuantity, 10) || 1;
+                          const qty = parseInt(currentVendorOrderQty, 10) || parseInt(r.orderQuantity, 10) || 1;
                           const priceNum = parseFloat(currentPrice);
                           const totalCalc = !isNaN(priceNum) ? priceNum * qty : 0;
 
@@ -942,7 +949,14 @@ export default function PurchaserDashboard({
                                 </td>
                                 <td>{r.orderDate}</td>
                                 <td style={{ fontWeight: 600 }}>{r.model}</td>
-                                <td>{r.orderQuantity} Pcs</td>
+                                <td>
+                                  <div style={{ fontWeight: 700 }}>{qty} Pcs</div>
+                                  {r.vendorOrderQuantity && parseInt(r.vendorOrderQuantity) !== parseInt(r.orderQuantity) && (
+                                    <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                                      Req: {r.orderQuantity} Pcs
+                                    </span>
+                                  )}
+                                </td>
                                 <td>{vName}</td>
                                 <td style={{ fontWeight: 700, color: r.priceRmb ? "var(--primary)" : "var(--text-muted)" }}>
                                   {r.priceRmb ? `¥${r.priceRmb}` : "—"}
@@ -959,7 +973,7 @@ export default function PurchaserDashboard({
                                     <XCircle size={14} />
                                   </button>
                                 </td>
-                              </tr>
+                               </tr>
                             );
                           }
 
@@ -1004,7 +1018,35 @@ export default function PurchaserDashboard({
                                   </button>
                                 </div>
                               </td>
-                              <td style={{ fontWeight: 700 }}>{qty} Pcs</td>
+
+                              {/* Editable Quantity Field (Original req qty saved, vendor qty processed ahead) */}
+                              <td>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                  <input 
+                                    type="number"
+                                    min="1"
+                                    className="form-control"
+                                    placeholder={String(r.orderQuantity)}
+                                    value={currentVendorOrderQty}
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      setStep1InlineEdits(prev => ({
+                                        ...prev,
+                                        [r.id]: {
+                                          ...prev[r.id],
+                                          vendorOrderQuantity: val
+                                        }
+                                      }));
+                                    }}
+                                    style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto", width: "85px", fontWeight: 700 }}
+                                  />
+                                  {r.vendorOrderQuantity && parseInt(r.vendorOrderQuantity) !== parseInt(r.orderQuantity) ? (
+                                    <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                                      Req: {r.orderQuantity} Pcs
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </td>
 
                               {/* Vendor Selection (Inline) */}
                               <td>
