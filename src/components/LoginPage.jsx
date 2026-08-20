@@ -79,15 +79,16 @@ export default function LoginPage({ onLogin, onEnterAsGuest, users }) {
             <div style={{ position: "relative" }}>
               <Key size={16} style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
               <input 
-                type="password" 
-                name="user_login_password"
-                autoComplete="new-password"
+                type="text" 
+                name="user_login_sec_key"
+                autoComplete="off"
+                data-lpignore="true"
                 className="form-control" 
                 placeholder="••••••••" 
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
-                style={{ paddingLeft: "42px" }}
+                style={{ paddingLeft: "42px", WebkitTextSecurity: "disc" }}
               />
             </div>
           </div>

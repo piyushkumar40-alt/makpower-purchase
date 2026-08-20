@@ -852,9 +852,10 @@ export default function SuperAdminDashboard({
                               <div className="form-group" style={{ marginBottom: "4px", gap: "4px" }}>
                                 <label className="form-label" style={{ fontSize: "0.72rem" }}>New Password (leave blank to keep current)</label>
                                 <input 
-                                  type="password" 
+                                  type="text" 
+                                  autoComplete="off"
                                   className="form-control" 
-                                  style={{ padding: "6px 10px", fontSize: "0.85rem", height: "32px" }}
+                                  style={{ padding: "6px 10px", fontSize: "0.85rem", height: "32px", WebkitTextSecurity: "disc" }}
                                   placeholder="New password"
                                   value={editPasswordVal}
                                   onChange={e => setEditPasswordVal(e.target.value)}
@@ -1005,12 +1006,14 @@ export default function SuperAdminDashboard({
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Login Password</label>
                     <input 
-                      type="password" 
+                      type="text" 
+                      autoComplete="off"
                       className="form-control"
                       placeholder="Choose a strong password"
                       value={pPassword}
                       onChange={e => setPPassword(e.target.value)}
                       required
+                      style={{ WebkitTextSecurity: "disc" }}
                     />
                   </div>
 
@@ -1293,24 +1296,28 @@ export default function SuperAdminDashboard({
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">New Admin Password</label>
                     <input 
-                      type="password"
+                      type="text"
+                      autoComplete="off"
                       className="form-control"
                       placeholder="Enter new password"
                       value={newAdminPassword}
                       onChange={e => setNewAdminPassword(e.target.value)}
                       required
+                      style={{ WebkitTextSecurity: "disc" }}
                     />
                   </div>
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Confirm New Admin Password</label>
                     <input 
-                      type="password"
+                      type="text"
+                      autoComplete="off"
                       className="form-control"
                       placeholder="Re-enter new password"
                       value={confirmAdminPassword}
                       onChange={e => setConfirmAdminPassword(e.target.value)}
                       required
+                      style={{ WebkitTextSecurity: "disc" }}
                     />
                   </div>
 
