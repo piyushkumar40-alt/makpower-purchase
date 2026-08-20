@@ -1120,24 +1120,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Search Pill Input matching mockup */}
-            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-              <Search size={13} style={{ position: "absolute", left: "10px", color: "var(--text-muted)" }} />
-              <input 
-                type="text" 
-                placeholder="Search" 
-                style={{
-                  background: "rgba(255, 255, 255, 0.06)",
-                  border: "1px solid rgba(255, 255, 255, 0.12)",
-                  borderRadius: "20px",
-                  padding: "5px 12px 5px 28px",
-                  fontSize: "0.8rem",
-                  color: "#fff",
-                  outline: "none",
-                  width: "110px"
-                }}
-              />
-            </div>
+
 
             {/* Notification Bell with Badge */}
             <div style={{ position: "relative", cursor: "pointer", color: "rgba(255, 255, 255, 0.7)", display: "flex", alignItems: "center" }}>
