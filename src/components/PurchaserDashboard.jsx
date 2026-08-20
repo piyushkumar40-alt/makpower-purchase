@@ -1260,7 +1260,26 @@ export default function PurchaserDashboard({
                                 />
                               </td>
                               <td>{r.orderDate}</td>
-                              <td style={{ fontWeight: 600 }}>{r.model}</td>
+                              <td style={{ fontWeight: 600 }}>
+                                <button 
+                                  type="button"
+                                  onClick={() => setEditingRequest(r)}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    color: "#38bdf8",
+                                    cursor: "pointer",
+                                    fontWeight: 700,
+                                    textAlign: "left",
+                                    padding: 0,
+                                    textDecoration: "underline",
+                                    fontSize: "inherit"
+                                  }}
+                                  title="Click to edit all order details for this item"
+                                >
+                                  {r.model}
+                                </button>
+                              </td>
                               <td>
                                 <div><strong>{r.vendorOrderQuantity || r.orderQuantity}</strong> Pcs</div>
                                 {r.vendorOrderQuantity && r.vendorOrderQuantity !== r.orderQuantity && (
@@ -1430,8 +1449,26 @@ export default function PurchaserDashboard({
                                   checked={vrChecked.includes(r.id)}
                                   onChange={e => setVrChecked(prev => e.target.checked ? [...prev, r.id] : prev.filter(id => id !== r.id))}
                                 />
+                              <td style={{ fontWeight: 600 }}>
+                                <button 
+                                  type="button"
+                                  onClick={() => setEditingRequest(r)}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    color: "#38bdf8",
+                                    cursor: "pointer",
+                                    fontWeight: 700,
+                                    textAlign: "left",
+                                    padding: 0,
+                                    textDecoration: "underline",
+                                    fontSize: "inherit"
+                                  }}
+                                  title="Click to edit all order details for this item"
+                                >
+                                  {r.model}
+                                </button>
                               </td>
-                              <td style={{ fontWeight: 600 }}>{r.model}</td>
                               <td>
                                 <div><strong>{r.vendorOrderQuantity || r.orderQuantity}</strong> Pcs</div>
                                 {r.vendorOrderQuantity && r.vendorOrderQuantity !== r.orderQuantity ? (
@@ -1584,8 +1621,26 @@ export default function PurchaserDashboard({
                                   checked={cpChecked.includes(r.id)}
                                   onChange={e => setCpChecked(prev => e.target.checked ? [...prev, r.id] : prev.filter(id => id !== r.id))}
                                 />
+                              <td style={{ fontWeight: 600 }}>
+                                <button 
+                                  type="button"
+                                  onClick={() => setEditingRequest(r)}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    color: "#38bdf8",
+                                    cursor: "pointer",
+                                    fontWeight: 700,
+                                    textAlign: "left",
+                                    padding: 0,
+                                    textDecoration: "underline",
+                                    fontSize: "inherit"
+                                  }}
+                                  title="Click to edit all order details for this item"
+                                >
+                                  {r.model}
+                                </button>
                               </td>
-                              <td style={{ fontWeight: 600 }}>{r.model}</td>
                               <td>
                                 <div><strong>{r.vendorOrderQuantity || r.orderQuantity}</strong> Pcs</div>
                                 {r.vendorOrderQuantity && r.vendorOrderQuantity !== r.orderQuantity ? (
@@ -1747,7 +1802,24 @@ export default function PurchaserDashboard({
                               return (
                                 <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(255, 255, 255, 0.01)", border: "1px solid var(--border-glass)", padding: "8px 14px", borderRadius: "6px", fontSize: "0.85rem", flexWrap: "wrap", gap: "8px" }}>
                                   <div>
-                                    <strong>{item.model}</strong> — Quantity: {item.orderQuantity} units
+                                    <button 
+                                      type="button"
+                                      onClick={() => setEditingRequest(item)}
+                                      style={{
+                                        background: "none",
+                                        border: "none",
+                                        color: "#38bdf8",
+                                        cursor: "pointer",
+                                        fontWeight: 700,
+                                        textAlign: "left",
+                                        padding: 0,
+                                        textDecoration: "underline",
+                                        fontSize: "inherit"
+                                      }}
+                                      title="Click to edit all order details for this item"
+                                    >
+                                      {item.model}
+                                    </button> — Quantity: {item.orderQuantity} units
                                     {item.status === "Cancelled" && (
                                       <span className="badge badge-rejected" style={{ marginLeft: "8px", fontSize: "0.7rem" }}>Cancelled</span>
                                     )}
@@ -1834,7 +1906,26 @@ export default function PurchaserDashboard({
                             <tr key={r.id}>
                               <td style={{ color: "var(--success)", fontWeight: 600 }}>{r.actualReceivedDate || "—"}</td>
                               <td>{r.orderDate}</td>
-                              <td style={{ fontWeight: 600 }}>{r.model}</td>
+                              <td style={{ fontWeight: 600 }}>
+                                <button 
+                                  type="button"
+                                  onClick={() => setEditingRequest(r)}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    color: "#38bdf8",
+                                    cursor: "pointer",
+                                    fontWeight: 700,
+                                    textAlign: "left",
+                                    padding: 0,
+                                    textDecoration: "underline",
+                                    fontSize: "inherit"
+                                  }}
+                                  title="Click to edit all order details for this item"
+                                >
+                                  {r.model}
+                                </button>
+                              </td>
                               <td>
                                 <div><strong>{r.receivedQuantity || r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity}</strong> Pcs</div>
                                 {r.vendorOrderQuantity && r.vendorOrderQuantity !== r.orderQuantity ? (
@@ -1939,7 +2030,24 @@ export default function PurchaserDashboard({
                             <td style={{ color: "var(--danger)", fontWeight: 600 }}>{r.cancelledAt || "—"}</td>
                             <td>{r.orderDate}</td>
                             <td style={{ fontWeight: 600 }}>
-                              <span style={{ textDecoration: "line-through", opacity: 0.7 }}>{r.model}</span>
+                              <button 
+                                type="button"
+                                onClick={() => setEditingRequest(r)}
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  color: "#38bdf8",
+                                  cursor: "pointer",
+                                  fontWeight: 700,
+                                  textAlign: "left",
+                                  padding: 0,
+                                  textDecoration: "underline",
+                                  fontSize: "inherit"
+                                }}
+                                title="Click to edit all order details for this item"
+                              >
+                                {r.model}
+                              </button>
                             </td>
                             <td>
                               <div><strong>{r.vendorOrderQuantity || r.orderQuantity}</strong> Pcs</div>
@@ -2214,7 +2322,11 @@ export const getEffectivePhoto = (request, items = [], requests = []) => {
 };
 
 // 1. STEP 2: EDIT REQUEST DETAILS MODAL
-function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor, items = [], onUpdateItem, onAddItem, onClose, onSave }) {
+// 1. EDIT REQUEST DETAILS MODAL (FULL ORDER EDITING ACROSS ALL STEPS)
+function EditRequestModal({ request, requests, vendors, cargos = [], currentUser, onAddVendor, items = [], onUpdateItem, onAddItem, onClose, onSave }) {
+  const [model, setModel] = useState(request.model || "");
+  const [orderDate, setOrderDate] = useState(request.orderDate || "");
+  const [orderQuantity, setOrderQuantity] = useState(request.orderQuantity || "");
   const [vendorId, setVendorId] = useState(request.vendorId || "");
   const [vendorSearchText, setVendorSearchText] = useState(() => {
     const match = vendors.find(v => v.id === request.vendorId);
@@ -2222,9 +2334,13 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
   });
   const [vendorOrderQuantity, setVendorOrderQuantity] = useState(request.vendorOrderQuantity || request.orderQuantity || "");
   const [currency, setCurrency] = useState(request.currency || "RMB");
-  const [price, setPrice] = useState(request.priceRmb || "");
+  const [price, setPrice] = useState(request.priceRmb !== undefined && request.priceRmb !== null ? request.priceRmb : "");
   const [advance, setAdvance] = useState(request.advancePayment || "");
   const [edd, setEdd] = useState(request.vendorEdd || "");
+  const [vendorReadyDate, setVendorReadyDate] = useState(request.vendorReadyDate || "");
+  const [isMaterialRec, setIsMaterialRec] = useState(request.isMaterialRec || "No");
+  const [actualReceivedDate, setActualReceivedDate] = useState(request.actualReceivedDate || "");
+  const [cargoId, setCargoId] = useState(request.cargoId || "");
   const [photo, setPhoto] = useState(request.photo || "");
   const [notes, setNotes] = useState(request.notes || "");
   const [itemType, setItemType] = useState(request.itemType || "FG");
@@ -2234,9 +2350,9 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
   const [showQuickVendorModal, setShowQuickVendorModal] = useState(false);
 
   // Auto-calculated totals
-  const effectiveQty = vendorOrderQuantity ? parseFloat(vendorOrderQuantity) : request.orderQuantity;
-  const totalRmb = price ? parseFloat(price) * effectiveQty : 0;
-  const balanceRmb = price ? totalRmb - (advance ? parseFloat(advance) : 0) : 0;
+  const effectiveQty = vendorOrderQuantity ? parseFloat(vendorOrderQuantity) : parseFloat(orderQuantity || request.orderQuantity || 1);
+  const totalRmb = price !== "" ? parseFloat(price) * effectiveQty : (request.totalRmb || 0);
+  const balanceRmb = price !== "" ? totalRmb - (advance ? parseFloat(advance) : 0) : 0;
 
   // Master Catalog & historical photo lookup
   const catalogPhoto = React.useMemo(() => {
@@ -2263,19 +2379,18 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
       const url = await uploadToCloudinary(file, "makpower_photos");
       setPhoto(url);
 
-      // Auto-sync photo to Master Catalog item so it reflects everywhere
-      const modelLower = (request.model || "").trim().toLowerCase();
+      const modelLower = (model || request.model || "").trim().toLowerCase();
       const existingItem = (items || []).find(i => (i.name || i.model || "").trim().toLowerCase() === modelLower);
       if (existingItem && onUpdateItem) {
         onUpdateItem({ ...existingItem, photo: url });
       } else if (onAddItem) {
         onAddItem({
           id: `item-${Date.now()}`,
-          name: request.model,
-          category: request.category || "",
-          itemType: request.itemType || "FG",
-          type: request.type || "Import",
-          itemNature: request.itemNature || "Non Consumables",
+          name: model || request.model,
+          category: category || request.category || "",
+          itemType: itemType || "FG",
+          type: type || "Import",
+          itemNature: itemNature || "Non Consumables",
           photo: url
         });
       }
@@ -2290,313 +2405,298 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
     e.preventDefault();
     const matched = vendors.find(v => v.id === vendorId || v.name.toLowerCase() === vendorSearchText.trim().toLowerCase());
     const finalVendorId = matched ? matched.id : vendorId;
-    if (!price || !edd || !finalVendorId) return;
+    const origQty = parseInt(orderQuantity || request.orderQuantity || 1, 10);
+    const vOrderQty = vendorOrderQuantity ? parseInt(vendorOrderQuantity, 10) : origQty;
+    const priceNum = price !== "" ? parseFloat(price) : (request.priceRmb || 0);
+    const totalCalc = priceNum ? priceNum * vOrderQty : 0;
+    const advanceNum = advance ? parseFloat(advance) : 0;
 
     onSave({
       ...request,
+      model: model.trim() || request.model,
+      orderDate: orderDate || request.orderDate,
+      orderQuantity: origQty,
+      vendorOrderQuantity: vOrderQty,
       itemType: itemType,
       type: type,
       itemNature: itemNature,
       category: category,
       vendorId: finalVendorId,
-      vendorOrderQuantity: parseInt(vendorOrderQuantity || request.orderQuantity),
       currency: currency,
-      priceRmb: parseFloat(price),
-      totalRmb: totalRmb,
-      advancePayment: parseFloat(advance || 0),
-      balancePayment: balanceRmb,
+      priceRmb: priceNum,
+      totalRmb: totalCalc,
+      advancePayment: advanceNum,
+      balancePayment: totalCalc - advanceNum,
       vendorEdd: edd,
+      vendorReadyDate: vendorReadyDate,
+      isMaterialRec: isMaterialRec,
+      actualReceivedDate: isMaterialRec === "Yes" ? (actualReceivedDate || new Date().toISOString().split("T")[0]) : "",
+      cargoId: cargoId,
       photo: activePhoto,
       notes: notes,
       purchaseUpdated: "Yes",
-      pricedAt: request.pricedAt || new Date().toISOString()
+      pricedAt: priceNum ? (request.pricedAt || new Date().toISOString()) : ""
     });
   };
 
-  const vName = vendorSearchText || vendors.find(v => v.id === vendorId)?.name || "Not Selected Yet";
-
   return (
     <div className="modal-overlay">
-      <div className="glass-panel modal-content">
-        <h3 style={{ fontSize: "1.4rem", marginBottom: "6px", color: "var(--primary)" }}>Fulfill Purchase Details (Step 1)</h3>
-        <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "20px" }}>
-          Model: <strong>{request.model}</strong> | Qty: {request.orderQuantity}
-        </p>
+      <div className="glass-panel modal-content" style={{ maxWidth: "780px", width: "95%", maxHeight: "90vh", overflowY: "auto" }}>
+        
+        {/* Modal Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px", marginBottom: "16px" }}>
+          <div>
+            <h3 style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--primary)", margin: 0 }}>
+              Edit Order Details — {request.model}
+            </h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px", margin: 0 }}>
+              Update all order parameters for any workflow step (Requisition, Pricing, Vendor Ready, Cargo & Receipt).
+            </p>
+          </div>
+          <button onClick={onClose} className="btn btn-secondary btn-sm">Close</button>
+        </div>
 
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           
-          {/* Item Type & Classification (Allows user/purchaser to fix mispunched item types) */}
-          <div className="form-group" style={{ padding: "12px", background: "rgba(15, 23, 42, 0.4)", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
-            <label className="form-label" style={{ fontSize: "0.82rem", color: "var(--primary)", fontWeight: 700, marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
-              <Layers size={14} /> Item Classification & Type (Can be changed anytime)
-            </label>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              <div>
-                <label className="form-label" style={{ fontSize: "0.75rem", marginBottom: "4px" }}>Item Type (FG / RM)</label>
-                <select 
+          {/* SECTION 1: BASIC REQUISITION DETAILS */}
+          <div className="glass-panel" style={{ padding: "14px", background: "rgba(15, 23, 42, 0.4)", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+            <h4 style={{ fontSize: "0.95rem", color: "#38bdf8", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              1. Basic Requisition Details
+            </h4>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Item Name / Model</label>
+                <input 
+                  type="text" 
                   className="form-control" 
-                  style={{ padding: "6px 10px", fontSize: "0.85rem", height: "36px" }} 
-                  value={itemType} 
-                  onChange={e => setItemType(e.target.value)}
-                >
+                  value={model} 
+                  onChange={e => setModel(e.target.value)} 
+                  required 
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Order Date</label>
+                <input 
+                  type="date" 
+                  className="form-control" 
+                  value={orderDate} 
+                  onChange={e => setOrderDate(e.target.value)} 
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Original Requested Qty (Pcs)</label>
+                <input 
+                  type="number" 
+                  className="form-control" 
+                  value={orderQuantity} 
+                  onChange={e => setOrderQuantity(e.target.value)} 
+                  min="1"
+                  required 
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* SECTION 2: ITEM CLASSIFICATION */}
+          <div className="glass-panel" style={{ padding: "14px", background: "rgba(15, 23, 42, 0.4)", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+            <h4 style={{ fontSize: "0.95rem", color: "#38bdf8", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              2. Item Classification & Category
+            </h4>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "12px" }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Item Type (FG / RM)</label>
+                <select className="form-control" value={itemType} onChange={e => setItemType(e.target.value)}>
                   <option value="FG">FG (Finished Goods)</option>
                   <option value="RM">RM (Raw Material)</option>
                 </select>
               </div>
 
-              <div>
-                <label className="form-label" style={{ fontSize: "0.75rem", marginBottom: "4px" }}>Source Type (Import / Local)</label>
-                <select 
-                  className="form-control" 
-                  style={{ padding: "6px 10px", fontSize: "0.85rem", height: "36px" }} 
-                  value={type} 
-                  onChange={e => setType(e.target.value)}
-                >
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Source Type</label>
+                <select className="form-control" value={type} onChange={e => setType(e.target.value)}>
                   <option value="Import">Import</option>
                   <option value="Local">Local</option>
                 </select>
               </div>
 
-              <div>
-                <label className="form-label" style={{ fontSize: "0.75rem", marginBottom: "4px" }}>Item Nature</label>
-                <select 
-                  className="form-control" 
-                  style={{ padding: "6px 10px", fontSize: "0.85rem", height: "36px" }} 
-                  value={itemNature} 
-                  onChange={e => setItemNature(e.target.value)}
-                >
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Item Nature</label>
+                <select className="form-control" value={itemNature} onChange={e => setItemNature(e.target.value)}>
                   <option value="Non Consumables">Non Consumables</option>
                   <option value="Consumables">Consumables</option>
                 </select>
               </div>
 
-              <div>
-                <label className="form-label" style={{ fontSize: "0.75rem", marginBottom: "4px" }}>Category</label>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  style={{ padding: "6px 10px", fontSize: "0.85rem", height: "36px" }} 
-                  placeholder="Category..." 
-                  value={category} 
-                  onChange={e => setCategory(e.target.value)} 
-                />
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Category</label>
+                <input type="text" className="form-control" placeholder="e.g. Battery" value={category} onChange={e => setCategory(e.target.value)} />
               </div>
             </div>
           </div>
-          
-          {/* Vendor Selection (Required) */}
-          <div className="form-group">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-              <label className="form-label" style={{ margin: 0 }}>Vendor / Supplier</label>
-              {onAddVendor && (
-                <button 
-                  type="button" 
-                  onClick={() => setShowQuickVendorModal(true)} 
-                  style={{ 
-                    color: "#38bdf8", 
-                    cursor: "pointer", 
-                    fontSize: "0.8rem", 
-                    background: "none", 
-                    border: "none", 
-                    display: "inline-flex", 
-                    alignItems: "center", 
-                    gap: "4px",
-                    fontWeight: 600
-                  }}
-                >
-                  <Plus size={13} /> Create New Vendor
-                </button>
-              )}
-            </div>
-            <input 
-              type="text" 
-              list="pricing-vendor-list"
-              className="form-control"
-              placeholder="Type or Select Vendor..."
-              value={vendorSearchText}
-              onChange={e => {
-                const val = e.target.value;
-                setVendorSearchText(val);
-                const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
-                setVendorId(matched ? matched.id : val);
-              }}
-              required
-            />
-            <datalist id="pricing-vendor-list">
-              {vendors
-                .filter(v => v.status !== "Inactive")
-                .filter(v => currentUser.role === "superadmin" || !v.purchaserIds?.length || v.purchaserIds?.includes(currentUser.id))
-                .map(v => (
-                  <option key={v.id} value={v.name}>
-                    {v.name} ({v.location || "Supplier"})
-                  </option>
-                ))}
-            </datalist>
-            {(() => {
-              const matched = vendors.find(v => v.id === vendorId || v.name.toLowerCase() === vendorSearchText.trim().toLowerCase());
-              return matched ? (
-                <div style={{ fontSize: "0.78rem", color: "var(--success)", marginTop: "6px", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px" }}>
-                  <CheckCircle2 size={13} /> Verified Database Vendor: <strong>{matched.name}</strong> {matched.location ? `(${matched.location})` : ""}
-                </div>
-              ) : vendorSearchText ? (
-                <div style={{ fontSize: "0.78rem", color: "var(--warning)", marginTop: "6px", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px" }}>
-                  ⚠️ New Vendor "{vendorSearchText}" — click "+ Create New Vendor" to save to database
-                </div>
-              ) : null;
-            })()}
-          </div>
 
-          {/* Vendor Confirmed Quantity Field */}
-          <div className="form-group">
-            <label className="form-label" style={{ fontWeight: 700, color: "var(--primary)" }}>
-              Vendor Confirmed Quantity (Pcs)*
-            </label>
-            <input 
-              type="number"
-              className="form-control"
-              placeholder={`Requested: ${request.orderQuantity} Pcs`}
-              value={vendorOrderQuantity}
-              onChange={e => setVendorOrderQuantity(e.target.value)}
-              min="1"
-              required
-            />
-            <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px", display: "block" }}>
-              Requested Qty: <strong>{request.orderQuantity} Pcs</strong>. Enter actual quantity confirmed with vendor (e.g. 3,000 Pcs).
-            </span>
-          </div>
-          
-          {/* Currency selection & Price per unit */}
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Select Currency</label>
-              <select 
-                className="form-control"
-                value={currency}
-                onChange={e => setCurrency(e.target.value)}
-              >
-                <option value="RMB">RMB (¥)</option>
-                <option value="USD">USD ($)</option>
-                <option value="INR">INR (₹)</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Price Per Unit ({currency})</label>
-              <input 
-                type="number" 
-                className="form-control" 
-                placeholder={`${currency} price`} 
-                value={price}
-                onChange={e => setPrice(e.target.value)}
-                required
-                min="0.01"
-                step="any"
-              />
-            </div>
-          </div>
-
-          {/* Total & Advance Payment */}
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Calculated Total ({currency})</label>
+          {/* SECTION 3: COMMERCIAL & VENDOR (STEP 1 & 2) */}
+          <div className="glass-panel" style={{ padding: "14px", background: "rgba(15, 23, 42, 0.4)", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+            <h4 style={{ fontSize: "0.95rem", color: "#38bdf8", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              3. Commercial & Vendor Specifications (Step 1 & Step 2)
+            </h4>
+            
+            {/* Vendor */}
+            <div className="form-group" style={{ marginBottom: "12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                <label className="form-label" style={{ margin: 0 }}>Vendor / Supplier</label>
+                {onAddVendor && (
+                  <button type="button" onClick={() => setShowQuickVendorModal(true)} style={{ color: "#38bdf8", background: "none", border: "none", cursor: "pointer", fontSize: "0.8rem", fontWeight: 600 }}>
+                    + Create New Vendor
+                  </button>
+                )}
+              </div>
               <input 
                 type="text" 
-                className="form-control" 
-                value={`${getCurrencySymbol(currency)}${totalRmb.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
-                disabled
+                list="pricing-vendor-list"
+                className="form-control"
+                placeholder="Type or Select Vendor..."
+                value={vendorSearchText}
+                onChange={e => {
+                  const val = e.target.value;
+                  setVendorSearchText(val);
+                  const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
+                  setVendorId(matched ? matched.id : val);
+                }}
               />
+              <datalist id="pricing-vendor-list">
+                {vendors.filter(v => v.status !== "Inactive").map(v => (
+                  <option key={v.id} value={v.name}>{v.name}</option>
+                ))}
+              </datalist>
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Advance Payment ({currency})</label>
-              <input 
-                type="number" 
-                className="form-control" 
-                placeholder={`${currency} advance`} 
-                value={advance}
-                onChange={e => setAdvance(e.target.value)}
-                min="0"
-                step="any"
-              />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Confirmed Vendor Qty (Pcs)</label>
+                <input 
+                  type="number"
+                  className="form-control"
+                  placeholder={`Req: ${orderQuantity || request.orderQuantity}`}
+                  value={vendorOrderQuantity}
+                  onChange={e => setVendorOrderQuantity(e.target.value)}
+                  min="1"
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Currency</label>
+                <select className="form-control" value={currency} onChange={e => setCurrency(e.target.value)}>
+                  <option value="RMB">RMB (¥)</option>
+                  <option value="USD">USD ($)</option>
+                  <option value="INR">INR (₹)</option>
+                </select>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Price Per Unit ({currency})</label>
+                <input 
+                  type="number" 
+                  className="form-control" 
+                  placeholder="Price..." 
+                  value={price} 
+                  onChange={e => setPrice(e.target.value)} 
+                  step="any"
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Calculated Total ({currency})</label>
+                <input type="text" className="form-control" value={`${getCurrencySymbol(currency)}${totalRmb.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} disabled />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Advance Payment ({currency})</label>
+                <input type="number" className="form-control" value={advance} onChange={e => setAdvance(e.target.value)} min="0" step="any" />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Vendor EDD (Delivery Date)</label>
+                <input type="date" className="form-control" value={edd} onChange={e => setEdd(e.target.value)} />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Vendor Ready Date (Step 2)</label>
+                <input type="date" className="form-control" value={vendorReadyDate} onChange={e => setVendorReadyDate(e.target.value)} />
+              </div>
             </div>
           </div>
 
-          {/* Balance Payment */}
-          <div className="form-group">
-            <label className="form-label">Balance Payment ({currency})</label>
-            <input 
-              type="text" 
-              className="form-control" 
-              value={`${getCurrencySymbol(currency)}${balanceRmb.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
-              disabled
-            />
+          {/* SECTION 4: CARGO LOGISTICS & RECEIPT (STEP 3, 4, 5) */}
+          <div className="glass-panel" style={{ padding: "14px", background: "rgba(15, 23, 42, 0.4)", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+            <h4 style={{ fontSize: "0.95rem", color: "#38bdf8", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              4. Cargo Shipment & Warehouse Receipt (Step 3, 4 & 5)
+            </h4>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Assigned Cargo Shipment</label>
+                <select className="form-control" value={cargoId} onChange={e => setCargoId(e.target.value)}>
+                  <option value="">No Cargo (Not yet assigned)</option>
+                  {cargos.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.id} — {c.cargoDetail || "Cargo Shipment"} ({c.modeOfTransport || "Sea"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Material Received at Warehouse?</label>
+                <select className="form-control" value={isMaterialRec} onChange={e => setIsMaterialRec(e.target.value)}>
+                  <option value="No">No - In Transit / Pending</option>
+                  <option value="Yes">Yes - Received at Warehouse</option>
+                </select>
+              </div>
+
+              {isMaterialRec === "Yes" && (
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: "0.78rem" }}>Actual Receipt Date</label>
+                  <input type="date" className="form-control" value={actualReceivedDate} onChange={e => setActualReceivedDate(e.target.value)} />
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Delivery Date */}
-          <div className="form-group">
-            <label className="form-label">Vendor EDD (Delivery Date)</label>
-            <input 
-              type="date" 
-              className="form-control" 
-              value={edd}
-              onChange={e => setEdd(e.target.value)}
-              required
-            />
-          </div>
-
-          {/* Model Photo Section */}
-          <div className="form-group" style={{ marginBottom: "10px" }}>
-            <label className="form-label">Model Photo</label>
+          {/* SECTION 5: MEDIA & NOTES */}
+          <div className="glass-panel" style={{ padding: "14px", background: "rgba(15, 23, 42, 0.4)", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+            <h4 style={{ fontSize: "0.95rem", color: "#38bdf8", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              5. Product Image & Purchaser Notes
+            </h4>
             
-            {activePhoto ? (
-              <div className="glass-panel" style={{ padding: "14px", background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(56, 189, 248, 0.3)", borderRadius: "8px", display: "flex", gap: "16px", alignItems: "center" }}>
-                <a href={activePhoto} target="_blank" rel="noopener noreferrer" title="Click to open full image">
-                  <img 
-                    src={activePhoto} 
-                    alt={request.model} 
-                    style={{ width: "84px", height: "84px", borderRadius: "8px", objectFit: "cover", border: "2px solid #38bdf8", boxShadow: "0 4px 14px rgba(56, 189, 248, 0.25)" }} 
-                  />
-                </a>
-                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "#38bdf8", display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Sparkles size={14} /> Active Image for {request.model}
-                  </div>
-                  <div style={{ fontSize: "0.76rem", color: "var(--text-muted)" }}>
-                    This image is synced with Master Catalog and will show everywhere for {request.model}.
-                  </div>
-                  <label className="btn btn-secondary btn-sm" style={{ alignSelf: "flex-start", marginTop: "4px", color: "#38bdf8", borderColor: "#38bdf8", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.8rem" }}>
-                    <Upload size={14} /> <span>{uploadingPhoto ? "Uploading to Cloudinary..." : "Update / Change Image"}</span>
+            <div className="form-group" style={{ marginBottom: "12px" }}>
+              <label className="form-label" style={{ fontSize: "0.78rem" }}>Product Photo</label>
+              {activePhoto ? (
+                <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
+                  <img src={activePhoto} alt={model} style={{ width: "64px", height: "64px", borderRadius: "8px", objectFit: "cover", border: "1px solid var(--primary)" }} />
+                  <label className="btn btn-secondary btn-sm" style={{ cursor: "pointer" }}>
+                    Change Photo
                     <input type="file" accept="image/*" onChange={handlePhotoUpload} disabled={uploadingPhoto} style={{ display: "none" }} />
                   </label>
                 </div>
-              </div>
-            ) : (
-              <label className="doc-upload-btn" style={{ height: "46px", padding: "10px", opacity: uploadingPhoto ? 0.7 : 1, width: "100%" }}>
-                <Upload size={16} /> <span>{uploadingPhoto ? "Uploading to Cloudinary..." : "Upload Model Photo"}</span>
-                <input type="file" accept="image/*" onChange={handlePhotoUpload} disabled={uploadingPhoto} style={{ display: "none" }} />
-              </label>
-            )}
+              ) : (
+                <label className="doc-upload-btn" style={{ padding: "8px", fontSize: "0.8rem", cursor: "pointer" }}>
+                  Upload Product Photo
+                  <input type="file" accept="image/*" onChange={handlePhotoUpload} disabled={uploadingPhoto} style={{ display: "none" }} />
+                </label>
+              )}
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" style={{ fontSize: "0.78rem" }}>Purchaser Internal Notes</label>
+              <textarea className="form-control" rows="2" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Internal notes, wire payment details, production tracking comments..." />
+            </div>
           </div>
 
-
-
-          <div className="form-group">
-            <label className="form-label">Purchaser Internal Notes</label>
-            <textarea 
-              className="form-control" 
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              rows="2"
-              placeholder="e.g. advance paid via bank wire, vendor confirmed production timeline"
-            />
-          </div>
-
-          {/* Confirm */}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
             <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
-            <button type="submit" className="btn btn-primary">Fulfill Details</button>
+            <button type="submit" className="btn btn-primary" style={{ padding: "8px 24px", fontWeight: 700 }}>
+              Save All Changes
+            </button>
           </div>
-
         </form>
 
         <QuickCreateVendorModal
