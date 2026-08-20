@@ -794,16 +794,17 @@ export default function PurchaserDashboard({
                         list="batch-step1-vendor-list"
                         className="form-control"
                         placeholder="Select Vendor..."
-                        value={vendors.find(v => v.id === step1BatchVendorId)?.name || step1BatchVendorId}
+                        value={vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").find(v => v.id === step1BatchVendorId)?.name || step1BatchVendorId}
                         onChange={e => {
                           const val = e.target.value;
-                          const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
+                          const activeVendors = vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
+                          const matched = activeVendors.find(v => v.name.toLowerCase() === val.toLowerCase());
                           setStep1BatchVendorId(matched ? matched.id : val);
                         }}
                         style={{ width: "180px", padding: "4px 8px", fontSize: "0.82rem", height: "auto" }}
                       />
                       <datalist id="batch-step1-vendor-list">
-                        {vendors.filter(v => v.status !== "Inactive").map(v => (
+                        {vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
                           <option key={v.id} value={v.name}>{v.name}</option>
                         ))}
                       </datalist>
@@ -1058,7 +1059,8 @@ export default function PurchaserDashboard({
                                   value={currentVendorText}
                                   onChange={e => {
                                     const val = e.target.value;
-                                    const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
+                                    const activeVendors = vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
+                                    const matched = activeVendors.find(v => v.name.toLowerCase() === val.toLowerCase());
                                     setStep1InlineEdits(prev => ({
                                       ...prev,
                                       [r.id]: {
@@ -1071,7 +1073,7 @@ export default function PurchaserDashboard({
                                   style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
                                 />
                                 <datalist id={`step1-vendor-list-${r.id}`}>
-                                  {vendors.filter(v => v.status !== "Inactive").map(v => (
+                                  {vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
                                     <option key={v.id} value={v.name}>{v.name}</option>
                                   ))}
                                 </datalist>
@@ -1177,7 +1179,7 @@ export default function PurchaserDashboard({
                 >
                   <option value="">Select Vendor...</option>
                   {vendors
-                    .filter(v => v.status !== "Inactive")
+                    .filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive")
                     .filter(v => currentUser.role === "superadmin" || v.purchaserIds?.includes(currentUser.id))
                     .map(v => {
                       const metrics = calculateVendorMetrics(v, requests);
@@ -1363,17 +1365,18 @@ export default function PurchaserDashboard({
                   list="list-vr-vendors"
                   className="form-control" 
                   placeholder="Type or Select Vendor..." 
-                  value={vendors.find(v => v.id === vrFilter)?.name || ""}
+                  value={vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").find(v => v.id === vrFilter)?.name || ""}
                   onChange={e => {
                     const val = e.target.value;
-                    const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
+                    const activeVendors = vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
+                    const matched = activeVendors.find(v => v.name.toLowerCase() === val.toLowerCase());
                     setVrFilter(matched ? matched.id : "");
                     setVrChecked([]);
                   }}
                   style={{ minWidth: "200px" }}
                 />
                 <datalist id="list-vr-vendors">
-                  {vendors.filter(v => v.status !== "Inactive").map(v => (
+                  {vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
                     <option key={v.id} value={v.name}>{v.name}</option>
                   ))}
                 </datalist>
@@ -1545,17 +1548,18 @@ export default function PurchaserDashboard({
                   list="list-cp-vendors"
                   className="form-control" 
                   placeholder="Type or Select Vendor..." 
-                  value={vendors.find(v => v.id === cpFilter)?.name || ""}
+                  value={vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").find(v => v.id === cpFilter)?.name || ""}
                   onChange={e => {
                     const val = e.target.value;
-                    const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
+                    const activeVendors = vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
+                    const matched = activeVendors.find(v => v.name.toLowerCase() === val.toLowerCase());
                     setCpFilter(matched ? matched.id : "");
                     setCpChecked([]);
                   }}
                   style={{ minWidth: "200px" }}
                 />
                 <datalist id="list-cp-vendors">
-                  {vendors.filter(v => v.status !== "Inactive").map(v => (
+                  {vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
                     <option key={v.id} value={v.name}>{v.name}</option>
                   ))}
                 </datalist>
@@ -2561,12 +2565,13 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
                 onChange={e => {
                   const val = e.target.value;
                   setVendorSearchText(val);
-                  const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
+                  const activeVendors = vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
+                  const matched = activeVendors.find(v => v.name.toLowerCase() === val.toLowerCase());
                   setVendorId(matched ? matched.id : val);
                 }}
               />
               <datalist id="pricing-vendor-list">
-                {vendors.filter(v => v.status !== "Inactive").map(v => (
+                {vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
                   <option key={v.id} value={v.name}>{v.name}</option>
                 ))}
               </datalist>
