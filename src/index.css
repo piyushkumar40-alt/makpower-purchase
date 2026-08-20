@@ -1638,6 +1638,37 @@ select.form-control {
   color: var(--primary) !important;
 }
 
+/* Light Theme Card Glows & Header Overrides */
+[data-theme="light"] .app-header {
+  background: rgba(255, 255, 255, 0.85) !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme="light"] .glow-cyan-card {
+  border: 1px solid #0284c7 !important;
+  box-shadow: 0 4px 20px rgba(2, 132, 199, 0.15) !important;
+  background: #ffffff !important;
+}
+
+[data-theme="light"] .glow-purple-card {
+  border: 1px solid #8b5cf6 !important;
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.15) !important;
+  background: #ffffff !important;
+}
+
+[data-theme="light"] .glow-blue-card {
+  border: 1px solid #3b82f6 !important;
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.15) !important;
+  background: #ffffff !important;
+}
+
+[data-theme="light"] .glow-teal-card {
+  border: 1px solid #06b6d4 !important;
+  box-shadow: 0 4px 20px rgba(6, 182, 212, 0.15) !important;
+  background: #ffffff !important;
+}
+
 [data-theme="light"] .custom-dropdown-option:hover {
   background: #e0f2fe !important;
   color: #0284c7 !important;
