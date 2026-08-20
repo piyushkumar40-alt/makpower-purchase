@@ -57,23 +57,23 @@ export default function AnalyticsPanel({ requests = [], vendors = [], cargos = [
         {/* 1. Delayed of the Month */}
         <div 
           onClick={() => onSelectTab && onSelectTab("alerts")} 
-          className="glass-panel metric-card" 
+          className="metric-card glow-cyan-card" 
           style={{ 
-            borderLeft: `4px solid ${delayedCount > 2 ? "var(--danger)" : delayedCount === 0 ? "var(--success)" : "var(--warning)"}`,
             cursor: "pointer",
             transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
           }}
           title="Click to navigate to Delayed Operations & Action Alerts tab"
         >
           <div>
-            <div className="metric-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <div className="metric-label" style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-muted)", fontSize: "0.8rem", textTransform: "uppercase", fontWeight: 700 }}>
               Delayed of the Month
             </div>
             <div 
               className="metric-value" 
               style={{ 
-                color: delayedCount > 2 ? "var(--danger)" : delayedCount === 0 ? "var(--success)" : "var(--warning)",
-                textShadow: delayedCount > 2 ? "0 0 10px var(--danger-glow)" : delayedCount === 0 ? "0 0 10px var(--success-glow)" : "0 0 10px var(--warning-glow)"
+                color: "#38bdf8",
+                fontSize: "1.5rem",
+                fontWeight: 800
               }}
             >
               {delayedCount === 0 ? "0 (Good)" : delayedCount}
@@ -82,9 +82,9 @@ export default function AnalyticsPanel({ requests = [], vendors = [], cargos = [
           <div 
             style={{ 
               padding: "10px", 
-              background: delayedCount > 2 ? "var(--danger-glow)" : delayedCount === 0 ? "var(--success-glow)" : "var(--warning-glow)", 
+              background: "rgba(56, 189, 248, 0.15)", 
               borderRadius: "12px", 
-              color: delayedCount > 2 ? "var(--danger)" : delayedCount === 0 ? "var(--success)" : "var(--warning)" 
+              color: "#38bdf8" 
             }}
           >
             <Clock size={24} />
@@ -94,17 +94,17 @@ export default function AnalyticsPanel({ requests = [], vendors = [], cargos = [
         {/* 2. Pending Pricing (Step 1) */}
         <div 
           onClick={() => onSelectTab && onSelectTab("pending")} 
-          className="glass-panel metric-card" 
-          style={{ borderLeft: "4px solid var(--warning)", cursor: "pointer", transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)" }}
+          className="metric-card glow-purple-card" 
+          style={{ cursor: "pointer", transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)" }}
           title="Click to navigate to Step 1: Awaiting Price tab"
         >
           <div>
-            <div className="metric-label">Step 1: Awaiting Price</div>
-            <div className="metric-value" style={{ color: "var(--warning)" }}>
+            <div className="metric-label" style={{ color: "var(--text-muted)", fontSize: "0.8rem", textTransform: "uppercase", fontWeight: 700 }}>Step 1: Awaiting Price</div>
+            <div className="metric-value" style={{ color: "#a855f7", fontSize: "1.5rem", fontWeight: 800 }}>
               {pendingCount}
             </div>
           </div>
-          <div style={{ padding: "10px", background: "var(--warning-glow)", borderRadius: "12px", color: "var(--warning)" }}>
+          <div style={{ padding: "10px", background: "rgba(168, 85, 247, 0.15)", borderRadius: "12px", color: "#a855f7" }}>
             <AlertCircle size={24} />
           </div>
         </div>
@@ -112,17 +112,17 @@ export default function AnalyticsPanel({ requests = [], vendors = [], cargos = [
         {/* 3. Ready to Cargo (Step 2) */}
         <div 
           onClick={() => onSelectTab && onSelectTab("planner")} 
-          className="glass-panel metric-card" 
-          style={{ borderLeft: "4px solid var(--primary)", cursor: "pointer", transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)" }}
+          className="metric-card glow-blue-card" 
+          style={{ cursor: "pointer", transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)" }}
           title="Click to navigate to Step 2: Awaiting Cargo Consolidation tab"
         >
           <div>
-            <div className="metric-label">Step 2: Awaiting Cargo</div>
-            <div className="metric-value" style={{ color: "var(--primary)" }}>
+            <div className="metric-label" style={{ color: "var(--text-muted)", fontSize: "0.8rem", textTransform: "uppercase", fontWeight: 700 }}>Step 2: Awaiting Cargo</div>
+            <div className="metric-value" style={{ color: "#3b82f6", fontSize: "1.5rem", fontWeight: 800 }}>
               {awaitingCargoCount}
             </div>
           </div>
-          <div style={{ padding: "10px", background: "var(--primary-glow)", borderRadius: "12px", color: "var(--primary)" }}>
+          <div style={{ padding: "10px", background: "rgba(59, 130, 246, 0.15)", borderRadius: "12px", color: "#3b82f6" }}>
             <Award size={24} />
           </div>
         </div>
@@ -130,17 +130,17 @@ export default function AnalyticsPanel({ requests = [], vendors = [], cargos = [
         {/* 4. Cargo In-Transit (Step 3) */}
         <div 
           onClick={() => onSelectTab && onSelectTab("shipments")} 
-          className="glass-panel metric-card" 
-          style={{ borderLeft: "4px solid var(--secondary)", cursor: "pointer", transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)" }}
+          className="metric-card glow-teal-card" 
+          style={{ cursor: "pointer", transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)" }}
           title="Click to navigate to Step 3: Cargo In-Transit tab"
         >
           <div>
-            <div className="metric-label">Step 3: Cargo In-Transit</div>
-            <div className="metric-value" style={{ color: "var(--secondary)" }}>
+            <div className="metric-label" style={{ color: "var(--text-muted)", fontSize: "0.8rem", textTransform: "uppercase", fontWeight: 700 }}>Step 3: Cargo In-Transit</div>
+            <div className="metric-value" style={{ color: "#06b6d4", fontSize: "1.5rem", fontWeight: 800 }}>
               {inTransitCount}
             </div>
           </div>
-          <div style={{ padding: "10px", background: "rgba(129, 140, 248, 0.15)", borderRadius: "12px", color: "var(--secondary)" }}>
+          <div style={{ padding: "10px", background: "rgba(6, 182, 212, 0.15)", borderRadius: "12px", color: "#06b6d4" }}>
             <Truck size={24} />
           </div>
         </div>

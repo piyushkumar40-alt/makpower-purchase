@@ -609,7 +609,7 @@ export default function PurchaserDashboard({
             value={["pending", "vendorready", "planner", "cargopickup", "shipments", "all", "cancelled"].includes(activeTab) ? activeTab : ""}
             onChange={(val) => setActiveTab(val)}
             placeholder="-- Select Workflow Step --"
-            accentColor="var(--primary)"
+            accentColor="#0284c7"
           />
 
           {/* Dropdown 2: Directories, Records & Modules */}
@@ -628,7 +628,7 @@ export default function PurchaserDashboard({
             value={["alerts", "docs", "vendors", "cargocompanies", "itemmaster", "auditlogs", "studiopipeline"].includes(activeTab) ? activeTab : ""}
             onChange={(val) => setActiveTab(val)}
             placeholder="-- Select Directory / Module --"
-            accentColor="var(--secondary)"
+            accentColor="#818cf8"
           />
 
           {/* Quick Filter: Missed Target Date */}

@@ -110,6 +110,27 @@ input, textarea, select, table, td, th {
   box-shadow: 0 15px 35px -10px rgba(0, 0, 0, 0.6);
 }
 
+/* Glowing Metric Cards & Control Containers */
+.glow-cyan-card {
+  border: 1px solid #0284c7 !important;
+  box-shadow: 0 0 20px rgba(2, 132, 199, 0.25), inset 0 0 15px rgba(2, 132, 199, 0.08) !important;
+}
+
+.glow-purple-card {
+  border: 1px solid #8b5cf6 !important;
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.25), inset 0 0 15px rgba(139, 92, 246, 0.08) !important;
+}
+
+.glow-blue-card {
+  border: 1px solid #3b82f6 !important;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.25), inset 0 0 15px rgba(59, 130, 246, 0.08) !important;
+}
+
+.glow-teal-card {
+  border: 1px solid #06b6d4 !important;
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.25), inset 0 0 15px rgba(6, 182, 212, 0.08) !important;
+}
+
 /* Metric Card Clickable Interactive Styling */
 .metric-card {
   display: flex;
@@ -118,6 +139,9 @@ input, textarea, select, table, td, th {
   padding: 18px 22px;
   cursor: pointer;
   user-select: none;
+  border-radius: 14px;
+  background: rgba(13, 20, 38, 0.65);
+  backdrop-filter: blur(16px);
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -318,27 +342,24 @@ select.form-control {
   background-color: var(--text-dark);
 }
 
-/* Badges */
+/* Badges & Status Pills */
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
+  justify-content: center;
+  padding: 4px 14px;
   border-radius: 99px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  max-width: 100%;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.badge-pending { background: rgba(245, 158, 11, 0.15); color: #fdba74; border: 1px solid rgba(245, 158, 11, 0.3); }
-.badge-approved { background: rgba(59, 130, 246, 0.15); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.3); }
-.badge-cargo { background: rgba(129, 140, 248, 0.15); color: #c7d2fe; border: 1px solid rgba(129, 140, 248, 0.3); }
-.badge-received { background: rgba(16, 185, 129, 0.15); color: #a7f3d0; border: 1px solid rgba(16, 185, 129, 0.3); }
-.badge-rejected { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+.badge-pending { background: rgba(245, 158, 11, 0.15); color: #fde68a; border: 1px solid #f59e0b; }
+.badge-approved { background: rgba(59, 130, 246, 0.15); color: #93c5fd; border: 1px solid #3b82f6; }
+.badge-cargo { background: rgba(6, 182, 212, 0.15); color: #99f6e4; border: 1px solid #06b6d4; }
+.badge-received { background: rgba(16, 185, 129, 0.15); color: #a7f3d0; border: 1px solid #10b981; }
+.badge-rejected { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid #ef4444; }
 
 /* Header UI */
 .app-header {
