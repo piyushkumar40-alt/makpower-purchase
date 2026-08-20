@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 
 export function useSortableData(items, initialConfig = null) {
@@ -37,18 +37,19 @@ export function useSortableData(items, initialConfig = null) {
     return sortableItems;
   }, [items, sortConfig]);
 
-  const requestSort = (key, getValue = null) => {
-    let direction = "asc";
-    if (sortConfig && sortConfig.key === key && sortConfig.direction === "asc") {
-      direction = "desc";
-    } else if (sortConfig && sortConfig.key === key && sortConfig.direction === "desc") {
-      setSortConfig(null);
-      return;
-    }
-    setSortConfig({ key, direction, getValue });
-  };
+  const requestSort = useCallback((key, getValue = null) => {
+    setSortConfig(prevConfig => {
+      let direction = "asc";
+      if (prevConfig && prevConfig.key === key && prevConfig.direction === "asc") {
+        direction = "desc";
+      } else if (prevConfig && prevConfig.key === key && prevConfig.direction === "desc") {
+        return null;
+      }
+      return { key, direction, getValue };
+    });
+  }, []);
 
-  const RenderSortHeader = ({ colKey, title, getValue = null, style = {} }) => {
+  const RenderSortHeader = useCallback(({ colKey, title, getValue = null, style = {} }) => {
     const isSorted = sortConfig && sortConfig.key === colKey;
     const direction = isSorted ? sortConfig.direction : null;
 
@@ -73,7 +74,7 @@ export function useSortableData(items, initialConfig = null) {
         </div>
       </th>
     );
-  };
+  }, [sortConfig, requestSort]);
 
   return { items: sortedItems, requestSort, sortConfig, RenderSortHeader };
 }
