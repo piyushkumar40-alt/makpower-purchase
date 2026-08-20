@@ -1036,30 +1036,32 @@ export default function App() {
                   </button>
                 )}
                 
-                <button 
-                  onClick={() => {
-                    if (currentUser.role === "nitin") setActiveView("nitin");
-                    else if (currentUser.role === "rahul") setActiveView("rahul");
-                    else if (currentUser.role === "coordinator") setActiveView("coordinator");
-                    else setActiveView("dashboard");
-                  }} 
-                  style={{
-                    background: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "linear-gradient(180deg, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.03) 100%)" : "transparent",
-                    border: "none",
-                    outline: "none",
-                    color: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "#38bdf8" : "rgba(248, 250, 252, 0.7)",
-                    fontWeight: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? 700 : 500,
-                    fontSize: "0.9rem",
-                    padding: "8px 16px",
-                    borderRadius: "8px 8px 0 0",
-                    cursor: "pointer",
-                    borderBottom: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "3px solid #38bdf8" : "3px solid transparent",
-                    boxShadow: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "0 4px 12px rgba(56, 189, 248, 0.35)" : "none",
-                    transition: "all 0.2s ease"
-                  }}
-                >
-                  Workboard
-                </button>
+                {currentUser.role !== "superadmin" && (
+                  <button 
+                    onClick={() => {
+                      if (currentUser.role === "nitin") setActiveView("nitin");
+                      else if (currentUser.role === "rahul") setActiveView("rahul");
+                      else if (currentUser.role === "coordinator") setActiveView("coordinator");
+                      else setActiveView("dashboard");
+                    }} 
+                    style={{
+                      background: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "linear-gradient(180deg, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.03) 100%)" : "transparent",
+                      border: "none",
+                      outline: "none",
+                      color: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "#38bdf8" : "rgba(248, 250, 252, 0.7)",
+                      fontWeight: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? 700 : 500,
+                      fontSize: "0.9rem",
+                      padding: "8px 16px",
+                      borderRadius: "8px 8px 0 0",
+                      cursor: "pointer",
+                      borderBottom: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "3px solid #38bdf8" : "3px solid transparent",
+                      boxShadow: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "0 4px 12px rgba(56, 189, 248, 0.35)" : "none",
+                      transition: "all 0.2s ease"
+                    }}
+                  >
+                    Workboard
+                  </button>
+                )}
               </>
             )}
 
