@@ -105,6 +105,18 @@ export default function ItemCatalogPanel({
   const [mergeMsg, setMergeMsg] = useState("");
   const [merging, setMerging] = useState(false);
 
+  // Filter items by search, category & type
+  const categories = useMemo(() => ["all", ...new Set(items.map(i => i.category).filter(Boolean))], [items]);
+  const filteredItems = useMemo(() => {
+    return items.filter(i => {
+      const matchesCategory = categoryFilter === "all" || i.category === categoryFilter;
+      const matchesType = typeFilter === "all" || (i.itemType || "RM") === typeFilter;
+      const q = searchQuery.toLowerCase();
+      const matchesSearch = !q || String(i.id).toLowerCase().includes(q) || (i.name && i.name.toLowerCase().includes(q)) || (i.category && i.category.toLowerCase().includes(q));
+      return matchesCategory && matchesType && matchesSearch;
+    });
+  }, [items, categoryFilter, typeFilter, searchQuery]);
+
   const { items: sortedCatalogItems, RenderSortHeader } = useSortableData(filteredItems);
 
   // Auto-generate next unique ID when opening add form
@@ -625,15 +637,7 @@ export default function ItemCatalogPanel({
     }
   };
 
-  // Filter items by search, category & type
-  const categories = ["all", ...new Set(items.map(i => i.category).filter(Boolean))];
-  const filteredItems = items.filter(i => {
-    const matchesCategory = categoryFilter === "all" || i.category === categoryFilter;
-    const matchesType = typeFilter === "all" || (i.itemType || "RM") === typeFilter;
-    const q = searchQuery.toLowerCase();
-    const matchesSearch = !q || String(i.id).toLowerCase().includes(q) || (i.name && i.name.toLowerCase().includes(q)) || (i.category && i.category.toLowerCase().includes(q));
-    return matchesCategory && matchesType && matchesSearch;
-  });
+
 
   return (
     <div className="card-fade-in">
