@@ -102,6 +102,14 @@ function readLocalJson() {
     if (Array.isArray(data.requests)) {
       data.requests = data.requests.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" }));
     }
+    if (Array.isArray(data.users)) {
+      data.users = data.users.map(u => {
+        if (u.id !== "u-rahul" && u.email !== "rahul@makpowerindia.com" && u.role === "rahul") {
+          return { ...u, role: "purchaser" };
+        }
+        return u;
+      });
+    }
     const adminIdx = data.users.findIndex(x => x.id === "u-admin" || x.role === "superadmin" || x.email === "admin@company.com");
     if (adminIdx !== -1 && data.users[adminIdx].password === "MakPower#Admin2026!") {
       data.users[adminIdx].password = "112233";
@@ -369,6 +377,9 @@ async function setupPgDatabase() {
 
     // Set default 'No' only for NULL or empty purchaseUpdated records
     await pool.query(`UPDATE requests SET "purchaseUpdated" = 'No' WHERE "purchaseUpdated" IS NULL OR "purchaseUpdated" = ''`);
+
+    // Auto-fix any staff accounts named 'Rahul' or with non-rahul email that were assigned role='rahul' by mistake
+    await pool.query(`UPDATE users SET "role" = 'purchaser' WHERE "id" != 'u-rahul' AND "email" != 'rahul@makpowerindia.com' AND "role" = 'rahul'`);
 
     // Seed default settings
     const settingsCheck = await pool.query("SELECT COUNT(*) FROM settings");

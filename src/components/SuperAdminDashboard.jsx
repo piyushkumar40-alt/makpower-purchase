@@ -397,8 +397,8 @@ export default function SuperAdminDashboard({
     if (dLower.includes("owner")) roleVal = "owner";
     else if (dLower.includes("admin") || dLower.includes("superadmin")) roleVal = "superadmin";
     else if (dLower.includes("logistics") || dLower.includes("coordinator")) roleVal = "coordinator";
-    else if (dLower.includes("packing") || dLower.includes("nitin")) roleVal = "nitin";
-    else if (dLower.includes("accounts") || dLower.includes("rahul")) roleVal = "rahul";
+    else if (dLower === "nitin" || dLower.includes("packing manager")) roleVal = "nitin";
+    else if (dLower === "rahul" || dLower.includes("accounts update") || dLower.includes("purchase updater")) roleVal = "rahul";
 
     const res = onAddPurchaser(pName, pEmail, pPassword, finalDesignation, roleVal);
     if (res.success) {
@@ -865,13 +865,7 @@ export default function SuperAdminDashboard({
                                 <button 
                                   onClick={() => {
                                     if (!editNameVal.trim()) return;
-                                    let roleVal = editRoleVal;
-                                    const dLower = editDesignationVal.toLowerCase();
-                                    if (dLower.includes("owner")) roleVal = "owner";
-                                    else if (dLower.includes("admin") || dLower.includes("superadmin")) roleVal = "superadmin";
-                                    else if (dLower.includes("logistics") || dLower.includes("coordinator")) roleVal = "coordinator";
-                                    else if (dLower.includes("packing") || dLower.includes("nitin")) roleVal = "nitin";
-                                    else if (dLower.includes("accounts") || dLower.includes("rahul")) roleVal = "rahul";
+                                    const roleVal = editRoleVal || "purchaser";
                                     
                                     const updates = { 
                                       name: editNameVal.trim(), 

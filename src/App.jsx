@@ -137,8 +137,14 @@ export default function App() {
           fetch("/api/state"),
           fetch("/api/audit-logs")
         ]);
-        const data = await res.json();
-        setUsers(data.users || []);
+        const rawUsers = data.users || [];
+        const cleanUsers = rawUsers.map(u => {
+          if (u.id !== "u-rahul" && u.email !== "rahul@makpowerindia.com" && u.role === "rahul") {
+            return { ...u, role: "purchaser" };
+          }
+          return u;
+        });
+        setUsers(cleanUsers);
         setVendors(data.vendors || []);
         setRequests((data.requests || []).map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
         setCargos(data.cargos || []);
@@ -278,15 +284,15 @@ export default function App() {
       const roleLower = (user.role || "").toLowerCase();
       const desigLower = (user.designation || "").toLowerCase();
 
-      if (roleLower === "superadmin" || desigLower === "system admin" || cleanEmail.includes("admin")) {
+      if (roleLower === "superadmin" || desigLower === "system admin" || cleanEmail === "admin@makpowerindia.com" || cleanEmail === "admin@company.com") {
         setActiveView("admin");
-      } else if (roleLower === "owner" || desigLower === "owner" || cleanEmail.includes("owner")) {
+      } else if (roleLower === "owner" || desigLower === "owner" || cleanEmail === "owner@makpowerindia.com") {
         setActiveView("owner");
-      } else if (roleLower === "nitin" || cleanEmail.includes("nitin")) {
+      } else if (roleLower === "nitin" || (roleLower === "nitin" && cleanEmail === "nitin@makpowerindia.com")) {
         setActiveView("nitin");
-      } else if (roleLower === "rahul" || cleanEmail.includes("rahul")) {
+      } else if (roleLower === "rahul" && (user.id === "u-rahul" || cleanEmail === "rahul@makpowerindia.com")) {
         setActiveView("rahul");
-      } else if (roleLower === "coordinator" || desigLower === "logistics" || cleanEmail.includes("pc@")) {
+      } else if (roleLower === "coordinator" || desigLower === "logistics" || cleanEmail === "pc@makpowerindia.com") {
         setActiveView("coordinator");
       } else {
         setActiveView("dashboard");
@@ -583,8 +589,8 @@ export default function App() {
       if (dLower.includes("owner")) role = "owner";
       else if (dLower.includes("admin") || dLower.includes("superadmin")) role = "superadmin";
       else if (dLower.includes("logistics") || dLower.includes("coordinator")) role = "coordinator";
-      else if (dLower.includes("packing") || dLower.includes("nitin")) role = "nitin";
-      else if (dLower.includes("accounts") || dLower.includes("rahul")) role = "rahul";
+      else if (dLower === "nitin" || dLower.includes("packing manager")) role = "nitin";
+      else if (dLower === "rahul" || dLower.includes("accounts update") || dLower.includes("purchase updater")) role = "rahul";
     }
 
     const newUser = {
