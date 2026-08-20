@@ -140,7 +140,7 @@ export default function App() {
         const data = await res.json();
         setUsers(data.users || []);
         setVendors(data.vendors || []);
-        setRequests((data.requests || []).map(r => ({ ...r, purchaseUpdated: "No" })));
+        setRequests((data.requests || []).map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
         setCargos(data.cargos || []);
         setCargoCompanies(data.cargoCompanies || []);
         setItems(data.items || []);

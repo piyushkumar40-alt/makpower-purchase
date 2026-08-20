@@ -100,7 +100,7 @@ function readLocalJson() {
       };
     }
     if (Array.isArray(data.requests)) {
-      data.requests = data.requests.map(r => ({ ...r, purchaseUpdated: "No" }));
+      data.requests = data.requests.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" }));
     }
     const adminIdx = data.users.findIndex(x => x.id === "u-admin" || x.role === "superadmin" || x.email === "admin@company.com");
     if (adminIdx !== -1 && data.users[adminIdx].password === "MakPower#Admin2026!") {
@@ -367,8 +367,8 @@ async function setupPgDatabase() {
     // Auto-update admin user password to 112233 if legacy password is found
     await pool.query(`UPDATE users SET password = '112233' WHERE (email = 'admin@company.com' OR role = 'superadmin') AND password = 'MakPower#Admin2026!'`);
 
-    // Set purchaseUpdated = 'No' for all items in the database
-    await pool.query(`UPDATE requests SET "purchaseUpdated" = 'No'`);
+    // Set default 'No' only for NULL or empty purchaseUpdated records
+    await pool.query(`UPDATE requests SET "purchaseUpdated" = 'No' WHERE "purchaseUpdated" IS NULL OR "purchaseUpdated" = ''`);
 
     // Seed default settings
     const settingsCheck = await pool.query("SELECT COUNT(*) FROM settings");
