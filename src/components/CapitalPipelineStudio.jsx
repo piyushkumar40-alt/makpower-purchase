@@ -3,10 +3,12 @@ import {
   PieChart, DollarSign, Building2, Truck, Package, Search, Filter, 
   Download, ArrowUpRight, CheckCircle2, AlertCircle, Layers, Coins, Globe, RefreshCw, BarChart2, Warehouse
 } from "lucide-react";
-import { formatIndianCurrency } from "../utils/formatters";
+import { formatIndianCurrency, normalizeCategoryName } from "../utils/formatters";
 
-// Helper: Custom SVG Donut / Circle Chart Component
+// Helper: Custom SVG Donut / Circle Chart Component with Interactive Hover Tooltips
 function CategoryDonutChart({ title, dataMap, colorPalette, totalAmount, currencySymbol = "₹" }) {
+  const [hoveredIndex, setHoveredIndex] = useState(null);
+
   const entries = Object.entries(dataMap).filter(([_, val]) => val > 0);
   const total = entries.reduce((sum, [_, val]) => sum + val, 0);
 
@@ -39,14 +41,16 @@ function CategoryDonutChart({ title, dataMap, colorPalette, totalAmount, currenc
     return { category, amount, percentage, strokeDasharray, strokeDashoffset, color };
   });
 
+  const activeSlice = hoveredIndex !== null ? slices[hoveredIndex] : null;
+
   return (
     <div className="glass-panel card-fade-in" style={{ padding: "20px", display: "flex", flexDirection: "column", height: "100%", border: "1px solid var(--border-glass)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
         <h4 style={{ fontSize: "0.95rem", color: "var(--text-main)", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px", margin: 0 }}>
           <PieChart size={16} style={{ color: "#38bdf8" }} /> {title}
         </h4>
-        <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#38bdf8" }}>
-          {formatIndianCurrency(total, currencySymbol)}
+        <span style={{ fontSize: "0.78rem", fontWeight: 700, color: activeSlice ? activeSlice.color : "#38bdf8" }}>
+          {formatIndianCurrency(activeSlice ? activeSlice.amount : total, currencySymbol)}
         </span>
       </div>
 
@@ -62,20 +66,32 @@ function CategoryDonutChart({ title, dataMap, colorPalette, totalAmount, currenc
               stroke="rgba(255,255,255,0.06)"
               strokeWidth={strokeWidth}
             />
-            {slices.map((slice, i) => (
-              <circle
-                key={i}
-                cx={center}
-                cy={center}
-                r={radius}
-                fill="transparent"
-                stroke={slice.color}
-                strokeWidth={strokeWidth}
-                strokeDasharray={slice.strokeDasharray}
-                strokeDashoffset={slice.strokeDashoffset}
-                style={{ transition: "all 0.5s ease" }}
-              />
-            ))}
+            {slices.map((slice, i) => {
+              const isHovered = hoveredIndex === i;
+              return (
+                <circle
+                  key={i}
+                  cx={center}
+                  cy={center}
+                  r={radius}
+                  fill="transparent"
+                  stroke={slice.color}
+                  strokeWidth={isHovered ? strokeWidth + 6 : strokeWidth}
+                  strokeDasharray={slice.strokeDasharray}
+                  strokeDashoffset={slice.strokeDashoffset}
+                  onMouseEnter={() => setHoveredIndex(i)}
+                  onMouseLeave={() => setHoveredIndex(null)}
+                  style={{ 
+                    transition: "all 0.25s ease-in-out", 
+                    cursor: "pointer",
+                    filter: isHovered ? `drop-shadow(0 0 8px ${slice.color})` : "none",
+                    opacity: hoveredIndex === null || isHovered ? 1 : 0.55
+                  }}
+                >
+                  <title>{`${slice.category}: ${formatIndianCurrency(slice.amount, currencySymbol)} (${Math.round(slice.percentage * 100)}%)`}</title>
+                </circle>
+              );
+            })}
           </svg>
           <div style={{
             position: "absolute",
@@ -83,28 +99,63 @@ function CategoryDonutChart({ title, dataMap, colorPalette, totalAmount, currenc
             left: "50%",
             transform: "translate(-50%, -50%)",
             textAlign: "center",
-            pointerEvents: "none"
+            pointerEvents: "none",
+            width: "120px"
           }}>
-            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Total Category</div>
-            <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#fff" }}>
-              {formatIndianCurrency(total, currencySymbol)}
-            </div>
+            {activeSlice ? (
+              <>
+                <div style={{ fontSize: "0.72rem", color: activeSlice.color, fontWeight: 700, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {activeSlice.category}
+                </div>
+                <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#fff", margin: "2px 0" }}>
+                  {formatIndianCurrency(activeSlice.amount, currencySymbol)}
+                </div>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 600 }}>
+                  {Math.round(activeSlice.percentage * 100)}% share
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Total Category</div>
+                <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#fff" }}>
+                  {formatIndianCurrency(total, currencySymbol)}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
         {/* Legend */}
         <div style={{ display: "flex", flexDirection: "column", gap: "6px", flex: "1 1 120px", minWidth: "120px" }}>
-          {slices.map((slice, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.76rem" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <span style={{ width: "10px", height: "10px", borderRadius: "3px", background: slice.color, display: "inline-block" }}></span>
-                <span style={{ color: "var(--text-main)", fontWeight: 600 }}>{slice.category}</span>
+          {slices.map((slice, i) => {
+            const isHovered = hoveredIndex === i;
+            return (
+              <div 
+                key={i} 
+                onMouseEnter={() => setHoveredIndex(i)}
+                onMouseLeave={() => setHoveredIndex(null)}
+                style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  justifyContent: "space-between", 
+                  fontSize: "0.76rem",
+                  padding: "2px 6px",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  background: isHovered ? "rgba(255,255,255,0.08)" : "transparent",
+                  transition: "all 0.15s ease"
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ width: "10px", height: "10px", borderRadius: "3px", background: slice.color, display: "inline-block" }}></span>
+                  <span style={{ color: isHovered ? "#fff" : "var(--text-main)", fontWeight: isHovered ? 700 : 600 }}>{slice.category}</span>
+                </div>
+                <span style={{ color: isHovered ? activeSlice?.color : "var(--text-muted)", fontWeight: 700 }}>
+                  {Math.round(slice.percentage * 100)}%
+                </span>
               </div>
-              <span style={{ color: "var(--text-muted)", fontWeight: 700 }}>
-                {Math.round(slice.percentage * 100)}%
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
@@ -226,7 +277,7 @@ export default function CapitalPipelineStudio({
   const buildCategoryMap = (reqList, isTransit = false) => {
     const map = {};
     reqList.forEach(r => {
-      const cat = r.category || "General";
+      const cat = normalizeCategoryName(r.category);
       const val = convertToInr(r.totalRmb || 0, r.currency);
       map[cat] = (map[cat] || 0) + val;
     });

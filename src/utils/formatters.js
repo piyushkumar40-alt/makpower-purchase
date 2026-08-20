@@ -15,3 +15,12 @@ export const formatIndianCurrency = (amount, symbol = "₹") => {
   }
   return `${sign}${symbol} ${Math.round(num).toLocaleString("en-IN")}`;
 };
+
+export const normalizeCategoryName = (category) => {
+  if (!category) return "General";
+  const str = String(category).trim();
+  if (str.toLowerCase().includes("polymer")) {
+    return "Polymer";
+  }
+  return str;
+};

@@ -8,7 +8,7 @@ import {
 
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { useSortableData } from "../utils/useSortableData";
-import { formatIndianCurrency } from "../utils/formatters";
+import { formatIndianCurrency, normalizeCategoryName } from "../utils/formatters";
 
 export default function OwnerDashboard({
   currentUser = {},
@@ -178,7 +178,7 @@ export default function OwnerDashboard({
   const categoryInrSpendMap = {};
 
   activeRequests.forEach(r => {
-    const cat = r.category || "General";
+    const cat = normalizeCategoryName(r.category);
     const cur = (r.currency || "RMB").toUpperCase();
     const amt = parseFloat(r.totalRmb || 0);
     const inrAmt = convertToInr(amt, cur);
