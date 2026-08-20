@@ -55,6 +55,20 @@ export default function App() {
   const [auditLogs, setAuditLogs] = useState([]);
   const [settings, setSettings] = useState({ isHidden: false, redirectUrl: "https://www.instagram.com/makpowerofficial/" });
   const [loading, setLoading] = useState(true);
+  const [showUpdateBanner, setShowUpdateBanner] = useState(false);
+
+  const handleHardCacheRefresh = async () => {
+    try {
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+    } catch (e) {
+      console.warn("Cache clearing warning:", e);
+    }
+    const cleanUrl = window.location.origin + window.location.pathname + "?nocache=" + Date.now();
+    window.location.href = cleanUrl;
+  };
 
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem("makpower_current_user");
@@ -155,8 +169,8 @@ export default function App() {
               lastRefreshTsRef.current = incomingTs;
             } else if (incomingTs > lastRefreshTsRef.current) {
               lastRefreshTsRef.current = incomingTs;
-              console.log("⚡ Server requested force client webapp refresh. Reloading...");
-              window.location.reload();
+              console.log("⚡ New update signal received from server. Showing red banner...");
+              setShowUpdateBanner(true);
             }
           }
         }
@@ -888,6 +902,51 @@ export default function App() {
 
   return (
     <div className="app-container">
+      {/* RED ALERT UPDATE BANNER (STAYS STICKY AT VERY TOP OF APP) */}
+      {showUpdateBanner && (
+        <div 
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 999999,
+            background: "linear-gradient(90deg, #b91c1c, #ef4444, #dc2626)",
+            color: "#ffffff",
+            padding: "10px 18px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "14px",
+            boxShadow: "0 4px 20px rgba(220, 38, 38, 0.5)",
+            fontSize: "0.92rem",
+            fontWeight: 700,
+            textAlign: "center",
+            flexWrap: "wrap"
+          }}
+        >
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+            <RefreshCw size={18} className="spin" />
+            <span>⚡ New webapp updates available!</span>
+          </div>
+          <button
+            onClick={handleHardCacheRefresh}
+            style={{
+              background: "#ffffff",
+              color: "#dc2626",
+              border: "none",
+              padding: "7px 18px",
+              borderRadius: "6px",
+              fontWeight: 800,
+              fontSize: "0.85rem",
+              cursor: "pointer",
+              boxShadow: "0 2px 10px rgba(0,0,0,0.25)",
+              transition: "all 0.2s ease"
+            }}
+          >
+            Click here to refresh for latest updates (Ctrl+Shift+R)
+          </button>
+        </div>
+      )}
+
       <header className="app-header">
         <div className="header-inner">
           <div className="logo-area" onClick={handleGoHome} style={{ cursor: "pointer" }}>

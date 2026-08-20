@@ -1425,14 +1425,14 @@ export default function SuperAdminDashboard({
                 </button>
               </div>
 
-              {/* Force Client Webapp Refresh Panel */}
+              {/* Broadcast Red Update Banner Panel */}
               <div className="glass-panel" style={{ padding: "24px" }}>
-                <h3 style={{ fontSize: "1.2rem", marginBottom: "12px", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px" }}>
-                  <RefreshCw size={20} style={{ color: "var(--primary)" }} /> Force Client Webapp Refresh
+                <h3 style={{ fontSize: "1.2rem", marginBottom: "12px", color: "var(--danger)", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <RefreshCw size={20} style={{ color: "var(--danger)" }} /> Broadcast Red Update Banner
                 </h3>
                 
                 <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "16px" }}>
-                  Forces all active users' browsers (purchasers, managers, coordinator, owner, guests) to instantly reload and fetch the latest webapp updates.
+                  Displays a prominent sticky red alert banner at the top of all active users' browsers (purchasers, managers, coordinator, owner, guests) prompting them to click for a hard cache refresh (Ctrl+Shift+R) for latest webapp updates.
                 </p>
 
                 {forceRefreshMsg && (
@@ -1443,28 +1443,26 @@ export default function SuperAdminDashboard({
 
                 <button
                   onClick={async () => {
-                    if (!window.confirm("⚡ Are you sure you want to force ALL connected users' browsers to refresh/reload?")) return;
+                    if (!window.confirm("⚡ Are you sure you want to broadcast the red update banner to ALL connected browsers?")) return;
                     try {
                       setForceRefreshLoading(true);
                       const res = await fetch("/api/settings/force-refresh", { method: "POST" });
                       const json = await res.json();
                       if (json.success) {
-                        setForceRefreshMsg("⚡ Force refresh signal sent! Reloading all connected browsers...");
-                        setTimeout(() => {
-                          window.location.reload();
-                        }, 800);
+                        setForceRefreshMsg("⚡ Red update banner broadcasted to all connected browsers!");
+                        setTimeout(() => setForceRefreshMsg(""), 5000);
                       }
                     } catch (err) {
-                      alert("Failed to send force refresh signal: " + err.message);
+                      alert("Failed to broadcast update banner: " + err.message);
                     } finally {
                       setForceRefreshLoading(false);
                     }
                   }}
                   disabled={forceRefreshLoading}
-                  className="btn btn-primary"
-                  style={{ width: "100%", padding: "12px", fontSize: "0.9rem", fontWeight: 700, background: "linear-gradient(135deg, #0284c7, #2563eb)" }}
+                  className="btn btn-danger"
+                  style={{ width: "100%", padding: "12px", fontSize: "0.9rem", fontWeight: 700, background: "linear-gradient(135deg, #dc2626, #ef4444)" }}
                 >
-                  <RefreshCw size={16} className={forceRefreshLoading ? "spin" : ""} /> {forceRefreshLoading ? "Sending Signal..." : "⚡ Force Refresh All Connected Browsers"}
+                  <RefreshCw size={16} className={forceRefreshLoading ? "spin" : ""} /> {forceRefreshLoading ? "Broadcasting..." : "⚡ Broadcast Red Update Banner to All Browsers"}
                 </button>
               </div>
 
