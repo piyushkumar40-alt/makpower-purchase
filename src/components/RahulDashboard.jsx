@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { LogOut, Filter, CheckSquare, Square, CheckCircle, PackageOpen, Download } from "lucide-react";
+import { LogOut, Filter, CheckSquare, Square, CheckCircle, PackageOpen, Download, RotateCcw } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
 
 export default function RahulDashboard({ currentUser, requests, vendors, cargos, purchasers = [], onBatchUpdateRequests, onLogout }) {
@@ -74,6 +74,16 @@ export default function RahulDashboard({ currentUser, requests, vendors, cargos,
     const updated = pendingRequests.filter(r => checkedIds.includes(r.id)).map(r => ({
       ...r,
       purchaseUpdated: "Yes"
+    }));
+    onBatchUpdateRequests(updated);
+    setCheckedIds([]);
+  };
+
+  const handleUnsubmitUpdate = () => {
+    if (checkedIds.length === 0) return;
+    const updated = submittedRequests.filter(r => checkedIds.includes(r.id)).map(r => ({
+      ...r,
+      purchaseUpdated: "No"
     }));
     onBatchUpdateRequests(updated);
     setCheckedIds([]);
@@ -213,6 +223,28 @@ export default function RahulDashboard({ currentUser, requests, vendors, cargos,
         </div>
       )}
 
+      {activeTab === "submitted" && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+          <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+            Checked: <strong>{checkedIds.length}</strong> of {filteredRequests.length} submitted items
+          </span>
+          <button 
+            onClick={handleUnsubmitUpdate}
+            disabled={checkedIds.length === 0}
+            className="btn btn-secondary"
+            style={{ 
+              padding: "10px 20px", 
+              color: "#ef4444", 
+              borderColor: "rgba(239, 68, 68, 0.4)", 
+              background: "rgba(239, 68, 68, 0.1)",
+              fontWeight: 600
+            }}
+          >
+            <RotateCcw size={16} /> Mark {checkedIds.length || ""} Selected as Unsubmitted (Bulk Undo)
+          </button>
+        </div>
+      )}
+
       {/* Requisitions List Table */}
       {filteredRequests.length === 0 ? (
         <div className="glass-panel" style={{ padding: "50px", textAlign: "center", color: "var(--text-muted)" }}>
@@ -225,7 +257,7 @@ export default function RahulDashboard({ currentUser, requests, vendors, cargos,
             <table className="custom-table">
               <thead>
                 <tr>
-                  {activeTab === "pending" && (
+                  {(activeTab === "pending" || activeTab === "submitted") && (
                     <th style={{ width: "45px" }}>
                       <input 
                         type="checkbox" 
@@ -261,7 +293,7 @@ export default function RahulDashboard({ currentUser, requests, vendors, cargos,
 
                   return (
                     <tr key={r.id} className={isChecked ? "planner-row-selected" : ""}>
-                      {activeTab === "pending" && (
+                      {(activeTab === "pending" || activeTab === "submitted") && (
                         <td>
                           <input 
                             type="checkbox" 
