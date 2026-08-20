@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import { uploadToCloudinary } from "../utils/upload";
