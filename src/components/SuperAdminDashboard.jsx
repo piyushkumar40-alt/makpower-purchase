@@ -765,7 +765,7 @@ export default function SuperAdminDashboard({
                               <button 
                                 onClick={() => {
                                   setEditingStaffId(staff.id);
-                                  let sal = "Mr.";
+                                  let sal = "";
                                   let nm = staff.name || "";
                                   const match = nm.match(/^(Mr\.|Mrs\.|Miss|Ms\.)\s*(.*)$/i);
                                   if (match) {

@@ -608,6 +608,7 @@ export default function App() {
   };
 
   const addPurchaser = async (name, email, password, designation = "Purchaser", explicitRole = null) => {
+    const cleanName = sanitizeUserName(name);
     const exists = users.some(u => u.email.toLowerCase() === email.toLowerCase());
     if (exists) return { success: false, message: "User with this email already exists." };
 
@@ -623,7 +624,7 @@ export default function App() {
 
     const newUser = {
       id: `u-${Date.now()}`,
-      name,
+      name: cleanName,
       email,
       password,
       role,
@@ -675,8 +676,12 @@ export default function App() {
   };
 
   const updateUserInfo = async (userId, updatedFields) => {
-    await postData("/api/users/update", { id: userId, updates: updatedFields });
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...updatedFields } : u));
+    const finalFields = { ...updatedFields };
+    if (finalFields.name) {
+      finalFields.name = sanitizeUserName(finalFields.name);
+    }
+    await postData("/api/users/update", { id: userId, updates: finalFields });
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...finalFields } : u));
     return { success: true };
   };
 
