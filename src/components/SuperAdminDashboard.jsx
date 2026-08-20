@@ -287,6 +287,7 @@ export default function SuperAdminDashboard({
 
   // Staff Edit State
   const [editingStaffId, setEditingStaffId] = useState(null);
+  const [editSalutationVal, setEditSalutationVal] = useState("Mr.");
   const [editNameVal, setEditNameVal] = useState("");
   const [editPasswordVal, setEditPasswordVal] = useState("");
   const [editDesignationVal, setEditDesignationVal] = useState("Purchaser");
@@ -764,7 +765,15 @@ export default function SuperAdminDashboard({
                               <button 
                                 onClick={() => {
                                   setEditingStaffId(staff.id);
-                                  setEditNameVal(staff.name);
+                                  let sal = "Mr.";
+                                  let nm = staff.name || "";
+                                  const match = nm.match(/^(Mr\.|Mrs\.|Miss|Ms\.)\s*(.*)$/i);
+                                  if (match) {
+                                    sal = match[1];
+                                    nm = match[2];
+                                  }
+                                  setEditSalutationVal(sal);
+                                  setEditNameVal(nm);
                                   setEditPasswordVal("");
                                   setEditDesignationVal(staff.designation || "Purchaser");
                                   setEditRoleVal(staff.role || "purchaser");
@@ -794,16 +803,33 @@ export default function SuperAdminDashboard({
                             <div style={{ background: "rgba(0,0,0,0.25)", border: "1px solid var(--border-glass)", borderRadius: "8px", padding: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
                               <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--primary)" }}>Edit Staff Account</div>
                               
-                              <div className="form-group" style={{ marginBottom: 0, gap: "4px" }}>
-                                <label className="form-label" style={{ fontSize: "0.72rem" }}>Display Name</label>
-                                <input 
-                                  type="text" 
-                                  className="form-control" 
-                                  style={{ padding: "6px 10px", fontSize: "0.85rem", height: "32px" }}
-                                  placeholder="Full Name"
-                                  value={editNameVal}
-                                  onChange={e => setEditNameVal(e.target.value)}
-                                />
+                              <div style={{ display: "grid", gridTemplateColumns: "90px 1fr", gap: "8px" }}>
+                                <div className="form-group" style={{ marginBottom: 0, gap: "4px" }}>
+                                  <label className="form-label" style={{ fontSize: "0.72rem" }}>Salutation</label>
+                                  <select 
+                                    className="form-control" 
+                                    style={{ padding: "4px 6px", fontSize: "0.85rem", height: "32px" }}
+                                    value={editSalutationVal}
+                                    onChange={e => setEditSalutationVal(e.target.value)}
+                                  >
+                                    <option value="Mr.">Mr.</option>
+                                    <option value="Mrs.">Mrs.</option>
+                                    <option value="Miss">Miss</option>
+                                    <option value="Ms.">Ms.</option>
+                                  </select>
+                                </div>
+
+                                <div className="form-group" style={{ marginBottom: 0, gap: "4px" }}>
+                                  <label className="form-label" style={{ fontSize: "0.72rem" }}>Full Name</label>
+                                  <input 
+                                    type="text" 
+                                    className="form-control" 
+                                    style={{ padding: "6px 10px", fontSize: "0.85rem", height: "32px" }}
+                                    placeholder="Full Name"
+                                    value={editNameVal}
+                                    onChange={e => setEditNameVal(e.target.value)}
+                                  />
+                                </div>
                               </div>
 
                               <div className="form-group" style={{ marginBottom: 0, gap: "4px" }}>
@@ -872,8 +898,11 @@ export default function SuperAdminDashboard({
                                     if (!editNameVal.trim()) return;
                                     const roleVal = editRoleVal || "purchaser";
                                     
+                                    const hasSal = /^(mr\.|mrs\.|miss|ms\.)\s/i.test(editNameVal.trim());
+                                    const finalName = hasSal ? editNameVal.trim() : `${editSalutationVal} ${editNameVal.trim()}`;
+                                    
                                     const updates = { 
-                                      name: editNameVal.trim(), 
+                                      name: finalName, 
                                       designation: editDesignationVal,
                                       role: roleVal 
                                     };
