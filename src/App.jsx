@@ -983,20 +983,7 @@ export default function App() {
               <>
                 <button 
                   onClick={handleGoHome} 
-                  style={{
-                    background: activeView === "home" ? "linear-gradient(180deg, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.03) 100%)" : "transparent",
-                    border: "none",
-                    outline: "none",
-                    color: activeView === "home" ? "#38bdf8" : "rgba(248, 250, 252, 0.7)",
-                    fontWeight: activeView === "home" ? 700 : 500,
-                    fontSize: "0.9rem",
-                    padding: "8px 16px",
-                    borderRadius: "8px 8px 0 0",
-                    cursor: "pointer",
-                    borderBottom: activeView === "home" ? "3px solid #38bdf8" : "3px solid transparent",
-                    boxShadow: activeView === "home" ? "0 4px 12px rgba(56, 189, 248, 0.35)" : "none",
-                    transition: "all 0.2s ease"
-                  }}
+                  className={`nav-tab-item ${activeView === "home" ? "active" : ""}`}
                 >
                   Home
                 </button>
@@ -1004,20 +991,7 @@ export default function App() {
                 {currentUser.role === "superadmin" && (
                   <button 
                     onClick={() => setActiveView("admin")} 
-                    style={{
-                      background: activeView === "admin" ? "linear-gradient(180deg, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.03) 100%)" : "transparent",
-                      border: "none",
-                      outline: "none",
-                      color: activeView === "admin" ? "#38bdf8" : "rgba(248, 250, 252, 0.7)",
-                      fontWeight: activeView === "admin" ? 700 : 500,
-                      fontSize: "0.9rem",
-                      padding: "8px 16px",
-                      borderRadius: "8px 8px 0 0",
-                      cursor: "pointer",
-                      borderBottom: activeView === "admin" ? "3px solid #38bdf8" : "3px solid transparent",
-                      boxShadow: activeView === "admin" ? "0 4px 12px rgba(56, 189, 248, 0.35)" : "none",
-                      transition: "all 0.2s ease"
-                    }}
+                    className={`nav-tab-item ${activeView === "admin" ? "active" : ""}`}
                   >
                     Admin
                   </button>
@@ -1026,20 +1000,7 @@ export default function App() {
                 {(currentUser.role === "owner" || currentUser.designation?.toLowerCase() === "owner" || currentUser.role === "superadmin") && (
                   <button 
                     onClick={() => setActiveView("owner")} 
-                    style={{
-                      background: activeView === "owner" ? "linear-gradient(180deg, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.03) 100%)" : "transparent",
-                      border: "none",
-                      outline: "none",
-                      color: activeView === "owner" ? "#38bdf8" : "rgba(248, 250, 252, 0.7)",
-                      fontWeight: activeView === "owner" ? 700 : 500,
-                      fontSize: "0.9rem",
-                      padding: "8px 16px",
-                      borderRadius: "8px 8px 0 0",
-                      cursor: "pointer",
-                      borderBottom: activeView === "owner" ? "3px solid #38bdf8" : "3px solid transparent",
-                      boxShadow: activeView === "owner" ? "0 4px 12px rgba(56, 189, 248, 0.35)" : "none",
-                      transition: "all 0.2s ease"
-                    }}
+                    className={`nav-tab-item ${activeView === "owner" ? "active" : ""}`}
                   >
                     Executive Owner
                   </button>
@@ -1053,20 +1014,7 @@ export default function App() {
                       else if (currentUser.role === "coordinator") setActiveView("coordinator");
                       else setActiveView("dashboard");
                     }} 
-                    style={{
-                      background: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "linear-gradient(180deg, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.03) 100%)" : "transparent",
-                      border: "none",
-                      outline: "none",
-                      color: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "#38bdf8" : "rgba(248, 250, 252, 0.7)",
-                      fontWeight: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? 700 : 500,
-                      fontSize: "0.9rem",
-                      padding: "8px 16px",
-                      borderRadius: "8px 8px 0 0",
-                      cursor: "pointer",
-                      borderBottom: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "3px solid #38bdf8" : "3px solid transparent",
-                      boxShadow: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "0 4px 12px rgba(56, 189, 248, 0.35)" : "none",
-                      transition: "all 0.2s ease"
-                    }}
+                    className={`nav-tab-item ${["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "active" : ""}`}
                   >
                     Workboard
                   </button>
@@ -1076,20 +1024,7 @@ export default function App() {
 
             <button 
               onClick={() => setActiveView("requester")} 
-              style={{
-                background: activeView === "requester" ? "linear-gradient(180deg, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.03) 100%)" : "transparent",
-                border: "none",
-                outline: "none",
-                color: activeView === "requester" ? "#38bdf8" : "rgba(248, 250, 252, 0.7)",
-                fontWeight: activeView === "requester" ? 700 : 500,
-                fontSize: "0.9rem",
-                padding: "8px 16px",
-                borderRadius: "8px 8px 0 0",
-                cursor: "pointer",
-                borderBottom: activeView === "requester" ? "3px solid #38bdf8" : "3px solid transparent",
-                boxShadow: activeView === "requester" ? "0 4px 12px rgba(56, 189, 248, 0.35)" : "none",
-                transition: "all 0.2s ease"
-              }}
+              className={`nav-tab-item ${activeView === "requester" ? "active" : ""}`}
             >
               Requester Portal
             </button>
@@ -1097,20 +1032,7 @@ export default function App() {
             {currentUser && currentUser.role !== "superadmin" && (
               <button 
                 onClick={() => setActiveView("itemcatalog")} 
-                style={{
-                  background: activeView === "itemcatalog" ? "linear-gradient(180deg, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.03) 100%)" : "transparent",
-                  border: "none",
-                  outline: "none",
-                  color: activeView === "itemcatalog" ? "#38bdf8" : "rgba(248, 250, 252, 0.7)",
-                  fontWeight: activeView === "itemcatalog" ? 700 : 500,
-                  fontSize: "0.9rem",
-                  padding: "8px 16px",
-                  borderRadius: "8px 8px 0 0",
-                  cursor: "pointer",
-                  borderBottom: activeView === "itemcatalog" ? "3px solid #38bdf8" : "3px solid transparent",
-                  boxShadow: activeView === "itemcatalog" ? "0 4px 12px rgba(56, 189, 248, 0.35)" : "none",
-                  transition: "all 0.2s ease"
-                }}
+                className={`nav-tab-item ${activeView === "itemcatalog" ? "active" : ""}`}
               >
                 Item Catalog
               </button>
