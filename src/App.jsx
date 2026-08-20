@@ -975,15 +975,17 @@ export default function App() {
                 <button 
                   onClick={handleGoHome} 
                   style={{
-                    background: "transparent",
+                    background: activeView === "home" ? "linear-gradient(180deg, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.03) 100%)" : "transparent",
                     border: "none",
-                    color: activeView === "home" ? "#38bdf8" : "rgba(255, 255, 255, 0.7)",
+                    outline: "none",
+                    color: activeView === "home" ? "#38bdf8" : "rgba(248, 250, 252, 0.7)",
                     fontWeight: activeView === "home" ? 700 : 500,
                     fontSize: "0.9rem",
-                    padding: "6px 2px",
+                    padding: "8px 16px",
+                    borderRadius: "8px 8px 0 0",
                     cursor: "pointer",
-                    borderBottom: activeView === "home" ? "2px solid #38bdf8" : "2px solid transparent",
-                    boxShadow: activeView === "home" ? "0 4px 12px rgba(56, 189, 248, 0.4)" : "none",
+                    borderBottom: activeView === "home" ? "3px solid #38bdf8" : "3px solid transparent",
+                    boxShadow: activeView === "home" ? "0 4px 12px rgba(56, 189, 248, 0.35)" : "none",
                     transition: "all 0.2s ease"
                   }}
                 >
@@ -994,15 +996,17 @@ export default function App() {
                   <button 
                     onClick={() => setActiveView("admin")} 
                     style={{
-                      background: "transparent",
+                      background: activeView === "admin" ? "linear-gradient(180deg, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.03) 100%)" : "transparent",
                       border: "none",
-                      color: activeView === "admin" ? "#38bdf8" : "rgba(255, 255, 255, 0.7)",
+                      outline: "none",
+                      color: activeView === "admin" ? "#38bdf8" : "rgba(248, 250, 252, 0.7)",
                       fontWeight: activeView === "admin" ? 700 : 500,
                       fontSize: "0.9rem",
-                      padding: "6px 2px",
+                      padding: "8px 16px",
+                      borderRadius: "8px 8px 0 0",
                       cursor: "pointer",
-                      borderBottom: activeView === "admin" ? "2px solid #38bdf8" : "2px solid transparent",
-                      boxShadow: activeView === "admin" ? "0 4px 12px rgba(56, 189, 248, 0.4)" : "none",
+                      borderBottom: activeView === "admin" ? "3px solid #38bdf8" : "3px solid transparent",
+                      boxShadow: activeView === "admin" ? "0 4px 12px rgba(56, 189, 248, 0.35)" : "none",
                       transition: "all 0.2s ease"
                     }}
                   >
@@ -1014,15 +1018,17 @@ export default function App() {
                   <button 
                     onClick={() => setActiveView("owner")} 
                     style={{
-                      background: "transparent",
+                      background: activeView === "owner" ? "linear-gradient(180deg, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.03) 100%)" : "transparent",
                       border: "none",
-                      color: activeView === "owner" ? "#38bdf8" : "rgba(255, 255, 255, 0.7)",
+                      outline: "none",
+                      color: activeView === "owner" ? "#38bdf8" : "rgba(248, 250, 252, 0.7)",
                       fontWeight: activeView === "owner" ? 700 : 500,
                       fontSize: "0.9rem",
-                      padding: "6px 2px",
+                      padding: "8px 16px",
+                      borderRadius: "8px 8px 0 0",
                       cursor: "pointer",
-                      borderBottom: activeView === "owner" ? "2px solid #38bdf8" : "2px solid transparent",
-                      boxShadow: activeView === "owner" ? "0 4px 12px rgba(56, 189, 248, 0.4)" : "none",
+                      borderBottom: activeView === "owner" ? "3px solid #38bdf8" : "3px solid transparent",
+                      boxShadow: activeView === "owner" ? "0 4px 12px rgba(56, 189, 248, 0.35)" : "none",
                       transition: "all 0.2s ease"
                     }}
                   >
@@ -1038,15 +1044,17 @@ export default function App() {
                     else setActiveView("dashboard");
                   }} 
                   style={{
-                    background: "transparent",
+                    background: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "linear-gradient(180deg, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.03) 100%)" : "transparent",
                     border: "none",
-                    color: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "#38bdf8" : "rgba(255, 255, 255, 0.7)",
+                    outline: "none",
+                    color: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "#38bdf8" : "rgba(248, 250, 252, 0.7)",
                     fontWeight: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? 700 : 500,
                     fontSize: "0.9rem",
-                    padding: "6px 2px",
+                    padding: "8px 16px",
+                    borderRadius: "8px 8px 0 0",
                     cursor: "pointer",
-                    borderBottom: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "2px solid #38bdf8" : "2px solid transparent",
-                    boxShadow: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "0 4px 12px rgba(56, 189, 248, 0.4)" : "none",
+                    borderBottom: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "3px solid #38bdf8" : "3px solid transparent",
+                    boxShadow: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "0 4px 12px rgba(56, 189, 248, 0.35)" : "none",
                     transition: "all 0.2s ease"
                   }}
                 >
@@ -1058,15 +1066,17 @@ export default function App() {
             <button 
               onClick={() => setActiveView("requester")} 
               style={{
-                background: "transparent",
+                background: activeView === "requester" ? "linear-gradient(180deg, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.03) 100%)" : "transparent",
                 border: "none",
-                color: activeView === "requester" ? "#38bdf8" : "rgba(255, 255, 255, 0.7)",
+                outline: "none",
+                color: activeView === "requester" ? "#38bdf8" : "rgba(248, 250, 252, 0.7)",
                 fontWeight: activeView === "requester" ? 700 : 500,
                 fontSize: "0.9rem",
-                padding: "6px 2px",
+                padding: "8px 16px",
+                borderRadius: "8px 8px 0 0",
                 cursor: "pointer",
-                borderBottom: activeView === "requester" ? "2px solid #38bdf8" : "2px solid transparent",
-                boxShadow: activeView === "requester" ? "0 4px 12px rgba(56, 189, 248, 0.4)" : "none",
+                borderBottom: activeView === "requester" ? "3px solid #38bdf8" : "3px solid transparent",
+                boxShadow: activeView === "requester" ? "0 4px 12px rgba(56, 189, 248, 0.35)" : "none",
                 transition: "all 0.2s ease"
               }}
             >
@@ -1077,15 +1087,17 @@ export default function App() {
               <button 
                 onClick={() => setActiveView("itemcatalog")} 
                 style={{
-                  background: "transparent",
+                  background: activeView === "itemcatalog" ? "linear-gradient(180deg, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.03) 100%)" : "transparent",
                   border: "none",
-                  color: activeView === "itemcatalog" ? "#38bdf8" : "rgba(255, 255, 255, 0.7)",
+                  outline: "none",
+                  color: activeView === "itemcatalog" ? "#38bdf8" : "rgba(248, 250, 252, 0.7)",
                   fontWeight: activeView === "itemcatalog" ? 700 : 500,
                   fontSize: "0.9rem",
-                  padding: "6px 2px",
+                  padding: "8px 16px",
+                  borderRadius: "8px 8px 0 0",
                   cursor: "pointer",
-                  borderBottom: activeView === "itemcatalog" ? "2px solid #38bdf8" : "2px solid transparent",
-                  boxShadow: activeView === "itemcatalog" ? "0 4px 12px rgba(56, 189, 248, 0.4)" : "none",
+                  borderBottom: activeView === "itemcatalog" ? "3px solid #38bdf8" : "3px solid transparent",
+                  boxShadow: activeView === "itemcatalog" ? "0 4px 12px rgba(56, 189, 248, 0.35)" : "none",
                   transition: "all 0.2s ease"
                 }}
               >
