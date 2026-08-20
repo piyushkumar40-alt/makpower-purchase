@@ -623,7 +623,7 @@ export default function PurchaserDashboard({
               { value: "cargocompanies", label: "Logistics Carriers" },
               { value: "itemmaster", label: "Item Catalog & Stock" },
               { value: "auditlogs", label: `System Audit Logs & Version History (${auditLogs.length})` },
-              { value: "studiopipeline", label: "📊 Money Flow & Capital Allocation" }
+              { value: "studiopipeline", label: "📊 Purchase Report" }
             ]}
             value={["alerts", "docs", "vendors", "cargocompanies", "itemmaster", "auditlogs", "studiopipeline"].includes(activeTab) ? activeTab : ""}
             onChange={(val) => setActiveTab(val)}

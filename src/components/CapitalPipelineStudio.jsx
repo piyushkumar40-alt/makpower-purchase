@@ -409,7 +409,7 @@ export default function CapitalPipelineStudio({
                 <BarChart2 size={24} />
               </span>
               <h2 style={{ fontSize: "1.6rem", fontWeight: 800, color: "#fff", margin: 0, letterSpacing: "-0.02em" }}>
-                Money Flow & Capital Allocation
+                Purchase Report
               </h2>
             </div>
             <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px" }}>

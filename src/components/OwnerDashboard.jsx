@@ -351,42 +351,14 @@ export default function OwnerDashboard({
         </div>
       </div>
 
-      {/* Mode Switcher Tabs */}
-      <div className="glass-panel" style={{ padding: "8px", marginBottom: "24px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
-        <button 
-          onClick={() => setViewMode("multicurrency")} 
-          className={`btn ${viewMode === "multicurrency" ? "btn-primary" : "btn-secondary"}`}
-          style={{ flex: "1 1 200px", padding: "10px 16px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
-        >
-          <Globe size={18} /> 🌐 Multi-Currency Original Breakdown (RMB / USD / INR)
-        </button>
-
-        <button 
-          onClick={() => setViewMode("inr_consolidated")} 
-          className={`btn ${viewMode === "inr_consolidated" ? "btn-primary" : "btn-secondary"}`}
-          style={{ flex: "1 1 200px", padding: "10px 16px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", background: viewMode === "inr_consolidated" ? "linear-gradient(135deg, #059669, #10b981)" : "var(--bg-card)", borderColor: "#10b981" }}
-        >
-          <Coins size={18} /> 🇮🇳 Consolidated INR Report & Currency Rate Manager
-        </button>
-
-        <button 
-          onClick={() => setViewMode("studiopipeline")} 
-          className={`btn ${viewMode === "studiopipeline" ? "btn-primary" : "btn-secondary"}`}
-          style={{ flex: "1 1 200px", padding: "10px 16px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", background: viewMode === "studiopipeline" ? "linear-gradient(135deg, #7c3aed, #a855f7)" : "var(--bg-card)", borderColor: "#a855f7" }}
-        >
-          <BarChart2 size={18} /> 📊 Money Flow & Capital Allocation
-        </button>
-      </div>
-
-      {viewMode === "studiopipeline" && (
-        <CapitalPipelineStudio 
-          requests={requests}
-          cargos={cargos}
-          vendors={vendors}
-          users={users}
-          settings={settings}
-        />
-      )}
+      {/* Purchase Report Module */}
+      <CapitalPipelineStudio 
+        requests={requests}
+        cargos={cargos}
+        vendors={vendors}
+        users={users}
+        settings={settings}
+      />
 
       {viewMode !== "studiopipeline" && (
         <>
