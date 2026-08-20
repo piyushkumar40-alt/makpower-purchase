@@ -1579,14 +1579,28 @@ export default function SuperAdminDashboard({
   }
 
   var headers = ["Purchaser", "Vendor", "Order Date", "Type", "Model", "Order Quantity", "Price (RMB)", "Total (RMB)", "Advance Payment", "Balance Payment", "Photo", "Vendor EDD", "Cargo Order Date", "Cargo Detail", "Cargo Price", "Cargo Price UOM", "CBM as per Packing List", "Total Cargo Price", "Mode of Transport", "Cargo Shipping Date", "Cargo ETA", "Packing List", "Invoice", "Is Material Rec?", "Packing Slip", "Packing Ordered By Nitin", "Purchase Updated?"];
+  
   sheet.clearContents();
-  sheet.appendRow(headers);
-
+  
+  var allRows = [headers];
   if (data.rows && data.rows.length > 0) {
-    data.rows.forEach(function(r) {
-      sheet.appendRow([r.purchaser || "", r.vendor || "", r.orderDate || "", r.type || "", r.model || "", r.orderQuantity || "", r.priceRmb || "", r.totalRmb || "", r.advancePayment || "", r.balancePayment || "", r.photo || "", r.vendorEdd || "", r.cargoOrderDate || "", r.cargoDetail || "", r.cargoPrice || "", r.cargoPriceUom || "", r.cbmPackingList || "", r.totalCargoPrice || "", r.modeOfTransport || "", r.cargoShippingDate || "", r.cargoEta || "", r.packingListFile || "", r.invoiceFile || "", r.isMaterialRec || "", r.packingSlip || "", r.packingOrderedByNitin || "", r.purchaseUpdated || ""]);
-    });
+    for (var i = 0; i < data.rows.length; i++) {
+      var r = data.rows[i];
+      allRows.push([
+        r.purchaser || "", r.vendor || "", r.orderDate || "", r.type || "", r.model || "",
+        r.orderQuantity || "", r.priceRmb || "", r.totalRmb || "", r.advancePayment || "",
+        r.balancePayment || "", r.photo || "", r.vendorEdd || "", r.cargoOrderDate || "",
+        r.cargoDetail || "", r.cargoPrice || "", r.cargoPriceUom || "", r.cbmPackingList || "",
+        r.totalCargoPrice || "", r.modeOfTransport || "", r.cargoShippingDate || "",
+        r.cargoEta || "", r.packingListFile || "", r.invoiceFile || "", r.isMaterialRec || "",
+        r.packingSlip || "", r.packingOrderedByNitin || "", r.purchaseUpdated || ""
+      ]);
+    }
   }
+
+  // Write all rows at once in a single batch setValues operation
+  sheet.getRange(1, 1, allRows.length, headers.length).setValues(allRows);
+
   return ContentService.createTextOutput(JSON.stringify({ status: "success", sheet: sheetName, count: data.rows ? data.rows.length : 0 })).setMimeType(ContentService.MimeType.JSON);
 }`}
                     </pre>

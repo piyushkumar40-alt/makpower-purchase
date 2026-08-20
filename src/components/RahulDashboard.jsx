@@ -20,6 +20,15 @@ export default function RahulDashboard({ currentUser, requests, vendors, cargos,
   React.useEffect(() => {
     localStorage.setItem("makpower_rahul_tab", activeTab);
   }, [activeTab]);
+
+  // Auto-mark purchase updated whenever new items come in
+  React.useEffect(() => {
+    const unupdated = (requests || []).filter(r => r.purchaseUpdated !== "Yes" && r.status !== "Cancelled");
+    if (unupdated.length > 0 && onBatchUpdateRequests) {
+      const updated = unupdated.map(r => ({ ...r, purchaseUpdated: "Yes" }));
+      onBatchUpdateRequests(updated);
+    }
+  }, [requests, onBatchUpdateRequests]);
   
   // Filters state
   const [filterVendor, setFilterVendor] = useState("");

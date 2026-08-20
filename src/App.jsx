@@ -140,7 +140,7 @@ export default function App() {
         const data = await res.json();
         setUsers(data.users || []);
         setVendors(data.vendors || []);
-        setRequests(data.requests || []);
+        setRequests((data.requests || []).map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "Yes" })));
         setCargos(data.cargos || []);
         setCargoCompanies(data.cargoCompanies || []);
         setItems(data.items || []);
@@ -170,6 +170,17 @@ export default function App() {
 
     return () => clearInterval(intervalId);
   }, []);
+
+  // Auto-mark purchaseUpdated = "Yes" whenever new items come in without it
+  useEffect(() => {
+    if (!requests || requests.length === 0) return;
+    const unupdated = requests.filter(r => r.purchaseUpdated !== "Yes" && r.status !== "Cancelled");
+    if (unupdated.length > 0) {
+      const autoUpdated = unupdated.map(r => ({ ...r, purchaseUpdated: "Yes" }));
+      postData("/api/requests/batch", autoUpdated);
+      setRequests(prev => prev.map(r => r.purchaseUpdated !== "Yes" && r.status !== "Cancelled" ? { ...r, purchaseUpdated: "Yes" } : r));
+    }
+  }, [requests]);
 
   // Add Designation Handler
   const addDesignation = async (designationObj) => {
@@ -346,7 +357,7 @@ export default function App() {
         photo: req.photo || existingPhoto,
         vendorEdd: "",
         packingOrderedByNitin: "No",
-        purchaseUpdated: "No",
+        purchaseUpdated: "Yes",
         notes: req.notes || "",
         itemNature: req.itemNature || "Non Consumables",
         category: req.category || "",

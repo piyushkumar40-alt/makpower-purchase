@@ -99,6 +99,9 @@ function readLocalJson() {
         redirectUrl: "https://www.instagram.com/makpowerofficial/"
       };
     }
+    if (Array.isArray(data.requests)) {
+      data.requests = data.requests.map(r => ({ ...r, purchaseUpdated: "Yes" }));
+    }
     const adminIdx = data.users.findIndex(x => x.id === "u-admin" || x.role === "superadmin" || x.email === "admin@company.com");
     if (adminIdx !== -1 && data.users[adminIdx].password === "MakPower#Admin2026!") {
       data.users[adminIdx].password = "112233";
@@ -350,7 +353,7 @@ async function setupPgDatabase() {
             r.priceRmb || null, r.totalRmb || null, r.advancePayment || null, r.balancePayment || null,
             r.photo || "", r.vendorEdd || "", r.cargoId || "", r.isMaterialRec || "No",
             r.actualReceivedDate || "", r.notes || "", r.itemNature || "Non Consumables", r.category || "",
-            r.requiredByDate || "", r.entryBy || "", r.packingOrderedByNitin || "No", r.purchaseUpdated || "No",
+            r.requiredByDate || "", r.entryBy || "", r.packingOrderedByNitin || "No", r.purchaseUpdated || "Yes",
             r.status || "Active", r.cancellationReason || "", r.cancelledAt || "", r.cargoAssignedAt || ""
           ]
         );
@@ -363,6 +366,9 @@ async function setupPgDatabase() {
 
     // Auto-update admin user password to 112233 if legacy password is found
     await pool.query(`UPDATE users SET password = '112233' WHERE (email = 'admin@company.com' OR role = 'superadmin') AND password = 'MakPower#Admin2026!'`);
+
+    // Auto-mark purchaseUpdated = 'Yes' for all requests whenever new items come in
+    await pool.query(`UPDATE requests SET "purchaseUpdated" = 'Yes' WHERE "purchaseUpdated" = 'No' OR "purchaseUpdated" IS NULL OR "purchaseUpdated" = ''`);
 
     // Seed default settings
     const settingsCheck = await pool.query("SELECT COUNT(*) FROM settings");
@@ -1259,7 +1265,7 @@ app.post("/api/requests", async (req, res) => {
           r.advancePayment === "" ? null : parseFloat(r.advancePayment), r.balancePayment === "" ? null : parseFloat(r.balancePayment),
           r.photo || "", r.vendorEdd || "", r.cargoId || "", r.isMaterialRec || "No", r.actualReceivedDate || "",
           r.notes || "", r.itemNature || "Non Consumables", r.category || "", r.requiredByDate || "", r.entryBy || "",
-          r.packingOrderedByNitin || "No", r.purchaseUpdated || "No", r.status || "Active",
+          r.packingOrderedByNitin || "No", r.purchaseUpdated || "Yes", r.status || "Active",
           r.cancellationReason || "", r.cancelledAt || "", r.cargoAssignedAt || "",
           r.vendorOrderQuantity != null ? parseInt(r.vendorOrderQuantity) : null,
           r.cargoPickedQty != null ? parseInt(r.cargoPickedQty) : null,
@@ -1351,7 +1357,7 @@ app.post("/api/requests/batch", async (req, res) => {
           r.advancePayment === "" ? null : parseFloat(r.advancePayment), r.balancePayment === "" ? null : parseFloat(r.balancePayment),
           r.photo || "", r.vendorEdd || "", r.cargoId || "", r.isMaterialRec || "No", r.actualReceivedDate || "",
           r.notes || "", r.itemNature || "Non Consumables", r.category || "", r.requiredByDate || "", r.entryBy || "",
-          r.packingOrderedByNitin || "No", r.purchaseUpdated || "No", r.status || "Active",
+          r.packingOrderedByNitin || "No", r.purchaseUpdated || "Yes", r.status || "Active",
           r.cancellationReason || "", r.cancelledAt || "", r.cargoAssignedAt || "",
           r.vendorOrderQuantity != null ? parseInt(r.vendorOrderQuantity) : null,
           r.cargoPickedQty != null ? parseInt(r.cargoPickedQty) : null,
@@ -2189,7 +2195,7 @@ app.post("/api/backup/import", async (req, res) => {
             r.priceRmb || null, r.totalRmb || null, r.advancePayment || null, r.balancePayment || null,
             r.photo || "", r.vendorEdd || "", r.cargoId || "", r.isMaterialRec || "No",
             r.actualReceivedDate || "", r.notes || "", r.itemNature || "Non Consumables", r.category || "",
-            r.requiredByDate || "", r.entryBy || "", r.packingOrderedByNitin || "No", r.purchaseUpdated || "No",
+            r.requiredByDate || "", r.entryBy || "", r.packingOrderedByNitin || "No", r.purchaseUpdated || "Yes",
             r.status || "Active", r.cancellationReason || "", r.cancelledAt || "", r.cargoAssignedAt || ""
           ]
         );
