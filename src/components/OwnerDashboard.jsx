@@ -374,7 +374,7 @@ export default function OwnerDashboard({
           className={`btn ${viewMode === "studiopipeline" ? "btn-primary" : "btn-secondary"}`}
           style={{ flex: "1 1 200px", padding: "10px 16px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", background: viewMode === "studiopipeline" ? "linear-gradient(135deg, #7c3aed, #a855f7)" : "var(--bg-card)", borderColor: "#a855f7" }}
         >
-          <BarChart2 size={18} /> 📊 Looker Studio: Money Flow & Capital Allocation Studio
+          <BarChart2 size={18} /> 📊 Money Flow & Capital Allocation
         </button>
       </div>
 
