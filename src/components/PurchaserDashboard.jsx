@@ -38,8 +38,7 @@ export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange,
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="btn btn-secondary dropdown-toggle"
-          data-mdb-ripple-init
+          className="form-control"
           style={{
             width: "100%",
             textAlign: "left",
@@ -49,12 +48,13 @@ export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange,
             fontWeight: 600,
             fontSize: "0.88rem",
             padding: "9px 14px",
-            borderRadius: "12px",
-            border: selectedOpt ? `1px solid ${accentColor}` : "1px solid var(--border-glass)",
-            boxShadow: selectedOpt ? `0 0 12px ${accentColor}33` : "none",
-            background: "var(--bg-card)",
-            color: selectedOpt ? "#ffffff" : "var(--text-muted)",
-            transition: "all 0.2s ease",
+            borderRadius: "10px",
+            border: selectedOpt ? `1px solid ${accentColor}` : "1px solid rgba(255, 255, 255, 0.1)",
+            boxShadow: selectedOpt ? `0 0 10px ${accentColor}25` : "none",
+            background: "rgba(15, 23, 42, 0.75)",
+            backdropFilter: "blur(12px)",
+            color: selectedOpt ? "#f8fafc" : "var(--text-muted)",
+            transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
             cursor: "pointer"
           }}
         >
@@ -66,21 +66,21 @@ export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange,
 
         {isOpen && (
           <ul
-            className="dropdown-menu show"
             style={{
               position: "absolute",
-              top: "100%",
+              top: "calc(100% + 6px)",
               left: 0,
               right: 0,
-              marginTop: "6px",
               zIndex: 9999,
-              background: "#1e293b",
+              background: "#0f172a",
               border: "1px solid rgba(255, 255, 255, 0.12)",
               borderRadius: "12px",
-              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.6)",
+              boxShadow: "0 16px 36px rgba(0, 0, 0, 0.65)",
               padding: "6px 0",
-              maxHeight: "320px",
-              overflowY: "auto"
+              maxHeight: "300px",
+              overflowY: "auto",
+              listStyle: "none",
+              margin: 0
             }}
           >
             {options.map((opt) => {
@@ -89,7 +89,6 @@ export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange,
                 <li key={opt.value}>
                   <button
                     type="button"
-                    className={`dropdown-item ${isSelected ? "active" : ""}`}
                     onClick={() => {
                       onChange(opt.value);
                       setIsOpen(false);
@@ -98,20 +97,26 @@ export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      padding: "10px 16px",
-                      fontSize: "0.86rem",
+                      padding: "9px 16px",
+                      fontSize: "0.85rem",
                       fontWeight: isSelected ? 700 : 500,
-                      color: isSelected ? "#38bdf8" : "#e2e8f0",
-                      background: isSelected ? "rgba(56, 189, 248, 0.15)" : "transparent",
+                      color: isSelected ? accentColor : "#e2e8f0",
+                      background: isSelected ? "rgba(56, 189, 248, 0.12)" : "transparent",
                       cursor: "pointer",
                       transition: "all 0.15s ease",
                       border: "none",
                       width: "100%",
                       textAlign: "left"
                     }}
+                    onMouseEnter={e => {
+                      if (!isSelected) e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)";
+                    }}
+                    onMouseLeave={e => {
+                      if (!isSelected) e.currentTarget.style.background = "transparent";
+                    }}
                   >
                     <span>{opt.label}</span>
-                    {isSelected && <Check size={14} style={{ color: "#38bdf8" }} />}
+                    {isSelected && <Check size={14} style={{ color: accentColor }} />}
                   </button>
                 </li>
               );
