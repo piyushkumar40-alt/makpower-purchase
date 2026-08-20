@@ -977,7 +977,7 @@ export default function App() {
             {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
 
-          {/* Desktop Navigation Links - Borderless Text Links & Mockup Controls */}
+          {/* Desktop Navigation Links */}
           <div className="nav-links" style={{ display: "flex", alignItems: "center", gap: "22px" }}>
             {currentUser && (
               <>
@@ -1037,12 +1037,16 @@ export default function App() {
                 Item Catalog
               </button>
             )}
+          </div>
 
-            {/* Mode Switcher Toggle Pill matching mockup */}
+          {/* Right Side Controls (Theme Toggle, Bell, Profile, Logout) */}
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "16px" }}>
+            
+            {/* Mode Switcher Toggle Pill */}
             <div 
               onClick={toggleTheme} 
               title={`Switch to ${theme === "dark" ? "Light" : "Dark"} Mode`}
-              style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", background: "rgba(255, 255, 255, 0.08)", padding: "3px 6px", borderRadius: "99px" }}
+              style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", background: theme === "light" ? "rgba(0, 0, 0, 0.06)" : "rgba(255, 255, 255, 0.08)", padding: "3px 6px", borderRadius: "99px" }}
             >
               <div style={{ width: "32px", height: "18px", borderRadius: "99px", background: theme === "dark" ? "#0284c7" : "#cbd5e1", position: "relative", transition: "all 0.2s ease" }}>
                 <div style={{ width: "14px", height: "14px", borderRadius: "50%", background: "#fff", position: "absolute", top: "2px", left: theme === "dark" ? "16px" : "2px", transition: "all 0.2s ease", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -1051,10 +1055,8 @@ export default function App() {
               </div>
             </div>
 
-
-
             {/* Notification Bell with Badge */}
-            <div style={{ position: "relative", cursor: "pointer", color: "rgba(255, 255, 255, 0.7)", display: "flex", alignItems: "center" }}>
+            <div style={{ position: "relative", cursor: "pointer", color: "var(--text-main)", display: "flex", alignItems: "center" }}>
               <Bell size={17} />
               <span style={{ position: "absolute", top: "-2px", right: "-2px", width: "6px", height: "6px", borderRadius: "50%", background: "#ef4444" }}></span>
             </div>
@@ -1066,7 +1068,7 @@ export default function App() {
                   {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : "AP"}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
-                  <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#fff" }}>
+                  <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-main)" }}>
                     {currentUser.role === "superadmin" ? "Admin" : currentUser.name}
                   </span>
                   <span style={{ fontSize: "0.66rem", color: "var(--text-muted)" }}>(AP)</span>
