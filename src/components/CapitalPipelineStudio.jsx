@@ -409,11 +409,8 @@ export default function CapitalPipelineStudio({
                 <BarChart2 size={24} />
               </span>
               <h2 style={{ fontSize: "1.6rem", fontWeight: 800, color: "#fff", margin: 0, letterSpacing: "-0.02em" }}>
-                Money Flow & Capital Allocation Studio
+                Money Flow & Capital Allocation
               </h2>
-              <span className="badge" style={{ background: "rgba(56, 189, 248, 0.2)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.4)", fontSize: "0.75rem" }}>
-                Looker Data Studio Mode
-              </span>
             </div>
             <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px" }}>
               Track monetary capital allocation step-by-step: 1st Ordered Items → 2nd Money at Vendor → 3rd Money in Transit (including Freight).
