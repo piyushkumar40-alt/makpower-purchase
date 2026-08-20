@@ -137,14 +137,8 @@ export default function App() {
           fetch("/api/state"),
           fetch("/api/audit-logs")
         ]);
-        const rawUsers = data.users || [];
-        const cleanUsers = rawUsers.map(u => {
-          if (u.id !== "u-rahul" && u.email !== "rahul@makpowerindia.com" && u.role === "rahul") {
-            return { ...u, role: "purchaser" };
-          }
-          return u;
-        });
-        setUsers(cleanUsers);
+        const data = await res.json();
+        setUsers(data.users || []);
         setVendors(data.vendors || []);
         setRequests((data.requests || []).map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
         setCargos(data.cargos || []);
@@ -288,11 +282,11 @@ export default function App() {
         setActiveView("admin");
       } else if (roleLower === "owner" || desigLower === "owner" || cleanEmail === "owner@makpowerindia.com") {
         setActiveView("owner");
-      } else if (roleLower === "nitin" || (roleLower === "nitin" && cleanEmail === "nitin@makpowerindia.com")) {
+      } else if (user.id === "u-nitin" || cleanEmail === "nitin@makpowerindia.com" || roleLower === "nitin") {
         setActiveView("nitin");
-      } else if (roleLower === "rahul" && (user.id === "u-rahul" || cleanEmail === "rahul@makpowerindia.com")) {
+      } else if (user.id === "u-rahul" || cleanEmail === "rahul@makpowerindia.com") {
         setActiveView("rahul");
-      } else if (roleLower === "coordinator" || desigLower === "logistics" || cleanEmail === "pc@makpowerindia.com") {
+      } else if (user.id === "u-coordinator" || cleanEmail === "pc@makpowerindia.com" || roleLower === "coordinator") {
         setActiveView("coordinator");
       } else {
         setActiveView("dashboard");

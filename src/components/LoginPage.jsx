@@ -25,12 +25,12 @@ export default function LoginPage({ onLogin, onEnterAsGuest, users }) {
     }
   };
 
-  // Find active purchasers for quick login buttons
-  const activePurchasers = users.filter(u => u.role === "purchaser" && u.status === "active");
-  const superAdmin = users.find(u => u.role === "superadmin");
-  const nitinUser = users.find(u => u.role === "nitin");
-  const rahulUser = users.find(u => u.role === "rahul");
-  const coordinatorUser = users.find(u => u.role === "coordinator");
+  // Find active purchasers and key role users for quick login buttons
+  const superAdmin = users.find(u => u.role === "superadmin" || u.email === "admin@makpowerindia.com" || u.email === "admin@company.com");
+  const nitinUser = users.find(u => u.id === "u-nitin" || u.email === "nitin@makpowerindia.com" || u.role === "nitin");
+  const rahulUser = users.find(u => u.id === "u-rahul" || u.email === "rahul@makpowerindia.com" || u.role === "rahul");
+  const coordinatorUser = users.find(u => u.id === "u-coordinator" || u.email === "pc@makpowerindia.com" || u.role === "coordinator");
+  const activePurchasers = users.filter(u => u.id !== "u-nitin" && u.id !== "u-rahul" && u.id !== "u-admin" && u.id !== "u-coordinator" && u.status === "active");
 
   return (
     <div style={{ display: "flex", flex: 1, justifyContent: "center", alignItems: "center", padding: "40px 20px" }}>
