@@ -968,35 +968,65 @@ export default function App() {
             {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
 
-          {/* Desktop Navigation Links */}
-          <div className="nav-links">
+          {/* Desktop Navigation Links - Borderless Text Links & Mockup Controls */}
+          <div className="nav-links" style={{ display: "flex", alignItems: "center", gap: "22px" }}>
             {currentUser && (
               <>
                 <button 
                   onClick={handleGoHome} 
-                  className={`btn btn-sm btn-secondary ${activeView === "home" ? "active" : ""}`}
-                  title="Go to Home Page"
-                  style={{ fontWeight: 600 }}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: activeView === "home" ? "#38bdf8" : "rgba(255, 255, 255, 0.7)",
+                    fontWeight: activeView === "home" ? 700 : 500,
+                    fontSize: "0.9rem",
+                    padding: "6px 2px",
+                    cursor: "pointer",
+                    borderBottom: activeView === "home" ? "2px solid #38bdf8" : "2px solid transparent",
+                    boxShadow: activeView === "home" ? "0 4px 12px rgba(56, 189, 248, 0.4)" : "none",
+                    transition: "all 0.2s ease"
+                  }}
                 >
-                  <Home size={14} style={{ color: "var(--primary)" }} /> Home
+                  Home
                 </button>
 
                 {currentUser.role === "superadmin" && (
                   <button 
                     onClick={() => setActiveView("admin")} 
-                    className={`btn btn-sm btn-secondary ${activeView === "admin" ? "active" : ""}`}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: activeView === "admin" ? "#38bdf8" : "rgba(255, 255, 255, 0.7)",
+                      fontWeight: activeView === "admin" ? 700 : 500,
+                      fontSize: "0.9rem",
+                      padding: "6px 2px",
+                      cursor: "pointer",
+                      borderBottom: activeView === "admin" ? "2px solid #38bdf8" : "2px solid transparent",
+                      boxShadow: activeView === "admin" ? "0 4px 12px rgba(56, 189, 248, 0.4)" : "none",
+                      transition: "all 0.2s ease"
+                    }}
                   >
-                    <Settings size={14} /> Admin
+                    Admin
                   </button>
                 )}
 
                 {(currentUser.role === "owner" || currentUser.designation?.toLowerCase() === "owner" || currentUser.role === "superadmin") && (
                   <button 
                     onClick={() => setActiveView("owner")} 
-                    className={`btn btn-sm btn-secondary ${activeView === "owner" ? "active" : ""}`}
-                    style={{ borderColor: "#38bdf8", color: "#7dd3fc", fontWeight: 700 }}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: activeView === "owner" ? "#38bdf8" : "rgba(255, 255, 255, 0.7)",
+                      fontWeight: activeView === "owner" ? 700 : 500,
+                      fontSize: "0.9rem",
+                      padding: "6px 2px",
+                      cursor: "pointer",
+                      borderBottom: activeView === "owner" ? "2px solid #38bdf8" : "2px solid transparent",
+                      boxShadow: activeView === "owner" ? "0 4px 12px rgba(56, 189, 248, 0.4)" : "none",
+                      transition: "all 0.2s ease"
+                    }}
                   >
-                    <Building2 size={14} style={{ color: "#38bdf8" }} /> Executive Owner
+                    Executive Owner
                   </button>
                 )}
                 
@@ -1007,59 +1037,120 @@ export default function App() {
                     else if (currentUser.role === "coordinator") setActiveView("coordinator");
                     else setActiveView("dashboard");
                   }} 
-                  className={`btn btn-sm btn-secondary ${["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "active" : ""}`}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "#38bdf8" : "rgba(255, 255, 255, 0.7)",
+                    fontWeight: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? 700 : 500,
+                    fontSize: "0.9rem",
+                    padding: "6px 2px",
+                    cursor: "pointer",
+                    borderBottom: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "2px solid #38bdf8" : "2px solid transparent",
+                    boxShadow: ["dashboard", "nitin", "rahul", "coordinator"].includes(activeView) ? "0 4px 12px rgba(56, 189, 248, 0.4)" : "none",
+                    transition: "all 0.2s ease"
+                  }}
                 >
-                  <BarChart2 size={14} /> Workboard
+                  Workboard
                 </button>
               </>
             )}
 
             <button 
               onClick={() => setActiveView("requester")} 
-              className={`btn btn-sm btn-secondary ${activeView === "requester" ? "active" : ""}`}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: activeView === "requester" ? "#38bdf8" : "rgba(255, 255, 255, 0.7)",
+                fontWeight: activeView === "requester" ? 700 : 500,
+                fontSize: "0.9rem",
+                padding: "6px 2px",
+                cursor: "pointer",
+                borderBottom: activeView === "requester" ? "2px solid #38bdf8" : "2px solid transparent",
+                boxShadow: activeView === "requester" ? "0 4px 12px rgba(56, 189, 248, 0.4)" : "none",
+                transition: "all 0.2s ease"
+              }}
             >
-              <ShoppingCart size={14} /> Requester Portal
+              Requester Portal
             </button>
 
             {currentUser && currentUser.role !== "superadmin" && (
               <button 
                 onClick={() => setActiveView("itemcatalog")} 
-                className={`btn btn-sm btn-secondary ${activeView === "itemcatalog" ? "active" : ""}`}
-                style={{ color: "var(--primary)", fontWeight: 700 }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: activeView === "itemcatalog" ? "#38bdf8" : "rgba(255, 255, 255, 0.7)",
+                  fontWeight: activeView === "itemcatalog" ? 700 : 500,
+                  fontSize: "0.9rem",
+                  padding: "6px 2px",
+                  cursor: "pointer",
+                  borderBottom: activeView === "itemcatalog" ? "2px solid #38bdf8" : "2px solid transparent",
+                  boxShadow: activeView === "itemcatalog" ? "0 4px 12px rgba(56, 189, 248, 0.4)" : "none",
+                  transition: "all 0.2s ease"
+                }}
               >
-                <Package size={14} /> Item Catalog & Stock
+                Item Catalog
               </button>
             )}
 
-            {/* Global Light / Dark Theme Toggle */}
-            <button 
-              onClick={toggleTheme}
-              className="btn btn-sm btn-secondary"
+            {/* Mode Switcher Toggle Pill matching mockup */}
+            <div 
+              onClick={toggleTheme} 
               title={`Switch to ${theme === "dark" ? "Light" : "Dark"} Mode`}
-              style={{ display: "flex", alignItems: "center", gap: "6px" }}
+              style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", background: "rgba(255, 255, 255, 0.08)", padding: "3px 6px", borderRadius: "99px" }}
             >
-              {theme === "dark" ? <Sun size={14} style={{ color: "#f59e0b" }} /> : <Moon size={14} style={{ color: "#818cf8" }} />}
-              <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>
-            </button>
-
-            {currentUser ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(255, 255, 255, 0.05)", border: "1px solid rgba(255, 255, 255, 0.1)", borderRadius: "99px", padding: "4px 12px 4px 6px" }}>
-                  <div style={{ width: "28px", height: "28px", borderRadius: "50%", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff", fontWeight: 800, fontSize: "0.75rem", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 8px rgba(99, 102, 241, 0.4)" }}>
-                    {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : "AP"}
-                  </div>
-                  <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "#f8fafc" }}>
-                    {currentUser.name} <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>({currentUser.role === "superadmin" ? "Admin" : currentUser.role})</span>
-                  </span>
+              <div style={{ width: "32px", height: "18px", borderRadius: "99px", background: theme === "dark" ? "#0284c7" : "#cbd5e1", position: "relative", transition: "all 0.2s ease" }}>
+                <div style={{ width: "14px", height: "14px", borderRadius: "50%", background: "#fff", position: "absolute", top: "2px", left: theme === "dark" ? "16px" : "2px", transition: "all 0.2s ease", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {theme === "dark" ? <Moon size={9} style={{ color: "#0284c7" }} /> : <Sun size={9} style={{ color: "#f59e0b" }} />}
                 </div>
-                <button onClick={handleLogout} className="btn btn-sm btn-danger" style={{ borderRadius: "10px" }}>
-                  <LogOut size={14} /> Logout
+              </div>
+            </div>
+
+            {/* Search Pill Input matching mockup */}
+            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+              <Search size={13} style={{ position: "absolute", left: "10px", color: "var(--text-muted)" }} />
+              <input 
+                type="text" 
+                placeholder="Search" 
+                style={{
+                  background: "rgba(255, 255, 255, 0.06)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  borderRadius: "20px",
+                  padding: "5px 12px 5px 28px",
+                  fontSize: "0.8rem",
+                  color: "#fff",
+                  outline: "none",
+                  width: "110px"
+                }}
+              />
+            </div>
+
+            {/* Notification Bell with Badge */}
+            <div style={{ position: "relative", cursor: "pointer", color: "rgba(255, 255, 255, 0.7)", display: "flex", alignItems: "center" }}>
+              <Bell size={17} />
+              <span style={{ position: "absolute", top: "-2px", right: "-2px", width: "6px", height: "6px", borderRadius: "50%", background: "#ef4444" }}></span>
+            </div>
+
+            {/* User Avatar Badge matching mockup */}
+            {currentUser ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <div style={{ width: "28px", height: "28px", borderRadius: "50%", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff", fontWeight: 800, fontSize: "0.75rem", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 8px rgba(99, 102, 241, 0.4)" }}>
+                  {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : "AP"}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
+                  <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#fff" }}>
+                    {currentUser.role === "superadmin" ? "Admin" : currentUser.name}
+                  </span>
+                  <span style={{ fontSize: "0.66rem", color: "var(--text-muted)" }}>(AP)</span>
+                </div>
+                <button onClick={handleLogout} className="btn btn-sm btn-danger" style={{ borderRadius: "8px", padding: "2px 6px", fontSize: "0.72rem", marginLeft: "4px" }}>
+                  Logout
                 </button>
               </div>
             ) : (
               activeView !== "login" && (
                 <button onClick={() => setActiveView("login")} className="btn btn-sm btn-primary">
-                  <LogIn size={14} /> Staff Login
+                  Staff Login
                 </button>
               )
             )}
