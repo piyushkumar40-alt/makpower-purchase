@@ -245,8 +245,10 @@ export default function OwnerDashboard({
       totalOrders: vRequests.length,
       completedOrders: vCompleted,
       fulfillmentRate
-    };
   }).sort((a, b) => b.totalInr - a.totalInr);
+
+  const { items: sortedVendorPerf, RenderSortHeader: RenderVendorSortHeader } = useSortableData(vendorPerformance);
+  const { items: sortedRequests, RenderSortHeader: RenderReqSortHeader } = useSortableData(filteredRequests);
 
   // Critical Risk & Delay Alerts
   const today = new Date().toISOString().slice(0, 10);
@@ -841,32 +843,27 @@ export default function OwnerDashboard({
         <h3 style={{ fontSize: "1.1rem", color: "var(--text-main)", display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
           <Building2 size={20} style={{ color: "var(--primary)" }} /> Vendor Spend Scorecards {viewMode === "inr_consolidated" ? "(Converted in INR ₹)" : "(Multi-Currency)"}
         </h3>
-
-        {(() => {
-          const { items: sortedVendorPerf, RenderSortHeader: RenderVendorSortHeader } = useSortableData(vendorPerformance);
-
-          return (
-            <div className="table-container" style={{ maxHeight: "320px", overflowY: "auto" }}>
-              <table className="custom-table" style={{ fontSize: "0.85rem" }}>
-                <thead style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-card)" }}>
-                  <tr>
-                    <RenderVendorSortHeader colKey="name" title="Vendor Name" />
-                    <RenderVendorSortHeader colKey="totalInr" title={viewMode === "inr_consolidated" ? "Consolidated Spend (INR ₹)" : "Multi-Currency Spend Breakdown"} />
-                    <RenderVendorSortHeader colKey="totalOrders" title="Total POs" />
-                    <RenderVendorSortHeader colKey="completedOrders" title="Completed Orders" />
-                    <RenderVendorSortHeader colKey="fulfillmentRate" title="Fulfillment Score" />
-                    <RenderVendorSortHeader colKey="status" title="Status" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedVendorPerf.length === 0 ? (
-                    <tr>
-                      <td colSpan="6" style={{ textAlign: "center", padding: "24px", color: "var(--text-muted)" }}>
-                        No vendor performance data available.
-                      </td>
-                    </tr>
-                  ) : (
-                    sortedVendorPerf.map(v => (
+        <div className="table-container" style={{ maxHeight: "320px", overflowY: "auto" }}>
+          <table className="custom-table" style={{ fontSize: "0.85rem" }}>
+            <thead style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-card)" }}>
+              <tr>
+                <RenderVendorSortHeader colKey="name" title="Vendor Name" />
+                <RenderVendorSortHeader colKey="totalInr" title={viewMode === "inr_consolidated" ? "Consolidated Spend (INR ₹)" : "Multi-Currency Spend Breakdown"} />
+                <RenderVendorSortHeader colKey="totalOrders" title="Total POs" />
+                <RenderVendorSortHeader colKey="completedOrders" title="Completed Orders" />
+                <RenderVendorSortHeader colKey="fulfillmentRate" title="Fulfillment Score" />
+                <RenderVendorSortHeader colKey="status" title="Status" />
+              </tr>
+            </thead>
+            <tbody>
+              {sortedVendorPerf.length === 0 ? (
+                <tr>
+                  <td colSpan="6" style={{ textAlign: "center", padding: "24px", color: "var(--text-muted)" }}>
+                    No vendor performance data available.
+                  </td>
+                </tr>
+              ) : (
+                sortedVendorPerf.map(v => (
                   <tr key={v.id}>
                     <td style={{ fontWeight: 700, color: "var(--text-main)" }}>{v.name}</td>
                     
@@ -897,11 +894,10 @@ export default function OwnerDashboard({
                     </td>
                   </tr>
                 ))
+              )}
             </tbody>
           </table>
         </div>
-          );
-        })()}
       </div>
 
       {/* Live Executive Purchase Orders Audit Table */}
@@ -926,35 +922,31 @@ export default function OwnerDashboard({
           </div>
         </div>
 
-        {(() => {
-          const { items: sortedRequests, RenderSortHeader: RenderReqSortHeader } = useSortableData(filteredRequests);
-
-          return (
-            <div className="table-container" style={{ maxHeight: "420px", overflowY: "auto" }}>
-              <table className="custom-table" style={{ fontSize: "0.83rem" }}>
-                <thead style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-card)" }}>
-                  <tr>
-                    <RenderReqSortHeader colKey="id" title="PO Number" />
-                    <RenderReqSortHeader colKey="orderDate" title="Order Date" />
-                    <RenderReqSortHeader colKey="category" title="Category" />
-                    <RenderReqSortHeader colKey="model" title="Item Model / Name" />
-                    <RenderReqSortHeader colKey="isMaterialRec" title="Stage / Location" />
-                    <RenderReqSortHeader colKey="orderQuantity" title="Qty" />
-                    <RenderReqSortHeader colKey="currency" title={viewMode === "inr_consolidated" ? "Original Price" : "Currency"} />
-                    <RenderReqSortHeader colKey="totalRmb" title={viewMode === "inr_consolidated" ? "Converted Total (INR ₹)" : "Total Spend"} />
-                    <RenderReqSortHeader colKey="advancePayment" title="Advance Paid" />
-                    <RenderReqSortHeader colKey="status" title="Status" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedRequests.length === 0 ? (
-                    <tr>
-                      <td colSpan="10" style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
-                        No purchase orders match your filter criteria.
-                      </td>
-                    </tr>
-                  ) : (
-                    sortedRequests.map(r => {
+        <div className="table-container" style={{ maxHeight: "420px", overflowY: "auto" }}>
+          <table className="custom-table" style={{ fontSize: "0.83rem" }}>
+            <thead style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-card)" }}>
+              <tr>
+                <RenderReqSortHeader colKey="id" title="PO Number" />
+                <RenderReqSortHeader colKey="orderDate" title="Order Date" />
+                <RenderReqSortHeader colKey="category" title="Category" />
+                <RenderReqSortHeader colKey="model" title="Item Model / Name" />
+                <RenderReqSortHeader colKey="isMaterialRec" title="Stage / Location" />
+                <RenderReqSortHeader colKey="orderQuantity" title="Qty" />
+                <RenderReqSortHeader colKey="currency" title={viewMode === "inr_consolidated" ? "Original Price" : "Currency"} />
+                <RenderReqSortHeader colKey="totalRmb" title={viewMode === "inr_consolidated" ? "Converted Total (INR ₹)" : "Total Spend"} />
+                <RenderReqSortHeader colKey="advancePayment" title="Advance Paid" />
+                <RenderReqSortHeader colKey="status" title="Status" />
+              </tr>
+            </thead>
+            <tbody>
+              {sortedRequests.length === 0 ? (
+                <tr>
+                  <td colSpan="10" style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                    No purchase orders match your filter criteria.
+                  </td>
+                </tr>
+              ) : (
+                sortedRequests.map(r => {
                   const sym = getSymbol(r.currency);
                   const tot = parseFloat(r.totalRmb || 0);
                   const adv = parseFloat(r.advancePayment || 0);
@@ -1021,8 +1013,6 @@ export default function OwnerDashboard({
             </tbody>
           </table>
         </div>
-          );
-        })()}
       </div>
       </>
       )}

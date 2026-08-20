@@ -169,6 +169,8 @@ export default function CoordinatorDashboard({ currentUser, requests, vendors, c
   const totalPending = allTasks.length;
   const totalDelayed = allTasks.filter(t => t.isDelayed).length;
 
+  const { items: sortedTasks, RenderSortHeader } = useSortableData(filteredTasks);
+
   // Active unique staff dropdown list
   const activeStaffList = Array.from(new Set(allTasks.map(t => JSON.stringify({ id: t.assigneeId, name: t.assigneeName, role: t.assigneeRole }))))
     .map(str => JSON.parse(str))
@@ -297,10 +299,7 @@ export default function CoordinatorDashboard({ currentUser, requests, vendors, c
       </div>
 
       {/* Task List Table */}
-      {(() => {
-        const { items: sortedTasks, RenderSortHeader } = useSortableData(filteredTasks);
-
-        return filteredTasks.length === 0 ? (
+      {filteredTasks.length === 0 ? (
           <div className="glass-panel" style={{ padding: "50px", textAlign: "center", color: "var(--text-muted)" }}>
             <CheckCircle size={36} style={{ color: "var(--success)", marginBottom: "12px", display: "inline" }} /><br />
             No pending or overdue tasks found matching your filters.
@@ -362,9 +361,7 @@ export default function CoordinatorDashboard({ currentUser, requests, vendors, c
               </tbody>
             </table>
           </div>
-        </div>
-        );
-      })()}
+        )}
       </>
       )}
     </div>

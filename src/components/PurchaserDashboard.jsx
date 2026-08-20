@@ -472,6 +472,7 @@ export default function PurchaserDashboard({
         {activeTab === "pending" && (() => {
           const pendingReqs = myRequests.filter(r => !r.priceRmb && r.status !== "Cancelled");
           const allStep1Checked = pendingReqs.length > 0 && step1CheckedIds.length === pendingReqs.length;
+          const { items: sortedPendingReqs, RenderSortHeader: RenderStep1SortHeader } = useSortableData(pendingReqs);
 
           return (
             <div className="card-fade-in">
@@ -598,36 +599,32 @@ export default function PurchaserDashboard({
               )}
 
               {/* Spreadsheet / Table View */}
-              {(() => {
-                const { items: sortedPendingReqs, RenderSortHeader } = useSortableData(pendingReqs);
-
-                return (
-                  <div className="glass-panel" style={{ padding: "4px" }}>
-                    <div className="table-container" style={{ maxHeight: "60vh", overflowY: "auto" }}>
-                      <table className="custom-table" style={{ fontSize: "0.85rem" }}>
-                        <thead>
-                          <tr style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-card)" }}>
-                            <th style={{ width: "40px", textAlign: "center" }}>
-                              <input 
-                                type="checkbox"
-                                className="checkbox-input"
-                                checked={allStep1Checked}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setStep1CheckedIds(pendingReqs.map(r => r.id));
-                                  } else {
-                                    setStep1CheckedIds([]);
-                                  }
-                                }}
-                              />
-                            </th>
-                            <RenderSortHeader colKey="orderDate" title="Order Date" style={{ width: "100px" }} />
-                            <RenderSortHeader colKey="model" title="Model / Description" />
-                            <RenderSortHeader colKey="orderQuantity" title="Qty" style={{ width: "80px" }} />
-                            <RenderSortHeader colKey="vendorId" title="Vendor / Supplier" getValue={r => vendors.find(v => v.id === (step1InlineEdits[r.id]?.vendorId || r.vendorId))?.name || ""} style={{ minWidth: "180px" }} />
-                            <RenderSortHeader colKey="priceRmb" title="Price (RMB / Amount)" style={{ minWidth: "130px" }} />
-                            <RenderSortHeader colKey="totalRmb" title="Total (RMB)" style={{ minWidth: "130px" }} />
-                            <RenderSortHeader colKey="vendorEdd" title="Vendor EDD" style={{ minWidth: "140px" }} />
+              <div className="glass-panel" style={{ padding: "4px" }}>
+                <div className="table-container" style={{ maxHeight: "60vh", overflowY: "auto" }}>
+                  <table className="custom-table" style={{ fontSize: "0.85rem" }}>
+                    <thead>
+                      <tr style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-card)" }}>
+                        <th style={{ width: "40px", textAlign: "center" }}>
+                          <input 
+                            type="checkbox"
+                            className="checkbox-input"
+                            checked={allStep1Checked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setStep1CheckedIds(pendingReqs.map(r => r.id));
+                              } else {
+                                setStep1CheckedIds([]);
+                              }
+                            }}
+                          />
+                        </th>
+                        <RenderStep1SortHeader colKey="orderDate" title="Order Date" style={{ width: "100px" }} />
+                        <RenderStep1SortHeader colKey="model" title="Model / Description" />
+                        <RenderStep1SortHeader colKey="orderQuantity" title="Qty" style={{ width: "80px" }} />
+                        <RenderStep1SortHeader colKey="vendorId" title="Vendor / Supplier" getValue={r => vendors.find(v => v.id === (step1InlineEdits[r.id]?.vendorId || r.vendorId))?.name || ""} style={{ minWidth: "180px" }} />
+                        <RenderStep1SortHeader colKey="priceRmb" title="Price (RMB / Amount)" style={{ minWidth: "130px" }} />
+                        <RenderStep1SortHeader colKey="totalRmb" title="Total (RMB)" style={{ minWidth: "130px" }} />
+                        <RenderStep1SortHeader colKey="vendorEdd" title="Vendor EDD" style={{ minWidth: "140px" }} />
                             <th style={{ width: "90px", textAlign: "center" }}>Actions</th>
                             <th style={{ width: "70px", textAlign: "center" }}>Cancel</th>
                           </tr>
@@ -850,8 +847,6 @@ export default function PurchaserDashboard({
                 </div>
               </div>
             </div>
-          );
-        })()}
 
         {/* ==================== CARGO PLANNER (STEP 3) TAB ==================== */}
         {activeTab === "planner" && (

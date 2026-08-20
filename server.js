@@ -766,8 +766,8 @@ async function formatAllRequestsForGoogleSheets() {
       invoiceFile: cargo.invoiceFile || "",
       isMaterialRec: r.isMaterialRec || cargo.isMaterialRec || "",
       packingSlip: cargo.packingListFile || "",
-      packingOrderedByNitin: r.packingOrderedByNitin === "Yes" ? "Packing Ordered" : "Pending Packing",
-      purchaseUpdated: r.purchaseUpdated || ""
+      packingOrderedByNitin: r.packingOrderedByNitin === "Yes" ? true : "",
+      purchaseUpdated: r.purchaseUpdated === "Yes" ? true : ""
     };
   });
 

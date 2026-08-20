@@ -105,6 +105,8 @@ export default function ItemCatalogPanel({
   const [mergeMsg, setMergeMsg] = useState("");
   const [merging, setMerging] = useState(false);
 
+  const { items: sortedCatalogItems, RenderSortHeader } = useSortableData(filteredItems);
+
   // Auto-generate next unique ID when opening add form
   const handleOpenAddForm = () => {
     const existingIds = new Set(items.map(i => String(i.id).trim().toUpperCase()));
@@ -1301,12 +1303,8 @@ export default function ItemCatalogPanel({
       </div>
 
       {/* Master Items Table */}
-      {(() => {
-        const { items: sortedCatalogItems, RenderSortHeader } = useSortableData(filteredItems);
-
-        return (
-          <div className="glass-panel" style={{ padding: "4px" }}>
-            <div className="table-container" style={{ maxHeight: "65vh", overflowY: "auto", overflowX: "auto" }}>
+      <div className="glass-panel" style={{ padding: "4px" }}>
+        <div className="table-container" style={{ maxHeight: "65vh", overflowY: "auto", overflowX: "auto" }}>
               <table className="custom-table">
                 <thead style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-card)" }}>
                   <tr>
@@ -1497,8 +1495,6 @@ export default function ItemCatalogPanel({
           </table>
         </div>
       </div>
-        );
-      })()}
 
       {/* Item Detail Modal Popup */}
       {selectedItemDetail && (
