@@ -2185,6 +2185,10 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
   const [edd, setEdd] = useState(request.vendorEdd || "");
   const [photo, setPhoto] = useState(request.photo || "");
   const [notes, setNotes] = useState(request.notes || "");
+  const [itemType, setItemType] = useState(request.itemType || "FG");
+  const [type, setType] = useState(request.type || "Import");
+  const [itemNature, setItemNature] = useState(request.itemNature || "Non Consumables");
+  const [category, setCategory] = useState(request.category || "");
   const [showQuickVendorModal, setShowQuickVendorModal] = useState(false);
 
   // Auto-calculated totals
@@ -2248,6 +2252,10 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
 
     onSave({
       ...request,
+      itemType: itemType,
+      type: type,
+      itemNature: itemNature,
+      category: category,
       vendorId: finalVendorId,
       vendorOrderQuantity: parseInt(vendorOrderQuantity || request.orderQuantity),
       currency: currency,
@@ -2274,6 +2282,65 @@ function EditRequestModal({ request, requests, vendors, currentUser, onAddVendor
         </p>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          
+          {/* Item Type & Classification (Allows user/purchaser to fix mispunched item types) */}
+          <div className="form-group" style={{ padding: "12px", background: "rgba(15, 23, 42, 0.4)", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+            <label className="form-label" style={{ fontSize: "0.82rem", color: "var(--primary)", fontWeight: 700, marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <Layers size={14} /> Item Classification & Type (Can be changed anytime)
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              <div>
+                <label className="form-label" style={{ fontSize: "0.75rem", marginBottom: "4px" }}>Item Type (FG / RM)</label>
+                <select 
+                  className="form-control" 
+                  style={{ padding: "6px 10px", fontSize: "0.85rem", height: "36px" }} 
+                  value={itemType} 
+                  onChange={e => setItemType(e.target.value)}
+                >
+                  <option value="FG">FG (Finished Goods)</option>
+                  <option value="RM">RM (Raw Material)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="form-label" style={{ fontSize: "0.75rem", marginBottom: "4px" }}>Source Type (Import / Local)</label>
+                <select 
+                  className="form-control" 
+                  style={{ padding: "6px 10px", fontSize: "0.85rem", height: "36px" }} 
+                  value={type} 
+                  onChange={e => setType(e.target.value)}
+                >
+                  <option value="Import">Import</option>
+                  <option value="Local">Local</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="form-label" style={{ fontSize: "0.75rem", marginBottom: "4px" }}>Item Nature</label>
+                <select 
+                  className="form-control" 
+                  style={{ padding: "6px 10px", fontSize: "0.85rem", height: "36px" }} 
+                  value={itemNature} 
+                  onChange={e => setItemNature(e.target.value)}
+                >
+                  <option value="Non Consumables">Non Consumables</option>
+                  <option value="Consumables">Consumables</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="form-label" style={{ fontSize: "0.75rem", marginBottom: "4px" }}>Category</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  style={{ padding: "6px 10px", fontSize: "0.85rem", height: "36px" }} 
+                  placeholder="Category..." 
+                  value={category} 
+                  onChange={e => setCategory(e.target.value)} 
+                />
+              </div>
+            </div>
+          </div>
           
           {/* Vendor Selection (Required) */}
           <div className="form-group">
@@ -2576,10 +2643,11 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
               <div className="details-term">Purchaser:</div><div className="details-def">{pName}</div>
               <div className="details-term">Vendor:</div><div className="details-def">{vName}</div>
               <div className="details-term">Item Name:</div><div className="details-def" style={{ fontWeight: 600 }}>{request.model}</div>
+              <div className="details-term">Item Type:</div><div className="details-def" style={{ fontWeight: 700, color: "var(--primary)" }}>{request.itemType || "FG"}</div>
               <div className="details-term">Item Nature:</div><div className="details-def">{request.itemNature || "—"}</div>
               <div className="details-term">Category:</div><div className="details-def">{request.category || "—"}</div>
               <div className="details-term">Quantity:</div><div className="details-def">{request.orderQuantity}</div>
-              <div className="details-term">Type:</div><div className="details-def">{request.type}</div>
+              <div className="details-term">Type:</div><div className="details-def">{request.type || "Import"}</div>
               <div className="details-term">Required By Date:</div><div className="details-def">{request.requiredByDate || "—"}</div>
               <div className="details-term">Currency:</div><div className="details-def">{request.currency || "RMB"}</div>
               <div className="details-term">Price per unit:</div><div className="details-def">{request.priceRmb ? `${getCurrencySymbol(request.currency)}${request.priceRmb}` : "—"}</div>
