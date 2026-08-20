@@ -468,12 +468,15 @@ select.form-control {
 /* Tables */
 .table-container {
   overflow-x: auto;
+  overflow-y: auto;
+  max-height: 70vh;
   -webkit-overflow-scrolling: touch;
   width: 100%;
   max-width: 100%;
   margin-top: 10px;
   border-radius: 10px;
   border: 1px solid var(--border-glass);
+  position: relative;
 }
 
 .custom-table,
@@ -481,16 +484,29 @@ select.form-control {
   width: 100%;
   min-width: 680px;
   table-layout: auto;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   text-align: left;
   font-family: var(--font-body);
   font-size: 0.82rem;
   border: 1px solid var(--border-glass);
 }
 
+.custom-table thead,
+.table thead,
+table thead {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
 .custom-table th,
-.table th {
-  background: rgba(15, 23, 42, 0.75);
+.table th,
+table th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: #0b1329 !important;
   border: 1px solid var(--border-glass);
   color: var(--text-main);
   font-family: var(--font-heading);
@@ -500,6 +516,7 @@ select.form-control {
   white-space: nowrap;
   word-break: normal;
   letter-spacing: 0.01em;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
 .custom-table td,
@@ -1536,8 +1553,15 @@ select.form-control {
   min-width: 680px;
 }
 
+[data-theme="light"] .custom-table thead,
+[data-theme="light"] .table thead,
+[data-theme="light"] table thead,
 [data-theme="light"] .custom-table th,
-[data-theme="light"] .table th {
+[data-theme="light"] .table th,
+[data-theme="light"] table th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   background: #e2e8f0 !important;
   color: #0f172a !important;
   border: 1px solid #cbd5e1 !important;
@@ -1547,6 +1571,7 @@ select.form-control {
   padding: 8px 10px !important;
   white-space: nowrap !important;
   word-break: normal !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
 }
 
 [data-theme="light"] .custom-table td,
