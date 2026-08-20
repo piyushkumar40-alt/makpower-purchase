@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Layers, Plus, Upload, Trash2, Search, CheckSquare, Square, FileSpreadsheet, Package, AlertCircle, RefreshCw, GitMerge, Edit3, Info, Download, Image, ListPlus, Eye, User, Camera, Copy, Check } from "lucide-react";
 import ItemDetailModal from "./ItemDetailModal";
 import { useSortableData } from "../utils/useSortableData";
