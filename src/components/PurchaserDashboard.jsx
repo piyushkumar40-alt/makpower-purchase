@@ -532,8 +532,8 @@ export default function PurchaserDashboard({
   const today = new Date(todayStr);
 
   // Filter requests based on user role (Admin sees all, Purchaser sees their own)
-  const isSearchAdmin = currentUser.role === "superadmin";
-  const rawMyRequests = isSearchAdmin ? requests : requests.filter(r => r.purchaserId === currentUser.id);
+  const isSearchAdmin = currentUser?.role === "superadmin";
+  const rawMyRequests = isSearchAdmin ? requests : (requests || []).filter(r => r.purchaserId === currentUser?.id);
 
   // Helper: check if target date is missed
   const isTargetDateMissed = (r) => {
@@ -1208,7 +1208,7 @@ export default function PurchaserDashboard({
                   <option value="">Select Vendor...</option>
                   {vendors
                     .filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive")
-                    .filter(v => currentUser.role === "superadmin" || v.purchaserIds?.includes(currentUser.id))
+                    .filter(v => currentUser?.role === "superadmin" || v.purchaserIds?.includes(currentUser?.id))
                     .map(v => {
                       const metrics = calculateVendorMetrics(v, requests);
                       const scoreText = metrics.scorePending
@@ -3952,7 +3952,7 @@ function MyVendorsPanel({ currentUser, vendors, onAddVendor, onUpdateVendor, onR
   const [error, setError] = useState("");
   const [showInactive, setShowInactive] = useState(false);
 
-  const myVendors = vendors.filter(v => v.purchaserIds?.includes(currentUser.id));
+  const myVendors = vendors.filter(v => v.purchaserIds?.includes(currentUser?.id));
   const displayedVendors = myVendors.filter(v => showInactive || v.status !== "Inactive");
 
   const handleSubmit = (e) => {
