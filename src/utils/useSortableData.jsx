@@ -1,28 +1,62 @@
 import React, { useState, useMemo, useCallback } from "react";
-import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowUpDown, Copy, Check } from "lucide-react";
 
-export function SortHeader({ sortConfig, onRequestSort, colKey, title, getValue = null, style = {} }) {
+export function SortHeader({ sortConfig, onRequestSort, colKey, title, getValue = null, style = {}, onCopyColumn = null, selectedColumnKey = null, onSelectColumn = null }) {
   const isSorted = sortConfig && sortConfig.key === colKey;
   const direction = isSorted ? sortConfig.direction : null;
+  const isColumnSelected = selectedColumnKey === colKey;
+  const [copied, setCopied] = useState(false);
+
+  const handleClick = () => {
+    if (onSelectColumn) onSelectColumn(colKey);
+    if (onCopyColumn) {
+      onCopyColumn(colKey, title, getValue);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+    if (onRequestSort) onRequestSort(colKey, getValue);
+  };
 
   return (
     <th 
-      onClick={() => onRequestSort(colKey, getValue)}
+      onClick={handleClick}
       style={{ 
         cursor: "pointer", 
         userSelect: "none", 
         transition: "all 0.2s ease",
-        color: isSorted ? "var(--primary)" : undefined,
+        background: isColumnSelected ? "rgba(56, 189, 248, 0.25) !important" : undefined,
+        borderBottom: isColumnSelected ? "2px solid #38bdf8" : undefined,
+        color: isSorted || isColumnSelected ? "#38bdf8" : undefined,
         whiteSpace: "nowrap",
+        position: "sticky",
+        top: 0,
+        zIndex: 20,
         ...style 
       }}
-      title={`Click to sort by ${title}`}
+      title={`Click to select column, copy values & sort by ${title}`}
     >
-      <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-        <span>{title}</span>
-        {direction === "asc" && <ArrowUp size={13} style={{ color: "var(--primary)", flexShrink: 0 }} />}
-        {direction === "desc" && <ArrowDown size={13} style={{ color: "var(--primary)", flexShrink: 0 }} />}
-        {!direction && <ArrowUpDown size={12} style={{ opacity: 0.35, flexShrink: 0 }} />}
+      <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", width: "100%", justifyContent: "space-between" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+          <span>{title}</span>
+          {direction === "asc" && <ArrowUp size={13} style={{ color: "#38bdf8", flexShrink: 0 }} />}
+          {direction === "desc" && <ArrowDown size={13} style={{ color: "#38bdf8", flexShrink: 0 }} />}
+          {!direction && <ArrowUpDown size={12} style={{ opacity: 0.35, flexShrink: 0 }} />}
+        </div>
+        <span 
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onSelectColumn) onSelectColumn(colKey);
+            if (onCopyColumn) {
+              onCopyColumn(colKey, title, getValue);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            }
+          }}
+          style={{ opacity: 0.7, cursor: "pointer", display: "inline-flex", alignItems: "center", padding: "2px" }}
+          title={`Copy all values in "${title}" column`}
+        >
+          {copied ? <Check size={12} style={{ color: "var(--success)" }} /> : <Copy size={11} />}
+        </span>
       </div>
     </th>
   );
@@ -30,6 +64,8 @@ export function SortHeader({ sortConfig, onRequestSort, colKey, title, getValue 
 
 export function useSortableData(items, initialConfig = null) {
   const [sortConfig, setSortConfig] = useState(initialConfig);
+  const [selectedColumnKey, setSelectedColumnKey] = useState(null);
+  const [copyToastMessage, setCopyToastMessage] = useState("");
 
   const sortedItems = useMemo(() => {
     let sortableItems = [...(items || [])];
@@ -41,23 +77,17 @@ export function useSortableData(items, initialConfig = null) {
         if (aValue === undefined || aValue === null || aValue === "—") aValue = "";
         if (bValue === undefined || bValue === null || bValue === "—") bValue = "";
 
-        // Number check
         const aNum = Number(aValue);
         const bNum = Number(bValue);
         if (!isNaN(aNum) && !isNaN(bNum) && String(aValue).trim() !== "" && String(bValue).trim() !== "") {
           return sortConfig.direction === "asc" ? aNum - bNum : bNum - aNum;
         }
 
-        // String / Date comparison
         const aStr = String(aValue).toLowerCase();
         const bStr = String(bValue).toLowerCase();
 
-        if (aStr < bStr) {
-          return sortConfig.direction === "asc" ? -1 : 1;
-        }
-        if (aStr > bStr) {
-          return sortConfig.direction === "asc" ? 1 : -1;
-        }
+        if (aStr < bStr) return sortConfig.direction === "asc" ? -1 : 1;
+        if (aStr > bStr) return sortConfig.direction === "asc" ? 1 : -1;
         return 0;
       });
     }
@@ -76,6 +106,35 @@ export function useSortableData(items, initialConfig = null) {
     });
   }, []);
 
+  const copyColumnValues = useCallback((colKey, colTitle, getValue = null) => {
+    const extractFn = getValue || ((item) => item[colKey]);
+    const values = sortedItems
+      .map(item => {
+        const val = extractFn(item);
+        if (val === null || val === undefined || val === "—") return "";
+        return String(val).trim();
+      })
+      .filter(val => val !== "");
+
+    if (values.length === 0) return false;
+
+    const copyText = values.join("\n");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(copyText);
+    } else {
+      const textarea = document.createElement("textarea");
+      textarea.value = copyText;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+
+    setCopyToastMessage(`Copied ${values.length} item(s) from "${colTitle}" column to clipboard!`);
+    setTimeout(() => setCopyToastMessage(""), 3000);
+    return true;
+  }, [sortedItems]);
+
   const RenderSortHeader = (arg1, arg2, arg3, arg4) => {
     let colKey = arg1;
     let title = arg2;
@@ -89,32 +148,21 @@ export function useSortableData(items, initialConfig = null) {
       style = arg1.style || {};
     }
 
-    const isSorted = sortConfig && sortConfig.key === colKey;
-    const direction = isSorted ? sortConfig.direction : null;
-
     return (
-      <th 
+      <SortHeader
         key={colKey}
-        onClick={() => requestSort(colKey, getValue)}
-        style={{ 
-          cursor: "pointer", 
-          userSelect: "none", 
-          transition: "all 0.2s ease",
-          color: isSorted ? "var(--primary)" : undefined,
-          whiteSpace: "nowrap",
-          ...style 
-        }}
-        title={`Click to sort by ${title}`}
-      >
-        <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-          <span>{title}</span>
-          {direction === "asc" && <ArrowUp size={13} style={{ color: "var(--primary)", flexShrink: 0 }} />}
-          {direction === "desc" && <ArrowDown size={13} style={{ color: "var(--primary)", flexShrink: 0 }} />}
-          {!direction && <ArrowUpDown size={12} style={{ opacity: 0.35, flexShrink: 0 }} />}
-        </div>
-      </th>
+        colKey={colKey}
+        title={title}
+        getValue={getValue}
+        style={style}
+        sortConfig={sortConfig}
+        onRequestSort={requestSort}
+        onCopyColumn={copyColumnValues}
+        selectedColumnKey={selectedColumnKey}
+        onSelectColumn={setSelectedColumnKey}
+      />
     );
   };
 
-  return { items: sortedItems, requestSort, sortConfig, RenderSortHeader };
+  return { items: sortedItems, requestSort, sortConfig, selectedColumnKey, setSelectedColumnKey, copyColumnValues, copyToastMessage, RenderSortHeader };
 }

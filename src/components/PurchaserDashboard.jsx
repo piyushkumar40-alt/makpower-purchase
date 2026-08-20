@@ -5,6 +5,7 @@ import { uploadToCloudinary } from "../utils/upload";
 import ItemMasterView from "./ItemMasterView";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 import { useSortableData } from "../utils/useSortableData";
+import { ColumnSelectorModal, EnhancedSortHeader, useTableManager } from "./TableEnhancements";
 import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
@@ -559,8 +560,35 @@ export default function PurchaserDashboard({
   }, [myRequests]);
   const pendingReqs = step1PendingReqs;
 
-  const { items: sortedPendingReqs, RenderSortHeader: RenderStep1SortHeader } = useSortableData(step1PendingReqs);
+  const { items: sortedPendingReqs, copyToastMessage: step1Toast, RenderSortHeader: RenderStep1SortHeader } = useSortableData(step1PendingReqs);
   const allStep1Checked = step1PendingReqs.length > 0 && step1CheckedIds.length === step1PendingReqs.length;
+
+  // Step 2: Vendor Ready sorting
+  const rawVrItems = useMemo(() => {
+    return myRequests.filter(r =>
+      r.priceRmb && !r.vendorReadyDate && r.status !== "Cancelled" &&
+      (vrFilter === "" || r.vendorId === vrFilter)
+    );
+  }, [myRequests, vrFilter]);
+  const { items: vrItems, copyToastMessage: vrToast, RenderSortHeader: RenderStep2SortHeader } = useSortableData(rawVrItems);
+
+  // Step 4: Cargo Pickup sorting
+  const rawCpItems = useMemo(() => {
+    return myRequests.filter(r =>
+      r.priceRmb && r.vendorReadyDate && !r.cargoId && r.status !== "Cancelled" &&
+      (cpFilter === "" || r.vendorId === cpFilter)
+    );
+  }, [myRequests, cpFilter]);
+  const { items: cpItems, copyToastMessage: cpToast, RenderSortHeader: RenderStep4SortHeader } = useSortableData(rawCpItems);
+
+  // Received History sorting
+  const rawReceivedRequests = useMemo(() => {
+    return myRequests.filter(r => r.isMaterialRec === "Yes");
+  }, [myRequests]);
+  const { items: sortedReceivedRequests, copyToastMessage: receivedToast, RenderSortHeader: RenderReceivedSortHeader } = useSortableData(rawReceivedRequests);
+
+  // Cancelled Orders sorting
+  const { items: sortedCancelledRequests, copyToastMessage: cancelledToast, RenderSortHeader: RenderCancelledSortHeader } = useSortableData(cancelledRequests);
 
   // Helper: check due status for pricing items
   const getEddAlertStatus = (r) => {
@@ -1409,11 +1437,13 @@ export default function PurchaserDashboard({
               </button>
             </div>
 
+            {vrToast && (
+              <div className="alert-strip alert-success" style={{ marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <CheckCircle2 size={16} /> {vrToast}
+              </div>
+            )}
+
             {(() => {
-              const vrItems = myRequests.filter(r =>
-                r.priceRmb && !r.vendorReadyDate && r.status !== "Cancelled" &&
-                (vrFilter === "" || r.vendorId === vrFilter)
-              );
               const allChecked = vrItems.length > 0 && vrChecked.length === vrItems.length;
               return vrItems.length === 0 ? (
                 <div className="glass-panel" style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
@@ -1432,13 +1462,13 @@ export default function PurchaserDashboard({
                               onChange={e => setVrChecked(e.target.checked ? vrItems.map(r => r.id) : [])}
                             />
                           </th>
-                          <th>Item / Model</th>
-                          <th>Qty</th>
-                          <th>Vendor</th>
-                          <th>Order Date</th>
-                          <th>EDD</th>
-                          <th>Priced At</th>
-                          <th>EDD Status</th>
+                          <RenderStep2SortHeader colKey="model" title="Item / Model" />
+                          <RenderStep2SortHeader colKey="vendorOrderQuantity" title="Qty" getValue={r => Number(r.vendorOrderQuantity || r.orderQuantity)} />
+                          <RenderStep2SortHeader colKey="vendorId" title="Vendor" getValue={r => vendors.find(v => v.id === r.vendorId)?.name || ""} />
+                          <RenderStep2SortHeader colKey="orderDate" title="Order Date" />
+                          <RenderStep2SortHeader colKey="vendorEdd" title="EDD" />
+                          <RenderStep2SortHeader colKey="pricedAt" title="Priced At" getValue={r => r.pricedAt ? r.pricedAt.split("T")[0] : ""} />
+                          <RenderStep2SortHeader colKey="vendorEdd" title="EDD Status" getValue={r => r.vendorEdd ? (vrDate && r.vendorEdd && vrDate > r.vendorEdd ? "Late vs EDD" : "On Time") : "No EDD set"} />
                         </tr>
                       </thead>
                       <tbody>
@@ -1584,12 +1614,14 @@ export default function PurchaserDashboard({
               </button>
             </div>
 
+            {cpToast && (
+              <div className="alert-strip alert-success" style={{ marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <CheckCircle2 size={16} /> {cpToast}
+              </div>
+            )}
+
             {/* Table */}
             {(() => {
-              const cpItems = myRequests.filter(r =>
-                r.cargoId && !r.cargoPickupDate && r.status !== "Cancelled" &&
-                (cpFilter === "" || r.vendorId === cpFilter)
-              );
               const allCpChecked = cpItems.length > 0 && cpChecked.length === cpItems.length;
               return cpItems.length === 0 ? (
                 <div className="glass-panel" style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
@@ -1608,12 +1640,12 @@ export default function PurchaserDashboard({
                               onChange={e => setCpChecked(e.target.checked ? cpItems.map(r => r.id) : [])}
                             />
                           </th>
-                          <th>Item / Model</th>
-                          <th>Qty</th>
-                          <th>Vendor</th>
-                          <th>Cargo</th>
-                          <th>Vendor Ready</th>
-                          <th>Cargo Assigned</th>
+                          <RenderStep4SortHeader colKey="model" title="Item / Model" />
+                          <RenderStep4SortHeader colKey="vendorOrderQuantity" title="Qty" getValue={r => Number(r.vendorOrderQuantity || r.orderQuantity)} />
+                          <RenderStep4SortHeader colKey="vendorId" title="Vendor" getValue={r => vendors.find(v => v.id === r.vendorId)?.name || ""} />
+                          <RenderStep4SortHeader colKey="cargoId" title="Cargo" />
+                          <RenderStep4SortHeader colKey="vendorReadyDate" title="Vendor Ready" />
+                          <RenderStep4SortHeader colKey="cargoAssignedAt" title="Cargo Assigned" getValue={r => r.cargoAssignedAt ? r.cargoAssignedAt.split("T")[0] : ""} />
                         </tr>
                       </thead>
                       <tbody>
@@ -1872,33 +1904,38 @@ export default function PurchaserDashboard({
           <div className="card-fade-in">
             <h3 style={{ fontSize: "1.4rem", marginBottom: "16px" }}>Received Order History</h3>
             
+            {receivedToast && (
+              <div className="alert-strip alert-success" style={{ marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <CheckCircle2 size={16} /> {receivedToast}
+              </div>
+            )}
+
             <div className="glass-panel" style={{ padding: "20px" }}>
               <div className="table-container">
                 <table className="custom-table">
                   <thead>
                     <tr>
-                      <th>Receive Date</th>
-                      <th>Order Date</th>
-                      <th>Model / Description</th>
-                      <th>Qty</th>
-                      <th>Vendor</th>
-                      <th>Total Spend</th>
-                      <th>Cargo Code</th>
-                      <th>Lead Time</th>
-                      <th>Actions</th>
+                      <RenderReceivedSortHeader colKey="actualReceivedDate" title="Receive Date" />
+                      <RenderReceivedSortHeader colKey="orderDate" title="Order Date" />
+                      <RenderReceivedSortHeader colKey="model" title="Model / Description" />
+                      <RenderReceivedSortHeader colKey="receivedQuantity" title="Qty" getValue={r => Number(r.receivedQuantity || r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity)} />
+                      <RenderReceivedSortHeader colKey="vendorId" title="Vendor" getValue={r => vendors.find(v => v.id === r.vendorId)?.name || ""} />
+                      <RenderReceivedSortHeader colKey="totalRmb" title="Total Spend" getValue={r => Number(r.totalRmb || 0)} />
+                      <RenderReceivedSortHeader colKey="cargoId" title="Cargo Code" />
+                      <RenderReceivedSortHeader colKey="actualReceivedDate" title="Lead Time" />
+                      <th style={{ width: "90px" }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(() => {
-                      const receivedRequests = myRequests.filter(r => r.isMaterialRec === "Yes");
-                      return receivedRequests.length === 0 ? (
+                      return sortedReceivedRequests.length === 0 ? (
                         <tr>
                           <td colSpan="9" style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
                             No orders have been received yet. Go to <strong>Step 6: Transit Tracking & Receipt</strong> to bulk receive.
                           </td>
                         </tr>
                       ) : (
-                        receivedRequests.map(r => {
+                        sortedReceivedRequests.map(r => {
                           const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
                           const leadTimeDays = (() => {
                             if (!r.actualReceivedDate || !r.orderDate) return "—";
@@ -2004,6 +2041,12 @@ export default function PurchaserDashboard({
               <Ban size={22} style={{ color: "var(--danger)" }} /> Cancelled Orders ({cancelledRequests.length})
             </h3>
 
+            {cancelledToast && (
+              <div className="alert-strip alert-success" style={{ marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <CheckCircle2 size={16} /> {cancelledToast}
+              </div>
+            )}
+
             {cancelledRequests.length === 0 ? (
               <div className="glass-panel" style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
                 <CheckCircle2 size={36} style={{ color: "var(--success)", marginBottom: "12px", display: "inline" }} /><br/>
@@ -2015,18 +2058,18 @@ export default function PurchaserDashboard({
                   <table className="custom-table">
                     <thead>
                       <tr>
-                        <th>Cancelled On</th>
-                        <th>Order Date</th>
-                        <th>Model / Description</th>
-                        <th>Qty</th>
-                        <th>Vendor</th>
-                        <th>Stage at Cancellation</th>
-                        <th>Cancellation Reason</th>
-                        <th>View</th>
+                        <RenderCancelledSortHeader colKey="cancelledAt" title="Cancelled On" />
+                        <RenderCancelledSortHeader colKey="orderDate" title="Order Date" />
+                        <RenderCancelledSortHeader colKey="model" title="Model / Description" />
+                        <RenderCancelledSortHeader colKey="orderQuantity" title="Qty" getValue={r => Number(r.vendorOrderQuantity || r.orderQuantity)} />
+                        <RenderCancelledSortHeader colKey="vendorId" title="Vendor" getValue={r => vendors.find(v => v.id === r.vendorId)?.name || ""} />
+                        <RenderCancelledSortHeader colKey="priceRmb" title="Stage at Cancellation" />
+                        <RenderCancelledSortHeader colKey="cancellationReason" title="Cancellation Reason" />
+                        <th style={{ width: "60px" }}>View</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {cancelledRequests.map(r => {
+                      {sortedCancelledRequests.map(r => {
                         const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
                         let stage = "Step 1: Submitted";
                         if (r.priceRmb && r.cargoId) stage = "Step 3: In Cargo";

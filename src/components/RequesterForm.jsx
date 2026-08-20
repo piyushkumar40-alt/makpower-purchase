@@ -815,14 +815,62 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
             <thead>
               <tr style={{ background: "rgba(15, 23, 42, 0.8)" }}>
                 <th style={{ width: "50px", textAlign: "center" }}>Sno.</th>
-                <th style={{ width: "130px" }}>Purchase Type</th>
-                <th style={{ width: "160px" }}>Item Type</th>
-                <th style={{ width: "160px" }}>Item Nature</th>
-                <th style={{ width: "220px" }}>Category</th>
-                <th>Item Name / Model</th>
-                <th style={{ width: "90px" }}>Qty</th>
-                <th style={{ width: "150px" }}>Required By Date</th>
-                <th style={{ width: "180px" }}>Assign To</th>
+                <th 
+                  onClick={() => setSelectedRange({ startIdx: 0, endIdx: rows.length - 1, field: "type" })}
+                  style={{ width: "130px", cursor: "pointer", userSelect: "none" }}
+                  title="Click to select entire Purchase Type column"
+                >
+                  Purchase Type
+                </th>
+                <th 
+                  onClick={() => setSelectedRange({ startIdx: 0, endIdx: rows.length - 1, field: "itemType" })}
+                  style={{ width: "160px", cursor: "pointer", userSelect: "none" }}
+                  title="Click to select entire Item Type column"
+                >
+                  Item Type
+                </th>
+                <th 
+                  onClick={() => setSelectedRange({ startIdx: 0, endIdx: rows.length - 1, field: "itemNature" })}
+                  style={{ width: "160px", cursor: "pointer", userSelect: "none" }}
+                  title="Click to select entire Item Nature column"
+                >
+                  Item Nature
+                </th>
+                <th 
+                  onClick={() => setSelectedRange({ startIdx: 0, endIdx: rows.length - 1, field: "category" })}
+                  style={{ width: "220px", cursor: "pointer", userSelect: "none" }}
+                  title="Click to select entire Category column"
+                >
+                  Category
+                </th>
+                <th 
+                  onClick={() => setSelectedRange({ startIdx: 0, endIdx: rows.length - 1, field: "model" })}
+                  style={{ cursor: "pointer", userSelect: "none" }}
+                  title="Click to select entire Item Name / Model column"
+                >
+                  Item Name / Model
+                </th>
+                <th 
+                  onClick={() => setSelectedRange({ startIdx: 0, endIdx: rows.length - 1, field: "orderQuantity" })}
+                  style={{ width: "90px", cursor: "pointer", userSelect: "none" }}
+                  title="Click to select entire Qty column"
+                >
+                  Qty
+                </th>
+                <th 
+                  onClick={() => setSelectedRange({ startIdx: 0, endIdx: rows.length - 1, field: "requiredByDate" })}
+                  style={{ width: "150px", cursor: "pointer", userSelect: "none" }}
+                  title="Click to select entire Required By Date column"
+                >
+                  Required By Date
+                </th>
+                <th 
+                  onClick={() => setSelectedRange({ startIdx: 0, endIdx: rows.length - 1, field: "purchaserId" })}
+                  style={{ width: "180px", cursor: "pointer", userSelect: "none" }}
+                  title="Click to select entire Assign To column"
+                >
+                  Assign To
+                </th>
                 <th style={{ width: "50px", textAlign: "center" }}></th>
               </tr>
             </thead>
