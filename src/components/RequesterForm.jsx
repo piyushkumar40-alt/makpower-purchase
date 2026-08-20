@@ -421,7 +421,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
   }, [activeDropdown]);
 
   const [entryBy, setEntryBy] = useState(() => {
-    return currentUser ? currentUser.name : "Mr. Himanshu";
+    return currentUser ? currentUser.name : "Himanshu";
   });
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [showQuickItemModal, setShowQuickItemModal] = useState(false);

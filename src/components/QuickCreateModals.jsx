@@ -418,7 +418,7 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
 
 // ==================== 4. QUICK PURCHASER USER MODAL ====================
 export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCreated }) {
-  const [salutation, setSalutation] = useState("Mr.");
+  const [salutation, setSalutation] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("MakPower#2026!");
@@ -443,9 +443,8 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
       return;
     }
 
-    // Auto-prefix salutation if user hasn't typed it
-    const hasSalutation = /^(mr\.|mrs\.|miss|ms\.)\s/i.test(trimmedName);
-    const fullName = hasSalutation ? trimmedName : `${salutation} ${trimmedName}`;
+    const rawName = trimmedName.replace(/^((mr\.|mrs\.|miss|ms\.)\s*)+/i, "");
+    const fullName = salutation ? `${salutation} ${rawName}` : rawName;
 
     setSubmitting(true);
     try {
@@ -504,6 +503,7 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
                 onChange={e => setSalutation(e.target.value)}
                 disabled={submitting || !!successMsg}
               >
+                <option value="">(None)</option>
                 <option value="Mr.">Mr.</option>
                 <option value="Mrs.">Mrs.</option>
                 <option value="Miss">Miss</option>

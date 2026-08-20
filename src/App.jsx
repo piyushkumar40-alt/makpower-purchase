@@ -145,6 +145,14 @@ export default function App() {
 
   const lastRefreshTsRef = React.useRef(null);
 
+  const sanitizeUserName = (name) => {
+    if (!name) return "";
+    let clean = String(name).trim();
+    // Clean up stacked duplicate salutations like "Mr. Mrs. Himanshi" -> "Mrs. Himanshi"
+    clean = clean.replace(/^(mr\.|mrs\.|miss|ms\.)\s+((mr\.|mrs\.|miss|ms\.)\s+)/i, "$2");
+    return clean;
+  };
+
   // Fetch full state on mount & set up 10-second polling
   useEffect(() => {
     async function loadData(isInterval = false) {
@@ -154,7 +162,7 @@ export default function App() {
           fetch("/api/audit-logs")
         ]);
         const data = await res.json();
-        setUsers(data.users || []);
+        setUsers((data.users || []).map(u => ({ ...u, name: sanitizeUserName(u.name) })));
         setVendors(data.vendors || []);
         setRequests((data.requests || []).map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
         setCargos(data.cargos || []);

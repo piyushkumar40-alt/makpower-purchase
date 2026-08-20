@@ -276,7 +276,7 @@ export default function SuperAdminDashboard({
   };
 
   // Purchaser / Staff State
-  const [pSalutation, setPSalutation] = useState("Mr.");
+  const [pSalutation, setPSalutation] = useState("");
   const [pName, setPName] = useState("");
   const [pEmail, setPEmail] = useState("");
   const [pPassword, setPPassword] = useState("");
@@ -287,7 +287,7 @@ export default function SuperAdminDashboard({
 
   // Staff Edit State
   const [editingStaffId, setEditingStaffId] = useState(null);
-  const [editSalutationVal, setEditSalutationVal] = useState("Mr.");
+  const [editSalutationVal, setEditSalutationVal] = useState("");
   const [editNameVal, setEditNameVal] = useState("");
   const [editPasswordVal, setEditPasswordVal] = useState("");
   const [editDesignationVal, setEditDesignationVal] = useState("Purchaser");
@@ -812,6 +812,7 @@ export default function SuperAdminDashboard({
                                     value={editSalutationVal}
                                     onChange={e => setEditSalutationVal(e.target.value)}
                                   >
+                                    <option value="">(None)</option>
                                     <option value="Mr.">Mr.</option>
                                     <option value="Mrs.">Mrs.</option>
                                     <option value="Miss">Miss</option>
@@ -898,8 +899,8 @@ export default function SuperAdminDashboard({
                                     if (!editNameVal.trim()) return;
                                     const roleVal = editRoleVal || "purchaser";
                                     
-                                    const hasSal = /^(mr\.|mrs\.|miss|ms\.)\s/i.test(editNameVal.trim());
-                                    const finalName = hasSal ? editNameVal.trim() : `${editSalutationVal} ${editNameVal.trim()}`;
+                                    const cleanName = editNameVal.trim().replace(/^((mr\.|mrs\.|miss|ms\.)\s*)+/i, "");
+                                    const finalName = editSalutationVal ? `${editSalutationVal} ${cleanName}` : cleanName;
                                     
                                     const updates = { 
                                       name: finalName, 
@@ -950,8 +951,8 @@ export default function SuperAdminDashboard({
                 <form onSubmit={(e) => {
                   e.preventDefault();
                   if (!pName.trim()) return;
-                  const hasSal = /^(mr\.|mrs\.|miss|ms\.)\s/i.test(pName.trim());
-                  const finalPName = hasSal ? pName.trim() : `${pSalutation} ${pName.trim()}`;
+                  const cleanName = pName.trim().replace(/^((mr\.|mrs\.|miss|ms\.)\s*)+/i, "");
+                  const finalPName = pSalutation ? `${pSalutation} ${cleanName}` : cleanName;
                   
                   const des = pDesignation === "Custom" ? customDesignationInput.trim() : pDesignation;
                   onAddPurchaser(finalPName, pEmail.trim(), pPassword.trim(), des);
@@ -971,6 +972,7 @@ export default function SuperAdminDashboard({
                         value={pSalutation}
                         onChange={e => setPSalutation(e.target.value)}
                       >
+                        <option value="">(None)</option>
                         <option value="Mr.">Mr.</option>
                         <option value="Mrs.">Mrs.</option>
                         <option value="Miss">Miss</option>
