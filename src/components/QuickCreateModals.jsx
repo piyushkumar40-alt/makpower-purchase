@@ -418,6 +418,7 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
 
 // ==================== 4. QUICK PURCHASER USER MODAL ====================
 export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCreated }) {
+  const [salutation, setSalutation] = useState("Mr.");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("MakPower#2026!");
@@ -436,18 +437,23 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
     setError("");
     setSuccessMsg("");
 
-    if (!name.trim() || !email.trim() || !password.trim()) {
+    const trimmedName = name.trim();
+    if (!trimmedName || !email.trim() || !password.trim()) {
       setError("Name, Email and Password are required.");
       return;
     }
 
+    // Auto-prefix salutation if user hasn't typed it
+    const hasSalutation = /^(mr\.|mrs\.|miss|ms\.)\s/i.test(trimmedName);
+    const fullName = hasSalutation ? trimmedName : `${salutation} ${trimmedName}`;
+
     setSubmitting(true);
     try {
-      const res = await onAddPurchaser(name.trim(), email.trim(), password.trim(), designation);
+      const res = await onAddPurchaser(fullName, email.trim(), password.trim(), designation);
       if (res && res.success === false) {
         setError(res.message || "Failed to create user in database.");
       } else {
-        const created = res?.user || { id: `u-${Date.now()}`, name: name.trim() };
+        const created = res?.user || { id: `u-${Date.now()}`, name: fullName };
         const msg = res?.message || `✅ User "${created.name}" created in database successfully!`;
         setSuccessMsg(msg);
 
@@ -487,18 +493,37 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
         )}
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          <div className="form-group">
-            <label className="form-label">Full Name *</label>
-            <input 
-              type="text" 
-              className="form-control" 
-              placeholder="e.g. Mr. Rajesh Kumar"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              required
-              autoFocus
-              disabled={submitting || !!successMsg}
-            />
+          
+          {/* Salutation & Full Name Row */}
+          <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: "10px" }}>
+            <div className="form-group">
+              <label className="form-label">Salutation</label>
+              <select 
+                className="form-control" 
+                value={salutation} 
+                onChange={e => setSalutation(e.target.value)}
+                disabled={submitting || !!successMsg}
+              >
+                <option value="Mr.">Mr.</option>
+                <option value="Mrs.">Mrs.</option>
+                <option value="Miss">Miss</option>
+                <option value="Ms.">Ms.</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Full Name *</label>
+              <input 
+                type="text" 
+                className="form-control" 
+                placeholder="e.g. Priya Sharma"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                required
+                autoFocus
+                disabled={submitting || !!successMsg}
+              />
+            </div>
           </div>
 
           <div className="form-group">

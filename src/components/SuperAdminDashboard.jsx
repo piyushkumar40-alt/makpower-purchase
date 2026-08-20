@@ -276,6 +276,7 @@ export default function SuperAdminDashboard({
   };
 
   // Purchaser / Staff State
+  const [pSalutation, setPSalutation] = useState("Mr.");
   const [pName, setPName] = useState("");
   const [pEmail, setPEmail] = useState("");
   const [pPassword, setPPassword] = useState("");
@@ -917,17 +918,48 @@ export default function SuperAdminDashboard({
                 {pError && <div className="alert-strip alert-danger" style={{ marginBottom: "14px" }}>{pError}</div>}
                 {pSuccess && <div className="alert-strip alert-success" style={{ marginBottom: "14px" }}>{pSuccess}</div>}
 
-                <form onSubmit={handleAddPurchaserSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Full Name</label>
-                    <input 
-                      type="text" 
-                      className="form-control"
-                      placeholder="e.g. Nitin Kumar"
-                      value={pName}
-                      onChange={e => setPName(e.target.value)}
-                      required
-                    />
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!pName.trim()) return;
+                  const hasSal = /^(mr\.|mrs\.|miss|ms\.)\s/i.test(pName.trim());
+                  const finalPName = hasSal ? pName.trim() : `${pSalutation} ${pName.trim()}`;
+                  
+                  const des = pDesignation === "Custom" ? customDesignationInput.trim() : pDesignation;
+                  onAddPurchaser(finalPName, pEmail.trim(), pPassword.trim(), des);
+                  setPSuccess(`✅ Account for "${finalPName}" created successfully!`);
+                  setPName("");
+                  setPEmail("");
+                  setPPassword("");
+                  setCustomDesignationInput("");
+                  setTimeout(() => setPSuccess(""), 3000);
+                }} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                  
+                  <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: "10px" }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">Salutation</label>
+                      <select 
+                        className="form-control"
+                        value={pSalutation}
+                        onChange={e => setPSalutation(e.target.value)}
+                      >
+                        <option value="Mr.">Mr.</option>
+                        <option value="Mrs.">Mrs.</option>
+                        <option value="Miss">Miss</option>
+                        <option value="Ms.">Ms.</option>
+                      </select>
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">Full Name</label>
+                      <input 
+                        type="text" 
+                        className="form-control"
+                        placeholder="e.g. Priya Sharma"
+                        value={pName}
+                        onChange={e => setPName(e.target.value)}
+                        required
+                      />
+                    </div>
                   </div>
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
