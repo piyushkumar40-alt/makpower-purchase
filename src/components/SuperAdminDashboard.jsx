@@ -1449,8 +1449,10 @@ export default function SuperAdminDashboard({
                       const res = await fetch("/api/settings/force-refresh", { method: "POST" });
                       const json = await res.json();
                       if (json.success) {
-                        setForceRefreshMsg("⚡ Force refresh signal sent! All connected browsers will reload.");
-                        setTimeout(() => setForceRefreshMsg(""), 5000);
+                        setForceRefreshMsg("⚡ Force refresh signal sent! Reloading all connected browsers...");
+                        setTimeout(() => {
+                          window.location.reload();
+                        }, 800);
                       }
                     } catch (err) {
                       alert("Failed to send force refresh signal: " + err.message);

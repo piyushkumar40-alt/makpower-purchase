@@ -178,7 +178,7 @@ export default function App() {
 
     const intervalId = setInterval(() => {
       loadData(true);
-    }, 10000);
+    }, 3000);
 
     return () => clearInterval(intervalId);
   }, []);
