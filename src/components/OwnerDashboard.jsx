@@ -716,16 +716,30 @@ export default function OwnerDashboard({
             categoryMultiSpendList.length === 0 ? (
               <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>No active order spend data available.</p>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                 {categoryMultiSpendList.map(item => (
-                  <div key={item.category} style={{ background: "rgba(15, 23, 42, 0.4)", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
-                    <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--primary)", marginBottom: "4px" }}>
+                  <div 
+                    key={item.category} 
+                    style={{ 
+                      background: "var(--bg-card)", 
+                      padding: "12px 16px", 
+                      borderRadius: "10px", 
+                      border: "1px solid var(--border-glass)",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "10px"
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: "0.92rem", color: "var(--text-main)" }}>
                       {item.category}
                     </div>
-                    <div style={{ display: "flex", gap: "12px", fontSize: "0.8rem" }}>
+                    <div style={{ display: "flex", gap: "12px", fontSize: "0.82rem" }}>
                       {item.RMB > 0 && <span style={{ color: "#38bdf8", fontWeight: 700 }}>¥ {item.RMB.toLocaleString()} RMB</span>}
-                      {item.USD > 0 && <span style={{ color: "#fbbf24", fontWeight: 700 }}>$ {item.USD.toLocaleString()} USD</span>}
-                      {item.INR > 0 && <span style={{ color: "#34d399", fontWeight: 700 }}>₹ {item.INR.toLocaleString()} INR</span>}
+                      {item.USD > 0 && <span style={{ color: "#f59e0b", fontWeight: 700 }}>$ {item.USD.toLocaleString()} USD</span>}
+                      {item.INR > 0 && <span style={{ color: "#10b981", fontWeight: 700 }}>₹ {item.INR.toLocaleString()} INR</span>}
                     </div>
                   </div>
                 ))}

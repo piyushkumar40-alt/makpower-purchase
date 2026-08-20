@@ -100,24 +100,24 @@ function CategoryDonutChart({ title, dataMap, colorPalette, totalAmount, currenc
             transform: "translate(-50%, -50%)",
             textAlign: "center",
             pointerEvents: "none",
-            width: "120px"
+            width: "115px"
           }}>
             {activeSlice ? (
               <>
-                <div style={{ fontSize: "0.72rem", color: activeSlice.color, fontWeight: 700, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <div style={{ fontSize: "0.7rem", color: activeSlice.color, fontWeight: 700, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {activeSlice.category}
                 </div>
-                <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#fff", margin: "2px 0" }}>
+                <div style={{ fontSize: "0.9rem", fontWeight: 800, color: "var(--text-main)", margin: "2px 0" }}>
                   {formatIndianCurrency(activeSlice.amount, currencySymbol)}
                 </div>
-                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 600 }}>
+                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", fontWeight: 600 }}>
                   {Math.round(activeSlice.percentage * 100)}% share
                 </div>
               </>
             ) : (
               <>
-                <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Total Category</div>
-                <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#fff" }}>
+                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.04em" }}>TOTAL CATEGORY</div>
+                <div style={{ fontSize: "0.9rem", fontWeight: 800, color: "var(--text-main)", margin: "2px 0" }}>
                   {formatIndianCurrency(total, currencySymbol)}
                 </div>
               </>
@@ -419,7 +419,7 @@ export default function CapitalPipelineStudio({
 
           <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
             {/* Currency Mode Toggle */}
-            <div style={{ display: "flex", background: "rgba(15, 23, 42, 0.8)", padding: "4px", borderRadius: "10px", border: "1px solid var(--border-glass)" }}>
+            <div style={{ display: "flex", background: "var(--bg-card)", padding: "4px", borderRadius: "10px", border: "1px solid var(--border-glass)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
               <button 
                 onClick={() => setViewCurrency("inr")} 
                 style={{ 
@@ -430,7 +430,8 @@ export default function CapitalPipelineStudio({
                   border: "none", 
                   cursor: "pointer", 
                   background: viewCurrency === "inr" ? "var(--primary)" : "transparent", 
-                  color: viewCurrency === "inr" ? "#fff" : "var(--text-muted)" 
+                  color: viewCurrency === "inr" ? "#fff" : "var(--text-muted)",
+                  transition: "all 0.2s ease" 
                 }}
               >
                 🇮🇳 INR Converted (₹)
@@ -445,7 +446,8 @@ export default function CapitalPipelineStudio({
                   border: "none", 
                   cursor: "pointer", 
                   background: viewCurrency === "original" ? "var(--primary)" : "transparent", 
-                  color: viewCurrency === "original" ? "#fff" : "var(--text-muted)" 
+                  color: viewCurrency === "original" ? "#fff" : "var(--text-muted)",
+                  transition: "all 0.2s ease"
                 }}
               >
                 🌐 Multi-Currency
