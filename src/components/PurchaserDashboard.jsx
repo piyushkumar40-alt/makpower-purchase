@@ -549,6 +549,15 @@ export default function PurchaserDashboard({
   const cancelledRequests = allMyRequests.filter(r => r.status === "Cancelled");
   const myCargos = cargos;
 
+  // Step 1: Unpriced pending requests sorting at top level
+  const step1PendingReqs = useMemo(() => {
+    return (myRequests || []).filter(r => !r.priceRmb && r.status !== "Cancelled");
+  }, [myRequests]);
+  const pendingReqs = step1PendingReqs;
+
+  const { items: sortedPendingReqs, RenderSortHeader: RenderStep1SortHeader } = useSortableData(step1PendingReqs);
+  const allStep1Checked = step1PendingReqs.length > 0 && step1CheckedIds.length === step1PendingReqs.length;
+
   // Helper: check due status for pricing items
   const getEddAlertStatus = (r) => {
     if (!r.vendorEdd || r.isMaterialRec === "Yes" || r.cargoId) return null;
@@ -733,13 +742,8 @@ export default function PurchaserDashboard({
         )}
 
         {/* ==================== AWAITING DETAILS (STEP 1) TAB ==================== */}
-        {activeTab === "pending" && (() => {
-          const pendingReqs = myRequests.filter(r => !r.priceRmb && r.status !== "Cancelled");
-          const allStep1Checked = pendingReqs.length > 0 && step1CheckedIds.length === pendingReqs.length;
-          const { items: sortedPendingReqs, RenderSortHeader: RenderStep1SortHeader } = useSortableData(pendingReqs);
-
-          return (
-            <div className="card-fade-in">
+        {activeTab === "pending" && (
+          <div className="card-fade-in">
               {/* Header controls & Batch Edit toolbar */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
                 <div>
@@ -1111,8 +1115,7 @@ export default function PurchaserDashboard({
                 </div>
               </div>
             </div>
-          );
-        })()}
+        )}
 
         {/* ==================== CARGO PLANNER (STEP 3) TAB ==================== */}
         {activeTab === "planner" && (
