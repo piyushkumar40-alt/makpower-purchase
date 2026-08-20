@@ -950,9 +950,18 @@ export default function App() {
       <header className="app-header">
         <div className="header-inner">
           <div className="logo-area" onClick={handleGoHome} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "10px" }}>
-            <div style={{ width: "32px", height: "32px", borderRadius: "10px", background: "linear-gradient(135deg, #0284c7, #6366f1)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 12px rgba(56, 189, 248, 0.4)" }}>
-              <span style={{ color: "#fff", fontWeight: 900, fontSize: "1.2rem", fontFamily: "var(--font-heading)" }}>M</span>
-            </div>
+            <span style={{ 
+              fontWeight: 900, 
+              fontSize: "1.8rem", 
+              fontFamily: "var(--font-heading)", 
+              background: "linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              filter: "drop-shadow(0 0 10px rgba(56, 189, 248, 0.5))",
+              lineHeight: 1
+            }}>
+              M
+            </span>
             <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
               <span style={{ fontWeight: 900, fontSize: "1.1rem", letterSpacing: "0.04em", color: "#fff" }}>MAK</span>
               <span style={{ fontWeight: 800, fontSize: "0.72rem", letterSpacing: "0.18em", color: "#38bdf8" }}>POWER</span>
