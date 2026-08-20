@@ -847,6 +847,8 @@ export default function PurchaserDashboard({
                 </div>
               </div>
             </div>
+          );
+        })()}
 
         {/* ==================== CARGO PLANNER (STEP 3) TAB ==================== */}
         {activeTab === "planner" && (

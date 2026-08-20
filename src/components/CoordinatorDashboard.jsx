@@ -361,7 +361,8 @@ export default function CoordinatorDashboard({ currentUser, requests, vendors, c
               </tbody>
             </table>
           </div>
-        )}
+        </div>
+      )}
       </>
       )}
     </div>

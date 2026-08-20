@@ -245,6 +245,7 @@ export default function OwnerDashboard({
       totalOrders: vRequests.length,
       completedOrders: vCompleted,
       fulfillmentRate
+    };
   }).sort((a, b) => b.totalInr - a.totalInr);
 
   const { items: sortedVendorPerf, RenderSortHeader: RenderVendorSortHeader } = useSortableData(vendorPerformance);
