@@ -16,6 +16,7 @@ export default function ImsDashboard({
   imsTransactions = [],
   crmParties = [],
   vendors = [],
+  loading = false,
   onAddTransaction,
   onBatchUploadTransactions,
   onDeleteTransaction,
@@ -31,6 +32,16 @@ export default function ImsDashboard({
   const effectiveTransactions = useMemo(() => {
     return Array.isArray(imsTransactions) ? imsTransactions : [];
   }, [imsTransactions]);
+
+  const [hasReceivedData, setHasReceivedData] = useState(() => (Array.isArray(imsTransactions) && imsTransactions.length > 0));
+
+  useEffect(() => {
+    if (Array.isArray(imsTransactions) && imsTransactions.length > 0) {
+      setHasReceivedData(true);
+    }
+  }, [imsTransactions]);
+
+  const isDataLoading = loading || Boolean(loadingModules?.imsTransactions) || Boolean(loadingModules?.ims_transactions) || (!hasReceivedData && effectiveTransactions.length === 0 && loading !== false);
 
   useEffect(() => {
     if (onPullModuleData) {
@@ -942,7 +953,7 @@ export default function ImsDashboard({
           className={`nav-tab-item ${activeTab === "ledger" ? "active" : ""}`}
           style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 18px", borderRadius: "10px", fontSize: "0.92rem", fontWeight: 600 }}
         >
-          <FileText size={16} /> <span>Stock Movement Ledger ({filteredTransactions.length})</span>
+          <FileText size={16} /> <span>Stock Movement Ledger {isDataLoading ? "(...)" : `(${filteredTransactions.length})`}</span>
         </button>
 
         <button
@@ -950,7 +961,7 @@ export default function ImsDashboard({
           className={`nav-tab-item ${activeTab === "matrix" ? "active" : ""}`}
           style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 18px", borderRadius: "10px", fontSize: "0.92rem", fontWeight: 600 }}
         >
-          <Package size={16} /> <span>Item Stock Matrix ({itemStockMatrix.length})</span>
+          <Package size={16} /> <span>Item Stock Matrix {isDataLoading ? "(...)" : `(${itemStockMatrix.length})`}</span>
         </button>
 
         <button
@@ -975,7 +986,7 @@ export default function ImsDashboard({
             color: distinctMissingItems.length > 0 ? "#f59e0b" : ""
           }}
         >
-          <ShieldAlert size={16} /> <span>Missing Item IDs Studio ({distinctMissingItems.length})</span>
+          <ShieldAlert size={16} /> <span>Missing Item IDs Studio {isDataLoading ? "(...)" : `(${distinctMissingItems.length})`}</span>
         </button>
       </div>
 
@@ -1102,7 +1113,13 @@ export default function ImsDashboard({
               <div>
                 <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total All On-Hand</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: filteredNetStock >= 0 ? "var(--text-main)" : "var(--danger)" }}>
-                  {filteredNetStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
+                  {isDataLoading ? (
+                    <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                      <RefreshCw size={14} className="spin" /> Loading...
+                    </span>
+                  ) : (
+                    <>{filteredNetStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                  )}
                 </div>
                 <div style={{ fontSize: "0.68rem", color: "#38bdf8", marginTop: "1px" }}>Combined Warehouses</div>
               </div>
@@ -1116,7 +1133,13 @@ export default function ImsDashboard({
               <div>
                 <div style={{ fontSize: "0.74rem", color: "#38bdf8", fontWeight: 700 }}>🏢 Delhi Warehouse</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: filteredDelhiStock >= 0 ? "#38bdf8" : "var(--danger)" }}>
-                  {filteredDelhiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
+                  {isDataLoading ? (
+                    <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                      <RefreshCw size={14} className="spin" /> Loading...
+                    </span>
+                  ) : (
+                    <>{filteredDelhiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                  )}
                 </div>
                 <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Delhi On-Hand Stock</div>
               </div>
@@ -1130,7 +1153,13 @@ export default function ImsDashboard({
               <div>
                 <div style={{ fontSize: "0.74rem", color: "#c084fc", fontWeight: 700 }}>🏢 Mumbai Warehouse</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: filteredMumbaiStock >= 0 ? "#c084fc" : "var(--danger)" }}>
-                  {filteredMumbaiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
+                  {isDataLoading ? (
+                    <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                      <RefreshCw size={14} className="spin" /> Loading...
+                    </span>
+                  ) : (
+                    <>{filteredMumbaiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                  )}
                 </div>
                 <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Mumbai On-Hand Stock</div>
               </div>
@@ -1144,7 +1173,13 @@ export default function ImsDashboard({
               <div>
                 <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Inward (+)</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--success)" }}>
-                  +{filteredInwardUnits.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
+                  {isDataLoading ? (
+                    <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                      <RefreshCw size={14} className="spin" /> Loading...
+                    </span>
+                  ) : (
+                    <>+{filteredInwardUnits.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                  )}
                 </div>
                 <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Factory & Vendor Inflows</div>
               </div>
@@ -1158,7 +1193,13 @@ export default function ImsDashboard({
               <div>
                 <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Dispatched (-)</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--danger)" }}>
-                  -{filteredOutwardUnits.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
+                  {isDataLoading ? (
+                    <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                      <RefreshCw size={14} className="spin" /> Loading...
+                    </span>
+                  ) : (
+                    <>-{filteredOutwardUnits.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                  )}
                 </div>
                 <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Party & Dealer Outflows</div>
               </div>
@@ -1189,7 +1230,13 @@ export default function ImsDashboard({
 
           {/* Ledger Table */}
           <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
-            {filteredTransactions.length === 0 ? (
+            {isDataLoading ? (
+              <div style={{ padding: "60px 20px", textAlign: "center", color: "var(--text-muted)", display: "flex", flexDirection: "column", alignItems: "center", gap: "14px" }}>
+                <RefreshCw size={38} className="spin" style={{ color: "var(--primary)" }} />
+                <h4 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 700, color: "var(--text-main)" }}>Loading Stock Movement Ledger...</h4>
+                <p style={{ fontSize: "0.85rem", margin: 0, opacity: 0.8 }}>Syncing real-time stock movements and warehouse balances from PostgreSQL database...</p>
+              </div>
+            ) : filteredTransactions.length === 0 ? (
               <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
                 <Layers size={36} style={{ marginBottom: "12px", opacity: 0.4 }} />
                 <h4>No stock movement entries found</h4>
@@ -1444,20 +1491,32 @@ export default function ImsDashboard({
           </div>
 
           <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
-            <table className="table" style={{ width: "100%", minWidth: "980px" }}>
-              <thead>
-                <tr>
-                  <th style={{ width: "10%" }}>Item ID</th>
-                  <th style={{ width: "24%" }}>Item Model / Name</th>
-                  <th style={{ width: "13%" }}>Category</th>
-                  <th style={{ width: "13%", textAlign: "right", color: "#38bdf8" }}>🏢 Delhi Stock</th>
-                  <th style={{ width: "13%", textAlign: "right", color: "#c084fc" }}>🏢 Mumbai Stock</th>
-                  <th style={{ width: "15%", textAlign: "right" }}>Total Net Balance</th>
-                  <th style={{ width: "12%", textAlign: "center" }}>Stock Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedMatrix.map(item => (
+            {isDataLoading ? (
+              <div style={{ padding: "60px 20px", textAlign: "center", color: "var(--text-muted)", display: "flex", flexDirection: "column", alignItems: "center", gap: "14px" }}>
+                <RefreshCw size={38} className="spin" style={{ color: "var(--primary)" }} />
+                <h4 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 700, color: "var(--text-main)" }}>Calculating Item Stock Matrix...</h4>
+                <p style={{ fontSize: "0.85rem", margin: 0, opacity: 0.8 }}>Aggregating physical SKU balances across Delhi & Mumbai warehouses...</p>
+              </div>
+            ) : paginatedMatrix.length === 0 ? (
+              <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
+                <Package size={36} style={{ marginBottom: "12px", opacity: 0.4 }} />
+                <h4>No items found in stock matrix</h4>
+              </div>
+            ) : (
+              <table className="table" style={{ width: "100%", minWidth: "980px" }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: "10%" }}>Item ID</th>
+                    <th style={{ width: "24%" }}>Item Model / Name</th>
+                    <th style={{ width: "13%" }}>Category</th>
+                    <th style={{ width: "13%", textAlign: "right", color: "#38bdf8" }}>🏢 Delhi Stock</th>
+                    <th style={{ width: "13%", textAlign: "right", color: "#c084fc" }}>🏢 Mumbai Stock</th>
+                    <th style={{ width: "15%", textAlign: "right" }}>Total Net Balance</th>
+                    <th style={{ width: "12%", textAlign: "center" }}>Stock Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedMatrix.map(item => (
                   <tr key={item.id} style={{ background: item.isUnlinked ? "rgba(245, 158, 11, 0.03)" : "" }}>
                     <td>
                       {item.isUnlinked ? (
@@ -1502,6 +1561,7 @@ export default function ImsDashboard({
                 ))}
               </tbody>
             </table>
+            )}
 
             {/* Matrix Pagination */}
             <Pagination

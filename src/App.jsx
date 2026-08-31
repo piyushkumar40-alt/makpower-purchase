@@ -1842,6 +1842,7 @@ export default function App() {
             imsTransactions={imsTransactions}
             crmParties={crmParties}
             vendors={vendors}
+            loading={loading}
             onAddTransaction={handleAddImsTransaction}
             onBatchUploadTransactions={handleBatchUploadIms}
             onDeleteTransaction={handleDeleteImsTransaction}
