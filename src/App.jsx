@@ -743,6 +743,24 @@ export default function App() {
     }
   };
 
+  const handleBatchUploadParties = async (partiesList) => {
+    try {
+      const res = await postData("/api/crm/parties/batch", { parties: partiesList });
+      if (res && res.success) {
+        const stateRes = await fetch("/api/state");
+        const sData = await stateRes.json();
+        if (Array.isArray(sData.crmParties)) {
+          setCrmParties(sData.crmParties);
+        }
+        logSystemActivity("CRM_PARTIES_BULK_UPLOAD", `Bulk imported ${res.count || partiesList.length} CRM parties from Admin portal`, "CRM Party", "bulk");
+      }
+      return res;
+    } catch (err) {
+      console.error("Bulk upload parties error:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
   const handleAddSalesOrder = async (order) => {
     const res = await postData("/api/crm/sales-orders", order);
     if (res && res.success) {
@@ -1612,6 +1630,11 @@ export default function App() {
             imsTransactions={imsTransactions}
             onResolveMissingId={handleResolveMissingId}
             onNavigateView={setActiveView}
+            crmParties={crmParties}
+            onAddParty={handleAddParty}
+            onUpdateParty={handleUpdateParty}
+            onDeleteParty={handleDeleteParty}
+            onBatchUploadParties={handleBatchUploadParties}
           />
         )}
 

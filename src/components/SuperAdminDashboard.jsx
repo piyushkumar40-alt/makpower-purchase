@@ -3,7 +3,7 @@ import {
   Users, Building, Database, FileText, Plus, UserMinus, RefreshCw, Download, 
   Upload, Eye, Truck, ChevronRight, Sliders, Package, ShieldCheck, Clock, 
   UserX, LogOut, Folder, HardDrive, Trash2, Copy, ExternalLink, Key, Check, 
-  CheckCircle, CheckCircle2, Layers, AlertTriangle, ShieldAlert, X
+  CheckCircle, CheckCircle2, Layers, AlertTriangle, ShieldAlert, X, Search, Edit2
 } from "lucide-react";
 import TransferModal from "./TransferModal";
 import { getCurrencySymbol, CargoCompaniesPanel, VendorDetailModal, CargoCompanyDetailModal } from "./PurchaserDashboard";
@@ -41,15 +41,29 @@ export default function SuperAdminDashboard({
   onPurgeAllData,
   onUpdateItem,
   onMergeItems,
-  designations = [],
-  onAddDesignation,
   imsTransactions = [],
   onResolveMissingId,
-  onNavigateView
+  onNavigateView,
+  crmParties = [],
+  onAddParty,
+  onUpdateParty,
+  onDeleteParty,
+  onBatchUploadParties
 }) {
   const [subTab, setSubTab] = useState(() => {
     return localStorage.getItem("makpower_admin_subtab") || "purchasers";
   });
+
+  // CRM Parties Studio State
+  const [crmPartySearch, setCrmPartySearch] = useState("");
+  const [crmPartyFilter, setCrmPartyFilter] = useState("all");
+  const [showPartyModal, setShowPartyModal] = useState(false);
+  const [editingParty, setEditingParty] = useState(null);
+  const [bulkPartyRawText, setBulkPartyRawText] = useState("");
+  const [bulkParsedParties, setBulkParsedParties] = useState([]);
+  const [bulkPartyUploadMsg, setBulkPartyUploadMsg] = useState("");
+  const [isUploadingParties, setIsUploadingParties] = useState(false);
+  const [partyStudioMode, setPartyStudioMode] = useState("directory"); // "directory" | "bulk"
 
   // Missing Item IDs state for IMS
   const [resolvingAdminItemName, setResolvingAdminItemName] = useState(null);
@@ -74,6 +88,185 @@ export default function SuperAdminDashboard({
     });
     return Array.from(map.values());
   }, [imsTransactions]);
+
+  // CRM Executives list (Ankita, Ajit, Prince, Simran, Harish, etc.)
+  const crmExecutives = React.useMemo(() => {
+    return (users || []).filter(u => 
+      u.role === "crm" || 
+      u.role === "asm" || 
+      u.role === "tsm" || 
+      (u.designation && u.designation.toLowerCase().includes("crm")) ||
+      (u.designation && u.designation.toLowerCase().includes("sales"))
+    );
+  }, [users]);
+
+  // Filtered CRM Parties for directory
+  const filteredCrmParties = React.useMemo(() => {
+    return (crmParties || []).filter(p => {
+      if (crmPartyFilter !== "all") {
+        if (crmPartyFilter === "unassigned") {
+          if (p.assignedCrmId && p.assignedCrmId !== "") return false;
+        } else if (p.assignedCrmId !== crmPartyFilter && p.assignedCrmName !== crmPartyFilter) {
+          return false;
+        }
+      }
+      if (crmPartySearch.trim()) {
+        const q = crmPartySearch.trim().toLowerCase();
+        const matchName = (p.name || "").toLowerCase().includes(q);
+        const matchCrm = (p.assignedCrmName || "").toLowerCase().includes(q);
+        const matchCity = (p.city || "").toLowerCase().includes(q);
+        const matchContact = (p.contactPerson || "").toLowerCase().includes(q);
+        const matchPhone = (p.phone || "").toLowerCase().includes(q);
+        const matchGst = (p.gstin || "").toLowerCase().includes(q);
+        return matchName || matchCrm || matchCity || matchContact || matchPhone || matchGst;
+      }
+      return true;
+    });
+  }, [crmParties, crmPartyFilter, crmPartySearch]);
+
+  // Sample CSV generator for CRM Parties
+  const handleDownloadPartySampleCsv = () => {
+    const sampleRows = [
+      ["CRM Email", "Party Name", "Contact Person", "Phone", "City", "State", "GSTIN", "Credit Limit", "Payment Terms"],
+      ["ankita@makpowerindia.com", "Shree Ganesh Electronics", "Mr. Ramesh Gupta", "9820192831", "Mumbai", "Maharashtra", "27AAAAA0000A1Z5", "500000", "30 Days"],
+      ["ajit@makpowerindia.com", "Mahalaxmi Power Hub", "Mr. Suresh Jain", "9840192832", "Ahmedabad", "Gujarat", "24BBBBB1111B1Z2", "300000", "45 Days"],
+      ["prince@makpowerindia.com", "Marwar Mobile Accessories", "Mr. Prakash Singh", "9890192833", "Jaipur", "Rajasthan", "08CCCCC2222C1Z9", "250000", "15 Days"],
+      ["simran@makpowerindia.com", "Metro Power Solutions", "Mr. Amit Sharma", "9870192834", "Delhi", "Delhi", "07DDDDD3333D1Z4", "400000", "30 Days"],
+      ["harish@makpowerindia.com", "Balaji Telecom", "Mr. Naresh Patel", "9810192835", "Surat", "Gujarat", "24EEEEE4444E1Z7", "600000", "30 Days"],
+      ["", "Apex Mobile Distributors", "Mr. Vijay Verma", "9800192836", "Indore", "Madhya Pradesh", "", "200000", "Immediate"]
+    ];
+
+    const csvContent = "data:text/csv;charset=utf-8," + 
+      sampleRows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "CRM_Parties_Bulk_Upload_Sample.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Bulk Party Parser (Excel paste / CSV)
+  const handleParseBulkParties = (rawText) => {
+    setBulkPartyRawText(rawText);
+    setBulkPartyUploadMsg("");
+    if (!rawText.trim()) {
+      setBulkParsedParties([]);
+      return;
+    }
+
+    const lines = rawText.trim().split(/\r?\n/);
+    const parsed = [];
+
+    lines.forEach((line, index) => {
+      if (!line.trim()) return;
+
+      let cols = [];
+      if (line.includes("\t")) {
+        cols = line.split("\t").map(c => c.trim().replace(/^"|"$/g, ""));
+      } else {
+        const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(",");
+        cols = matches.map(c => c.trim().replace(/^"|"$/g, ""));
+      }
+
+      const firstCol = (cols[0] || "").toLowerCase();
+      const secondCol = (cols[1] || "").toLowerCase();
+      if (index === 0 && (firstCol.includes("crm") || firstCol.includes("email") || firstCol.includes("party") || secondCol.includes("party"))) {
+        return;
+      }
+
+      let crmIdentifier = "";
+      let partyName = "";
+      let contactPerson = "";
+      let phone = "";
+      let city = "";
+      let state = "";
+      let gstin = "";
+      let creditLimit = 0;
+      let paymentTerms = "30 Days";
+
+      if (cols.length === 1) {
+        partyName = cols[0];
+      } else {
+        if (cols[0].includes("@") || users.some(u => u.name.toLowerCase() === cols[0].toLowerCase() || u.email.toLowerCase() === cols[0].toLowerCase())) {
+          crmIdentifier = cols[0];
+          partyName = cols[1] || "";
+          contactPerson = cols[2] || "";
+          phone = cols[3] || "";
+          city = cols[4] || "";
+          state = cols[5] || "";
+          gstin = cols[6] || "";
+          creditLimit = parseFloat(cols[7]) || 0;
+          paymentTerms = cols[8] || "30 Days";
+        } else {
+          partyName = cols[0];
+          crmIdentifier = cols[1] || "";
+          contactPerson = cols[2] || "";
+          phone = cols[3] || "";
+          city = cols[4] || "";
+          state = cols[5] || "";
+          gstin = cols[6] || "";
+          creditLimit = parseFloat(cols[7]) || 0;
+          paymentTerms = cols[8] || "30 Days";
+        }
+      }
+
+      if (!partyName || !partyName.trim()) return;
+
+      const cleanIdent = crmIdentifier.trim().toLowerCase();
+      const matchedCrm = users.find(u => 
+        (u.email || "").toLowerCase() === cleanIdent ||
+        (u.name || "").toLowerCase() === cleanIdent ||
+        (u.id || "").toLowerCase() === cleanIdent
+      );
+
+      parsed.push({
+        id: `pty-${Date.now()}-${index}-${Math.floor(Math.random() * 1000)}`,
+        name: partyName.trim(),
+        assignedCrmId: matchedCrm ? matchedCrm.id : "",
+        assignedCrmName: matchedCrm ? matchedCrm.name : (crmIdentifier ? crmIdentifier : "Unassigned"),
+        crmEmailProvided: crmIdentifier,
+        isCrmMatched: !!matchedCrm,
+        contactPerson: contactPerson.trim(),
+        phone: phone.trim(),
+        city: city.trim(),
+        state: state.trim(),
+        gstin: gstin.trim(),
+        creditLimit,
+        paymentTerms,
+        status: "Active"
+      });
+    });
+
+    setBulkParsedParties(parsed);
+  };
+
+  // Commit Bulk Parties to Server Database
+  const handleCommitBulkParties = async () => {
+    if (bulkParsedParties.length === 0) return;
+    setIsUploadingParties(true);
+    setBulkPartyUploadMsg("");
+
+    try {
+      if (onBatchUploadParties) {
+        const res = await onBatchUploadParties(bulkParsedParties);
+        if (res && res.success) {
+          setBulkPartyUploadMsg(`✅ Successfully imported ${res.count || bulkParsedParties.length} parties into CRM database!`);
+          setBulkParsedParties([]);
+          setBulkPartyRawText("");
+          setTimeout(() => setPartyStudioMode("directory"), 1800);
+        } else {
+          setBulkPartyUploadMsg(`❌ Upload failed: ${res?.error || "Unknown server error"}`);
+        }
+      }
+    } catch (err) {
+      setBulkPartyUploadMsg(`❌ Upload Error: ${err.message}`);
+    } finally {
+      setIsUploadingParties(false);
+    }
+  };
 
   const [forceRefreshLoading, setForceRefreshLoading] = useState(false);
   const [forceRefreshMsg, setForceRefreshMsg] = useState("");
@@ -535,6 +728,21 @@ export default function SuperAdminDashboard({
           className={`sidebar-link ${subTab === "purchasers" ? "active" : ""}`}
         >
           <Users size={16} /> Users (CRM & Staff)
+        </button>
+
+        <button 
+          onClick={() => setSubTab("crmparties")}
+          className={`sidebar-link ${subTab === "crmparties" ? "active" : ""}`}
+          style={{ color: "#818cf8", fontWeight: 700, display: "flex", justifyContent: "space-between", alignItems: "center" }}
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <Building size={16} /> CRM Parties & Bulk Upload
+          </span>
+          {crmParties.length > 0 && (
+            <span className="badge badge-secondary" style={{ fontSize: "0.68rem", padding: "2px 6px" }}>
+              {crmParties.length}
+            </span>
+          )}
         </button>
 
         <button 
@@ -2446,6 +2654,488 @@ export default function SuperAdminDashboard({
                       </button>
                     </form>
                   </div>
+
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* ==================== CRM PARTIES & BULK UPLOAD TAB ==================== */}
+        {subTab === "crmparties" && (
+          <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            
+            {/* Header & Sub-Navigation */}
+            <div className="glass-panel" style={{ padding: "22px 26px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+              <div>
+                <h2 style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--primary)", display: "flex", alignItems: "center", gap: "10px", margin: 0 }}>
+                  <Building size={26} /> CRM Party Accounts & Bulk Ingestion Studio
+                </h2>
+                <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px", margin: 0 }}>
+                  Bulk import party accounts from Excel/CSV (CRM Email ID, Party Name) with auto CRM matching, or manage individual customer accounts.
+                </p>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+                <button 
+                  onClick={handleDownloadPartySampleCsv}
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.4)", fontWeight: 700 }}
+                  title="Download sample CSV template for bulk party upload"
+                >
+                  <Download size={14} /> Download Sample CSV
+                </button>
+
+                <div style={{ display: "inline-flex", background: "rgba(255,255,255,0.05)", borderRadius: "8px", padding: "3px", border: "1px solid var(--border-glass)" }}>
+                  <button
+                    onClick={() => setPartyStudioMode("directory")}
+                    className={`btn btn-sm ${partyStudioMode === "directory" ? "btn-primary" : "btn-ghost"}`}
+                    style={{ fontSize: "0.82rem", fontWeight: 700, padding: "5px 12px" }}
+                  >
+                    Directory ({crmParties.length})
+                  </button>
+                  <button
+                    onClick={() => setPartyStudioMode("bulk")}
+                    className={`btn btn-sm ${partyStudioMode === "bulk" ? "btn-primary" : "btn-ghost"}`}
+                    style={{ fontSize: "0.82rem", fontWeight: 700, padding: "5px 12px", display: "inline-flex", alignItems: "center", gap: "5px" }}
+                  >
+                    <Upload size={13} /> Bulk Upload
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setEditingParty(null);
+                    setShowPartyModal(true);
+                  }}
+                  className="btn btn-primary btn-sm"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
+                >
+                  <Plus size={15} /> + Add Party
+                </button>
+              </div>
+            </div>
+
+            {/* ==================== VIEW 1: BULK EXCEL / CSV UPLOADER ==================== */}
+            {partyStudioMode === "bulk" && (
+              <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                <div className="glass-panel" style={{ padding: "26px" }}>
+                  
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
+                    <div>
+                      <h3 style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
+                        <Upload size={20} /> Bulk Upload CRM Parties from Excel / CSV
+                      </h3>
+                      <p style={{ color: "var(--text-muted)", fontSize: "0.84rem", marginTop: "4px", margin: 0 }}>
+                        Paste rows directly from Excel or upload a file. Supported formats: <code>CRM Email, Party Name</code> OR just <code>Party Name</code>.
+                      </p>
+                    </div>
+
+                    <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border-glass)", borderRadius: "8px", padding: "8px 14px", fontSize: "0.76rem" }}>
+                      <span style={{ fontWeight: 700, color: "#818cf8" }}>Columns Order:</span><br />
+                      <code>CRM Email | Party Name | Contact Person | Phone | City | State | GSTIN | Credit Limit | Terms</code>
+                    </div>
+                  </div>
+
+                  {bulkPartyUploadMsg && (
+                    <div className={`alert-strip ${bulkPartyUploadMsg.includes("✅") ? "alert-success" : "alert-danger"}`} style={{ marginBottom: "16px" }}>
+                      {bulkPartyUploadMsg}
+                    </div>
+                  )}
+
+                  {/* Paste Textarea */}
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 700 }}>Paste Excel Cells or CSV Rows</label>
+                    <textarea
+                      rows={6}
+                      value={bulkPartyRawText}
+                      onChange={e => handleParseBulkParties(e.target.value)}
+                      placeholder={"ankita@makpowerindia.com\tShree Ganesh Electronics\tMr. Ramesh Gupta\t9820192831\tMumbai\t27AAAAA0000A1Z5\najit@makpowerindia.com\tMahalaxmi Power Hub\tMr. Suresh Jain\t9840192832\tAhmedabad\t24BBBBB1111B1Z2\nprince@makpowerindia.com\tMarwar Mobile Accessories\tMr. Prakash Singh\t9890192833\tJaipur\t08CCCCC2222C1Z9\nsimran@makpowerindia.com\tMetro Power Solutions\tMr. Amit Sharma\t9870192834\tDelhi\t07DDDDD3333D1Z4\nharish@makpowerindia.com\tBalaji Telecom\tMr. Naresh Patel\t9810192835\tSurat\t24EEEEE4444E1Z7"}
+                      className="form-control"
+                      style={{ fontFamily: "monospace", fontSize: "0.82rem", lineHeight: 1.4 }}
+                    />
+                  </div>
+
+                  {/* File Upload & Actions */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "12px", flexWrap: "wrap", gap: "12px" }}>
+                    <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                      <label className="btn btn-secondary btn-sm" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                        <FileText size={14} /> Choose CSV / Text File
+                        <input 
+                          type="file" 
+                          accept=".csv,.txt,.tsv" 
+                          style={{ display: "none" }} 
+                          onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (evt) => handleParseBulkParties(evt.target?.result || "");
+                              reader.readAsText(file);
+                            }
+                          }}
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={handleDownloadPartySampleCsv}
+                        className="btn btn-secondary btn-sm"
+                        style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.8rem" }}
+                      >
+                        <Download size={13} /> Sample CSV
+                      </button>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                      {bulkParsedParties.length > 0 && (
+                        <span style={{ fontSize: "0.85rem", color: "var(--success)", fontWeight: 700 }}>
+                          ✓ {bulkParsedParties.length} party rows parsed ready to import
+                        </span>
+                      )}
+
+                      <button
+                        onClick={handleCommitBulkParties}
+                        disabled={bulkParsedParties.length === 0 || isUploadingParties}
+                        className="btn btn-primary"
+                        style={{ padding: "8px 22px", fontWeight: 800, display: "inline-flex", alignItems: "center", gap: "8px" }}
+                      >
+                        {isUploadingParties ? <RefreshCw size={15} className="spin" /> : <CheckCircle2 size={16} />}
+                        Commit & Save {bulkParsedParties.length} Parties to Database
+                      </button>
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Parsed Preview Table */}
+                {bulkParsedParties.length > 0 && (
+                  <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
+                    <h4 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "12px", color: "var(--text-main)" }}>
+                      Live Parse & CRM Assignment Preview ({bulkParsedParties.length})
+                    </h4>
+                    <table className="table" style={{ width: "100%", minWidth: "850px" }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: "30%" }}>Party Name / Firm</th>
+                          <th style={{ width: "25%" }}>Assigned CRM Executive</th>
+                          <th style={{ width: "20%" }}>Contact & Phone</th>
+                          <th style={{ width: "15%" }}>City / State</th>
+                          <th style={{ width: "10%" }}>GSTIN</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkParsedParties.map((p, idx) => (
+                          <tr key={idx}>
+                            <td style={{ fontWeight: 700, color: "var(--text-main)" }}>
+                              {p.name}
+                            </td>
+                            <td>
+                              {p.isCrmMatched ? (
+                                <span className="badge badge-primary" style={{ fontWeight: 700 }}>
+                                  ✓ {p.assignedCrmName}
+                                </span>
+                              ) : (
+                                <span className="badge badge-warning" style={{ fontWeight: 700 }}>
+                                  ⚠️ {p.assignedCrmName || "Unassigned"}
+                                </span>
+                              )}
+                              {p.crmEmailProvided && (
+                                <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                                  {p.crmEmailProvided}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ fontSize: "0.85rem" }}>
+                              {p.contactPerson || "—"}<br />
+                              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{p.phone || ""}</span>
+                            </td>
+                            <td style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                              {p.city || "—"} {p.state ? `(${p.state})` : ""}
+                            </td>
+                            <td style={{ fontSize: "0.82rem", fontFamily: "monospace" }}>
+                              {p.gstin || "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ==================== VIEW 2: PARTY DIRECTORY TABLE ==================== */}
+            {partyStudioMode === "directory" && (
+              <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                
+                {/* Search & Filter Bar */}
+                <div className="glass-panel" style={{ padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+                  <div style={{ display: "flex", gap: "10px", flex: 1, minWidth: "280px", flexWrap: "wrap" }}>
+                    <div style={{ position: "relative", flex: 1, minWidth: "200px" }}>
+                      <Search size={15} style={{ position: "absolute", left: "10px", top: "11px", color: "var(--text-muted)" }} />
+                      <input 
+                        type="text" 
+                        placeholder="Search party name, contact person, phone, city, GSTIN..." 
+                        value={crmPartySearch}
+                        onChange={e => setCrmPartySearch(e.target.value)}
+                        className="form-control"
+                        style={{ paddingLeft: "32px", fontSize: "0.85rem", height: "36px" }}
+                      />
+                    </div>
+
+                    <select
+                      value={crmPartyFilter}
+                      onChange={e => setCrmPartyFilter(e.target.value)}
+                      className="form-control"
+                      style={{ width: "auto", height: "36px", fontSize: "0.85rem" }}
+                    >
+                      <option value="all">All CRM Executives ({crmParties.length})</option>
+                      <option value="unassigned">Unassigned Parties ({crmParties.filter(p => !p.assignedCrmId).length})</option>
+                      {crmExecutives.map(u => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({crmParties.filter(p => p.assignedCrmId === u.id || p.assignedCrmName === u.name).length} parties)
+                        </option>
+                      ))}
+                    </select>
+
+                    {(crmPartySearch || crmPartyFilter !== "all") && (
+                      <button 
+                        onClick={() => { setCrmPartySearch(""); setCrmPartyFilter("all"); }}
+                        className="btn btn-secondary btn-sm"
+                        style={{ height: "36px" }}
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 600 }}>
+                    Showing <strong>{filteredCrmParties.length}</strong> of <strong>{crmParties.length}</strong> registered parties
+                  </div>
+                </div>
+
+                {/* Directory Table */}
+                <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
+                  {filteredCrmParties.length === 0 ? (
+                    <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
+                      <Building size={36} style={{ marginBottom: "12px", opacity: 0.4 }} />
+                      <h4>No CRM parties found</h4>
+                      <p style={{ fontSize: "0.85rem" }}>Click "Bulk Upload" to import parties from Excel or "+ Add Party" to create one.</p>
+                    </div>
+                  ) : (
+                    <table className="table" style={{ width: "100%", minWidth: "950px" }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: "26%" }}>Party / Firm Name</th>
+                          <th style={{ width: "24%" }}>Assigned CRM Executive (Reassign)</th>
+                          <th style={{ width: "18%" }}>Contact Person & Phone</th>
+                          <th style={{ width: "14%" }}>City / State</th>
+                          <th style={{ width: "10%" }}>GSTIN</th>
+                          <th style={{ width: "8%", textAlign: "center" }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredCrmParties.map(party => (
+                          <tr key={party.id}>
+                            <td>
+                              <div style={{ fontWeight: 700, color: "var(--text-main)", fontSize: "0.92rem" }}>
+                                {party.name}
+                              </div>
+                              {party.status && (
+                                <span className={`badge ${party.status === "Active" ? "badge-success" : "badge-secondary"}`} style={{ fontSize: "0.66rem", marginTop: "2px" }}>
+                                  {party.status}
+                                </span>
+                              )}
+                            </td>
+                            <td>
+                              {/* Direct CRM Reassignment Dropdown */}
+                              <select
+                                value={party.assignedCrmId || ""}
+                                onChange={async (e) => {
+                                  const targetId = e.target.value;
+                                  const targetUser = users.find(u => u.id === targetId);
+                                  const updated = {
+                                    ...party,
+                                    assignedCrmId: targetId,
+                                    assignedCrmName: targetUser ? targetUser.name : "Unassigned"
+                                  };
+                                  if (onUpdateParty) {
+                                    await onUpdateParty(updated);
+                                  }
+                                }}
+                                className="form-control"
+                                style={{ fontSize: "0.82rem", height: "32px", padding: "4px 8px", background: party.assignedCrmId ? "rgba(99, 102, 241, 0.08)" : "rgba(245, 158, 11, 0.1)" }}
+                              >
+                                <option value="">-- Unassigned --</option>
+                                {crmExecutives.map(u => (
+                                  <option key={u.id} value={u.id}>
+                                    {u.name} ({u.email})
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td style={{ fontSize: "0.85rem" }}>
+                              <strong>{party.contactPerson || "—"}</strong><br />
+                              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{party.phone || ""}</span>
+                            </td>
+                            <td style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                              {party.city || "—"} {party.state ? `(${party.state})` : ""}
+                            </td>
+                            <td style={{ fontSize: "0.8rem", fontFamily: "monospace" }}>
+                              {party.gstin || "—"}
+                            </td>
+                            <td style={{ textAlign: "center" }}>
+                              <div style={{ display: "inline-flex", gap: "6px" }}>
+                                <button
+                                  onClick={() => {
+                                    setEditingParty(party);
+                                    setShowPartyModal(true);
+                                  }}
+                                  className="btn btn-secondary btn-sm"
+                                  title="Edit Party Details"
+                                  style={{ padding: "4px 7px" }}
+                                >
+                                  <Edit2 size={13} />
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    if (window.confirm(`Are you sure you want to delete party "${party.name}"?`)) {
+                                      if (onDeleteParty) await onDeleteParty(party.id);
+                                    }
+                                  }}
+                                  className="btn btn-danger btn-sm"
+                                  title="Delete Party"
+                                  style={{ padding: "4px 7px" }}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+              </div>
+            )}
+
+            {/* ==================== SINGLE PARTY CREATE / EDIT MODAL ==================== */}
+            {showPartyModal && (
+              <div className="modal-backdrop" onClick={() => setShowPartyModal(false)}>
+                <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "600px", padding: "28px" }}>
+                  
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
+                    <h3 style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--primary)", margin: 0 }}>
+                      {editingParty ? `Edit Party "${editingParty.name}"` : "Register New CRM Party"}
+                    </h3>
+                    <button onClick={() => setShowPartyModal(false)} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={20} /></button>
+                  </div>
+
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    const formData = new FormData(e.target);
+                    const partyName = formData.get("name")?.trim();
+                    if (!partyName) return;
+
+                    const crmId = formData.get("assignedCrmId");
+                    const matchedCrm = users.find(u => u.id === crmId);
+
+                    const partyObj = {
+                      id: editingParty ? editingParty.id : `pty-${Date.now()}`,
+                      name: partyName,
+                      assignedCrmId: crmId || "",
+                      assignedCrmName: matchedCrm ? matchedCrm.name : "Unassigned",
+                      contactPerson: formData.get("contactPerson")?.trim() || "",
+                      phone: formData.get("phone")?.trim() || "",
+                      email: formData.get("email")?.trim() || "",
+                      city: formData.get("city")?.trim() || "",
+                      state: formData.get("state")?.trim() || "",
+                      gstin: formData.get("gstin")?.trim() || "",
+                      creditLimit: parseFloat(formData.get("creditLimit")) || 0,
+                      paymentTerms: formData.get("paymentTerms")?.trim() || "30 Days",
+                      status: formData.get("status") || "Active"
+                    };
+
+                    if (editingParty && onUpdateParty) {
+                      await onUpdateParty(partyObj);
+                    } else if (onAddParty) {
+                      await onAddParty(partyObj);
+                    }
+
+                    setShowPartyModal(false);
+                    setEditingParty(null);
+                  }} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                    
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label" style={{ fontWeight: 700 }}>Party / Firm Name *</label>
+                      <input 
+                        name="name" 
+                        type="text" 
+                        defaultValue={editingParty?.name || ""} 
+                        required 
+                        placeholder="e.g. Shree Ganesh Electronics, Balaji Telecom..." 
+                        className="form-control"
+                      />
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label" style={{ fontWeight: 700 }}>Assigned CRM Executive</label>
+                      <select name="assignedCrmId" defaultValue={editingParty?.assignedCrmId || ""} className="form-control">
+                        <option value="">-- Unassigned (Admin) --</option>
+                        {crmExecutives.map(u => (
+                          <option key={u.id} value={u.id}>
+                            {u.name} ({u.email})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">Contact Person</label>
+                        <input name="contactPerson" type="text" defaultValue={editingParty?.contactPerson || ""} placeholder="Contact name" className="form-control" />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">Phone Number</label>
+                        <input name="phone" type="text" defaultValue={editingParty?.phone || ""} placeholder="Phone / Mobile" className="form-control" />
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">City</label>
+                        <input name="city" type="text" defaultValue={editingParty?.city || ""} placeholder="City (e.g. Mumbai, Delhi)" className="form-control" />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">State</label>
+                        <input name="state" type="text" defaultValue={editingParty?.state || ""} placeholder="State (e.g. Maharashtra)" className="form-control" />
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">GSTIN</label>
+                        <input name="gstin" type="text" defaultValue={editingParty?.gstin || ""} placeholder="GST number" className="form-control" />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">Payment Terms</label>
+                        <input name="paymentTerms" type="text" defaultValue={editingParty?.paymentTerms || "30 Days"} placeholder="e.g. 30 Days, Immediate" className="form-control" />
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
+                      <button type="button" onClick={() => setShowPartyModal(false)} className="btn btn-secondary">
+                        Cancel
+                      </button>
+                      <button type="submit" className="btn btn-primary" style={{ fontWeight: 700 }}>
+                        {editingParty ? "Save Changes" : "Register Party"}
+                      </button>
+                    </div>
+
+                  </form>
 
                 </div>
               </div>
