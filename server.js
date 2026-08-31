@@ -2990,7 +2990,7 @@ app.delete("/api/ims/transactions/:id", async (req, res) => {
 
 // 4b. POST /api/ims/transactions/delete-range - Bulk Delete IMS Transactions by Date Range or ID list
 app.post("/api/ims/transactions/delete-range", async (req, res) => {
-  const { startDate, endDate, ids, purgeAll } = req.body;
+  const { startDate, endDate, ids, purgeAll, location } = req.body;
 
   if (purgeAll === true) {
     if (isPg) {
@@ -3028,13 +3028,40 @@ app.post("/api/ims/transactions/delete-range", async (req, res) => {
     }
   }
 
+  // Delete by Location only (e.g. Purge all Mumbai Warehouse records)
+  if (location && location !== "all" && (!startDate || !endDate)) {
+    const locClean = String(location).trim();
+    if (isPg) {
+      try {
+        const deleteRes = await pool.query('DELETE FROM ims_transactions WHERE LOWER("location") = LOWER($1)', [locClean]);
+        return res.json({ success: true, count: deleteRes.rowCount || 0 });
+      } catch (err) {
+        console.error("DELETE IMS by location error:", err.message);
+        return res.status(500).json({ error: "Failed to delete IMS transactions by location: " + err.message });
+      }
+    } else {
+      const data = readLocalJson();
+      const initialCount = (data.imsTransactions || []).length;
+      data.imsTransactions = (data.imsTransactions || []).filter(t => (t.location || "Delhi").trim().toLowerCase() !== locClean.toLowerCase());
+      const deletedCount = initialCount - data.imsTransactions.length;
+      writeLocalJson(data);
+      return res.json({ success: true, count: deletedCount });
+    }
+  }
+
   if (!startDate || !endDate) {
-    return res.status(400).json({ error: "Start date and end date are required for range deletion." });
+    return res.status(400).json({ error: "Start date and end date (or location/ids) are required for range deletion." });
   }
 
   if (isPg) {
     try {
-      const deleteRes = await pool.query('DELETE FROM ims_transactions WHERE "date" >= $1 AND "date" <= $2', [startDate, endDate]);
+      let deleteSql = 'DELETE FROM ims_transactions WHERE "date" >= $1 AND "date" <= $2';
+      const params = [startDate, endDate];
+      if (location && location !== "all") {
+        deleteSql += ' AND LOWER("location") = LOWER($3)';
+        params.push(String(location).trim());
+      }
+      const deleteRes = await pool.query(deleteSql, params);
       res.json({ success: true, count: deleteRes.rowCount || 0 });
     } catch (err) {
       console.error("DELETE IMS date range error:", err.message);
@@ -3043,7 +3070,11 @@ app.post("/api/ims/transactions/delete-range", async (req, res) => {
   } else {
     const data = readLocalJson();
     const initialCount = (data.imsTransactions || []).length;
-    data.imsTransactions = (data.imsTransactions || []).filter(t => t.date < startDate || t.date > endDate);
+    data.imsTransactions = (data.imsTransactions || []).filter(t => {
+      const inRange = t.date >= startDate && t.date <= endDate;
+      const inLoc = location && location !== "all" ? (t.location || "Delhi").trim().toLowerCase() === location.trim().toLowerCase() : true;
+      return !(inRange && inLoc);
+    });
     const deletedCount = initialCount - data.imsTransactions.length;
     writeLocalJson(data);
     res.json({ success: true, count: deletedCount });

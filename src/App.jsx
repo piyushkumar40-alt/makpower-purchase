@@ -1046,11 +1046,12 @@ export default function App() {
   };
 
   const handleDeleteImsTransaction = async (txId) => {
+    // 1. Instant Optimistic UI Update (0ms lag)
+    setImsTransactions(prev => prev.filter(t => t.id !== txId));
     try {
       const res = await fetch(`/api/ims/transactions/${txId}`, { method: "DELETE" });
       const data = await res.json();
       if (data.success) {
-        setImsTransactions(prev => prev.filter(t => t.id !== txId));
         logSystemActivity("IMS_DELETE_TRANSACTION", `Deleted stock movement #${txId}`, "IMS", txId);
       }
       return data;
@@ -1060,17 +1061,26 @@ export default function App() {
     }
   };
 
-  const handleDeleteImsRange = async (startDate, endDate, ids = null) => {
+  const handleDeleteImsRange = async (startDate, endDate, ids = null, location = null) => {
+    // 1. Instant Optimistic UI Update (0ms lag)
+    if (Array.isArray(ids) && ids.length > 0) {
+      const idSet = new Set(ids);
+      setImsTransactions(prev => prev.filter(t => !idSet.has(t.id)));
+    } else if (location && location !== "all" && (!startDate || !endDate)) {
+      const locClean = location.trim().toLowerCase();
+      setImsTransactions(prev => prev.filter(t => (t.location || "Delhi").trim().toLowerCase() !== locClean));
+    } else if (startDate && endDate) {
+      setImsTransactions(prev => prev.filter(t => {
+        const inRange = t.date >= startDate && t.date <= endDate;
+        const inLoc = location && location !== "all" ? (t.location || "Delhi").trim().toLowerCase() === location.trim().toLowerCase() : true;
+        return !(inRange && inLoc);
+      }));
+    }
+
     try {
-      const res = await postData("/api/ims/transactions/delete-range", { startDate, endDate, ids });
+      const res = await postData("/api/ims/transactions/delete-range", { startDate, endDate, ids, location });
       if (res && res.success) {
-        if (Array.isArray(ids) && ids.length > 0) {
-          setImsTransactions(prev => prev.filter(t => !ids.includes(t.id)));
-          logSystemActivity("IMS_BULK_DELETE", `Bulk deleted ${res.count} selected IMS stock transactions`, "IMS", "bulk_delete");
-        } else {
-          setImsTransactions(prev => prev.filter(t => t.date < startDate || t.date > endDate));
-          logSystemActivity("IMS_RANGE_DELETE", `Bulk deleted ${res.count} IMS transactions between ${startDate} and ${endDate}`, "IMS", "range_delete");
-        }
+        logSystemActivity("IMS_BULK_DELETE", `Bulk deleted ${res.count} IMS transactions`, "IMS", "bulk_delete");
       }
       return res;
     } catch (err) {

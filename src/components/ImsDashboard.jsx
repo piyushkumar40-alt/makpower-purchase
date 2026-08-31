@@ -87,6 +87,7 @@ export default function ImsDashboard({
   const [showDeleteRangeModal, setShowDeleteRangeModal] = useState(false);
   const [delRangeStart, setDelRangeStart] = useState("");
   const [delRangeEnd, setDelRangeEnd] = useState("");
+  const [delRangeLocation, setDelRangeLocation] = useState("all");
   const [isDeletingRange, setIsDeletingRange] = useState(false);
 
   // Single Transaction Modal
@@ -780,8 +781,12 @@ export default function ImsDashboard({
   // Matched transactions within the deletion range modal
   const rangeMatchedTransactions = useMemo(() => {
     if (!delRangeStart || !delRangeEnd) return [];
-    return effectiveTransactions.filter(tx => tx.date >= delRangeStart && tx.date <= delRangeEnd);
-  }, [effectiveTransactions, delRangeStart, delRangeEnd]);
+    return effectiveTransactions.filter(tx => {
+      const inDate = tx.date >= delRangeStart && tx.date <= delRangeEnd;
+      const inLoc = delRangeLocation && delRangeLocation !== "all" ? (tx.location || "Delhi").trim().toLowerCase() === delRangeLocation.trim().toLowerCase() : true;
+      return inDate && inLoc;
+    });
+  }, [effectiveTransactions, delRangeStart, delRangeEnd, delRangeLocation]);
 
   const rangeMatchedNetQty = useMemo(() => {
     return rangeMatchedTransactions.reduce((sum, tx) => sum + (parseInt(tx.stockQty) || 0), 0);
@@ -791,19 +796,20 @@ export default function ImsDashboard({
   const handleExecuteDeleteRange = async () => {
     if (!delRangeStart || !delRangeEnd) return;
     if (rangeMatchedTransactions.length === 0) {
-      alert("No transactions found between the selected dates.");
+      alert("No transactions found between the selected dates and warehouse.");
       return;
     }
-    const confirmMsg = `⚠️ Are you sure you want to PERMANENTLY DELETE ALL ${rangeMatchedTransactions.length} inventory transactions between ${delRangeStart} and ${delRangeEnd}?\n\nThis action cannot be undone.`;
+    const confirmMsg = `⚠️ Are you sure you want to PERMANENTLY DELETE ALL ${rangeMatchedTransactions.length} inventory transactions between ${delRangeStart} and ${delRangeEnd}${delRangeLocation !== "all" ? ` for ${delRangeLocation} Warehouse` : "" }?\n\nThis action cannot be undone.`;
     if (!window.confirm(confirmMsg)) return;
 
     setIsDeletingRange(true);
+    const matchedIds = rangeMatchedTransactions.map(t => t.id);
     startLoading("Purging Date Range...", `Deleting ${rangeMatchedTransactions.length} transactions between ${delRangeStart} and ${delRangeEnd}...`, 1);
     try {
       if (onDeleteRange) {
-        await onDeleteRange(delRangeStart, delRangeEnd);
+        await onDeleteRange(delRangeStart, delRangeEnd, matchedIds, delRangeLocation !== "all" ? delRangeLocation : null);
       }
-      setSelectedTxIds(prev => prev.filter(id => !rangeMatchedTransactions.some(t => t.id === id)));
+      setSelectedTxIds(prev => prev.filter(id => !matchedIds.includes(id)));
       setShowDeleteRangeModal(false);
       setDelRangeStart("");
       setDelRangeEnd("");
@@ -813,6 +819,31 @@ export default function ImsDashboard({
       alert("Failed to delete range: " + err.message);
     } finally {
       setIsDeletingRange(false);
+    }
+  };
+
+  // Execute All Filtered Transactions Deletion (e.g. Delete all Mumbai items)
+  const handleExecuteDeleteAllFiltered = async () => {
+    if (filteredTransactions.length === 0) return;
+    const filterDesc = locationFilter !== "all" ? `${locationFilter} Warehouse` : "current filter";
+    const confirmMsg = `⚠️ Are you sure you want to PERMANENTLY DELETE ALL ${filteredTransactions.length} transaction(s) matching ${filterDesc}?\n\nThis action cannot be undone.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    const filteredIds = filteredTransactions.map(t => t.id);
+    startLoading("Deleting Filtered Records...", `Deleting ${filteredIds.length} inventory transactions...`, 1);
+    try {
+      if (onDeleteRange) {
+        await onDeleteRange(null, null, filteredIds, locationFilter !== "all" ? locationFilter : null);
+      } else if (onDeleteTransaction) {
+        for (const id of filteredIds) {
+          await onDeleteTransaction(id);
+        }
+      }
+      setSelectedTxIds([]);
+      finishLoading(`Deleted ${filteredIds.length} transactions!`);
+    } catch (err) {
+      finishLoading();
+      alert("Failed to delete filtered rows: " + err.message);
     }
   };
 
@@ -1104,15 +1135,27 @@ export default function ImsDashboard({
 
             {/* Export & Actions */}
             <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+              {(locationFilter !== "all" || startDate || endDate || searchQuery || movementFilter !== "all" || missingIdFilter !== "all" || selectedItemFilter !== "all") && filteredTransactions.length > 0 && (
+                <button 
+                  onClick={handleExecuteDeleteAllFiltered}
+                  className="btn btn-danger btn-sm"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", fontWeight: 700 }}
+                  title={`Delete all ${filteredTransactions.length} transactions matching the current filters`}
+                >
+                  <Trash2 size={14} /> Delete All Filtered ({filteredTransactions.length})
+                </button>
+              )}
+
               <button 
                 onClick={() => {
                   setDelRangeStart(startDate || "2026-01-01");
                   setDelRangeEnd(endDate || new Date().toISOString().split("T")[0]);
+                  setDelRangeLocation(locationFilter !== "all" ? locationFilter : "all");
                   setShowDeleteRangeModal(true);
                 }}
                 className="btn btn-secondary btn-sm"
                 style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", color: "#f87171", borderColor: "rgba(239, 68, 68, 0.4)" }}
-                title="Select date range to delete all transactions at once"
+                title="Select date range & warehouse to delete transactions at once"
               >
                 <Trash2 size={14} /> Delete by Date Range
               </button>
@@ -1989,8 +2032,22 @@ export default function ImsDashboard({
             </div>
 
             <p style={{ fontSize: "0.86rem", color: "var(--text-muted)", marginBottom: "16px" }}>
-              Select a start and end date. All stock movement records within this date range will be permanently removed.
+              Select a start and end date and warehouse. All stock movement records matching these criteria will be permanently removed.
             </p>
+
+            <div className="form-group" style={{ marginBottom: "14px" }}>
+              <label className="form-label" style={{ fontWeight: 700, fontSize: "0.82rem" }}>🏢 Target Warehouse</label>
+              <select
+                value={delRangeLocation}
+                onChange={e => setDelRangeLocation(e.target.value)}
+                className="form-control"
+                style={{ fontSize: "0.88rem", fontWeight: 600 }}
+              >
+                <option value="all">🏢 All Warehouses (Delhi & Mumbai)</option>
+                <option value="Delhi">📍 Delhi Warehouse Only</option>
+                <option value="Mumbai">📍 Mumbai Warehouse Only</option>
+              </select>
+            </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "18px" }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
