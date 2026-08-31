@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import Pagination, { SmartSelectionBar } from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
+import { initialImsTransactions } from "../mockData";
 
 export default function ImsDashboard({
   currentUser,
@@ -20,8 +21,29 @@ export default function ImsDashboard({
   onDeleteRange,
   onResolveMissingId,
   onAddItem,
-  onNavigateView
+  onNavigateView,
+  onPullModuleData,
+  loadingModules = {},
+  recordSectionVisit,
+  currentUserId
 }) {
+  const effectiveTransactions = useMemo(() => {
+    if (imsTransactions && Array.isArray(imsTransactions) && imsTransactions.length > 0) {
+      return imsTransactions;
+    }
+    return initialImsTransactions;
+  }, [imsTransactions]);
+
+  useEffect(() => {
+    if (onPullModuleData) {
+      onPullModuleData("imsTransactions");
+    }
+    const uId = currentUserId || currentUser?.id;
+    if (recordSectionVisit && uId) {
+      recordSectionVisit(uId, "imsTransactions");
+    }
+  }, []);
+
   // Active Tab: "ledger" | "matrix" | "bulk" | "missingids"
   const [activeTab, setActiveTab] = useState("ledger");
 
@@ -98,7 +120,7 @@ export default function ImsDashboard({
     let missingCount = 0;
     const missingSet = new Map(); // itemName -> { count, totalQty }
 
-    imsTransactions.forEach(tx => {
+    effectiveTransactions.forEach(tx => {
       const q = parseInt(tx.stockQty) || 0;
       const loc = (tx.location || "Delhi").trim();
       net += q;
@@ -132,11 +154,11 @@ export default function ImsDashboard({
       missingIdsCount: missingCount,
       distinctMissingItems: Array.from(missingSet.values())
     };
-  }, [imsTransactions]);
+  }, [effectiveTransactions]);
 
   // ==================== FILTERED TRANSACTIONS ====================
   const filteredTransactions = useMemo(() => {
-    return imsTransactions.filter(tx => {
+    return effectiveTransactions.filter(tx => {
       // Search query (Item name, party name, remarks, itemId, location)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -184,7 +206,7 @@ export default function ImsDashboard({
       if (valA > valB) return sortAsc ? 1 : -1;
       return 0;
     });
-  }, [imsTransactions, searchQuery, locationFilter, startDate, endDate, movementFilter, missingIdFilter, selectedItemFilter, sortField, sortAsc]);
+  }, [effectiveTransactions, searchQuery, locationFilter, startDate, endDate, movementFilter, missingIdFilter, selectedItemFilter, sortField, sortAsc]);
 
   // Paginated Transactions Slice (100 rows per page)
   const paginatedTransactions = useMemo(() => {
@@ -217,7 +239,7 @@ export default function ImsDashboard({
     });
 
     // Aggregate transactions
-    imsTransactions.forEach(tx => {
+    effectiveTransactions.forEach(tx => {
       const q = parseInt(tx.stockQty) || 0;
       const loc = (tx.location || "Delhi").trim();
       let key = tx.itemId;
@@ -258,7 +280,7 @@ export default function ImsDashboard({
     });
 
     return Array.from(map.values());
-  }, [items, imsTransactions]);
+  }, [items, effectiveTransactions]);
 
   // Paginated Matrix Slice (100 rows per page)
   const paginatedMatrix = useMemo(() => {
@@ -457,8 +479,8 @@ export default function ImsDashboard({
   // Matched transactions within the deletion range modal
   const rangeMatchedTransactions = useMemo(() => {
     if (!delRangeStart || !delRangeEnd) return [];
-    return imsTransactions.filter(tx => tx.date >= delRangeStart && tx.date <= delRangeEnd);
-  }, [imsTransactions, delRangeStart, delRangeEnd]);
+    return effectiveTransactions.filter(tx => tx.date >= delRangeStart && tx.date <= delRangeEnd);
+  }, [effectiveTransactions, delRangeStart, delRangeEnd]);
 
   const rangeMatchedNetQty = useMemo(() => {
     return rangeMatchedTransactions.reduce((sum, tx) => sum + (parseInt(tx.stockQty) || 0), 0);

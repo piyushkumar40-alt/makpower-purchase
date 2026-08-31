@@ -76,9 +76,12 @@ export default function App() {
   const [designations, setDesignations] = useState(() => cachedState?.designations || []);
   const [crmParties, setCrmParties] = useState(() => cachedState?.crmParties || []);
   const [crmSalesOrders, setCrmSalesOrders] = useState(() => cachedState?.crmSalesOrders || []);
-  const [crmDispatches, setCrmDispatches] = useState(() => cachedState?.crmDispatches || []);
-  const [imsTransactions, setImsTransactions] = useState(() => cachedState?.imsTransactions || []);
-  const [auditLogs, setAuditLogs] = useState([]);
+  const [imsTransactions, setImsTransactions] = useState(() => {
+    if (cachedState?.imsTransactions && Array.isArray(cachedState.imsTransactions) && cachedState.imsTransactions.length > 0) {
+      return cachedState.imsTransactions;
+    }
+    return initialImsTransactions;
+  });
   const [settings, setSettings] = useState(() => cachedState?.settings || { isHidden: false, redirectUrl: "https://www.instagram.com/makpowerofficial/" });
   const [loading, setLoading] = useState(() => !cachedState);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
@@ -162,7 +165,12 @@ export default function App() {
         } else if (moduleKey === TRACKABLE_MODULES.IMS_TRANSACTIONS) {
           const res = await fetch("/api/ims/transactions");
           const data = await res.json();
-          if (Array.isArray(data)) setImsTransactions(data);
+          const list = Array.isArray(data) ? data : (data.transactions || []);
+          if (list.length > 0) {
+            setImsTransactions(list);
+          } else {
+            setImsTransactions(initialImsTransactions);
+          }
         } else if (moduleKey === TRACKABLE_MODULES.AUDIT_LOGS) {
           const res = await fetch("/api/audit-logs");
           const data = await res.json();
@@ -300,7 +308,11 @@ export default function App() {
         if (Array.isArray(data.crmParties)) setCrmParties(data.crmParties);
         if (Array.isArray(data.crmSalesOrders)) setCrmSalesOrders(data.crmSalesOrders);
         if (Array.isArray(data.crmDispatches)) setCrmDispatches(data.crmDispatches);
-        if (Array.isArray(data.imsTransactions)) setImsTransactions(data.imsTransactions);
+        if (Array.isArray(data.imsTransactions) && data.imsTransactions.length > 0) {
+          setImsTransactions(data.imsTransactions);
+        } else {
+          setImsTransactions(initialImsTransactions);
+        }
         
         if (data.settings) {
           setSettings(data.settings);
@@ -1835,6 +1847,10 @@ export default function App() {
             onResolveMissingId={handleResolveMissingId}
             onAddItem={addItem}
             onNavigateView={setActiveView}
+            onPullModuleData={pullModuleData}
+            loadingModules={loadingModules}
+            recordSectionVisit={recordSectionVisit}
+            currentUserId={currentUser?.id}
           />
         )}
 

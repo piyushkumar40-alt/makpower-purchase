@@ -374,8 +374,19 @@ async function setupPgDatabase() {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_item_id ON ims_transactions("itemId");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_item_name ON ims_transactions("itemName");`);
 
-      // Automatically purge legacy pre-seeded mock transactions from PG
-      await pool.query(`DELETE FROM ims_transactions WHERE "id" IN ('ims-1001', 'ims-1002', 'ims-1003', 'ims-1004', 'ims-1005', 'ims-1006', 'ims-1007')`);
+      // Seed initial IMS stock transactions if table is empty
+      const imsCheck = await pool.query("SELECT COUNT(*) FROM ims_transactions");
+      if (parseInt(imsCheck.rows[0].count) === 0) {
+        for (const tx of initialImsTransactions) {
+          await pool.query(
+            `INSERT INTO ims_transactions ("id", "date", "itemName", "itemId", "stockQty", "movementType", "partyName", "remarks", "source", "isMissingId", "location", "createdAt")
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             ON CONFLICT ("id") DO NOTHING`,
+            [tx.id, tx.date, tx.itemName, tx.itemId || "", tx.stockQty, tx.movementType, tx.partyName || "", tx.remarks || "", tx.source || "initial", tx.isMissingId || false, tx.location || "Delhi", tx.createdAt || new Date().toISOString()]
+          );
+        }
+        console.log("Seeded initial IMS stock movements.");
+      }
     } catch (crmSeedErr) {
       console.warn("CRM / IMS table seeding notice:", crmSeedErr.message);
     }
