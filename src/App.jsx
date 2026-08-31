@@ -76,6 +76,8 @@ export default function App() {
   const [designations, setDesignations] = useState(() => cachedState?.designations || []);
   const [crmParties, setCrmParties] = useState(() => cachedState?.crmParties || []);
   const [crmSalesOrders, setCrmSalesOrders] = useState(() => cachedState?.crmSalesOrders || []);
+  const [crmDispatches, setCrmDispatches] = useState(() => cachedState?.crmDispatches || []);
+  const [auditLogs, setAuditLogs] = useState([]);
   const [imsTransactions, setImsTransactions] = useState(() => {
     if (cachedState?.imsTransactions && Array.isArray(cachedState.imsTransactions)) {
       return cachedState.imsTransactions;
