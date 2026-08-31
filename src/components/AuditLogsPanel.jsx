@@ -1,18 +1,19 @@
 import React, { useState, useMemo } from "react";
 import { History, User, Filter, Search, Download, Clock, ShieldCheck, Tag, FileText, ChevronRight, X, AlertCircle } from "lucide-react";
 import { useSortableData } from "../utils/useSortableData";
+import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 
 export default function AuditLogsPanel({ auditLogs = [], users = [], requests = [], vendors = [] }) {
   const [selectedUser, setSelectedUser] = useState("all");
   const [selectedAction, setSelectedAction] = useState("all");
-  const [timeRange, setTimeRange] = useState("all"); // "today", "7days", "30days", "all"
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [inspectLog, setInspectLog] = useState(null); // Selected log for version snapshot diff modal
 
   // 1. Filter Audit Logs
   const filteredLogs = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    const now = new Date();
 
     return auditLogs.filter(log => {
       // User Filter
@@ -40,18 +41,26 @@ export default function AuditLogsPanel({ auditLogs = [], users = [], requests = 
         if (selectedAction === "USER" && !act.includes("USER") && !act.includes("LOGIN") && !act.includes("LOGOUT")) return false;
       }
 
-      // Time Range Filter
-      if (timeRange !== "all" && log.isoTime) {
-        const logDate = new Date(log.isoTime);
-        const diffDays = (now - logDate) / (1000 * 60 * 60 * 24);
-        if (timeRange === "today") {
-          const todayStr = now.toISOString().slice(0, 10);
-          const logStr = logDate.toISOString().slice(0, 10);
-          if (logStr !== todayStr && diffDays > 1) return false;
-        }
-        if (timeRange === "7days" && diffDays > 7) return false;
-        if (timeRange === "30days" && diffDays > 30) return false;
+      // Date Range Filter
+      if (startDate || endDate) {
+        const logTime = log.isoTime || log.timestamp;
+        if (!isDateInBetween(logTime, startDate, endDate)) return false;
       }
+
+      // Search Query Filter
+      if (q) {
+        const matchUser = (log.userName || "").toLowerCase().includes(q);
+        const matchAction = (log.action || "").toLowerCase().includes(q);
+        const matchDetails = (log.details || "").toLowerCase().includes(q);
+        const matchEntity = (log.entityType || "").toLowerCase().includes(q);
+        const matchId = (log.entityId || "").toLowerCase().includes(q);
+
+        if (!matchUser && !matchAction && !matchDetails && !matchEntity && !matchId) return false;
+      }
+
+      return true;
+    });
+  }, [auditLogs, selectedUser, selectedAction, startDate, endDate, searchQuery, users]);
 
       // Search Query Filter
       if (q) {
@@ -203,16 +212,17 @@ export default function AuditLogsPanel({ auditLogs = [], users = [], requests = 
           </select>
         </div>
 
-        {/* Timeframe Filter */}
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <Clock size={15} style={{ color: "#f59e0b" }} />
-          <select className="form-control" value={timeRange} onChange={e => setTimeRange(e.target.value)} style={{ minWidth: "130px" }}>
-            <option value="all" style={{ background: "#0f172a" }}>All Time</option>
-            <option value="today" style={{ background: "#0f172a" }}>Today Only</option>
-            <option value="7days" style={{ background: "#0f172a" }}>Past 7 Days</option>
-            <option value="30days" style={{ background: "#0f172a" }}>Past 30 Days</option>
-          </select>
-        </div>
+        {/* Looker Studio Style Date Range Filter */}
+        <DateRangeFilter
+          startDate={startDate}
+          endDate={endDate}
+          onStartDateChange={setStartDate}
+          onEndDateChange={setEndDate}
+          onClear={() => {
+            setStartDate("");
+            setEndDate("");
+          }}
+        />
 
       </div>
 

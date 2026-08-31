@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import Pagination from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
+import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 
 export default function CrmDashboard({
   currentUser,
@@ -155,9 +156,17 @@ export default function CrmDashboard({
   const [showRecordDispatchModal, setShowRecordDispatchModal] = useState(false);
   const [selectedOrderForDispatch, setSelectedOrderForDispatch] = useState(null);
 
-  // Report Filters
+  // Report & Table Filters
   const [salesReportCategory, setSalesReportCategory] = useState("all");
+  const [salesReportStartDate, setSalesReportStartDate] = useState("");
+  const [salesReportEndDate, setSalesReportEndDate] = useState("");
+
   const [dispatchStatusFilter, setDispatchStatusFilter] = useState("all");
+  const [dispatchStartDate, setDispatchStartDate] = useState("");
+  const [dispatchEndDate, setDispatchEndDate] = useState("");
+
+  const [ordersStartDate, setOrdersStartDate] = useState("");
+  const [ordersEndDate, setOrdersEndDate] = useState("");
 
   // Format INR currency
   const formatInr = (val) => {
@@ -199,30 +208,32 @@ export default function CrmDashboard({
   const itemWiseSalesData = useMemo(() => {
     const itemMap = new Map();
 
-    currentSalesOrders.forEach(o => {
-      const key = o.itemModel || "Unspecified Model";
-      if (!itemMap.has(key)) {
-        itemMap.set(key, {
-          itemModel: key,
-          category: o.category || "General",
-          totalOrders: 0,
-          totalQty: 0,
-          totalRevenue: 0,
-          dispatchedQty: 0,
-          pendingQty: 0,
-          partySet: new Set(),
-          unitPrices: []
-        });
-      }
-      const entry = itemMap.get(key);
-      entry.totalOrders += 1;
-      entry.totalQty += parseInt(o.orderQty || 0);
-      entry.totalRevenue += parseFloat(o.totalInr || 0);
-      entry.dispatchedQty += parseInt(o.dispatchedQty || 0);
-      entry.pendingQty += Math.max(0, parseInt(o.orderQty || 0) - parseInt(o.dispatchedQty || 0));
-      if (o.partyName) entry.partySet.add(o.partyName);
-      if (o.unitPriceInr) entry.unitPrices.push(parseFloat(o.unitPriceInr));
-    });
+    currentSalesOrders
+      .filter(o => !salesReportStartDate && !salesReportEndDate ? true : isDateInBetween(o.orderDate, salesReportStartDate, salesReportEndDate))
+      .forEach(o => {
+        const key = o.itemModel || "Unspecified Model";
+        if (!itemMap.has(key)) {
+          itemMap.set(key, {
+            itemModel: key,
+            category: o.category || "General",
+            totalOrders: 0,
+            totalQty: 0,
+            totalRevenue: 0,
+            dispatchedQty: 0,
+            pendingQty: 0,
+            partySet: new Set(),
+            unitPrices: []
+          });
+        }
+        const entry = itemMap.get(key);
+        entry.totalOrders += 1;
+        entry.totalQty += parseInt(o.orderQty || 0);
+        entry.totalRevenue += parseFloat(o.totalInr || 0);
+        entry.dispatchedQty += parseInt(o.dispatchedQty || 0);
+        entry.pendingQty += Math.max(0, parseInt(o.orderQty || 0) - parseInt(o.dispatchedQty || 0));
+        if (o.partyName) entry.partySet.add(o.partyName);
+        if (o.unitPriceInr) entry.unitPrices.push(parseFloat(o.unitPriceInr));
+      });
 
     return Array.from(itemMap.values()).map(item => ({
       ...item,
@@ -231,7 +242,7 @@ export default function CrmDashboard({
       partyList: Array.from(item.partySet).join(", "),
       ratePercent: item.totalQty > 0 ? ((item.dispatchedQty / item.totalQty) * 100).toFixed(0) : 0
     })).sort((a, b) => b.totalRevenue - a.totalRevenue);
-  }, [currentSalesOrders]);
+  }, [currentSalesOrders, salesReportStartDate, salesReportEndDate]);
 
   // Unique list of states
   const uniqueStates = useMemo(() => {
@@ -815,6 +826,18 @@ export default function CrmDashboard({
             </div>
 
             <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+              <DateRangeFilter
+                startDate={salesReportStartDate}
+                endDate={salesReportEndDate}
+                onStartDateChange={setSalesReportStartDate}
+                onEndDateChange={setSalesReportEndDate}
+                onClear={() => {
+                  setSalesReportStartDate("");
+                  setSalesReportEndDate("");
+                }}
+                align="right"
+              />
+
               <select
                 value={salesReportCategory}
                 onChange={e => setSalesReportCategory(e.target.value)}
@@ -923,6 +946,18 @@ export default function CrmDashboard({
             </div>
 
             <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+              <DateRangeFilter
+                startDate={dispatchStartDate}
+                endDate={dispatchEndDate}
+                onStartDateChange={setDispatchStartDate}
+                onEndDateChange={setDispatchEndDate}
+                onClear={() => {
+                  setDispatchStartDate("");
+                  setDispatchEndDate("");
+                }}
+                align="right"
+              />
+
               <select
                 value={dispatchStatusFilter}
                 onChange={e => setDispatchStatusFilter(e.target.value)}
@@ -969,7 +1004,13 @@ export default function CrmDashboard({
                 </thead>
                 <tbody>
                   {currentDispatches
-                    .filter(d => dispatchStatusFilter === "all" || d.status === dispatchStatusFilter)
+                    .filter(d => {
+                      if (dispatchStatusFilter !== "all" && d.status !== dispatchStatusFilter) return false;
+                      if (dispatchStartDate || dispatchEndDate) {
+                        if (!isDateInBetween(d.dispatchDate, dispatchStartDate, dispatchEndDate)) return false;
+                      }
+                      return true;
+                    })
                     .map(dsp => (
                       <tr key={dsp.id}>
                         <td>
@@ -1044,13 +1085,27 @@ export default function CrmDashboard({
               </p>
             </div>
 
-            <button
-              onClick={() => setShowAddOrderModal(true)}
-              className="btn btn-primary"
-              style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
-            >
-              <Plus size={16} /> New Sales Order
-            </button>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+              <DateRangeFilter
+                startDate={ordersStartDate}
+                endDate={ordersEndDate}
+                onStartDateChange={setOrdersStartDate}
+                onEndDateChange={setOrdersEndDate}
+                onClear={() => {
+                  setOrdersStartDate("");
+                  setOrdersEndDate("");
+                }}
+                align="right"
+              />
+
+              <button
+                onClick={() => setShowAddOrderModal(true)}
+                className="btn btn-primary"
+                style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
+              >
+                <Plus size={16} /> New Sales Order
+              </button>
+            </div>
           </div>
 
           {/* Orders Table */}
@@ -1076,8 +1131,15 @@ export default function CrmDashboard({
                   </tr>
                 </thead>
                 <tbody>
-                  {currentSalesOrders.map(order => (
-                    <tr key={order.id}>
+                  {currentSalesOrders
+                    .filter(order => {
+                      if (ordersStartDate || ordersEndDate) {
+                        if (!isDateInBetween(order.orderDate, ordersStartDate, ordersEndDate)) return false;
+                      }
+                      return true;
+                    })
+                    .map(order => (
+                      <tr key={order.id}>
                       <td>
                         <div style={{ display: "flex", flexDirection: "column" }}>
                           <code style={{ fontWeight: 700, fontSize: "0.85rem" }}>{order.orderNo}</code>
