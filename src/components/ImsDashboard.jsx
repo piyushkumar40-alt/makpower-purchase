@@ -323,6 +323,31 @@ export default function ImsDashboard({
     document.body.removeChild(link);
   };
 
+  // Download Sample CSV Template
+  const handleDownloadSampleCsv = () => {
+    const sampleRows = [
+      ["Date", "Item Name", "Stock", "Remarks", "Party Name", "Item ID"],
+      ["2026-01-05", "MP-CH-65W Gan Fast Charger", "500", "Initial 2026 Opening Factory Shipment Received", "Shenzhen TopPower Electronics", "it-1"],
+      ["2026-01-12", "MP-CH-65W Gan Fast Charger", "-50", "Dispatched against SO-2026-001 (LR #VRL-882194)", "Shree Ganesh Electronics", "it-1"],
+      ["2026-02-02", "MP-PB-20000 Ultra Power Bank", "800", "Cargo lot #CRG-902 received at warehouse", "Dongguan Battery Tech Co", "it-2"],
+      ["2026-02-18", "MP-PB-20000 Ultra Power Bank", "-120", "Order fulfillment #SO-2026-004", "Mahalaxmi Power Hub", "it-2"],
+      ["2026-03-01", "MP-CB-Braided Type-C to Lightning 2M", "1000", "Imported legacy batch from Feb shipment", "Guangzhou Cable Master Co.", ""],
+      ["2026-03-10", "MP-CB-Braided Type-C to Lightning 2M", "-200", "Dealer sample shipment", "Marwar Mobile Accessories", ""],
+      ["2026-04-15", "MP-AD-Car Charger Dual Port 45W", "450", "New model trial run 2026", "Ningbo Auto Power Ltd", ""]
+    ];
+
+    const csvContent = "data:text/csv;charset=utf-8," + 
+      sampleRows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "IMS_Sample_Template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Quick Resolve Missing ID - 1-Click Create Master Item
   const handleCreateAndResolveMasterItem = async (e) => {
     e.preventDefault();
@@ -926,10 +951,18 @@ export default function ImsDashboard({
                 </p>
               </div>
 
-              {/* Template helper pill */}
-              <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border-glass)", borderRadius: "8px", padding: "8px 14px", fontSize: "0.78rem" }}>
-                <span style={{ fontWeight: 700, color: "#38bdf8" }}>Expected Columns Order:</span><br />
-                <code>Date | Item Name | Stock (+2 or -2) | Remarks | Party Name | Item ID</code>
+              {/* Template helper pill & Download Sample Button */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-end" }}>
+                <button
+                  onClick={handleDownloadSampleCsv}
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.4)", fontWeight: 700 }}
+                >
+                  <Download size={14} /> Download Sample CSV Template
+                </button>
+                <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border-glass)", borderRadius: "8px", padding: "6px 12px", fontSize: "0.76rem" }}>
+                  <span style={{ fontWeight: 700, color: "#38bdf8" }}>Columns Order:</span> <code>Date | Item Name | Stock (+/-) | Remarks | Party Name | Item ID</code>
+                </div>
               </div>
             </div>
 
@@ -954,22 +987,34 @@ export default function ImsDashboard({
 
             {/* File upload alternative */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "12px", flexWrap: "wrap", gap: "12px" }}>
-              <label className="btn btn-secondary btn-sm" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                <FileText size={14} /> Choose CSV / Text File
-                <input 
-                  type="file" 
-                  accept=".csv,.txt,.tsv" 
-                  style={{ display: "none" }} 
-                  onChange={e => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onload = (evt) => handleParseBulkText(evt.target?.result || "");
-                      reader.readAsText(file);
-                    }
-                  }}
-                />
-              </label>
+              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                <label className="btn btn-secondary btn-sm" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                  <FileText size={14} /> Choose CSV / Text File
+                  <input 
+                    type="file" 
+                    accept=".csv,.txt,.tsv" 
+                    style={{ display: "none" }} 
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (evt) => handleParseBulkText(evt.target?.result || "");
+                        reader.readAsText(file);
+                      }
+                    }}
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadSampleCsv}
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.8rem" }}
+                  title="Download pre-formatted sample CSV file"
+                >
+                  <Download size={13} /> Sample CSV
+                </button>
+              </div>
 
               <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                 {bulkParsedRows.length > 0 && (
