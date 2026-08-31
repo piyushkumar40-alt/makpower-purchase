@@ -57,8 +57,40 @@ export default function ImsDashboard({
   // Active Tab: "ledger" | "matrix" | "bulk" | "missingids"
   const [activeTab, setActiveTab] = useState("ledger");
 
-  // Filter States for Ledger
-  const [searchQuery, setSearchQuery] = useState("");
+  // Filter States for Ledger - Multi-Search support (2 or more terms via + button)
+  const [searchQueries, setSearchQueries] = useState([""]);
+
+  const handleAddSearchQuery = () => {
+    setSearchQueries(prev => [...prev, ""]);
+  };
+
+  const handleUpdateSearchQuery = (index, val) => {
+    setSearchQueries(prev => {
+      const next = [...prev];
+      next[index] = val;
+      return next;
+    });
+  };
+
+  const handleRemoveSearchQuery = (index) => {
+    setSearchQueries(prev => {
+      if (prev.length <= 1) return [""];
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const activeSearchTerms = useMemo(() => {
+    const terms = [];
+    searchQueries.forEach(q => {
+      if (!q) return;
+      // Support multiple items separated by comma as well
+      q.split(",").map(s => s.trim().toLowerCase()).filter(Boolean).forEach(t => {
+        if (!terms.includes(t)) terms.push(t);
+      });
+    });
+    return terms;
+  }, [searchQueries]);
+
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [movementFilter, setMovementFilter] = useState("all"); // "all" | "IN" | "OUT"
@@ -79,7 +111,7 @@ export default function ImsDashboard({
   // Reset current page whenever filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, startDate, endDate, movementFilter, missingIdFilter, locationFilter, selectedItemFilter]);
+  }, [searchQueries, startDate, endDate, movementFilter, missingIdFilter, locationFilter, selectedItemFilter]);
 
   // Multi-row Checkbox Selection
   const [selectedTxIds, setSelectedTxIds] = useState([]);
@@ -170,15 +202,17 @@ export default function ImsDashboard({
   // ==================== FILTERED TRANSACTIONS ====================
   const filteredTransactions = useMemo(() => {
     return effectiveTransactions.filter(tx => {
-      // Search query (Item name, party name, remarks, itemId, location)
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const match = 
-          (tx.itemName || "").toLowerCase().includes(q) ||
-          (tx.partyName || "").toLowerCase().includes(q) ||
-          (tx.remarks || "").toLowerCase().includes(q) ||
-          (tx.location || "").toLowerCase().includes(q) ||
-          (tx.itemId || "").toLowerCase().includes(q);
+      // Multi-term Search (Item name, party name, remarks, itemId, location)
+      if (activeSearchTerms.length > 0) {
+        const match = activeSearchTerms.some(term => {
+          return (
+            (tx.itemName || "").toLowerCase().includes(term) ||
+            (tx.partyName || "").toLowerCase().includes(term) ||
+            (tx.remarks || "").toLowerCase().includes(term) ||
+            (tx.location || "").toLowerCase().includes(term) ||
+            (tx.itemId || "").toLowerCase().includes(term)
+          );
+        });
         if (!match) return false;
       }
 
@@ -224,7 +258,7 @@ export default function ImsDashboard({
       if (valA > valB) return sortAsc ? 1 : -1;
       return 0;
     });
-  }, [effectiveTransactions, searchQuery, locationFilter, startDate, endDate, movementFilter, missingIdFilter, selectedItemFilter, sortField, sortAsc]);
+  }, [effectiveTransactions, activeSearchTerms, locationFilter, startDate, endDate, movementFilter, missingIdFilter, selectedItemFilter, sortField, sortAsc]);
 
   // Dynamic metrics calculated from filtered transactions
   const {
@@ -1055,17 +1089,62 @@ export default function ImsDashboard({
           <div className="glass-panel" style={{ padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
             
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: "280px", flexWrap: "wrap" }}>
-              {/* Search */}
-              <div style={{ position: "relative", flex: 1, minWidth: "180px" }}>
-                <Search size={15} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
-                <input
-                  type="text"
-                  placeholder="Search item, party, location, ID..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="form-control"
-                  style={{ paddingLeft: "36px", height: "36px", fontSize: "0.85rem" }}
-                />
+              {/* Multi-Search Inputs Group with [+] Add button */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", flex: "1 1 320px" }}>
+                {searchQueries.map((query, idx) => (
+                  <div key={idx} style={{ position: "relative", display: "flex", alignItems: "center", minWidth: "190px", flex: 1 }}>
+                    <Search size={14} style={{ position: "absolute", left: "12px", color: "var(--text-muted)", pointerEvents: "none" }} />
+                    <input
+                      type="text"
+                      placeholder={idx === 0 ? "Search item, party, location, ID..." : `Search condition #${idx + 1}...`}
+                      value={query}
+                      onChange={e => handleUpdateSearchQuery(idx, e.target.value)}
+                      className="form-control"
+                      style={{ paddingLeft: "34px", paddingRight: searchQueries.length > 1 || query ? "28px" : "12px", height: "36px", fontSize: "0.85rem" }}
+                    />
+                    {(query || searchQueries.length > 1) && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveSearchQuery(idx)}
+                        style={{
+                          position: "absolute",
+                          right: "8px",
+                          background: "none",
+                          border: "none",
+                          color: "var(--text-muted)",
+                          cursor: "pointer",
+                          padding: "2px",
+                          display: "flex",
+                          alignItems: "center"
+                        }}
+                        title={searchQueries.length > 1 ? "Remove this search box" : "Clear search"}
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                {/* [+] Add more search button */}
+                <button
+                  type="button"
+                  onClick={handleAddSearchQuery}
+                  className="btn btn-secondary btn-sm"
+                  style={{
+                    height: "36px",
+                    padding: "0 10px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    fontSize: "0.82rem",
+                    fontWeight: 700,
+                    borderColor: "rgba(56, 189, 248, 0.4)",
+                    color: "#38bdf8"
+                  }}
+                  title="Add another search condition (search 2 or more items simultaneously)"
+                >
+                  <Plus size={15} /> Add
+                </button>
               </div>
 
               {/* Warehouse Location Filter */}
@@ -1116,10 +1195,10 @@ export default function ImsDashboard({
                 }}
               />
 
-              {(startDate || endDate || searchQuery || locationFilter !== "all" || movementFilter !== "all" || missingIdFilter !== "all") && (
+              {(startDate || endDate || activeSearchTerms.length > 0 || locationFilter !== "all" || movementFilter !== "all" || missingIdFilter !== "all") && (
                 <button
                   onClick={() => {
-                    setSearchQuery("");
+                    setSearchQueries([""]);
                     setStartDate("");
                     setEndDate("");
                     setLocationFilter("all");
@@ -1136,7 +1215,7 @@ export default function ImsDashboard({
 
             {/* Export & Actions */}
             <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-              {(locationFilter !== "all" || startDate || endDate || searchQuery || movementFilter !== "all" || missingIdFilter !== "all" || selectedItemFilter !== "all") && filteredTransactions.length > 0 && (
+              {(locationFilter !== "all" || startDate || endDate || activeSearchTerms.length > 0 || movementFilter !== "all" || missingIdFilter !== "all" || selectedItemFilter !== "all") && filteredTransactions.length > 0 && (
                 <button 
                   onClick={handleExecuteDeleteAllFiltered}
                   className="btn btn-danger btn-sm"
