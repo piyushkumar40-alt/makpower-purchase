@@ -409,7 +409,7 @@ export default function App() {
   const postData = async (url, data) => {
     const isHeavy = url.includes("batch") || url.includes("bulk") || url.includes("purge") || url.includes("backup") || url.includes("upload") || (Array.isArray(data) && data.length > 5);
     if (window.__startLoadingProgress) {
-      window.__startLoadingProgress(isHeavy ? "Saving Bulk Changes..." : "Syncing with Server...", "Saving data to PostgreSQL database...", 15);
+      window.__startLoadingProgress(isHeavy ? "Saving Bulk Changes..." : "Syncing with Server...", "Saving data to PostgreSQL database...", 1);
     }
     try {
       const res = await fetch(url, {
@@ -441,7 +441,7 @@ export default function App() {
   // DB delete helper
   const deleteData = async (url) => {
     if (window.__startLoadingProgress) {
-      window.__startLoadingProgress("Deleting Record...", "Updating records on server database...", 20);
+      window.__startLoadingProgress("Deleting Record...", "Updating records on server database...", 1);
     }
     try {
       const res = await fetch(url, { method: "DELETE" });

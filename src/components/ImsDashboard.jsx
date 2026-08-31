@@ -619,7 +619,7 @@ export default function ImsDashboard({
     if (bulkParsedRows.length === 0) return;
     setIsUploading(true);
     setBulkUploadMsg("");
-    startLoading("Uploading Inventory Batch...", `Uploading ${bulkParsedRows.length} transactions to server...`, 15);
+    startLoading("Uploading Inventory Batch...", `Uploading ${bulkParsedRows.length} transactions to server...`, 1);
 
     try {
       const res = await onBatchUploadTransactions(bulkParsedRows);
@@ -773,7 +773,7 @@ export default function ImsDashboard({
     if (!window.confirm(confirmMsg)) return;
 
     setIsDeletingRange(true);
-    startLoading("Purging Date Range...", `Deleting ${rangeMatchedTransactions.length} transactions between ${delRangeStart} and ${delRangeEnd}...`, 15);
+    startLoading("Purging Date Range...", `Deleting ${rangeMatchedTransactions.length} transactions between ${delRangeStart} and ${delRangeEnd}...`, 1);
     try {
       if (onDeleteRange) {
         await onDeleteRange(delRangeStart, delRangeEnd);
@@ -797,7 +797,7 @@ export default function ImsDashboard({
     const confirmMsg = `⚠️ Are you sure you want to permanently delete the ${selectedTxIds.length} selected transaction(s)?\n\nThis action cannot be undone.`;
     if (!window.confirm(confirmMsg)) return;
 
-    startLoading("Deleting Selected Records...", `Deleting ${selectedTxIds.length} inventory transactions...`, 15);
+    startLoading("Deleting Selected Records...", `Deleting ${selectedTxIds.length} inventory transactions...`, 1);
     try {
       if (onDeleteRange) {
         await onDeleteRange(null, null, selectedTxIds);

@@ -78,7 +78,7 @@ export function LoadingProvider({ children }) {
     }
   }, []);
 
-  const startLoading = useCallback((taskTitle = "Processing...", initialDetail = "", initialPercent = 5) => {
+  const startLoading = useCallback((taskTitle = "Processing...", initialDetail = "", initialPercent = 1) => {
     if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
     if (tickerIntervalRef.current) clearInterval(tickerIntervalRef.current);
 
@@ -86,24 +86,26 @@ export function LoadingProvider({ children }) {
     setActive(true);
     setVisible(false);
     setIsCompleted(false);
-    setProgress(initialPercent);
+    setProgress(Math.max(1, initialPercent));
     setTitle(taskTitle);
     setDetail(initialDetail || "Please wait while operation completes...");
 
-    // Show progress modal if task exceeds 1.5s
+    // Show progress modal after brief delay (250ms) so user gets immediate visual reassurance
     delayTimerRef.current = setTimeout(() => {
       if (activeRef.current) {
         setVisible(true);
+        // Smooth, steady progression from 1% up to 96%
         tickerIntervalRef.current = setInterval(() => {
           setProgress(prev => {
-            if (prev < 30) return prev + Math.floor(Math.random() * 8 + 4);
-            if (prev < 70) return prev + Math.floor(Math.random() * 5 + 2);
-            if (prev < 92) return prev + Math.floor(Math.random() * 2 + 1);
+            if (prev < 30) return prev + 1; // 1% per step
+            if (prev < 60) return prev + 1;
+            if (prev < 85) return prev + 1;
+            if (prev < 96) return prev + 1;
             return prev;
           });
-        }, 300);
+        }, 140); // 140ms per step = ~14 seconds of calm, steady, incremental progress
       }
-    }, 1500);
+    }, 250);
   }, []);
 
   const finishLoading = useCallback((completedMessage = "Saved successfully!", showPopup = true) => {
