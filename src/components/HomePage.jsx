@@ -135,7 +135,7 @@ export default function HomePage({
               <Activity size={14} /> CRM Dashboard
             </button>
           )}
-          {currentUser && (
+          {currentUser?.role === "superadmin" && (
             <button onClick={() => onNavigateView("ims")} className="btn btn-primary btn-sm" style={{ background: "linear-gradient(135deg, #0ea5e9, #10b981)" }}>
               <Layers size={14} /> IMS Stock Ledger
             </button>

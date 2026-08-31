@@ -1244,7 +1244,7 @@ export default function App() {
                   </button>
                 )}
 
-                {currentUser && (
+                {currentUser?.role === "superadmin" && (
                   <button 
                     onClick={() => setActiveView("ims")} 
                     className={`nav-tab-item ${activeView === "ims" ? "active" : ""}`}
@@ -1401,7 +1401,7 @@ export default function App() {
                     </button>
                   )}
 
-                  {currentUser && (
+                  {currentUser?.role === "superadmin" && (
                     <button 
                       onClick={() => { setActiveView("ims"); setMobileMenuOpen(false); }} 
                       className={`mobile-nav-item ${activeView === "ims" ? "active" : ""}`}
@@ -1615,7 +1615,7 @@ export default function App() {
           />
         )}
 
-        {activeView === "ims" && currentUser && (
+        {activeView === "ims" && currentUser?.role === "superadmin" && (
           <ImsDashboard 
             currentUser={currentUser}
             items={items}
