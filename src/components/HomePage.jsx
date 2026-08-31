@@ -117,7 +117,7 @@ export default function HomePage({
             </h1>
           </div>
           <p style={{ color: "var(--text-muted)", fontSize: "0.92rem", margin: 0 }}>
-            Mak Power Purchase Ledger & Operations Command Center • Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{currentUser?.role || "Staff"}</strong>
+            Mak Power Purchase Ledger & Operations Command Center . Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{currentUser?.role || "Staff"}</strong>
           </p>
         </div>
 
@@ -130,6 +130,11 @@ export default function HomePage({
               <ShieldCheck size={14} /> Open Admin Panel
             </button>
           )}
+          {(currentUser?.role === "crm" || currentUser?.role === "asm" || currentUser?.role === "tsm" || currentUser?.role === "superadmin" || currentUser?.role === "owner") && (
+            <button onClick={() => onNavigateView("crm")} className="btn btn-primary btn-sm" style={{ background: "linear-gradient(135deg, #0284c7, #6366f1)" }}>
+              <Activity size={14} /> CRM Dashboard
+            </button>
+          )}
           {["purchaser", "nitin", "rahul", "coordinator"].includes(currentUser?.role) && (
             <button onClick={() => onNavigateView(currentUser?.role === "purchaser" ? "dashboard" : currentUser?.role)} className="btn btn-primary btn-sm">
               <BarChart2 size={14} /> View Workboard
@@ -137,6 +142,24 @@ export default function HomePage({
           )}
         </div>
       </div>
+
+      {/* ==================== ROLE VIEW: CRM EXECUTIVE HOME DASHBOARD ==================== */}
+      {(currentUser?.role === "crm" || currentUser?.role === "asm" || currentUser?.role === "tsm") && (
+        <div className="card-fade-in glass-panel" style={{ padding: "26px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "20px", background: "linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(15, 23, 42, 0.8) 100%)" }}>
+          <div>
+            <span className="badge badge-primary" style={{ marginBottom: "6px" }}>Customer Relationship Management</span>
+            <h2 style={{ fontSize: "1.4rem", fontWeight: 800, color: "var(--text-main)", margin: 0 }}>
+              {currentUser.name}'s CRM Command Center
+            </h2>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.88rem", marginTop: "4px", margin: 0 }}>
+              Manage your assigned party accounts, field sales representatives (ASM/TSM), item-wise sales, and dispatch fulfillment.
+            </p>
+          </div>
+          <button onClick={() => onNavigateView("crm")} className="btn btn-primary" style={{ padding: "10px 22px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
+            Open My CRM Dashboard <ArrowRight size={16} />
+          </button>
+        </div>
+      )}
 
       {/* ==================== ROLE VIEW 1: PURCHASER HOME DASHBOARD ==================== */}
       {currentUser?.role === "purchaser" && (
@@ -233,7 +256,7 @@ export default function HomePage({
 
                       return (
                         <tr key={req.id}>
-                          <td><strong>{req.orderDate || "—"}</strong></td>
+                          <td><strong>{req.orderDate || "-"}</strong></td>
                           <td style={{ fontWeight: 600 }}>{req.model}</td>
                           <td>{req.orderQuantity} units</td>
                           <td>{vName}</td>
@@ -497,7 +520,7 @@ export default function HomePage({
                           </span>
                         </td>
                         <td style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-                          {uVendors.length > 0 ? `${uVendors.length} vendors` : "—"}
+                          {uVendors.length > 0 ? `${uVendors.length} vendors` : "-"}
                         </td>
                         <td>
                           <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", fontWeight: 600, color: isOnline ? "var(--success)" : "var(--text-muted)" }}>

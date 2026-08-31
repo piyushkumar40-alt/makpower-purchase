@@ -21,7 +21,7 @@ export default function Pagination({
       
       {/* Items Range Display */}
       <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 500 }}>
-        Showing <strong>{startItem}–{endItem}</strong> of <strong>{totalItems.toLocaleString()}</strong> items
+        Showing <strong>{startItem}-{endItem}</strong> of <strong>{totalItems.toLocaleString()}</strong> items
       </div>
 
       {/* Navigation Controls */}

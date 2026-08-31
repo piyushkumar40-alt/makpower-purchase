@@ -266,7 +266,7 @@ export default function NitinDashboard({ currentUser, requests, vendors, cargos,
               </thead>
               <tbody>
                 {sortedDisplayRequests.map(r => {
-                  const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
+                  const vName = vendors.find(v => v.id === r.vendorId)?.name || "-";
                   const cargo = cargos.find(c => c.id === r.cargoId);
                   const isChecked = checkedIds.includes(r.id);
 
@@ -291,18 +291,18 @@ export default function NitinDashboard({ currentUser, requests, vendors, cargos,
                       </td>
                       <td style={{ fontWeight: 600 }}>{r.model}</td>
                       <td style={{ fontWeight: 600 }}>{r.orderQuantity}</td>
-                      <td>{r.vendorEdd || "—"}</td>
+                      <td>{r.vendorEdd || "-"}</td>
                       
                       {/* Cargo columns */}
-                      <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{cargo?.cargoOrderDate || "—"}</td>
-                      <td style={{ fontSize: "0.8rem", color: "var(--text-muted)", maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={cargo?.cargoDetail}>{cargo?.cargoDetail || "—"}</td>
+                      <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{cargo?.cargoOrderDate || "-"}</td>
+                      <td style={{ fontSize: "0.8rem", color: "var(--text-muted)", maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={cargo?.cargoDetail}>{cargo?.cargoDetail || "-"}</td>
                       <td>
                         {cargo?.modeOfTransport ? (
                           <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--primary)" }}>{cargo.modeOfTransport}</span>
-                        ) : "—"}
+                        ) : "-"}
                       </td>
-                      <td style={{ fontSize: "0.8rem" }}>{cargo?.cargoShippingDate || "—"}</td>
-                      <td style={{ fontSize: "0.8rem" }}>{cargo?.cargoEta || "—"}</td>
+                      <td style={{ fontSize: "0.8rem" }}>{cargo?.cargoShippingDate || "-"}</td>
+                      <td style={{ fontSize: "0.8rem" }}>{cargo?.cargoEta || "-"}</td>
                       
                       {/* Packing Ordered status badge */}
                       <td>
@@ -329,7 +329,7 @@ export default function NitinDashboard({ currentUser, requests, vendors, cargos,
                       <td>
                         {r.isMaterialRec === "Yes" ? (
                           <span className="badge" style={{ background: "rgba(245, 158, 11, 0.2)", color: "#fbbf24", border: "1px solid rgba(245, 158, 11, 0.4)", fontWeight: 700, padding: "3px 8px" }}>
-                            ⚡ Delivered (Needs Packing)
+                            ? Delivered (Needs Packing)
                           </span>
                         ) : (
                           <span style={{ fontWeight: 600, color: "var(--danger)", fontSize: "0.8rem" }}>

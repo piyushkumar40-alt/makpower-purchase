@@ -239,8 +239,8 @@ export function useTableManager({ tableId, allColumns = [], defaultVisible = nul
         let aValue = sortConfig.getValue ? sortConfig.getValue(a) : (getValueMap[sortConfig.key] ? getValueMap[sortConfig.key](a) : a[sortConfig.key]);
         let bValue = sortConfig.getValue ? sortConfig.getValue(b) : (getValueMap[sortConfig.key] ? getValueMap[sortConfig.key](b) : b[sortConfig.key]);
 
-        if (aValue === undefined || aValue === null || aValue === "—") aValue = "";
-        if (bValue === undefined || bValue === null || bValue === "—") bValue = "";
+        if (aValue === undefined || aValue === null || aValue === "-") aValue = "";
+        if (bValue === undefined || bValue === null || bValue === "-") bValue = "";
 
         const aNum = Number(aValue);
         const bNum = Number(bValue);
@@ -280,7 +280,7 @@ export function useTableManager({ tableId, allColumns = [], defaultVisible = nul
     const values = sortedItems
       .map(item => {
         const val = extractFn(item);
-        if (val === null || val === undefined || val === "—") return "";
+        if (val === null || val === undefined || val === "-") return "";
         return String(val).trim();
       })
       .filter(val => val !== "");

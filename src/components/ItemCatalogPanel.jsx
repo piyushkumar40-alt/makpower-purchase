@@ -277,7 +277,7 @@ export default function ItemCatalogPanel({
         { id: "", name: "", category: "", itemType: "RM", itemNature: "Non Consumables", unit: "Pcs", description: "", photo: "" }
       ]);
     } else {
-      setFormMsg(`❌ Multi-creation failed: ${res?.error || "Server error."}`);
+      setFormMsg(`? Multi-creation failed: ${res?.error || "Server error."}`);
     }
   };
 
@@ -297,7 +297,7 @@ export default function ItemCatalogPanel({
     const targetKey = normalizeItemKey(cleanName);
     const existingMatch = items.find(i => i.id !== cleanId && normalizeItemKey(i.name) === targetKey);
     if (existingMatch) {
-      setFormMsg(`⚠️ Item already created! An existing item "${existingMatch.name}" matches "${cleanName}".`);
+      setFormMsg(`?? Item already created! An existing item "${existingMatch.name}" matches "${cleanName}".`);
       return;
     }
 
@@ -322,7 +322,7 @@ export default function ItemCatalogPanel({
       setNewItemPhoto("");
       setShowAddForm(false);
     } else {
-      setFormMsg(`❌ Creation failed: ${res?.error || "ID already exists or server error."}`);
+      setFormMsg(`? Creation failed: ${res?.error || "ID already exists or server error."}`);
     }
   };
 
@@ -337,7 +337,7 @@ export default function ItemCatalogPanel({
   const handleBulkDelete = async () => {
     if (!isSuperAdmin) return;
     if (selectedIds.length === 0) return;
-    if (!window.confirm(`⚠️ ARE YOU SURE? This will permanently delete ${selectedIds.length} selected item(s) from the catalog.`)) return;
+    if (!window.confirm(`?? ARE YOU SURE? This will permanently delete ${selectedIds.length} selected item(s) from the catalog.`)) return;
     await onDeleteItems(selectedIds);
     setSelectedIds([]);
   };
@@ -371,7 +371,7 @@ export default function ItemCatalogPanel({
     const targetKey = normalizeItemKey(cleanName);
     const match = items.find(i => i.id !== editingItem.id && normalizeItemKey(i.name) === targetKey);
     if (match) {
-      setEditMsg(`⚠️ Cannot rename! An item with name "${match.name}" already exists.`);
+      setEditMsg(`?? Cannot rename! An item with name "${match.name}" already exists.`);
       return;
     }
 
@@ -391,7 +391,7 @@ export default function ItemCatalogPanel({
       if (res && res.success) {
         setEditingItem(null);
       } else {
-        setEditMsg(`❌ Update failed: ${res?.error || "Server error"}`);
+        setEditMsg(`? Update failed: ${res?.error || "Server error"}`);
       }
     }
   };
@@ -415,7 +415,7 @@ export default function ItemCatalogPanel({
       return;
     }
 
-    if (!window.confirm(`⚠️ ARE YOU SURE? This will MERGE "${sourceItem.name}" (#${sourceId}) into "${targetItem.name}" (#${targetId}). "${sourceItem.name}" will be deleted and all existing orders will be updated to "${targetItem.name}".`)) {
+    if (!window.confirm(`?? ARE YOU SURE? This will MERGE "${sourceItem.name}" (#${sourceId}) into "${targetItem.name}" (#${targetId}). "${sourceItem.name}" will be deleted and all existing orders will be updated to "${targetItem.name}".`)) {
       return;
     }
 
@@ -616,7 +616,7 @@ export default function ItemCatalogPanel({
   const handleConfirmBulkUpload = async () => {
     const validItems = bulkParsedItems.filter(i => !i.isDuplicate || i.action === "UPDATE" || i.action === "DELETE");
     if (validItems.length === 0) {
-      setBulkError("⚠️ All items in the uploaded file already exist in the catalog (e.g. DC-02 matched existing DC02). No new items to import.");
+      setBulkError("?? All items in the uploaded file already exist in the catalog (e.g. DC-02 matched existing DC02). No new items to import.");
       return;
     }
 
@@ -721,7 +721,7 @@ export default function ItemCatalogPanel({
           className={`btn ${typeFilter === "FG" ? "btn-primary" : "btn-secondary"}`}
           style={{ padding: "8px 18px", fontSize: "0.88rem", fontWeight: 700, borderRadius: "8px", background: typeFilter === "FG" ? "linear-gradient(135deg, #10b981, #059669)" : undefined, borderColor: "#10b981" }}
         >
-          📦 Finished Goods Database (FG) ({items.filter(i => i.itemType === "FG").length})
+          ?? Finished Goods Database (FG) ({items.filter(i => i.itemType === "FG").length})
         </button>
 
         <button 
@@ -729,7 +729,7 @@ export default function ItemCatalogPanel({
           className={`btn ${typeFilter === "RM" ? "btn-primary" : "btn-secondary"}`}
           style={{ padding: "8px 18px", fontSize: "0.88rem", fontWeight: 700, borderRadius: "8px", background: typeFilter === "RM" ? "linear-gradient(135deg, #6366f1, #4f46e5)" : undefined, borderColor: "#6366f1" }}
         >
-          🔩 Raw Materials Database (RM) ({items.filter(i => (i.itemType || "RM") !== "FG").length})
+          ?? Raw Materials Database (RM) ({items.filter(i => (i.itemType || "RM") !== "FG").length})
         </button>
 
         <button 
@@ -737,7 +737,7 @@ export default function ItemCatalogPanel({
           className={`btn ${typeFilter === "all" ? "btn-primary" : "btn-secondary"}`}
           style={{ padding: "8px 18px", fontSize: "0.88rem", fontWeight: 700, borderRadius: "8px" }}
         >
-          🌐 All Combined Items ({items.length})
+          ?? All Combined Items ({items.length})
         </button>
       </div>
 
@@ -1223,7 +1223,7 @@ export default function ItemCatalogPanel({
                           {pi.name}
                           {pi.isDuplicate && pi.action === "NEW" && (
                             <span className="badge badge-danger" style={{ marginLeft: "8px", fontSize: "0.7rem", textTransform: "none" }}>
-                              Already Exists (matches "{pi.duplicateMatchName}") — Skipped
+                              Already Exists (matches "{pi.duplicateMatchName}") - Skipped
                             </span>
                           )}
                         </td>

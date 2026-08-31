@@ -721,7 +721,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
               <span style={{ color: "var(--text-muted)" }}>The assigned purchaser will fill in vendor, pricing, and delivery date details.</span>
             </div>
             <div style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
-              <span style={{ color: "var(--primary)", fontWeight: 700, minWidth: "60px" }}>Step 3–4</span>
+              <span style={{ color: "var(--primary)", fontWeight: 700, minWidth: "60px" }}>Step 3-4</span>
               <span style={{ color: "var(--text-muted)" }}>Items will be grouped into cargo shipments and tracked until warehouse receipt.</span>
             </div>
           </div>
@@ -1270,7 +1270,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                                   <span style={{ fontWeight: 600 }}>{item.name}</span>
                                   {item.category && (
                                     <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                                      {item.category} • {item.itemType || "RM"} ({item.type || "Import"})
+                                      {item.category} . {item.itemType || "RM"} ({item.type || "Import"})
                                     </span>
                                   )}
                                 </div>

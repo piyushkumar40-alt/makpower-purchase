@@ -4,7 +4,17 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { v2 as cloudinary } from "cloudinary";
-import { initialUsers, initialVendors, initialRequests, initialCargoShipments, initialCargoCompanies } from "./src/mockData.js";
+import { 
+  initialUsers, 
+  initialVendors, 
+  initialRequests, 
+  initialCargoShipments, 
+  initialCargoCompanies,
+  initialCrmParties,
+  initialCrmSalesOrders,
+  initialCrmDispatches,
+  initialDesignations
+} from "./src/mockData.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,6 +93,10 @@ function readLocalJson() {
       requests: initialRequests,
       cargos: initialCargoShipments,
       cargoCompanies: initialCargoCompanies,
+      crmParties: initialCrmParties,
+      crmSalesOrders: initialCrmSalesOrders,
+      crmDispatches: initialCrmDispatches,
+      designations: initialDesignations,
       settings: {
         isHidden: false,
         redirectUrl: "https://www.instagram.com/makpowerofficial/"
@@ -99,13 +113,33 @@ function readLocalJson() {
         redirectUrl: "https://www.instagram.com/makpowerofficial/"
       };
     }
+    if (!Array.isArray(data.crmParties)) {
+      data.crmParties = initialCrmParties;
+    }
+    if (!Array.isArray(data.crmSalesOrders)) {
+      data.crmSalesOrders = initialCrmSalesOrders;
+    }
+    if (!Array.isArray(data.crmDispatches)) {
+      data.crmDispatches = initialCrmDispatches;
+    }
+    if (!Array.isArray(data.designations)) {
+      data.designations = initialDesignations;
+    }
+    // Ensure all CRM initial users exist in user list
+    initialUsers.forEach(initU => {
+      const exists = (data.users || []).some(u => u.email.toLowerCase() === initU.email.toLowerCase());
+      if (!exists) {
+        data.users.push(initU);
+      }
+    });
     if (Array.isArray(data.requests)) {
       data.requests = data.requests.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" }));
     }
-    const adminIdx = data.users.findIndex(x => x.id === "u-admin" || x.role === "superadmin" || x.email === "admin@company.com");
-    if (adminIdx !== -1 && data.users[adminIdx].password === "MakPower#Admin2026!") {
-      data.users[adminIdx].password = "112233";
-      writeLocalJson(data);
+    const adminIdx = data.users.findIndex(x => x.id === "u-admin" || x.role === "superadmin" || x.email === "admin@company.com" || x.email === "admin@makpowerindia.com");
+    if (adminIdx !== -1) {
+      data.users[adminIdx].password = "MakPower#Admin2026!";
+      data.users[adminIdx].email = "admin@makpowerindia.com";
+      data.users[adminIdx].status = "active";
     }
     return data;
   } catch (e) {
@@ -116,6 +150,10 @@ function readLocalJson() {
       requests: initialRequests,
       cargos: initialCargoShipments,
       cargoCompanies: initialCargoCompanies,
+      crmParties: initialCrmParties,
+      crmSalesOrders: initialCrmSalesOrders,
+      crmDispatches: initialCrmDispatches,
+      designations: initialDesignations,
       settings: {
         isHidden: false,
         redirectUrl: "https://www.instagram.com/makpowerofficial/"
@@ -152,7 +190,128 @@ async function setupPgDatabase() {
         "status" TEXT
       );
       ALTER TABLE users ADD COLUMN IF NOT EXISTS "designation" TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS "parentCrmId" TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS "phone" TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS "territory" TEXT;
     `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS crm_parties (
+        "id" TEXT PRIMARY KEY,
+        "name" TEXT,
+        "contactPerson" TEXT,
+        "phone" TEXT,
+        "email" TEXT,
+        "city" TEXT,
+        "state" TEXT,
+        "gstin" TEXT,
+        "creditLimit" NUMERIC,
+        "outstanding" NUMERIC,
+        "paymentTerms" TEXT,
+        "assignedCrmId" TEXT,
+        "assignedCrmName" TEXT,
+        "assignedAsmId" TEXT,
+        "assignedAsmName" TEXT,
+        "assignedTsmId" TEXT,
+        "assignedTsmName" TEXT,
+        "status" TEXT,
+        "createdAt" TEXT
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS crm_sales_orders (
+        "id" TEXT PRIMARY KEY,
+        "orderNo" TEXT,
+        "orderDate" TEXT,
+        "partyId" TEXT,
+        "partyName" TEXT,
+        "itemModel" TEXT,
+        "category" TEXT,
+        "orderQty" INTEGER,
+        "unitPriceInr" NUMERIC,
+        "totalInr" NUMERIC,
+        "dispatchedQty" INTEGER,
+        "pendingQty" INTEGER,
+        "status" TEXT,
+        "assignedCrmId" TEXT,
+        "assignedAsmId" TEXT,
+        "assignedTsmId" TEXT,
+        "notes" TEXT
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS crm_dispatches (
+        "id" TEXT PRIMARY KEY,
+        "orderId" TEXT,
+        "orderNo" TEXT,
+        "partyId" TEXT,
+        "partyName" TEXT,
+        "itemModel" TEXT,
+        "dispatchedQty" INTEGER,
+        "transporterName" TEXT,
+        "docketNo" TEXT,
+        "invoiceNo" TEXT,
+        "dispatchDate" TEXT,
+        "deliveryDate" TEXT,
+        "status" TEXT,
+        "assignedCrmId" TEXT,
+        "assignedAsmId" TEXT,
+        "assignedTsmId" TEXT
+      );
+    `);
+
+    // Seed CRM initial parties, sales orders, and dispatches if empty
+    try {
+      const ptyCheck = await pool.query("SELECT COUNT(*) FROM crm_parties");
+      if (parseInt(ptyCheck.rows[0].count) === 0) {
+        for (const p of initialCrmParties) {
+          await pool.query(
+            `INSERT INTO crm_parties ("id", "name", "contactPerson", "phone", "email", "city", "state", "gstin", "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName", "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt")
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+             ON CONFLICT ("id") DO NOTHING`,
+            [p.id, p.name, p.contactPerson, p.phone, p.email, p.city, p.state, p.gstin, p.creditLimit, p.outstanding, p.paymentTerms, p.assignedCrmId, p.assignedCrmName, p.assignedAsmId, p.assignedAsmName, p.assignedTsmId, p.assignedTsmName, p.status, p.createdAt]
+          );
+        }
+      }
+
+      const soCheck = await pool.query("SELECT COUNT(*) FROM crm_sales_orders");
+      if (parseInt(soCheck.rows[0].count) === 0) {
+        for (const so of initialCrmSalesOrders) {
+          await pool.query(
+            `INSERT INTO crm_sales_orders ("id", "orderNo", "orderDate", "partyId", "partyName", "itemModel", "category", "orderQty", "unitPriceInr", "totalInr", "dispatchedQty", "pendingQty", "status", "assignedCrmId", "assignedAsmId", "assignedTsmId", "notes")
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+             ON CONFLICT ("id") DO NOTHING`,
+            [so.id, so.orderNo, so.orderDate, so.partyId, so.partyName, so.itemModel, so.category, so.orderQty, so.unitPriceInr, so.totalInr, so.dispatchedQty, so.pendingQty, so.status, so.assignedCrmId, so.assignedAsmId, so.assignedTsmId, so.notes]
+          );
+        }
+      }
+
+      const dspCheck = await pool.query("SELECT COUNT(*) FROM crm_dispatches");
+      if (parseInt(dspCheck.rows[0].count) === 0) {
+        for (const d of initialCrmDispatches) {
+          await pool.query(
+            `INSERT INTO crm_dispatches ("id", "orderId", "orderNo", "partyId", "partyName", "itemModel", "dispatchedQty", "transporterName", "docketNo", "invoiceNo", "dispatchDate", "deliveryDate", "status", "assignedCrmId", "assignedAsmId", "assignedTsmId")
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+             ON CONFLICT ("id") DO NOTHING`,
+            [d.id, d.orderId, d.orderNo, d.partyId, d.partyName, d.itemModel, d.dispatchedQty, d.transporterName, d.docketNo, d.invoiceNo, d.dispatchDate, d.deliveryDate, d.status, d.assignedCrmId, d.assignedAsmId, d.assignedTsmId]
+          );
+        }
+      }
+
+      // Upsert CRM users in PG
+      for (const u of initialUsers) {
+        await pool.query(
+          `INSERT INTO users ("id", "name", "email", "password", "role", "designation", "status", "phone", "territory", "parentCrmId")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           ON CONFLICT ("id") DO NOTHING`,
+          [u.id, u.name, u.email, u.password, u.role, u.designation || "Staff", u.status, u.phone || "", u.territory || "", u.parentCrmId || ""]
+        );
+      }
+    } catch (crmSeedErr) {
+      console.warn("CRM table seeding notice:", crmSeedErr.message);
+    }
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS vendors (
@@ -1191,6 +1350,10 @@ app.get("/api/state", async (req, res) => {
       if (settings.isHidden === undefined) settings.isHidden = false;
       if (!settings.redirectUrl) settings.redirectUrl = "https://www.instagram.com/makpowerofficial/";
 
+      const crmPartiesRes = await pool.query("SELECT * FROM crm_parties ORDER BY \"name\" ASC");
+      const crmSalesOrdersRes = await pool.query("SELECT * FROM crm_sales_orders ORDER BY \"orderDate\" DESC");
+      const crmDispatchesRes = await pool.query("SELECT * FROM crm_dispatches ORDER BY \"dispatchDate\" DESC");
+
       res.json({
         users: usersRes.rows,
         vendors,
@@ -1198,7 +1361,20 @@ app.get("/api/state", async (req, res) => {
         cargos,
         requests,
         settings,
-        items: itemsRes.rows || []
+        items: itemsRes.rows || [],
+        crmParties: crmPartiesRes.rows || [],
+        crmSalesOrders: (crmSalesOrdersRes.rows || []).map(so => ({
+          ...so,
+          orderQty: so.orderQty ? parseInt(so.orderQty) : 0,
+          unitPriceInr: so.unitPriceInr ? parseFloat(so.unitPriceInr) : 0,
+          totalInr: so.totalInr ? parseFloat(so.totalInr) : 0,
+          dispatchedQty: so.dispatchedQty ? parseInt(so.dispatchedQty) : 0,
+          pendingQty: so.pendingQty != null ? parseInt(so.pendingQty) : 0
+        })),
+        crmDispatches: (crmDispatchesRes.rows || []).map(d => ({
+          ...d,
+          dispatchedQty: d.dispatchedQty ? parseInt(d.dispatchedQty) : 0
+        }))
       });
     } catch (err) {
       console.error("GET /api/state error:", err.message);
@@ -1576,12 +1752,443 @@ app.post("/api/users/update", async (req, res) => {
     if (index !== -1) {
       data.users[index] = { ...data.users[index], ...updates };
       writeLocalJson(data);
-      }
+    }
+    res.json({ success: true });
   }
 });
 
-// ==================== SYSTEM AUDIT LOGS & VERSION HISTORY API ====================
+// ==================== CRM SYSTEM API ENDPOINTS ====================
 
+// 1. GET /api/crm/parties - Retrieve CRM Parties
+app.get("/api/crm/parties", async (req, res) => {
+  const { crmId, asmId, tsmId } = req.query;
+  if (isPg) {
+    try {
+      let query = "SELECT * FROM crm_parties";
+      const conditions = [];
+      const values = [];
+      let idx = 1;
+
+      if (crmId) {
+        conditions.push(`"assignedCrmId" = $${idx++}`);
+        values.push(crmId);
+      }
+      if (asmId) {
+        conditions.push(`"assignedAsmId" = $${idx++}`);
+        values.push(asmId);
+      }
+      if (tsmId) {
+        conditions.push(`"assignedTsmId" = $${idx++}`);
+        values.push(tsmId);
+      }
+
+      if (conditions.length > 0) {
+        query += " WHERE " + conditions.join(" AND ");
+      }
+      query += " ORDER BY \"name\" ASC";
+
+      const result = await pool.query(query, values);
+      res.json({ success: true, parties: result.rows });
+    } catch (err) {
+      console.error("GET /api/crm/parties error:", err.message);
+      res.status(500).json({ error: "Failed to fetch CRM parties." });
+    }
+  } else {
+    const data = readLocalJson();
+    let list = data.crmParties || [];
+    if (crmId) list = list.filter(p => p.assignedCrmId === crmId);
+    if (asmId) list = list.filter(p => p.assignedAsmId === asmId);
+    if (tsmId) list = list.filter(p => p.assignedTsmId === tsmId);
+    res.json({ success: true, parties: list });
+  }
+});
+
+// 2. POST /api/crm/parties - Create or Update CRM Party
+app.post("/api/crm/parties", async (req, res) => {
+  const p = req.body;
+  if (!p || !p.name) {
+    return res.status(400).json({ error: "Party name is required." });
+  }
+
+  const partyObj = {
+    id: p.id || `pty-${Date.now()}`,
+    name: (p.name || "").trim(),
+    contactPerson: (p.contactPerson || "").trim(),
+    phone: (p.phone || "").trim(),
+    email: (p.email || "").trim(),
+    city: (p.city || "").trim(),
+    state: (p.state || "").trim(),
+    gstin: (p.gstin || "").trim(),
+    creditLimit: p.creditLimit != null ? parseFloat(p.creditLimit) : 0,
+    outstanding: p.outstanding != null ? parseFloat(p.outstanding) : 0,
+    paymentTerms: (p.paymentTerms || "30 Days").trim(),
+    assignedCrmId: p.assignedCrmId || "",
+    assignedCrmName: p.assignedCrmName || "",
+    assignedAsmId: p.assignedAsmId || "",
+    assignedAsmName: p.assignedAsmName || "",
+    assignedTsmId: p.assignedTsmId || "",
+    assignedTsmName: p.assignedTsmName || "",
+    status: p.status || "Active",
+    createdAt: p.createdAt || new Date().toISOString().split("T")[0]
+  };
+
+  if (isPg) {
+    try {
+      const query = `
+        INSERT INTO crm_parties (
+          "id", "name", "contactPerson", "phone", "email", "city", "state", "gstin",
+          "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName",
+          "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        ON CONFLICT ("id") DO UPDATE SET
+          "name" = EXCLUDED."name",
+          "contactPerson" = EXCLUDED."contactPerson",
+          "phone" = EXCLUDED."phone",
+          "email" = EXCLUDED."email",
+          "city" = EXCLUDED."city",
+          "state" = EXCLUDED."state",
+          "gstin" = EXCLUDED."gstin",
+          "creditLimit" = EXCLUDED."creditLimit",
+          "outstanding" = EXCLUDED."outstanding",
+          "paymentTerms" = EXCLUDED."paymentTerms",
+          "assignedCrmId" = EXCLUDED."assignedCrmId",
+          "assignedCrmName" = EXCLUDED."assignedCrmName",
+          "assignedAsmId" = EXCLUDED."assignedAsmId",
+          "assignedAsmName" = EXCLUDED."assignedAsmName",
+          "assignedTsmId" = EXCLUDED."assignedTsmId",
+          "assignedTsmName" = EXCLUDED."assignedTsmName",
+          "status" = EXCLUDED."status"
+      `;
+      const values = [
+        partyObj.id, partyObj.name, partyObj.contactPerson, partyObj.phone, partyObj.email,
+        partyObj.city, partyObj.state, partyObj.gstin, partyObj.creditLimit, partyObj.outstanding,
+        partyObj.paymentTerms, partyObj.assignedCrmId, partyObj.assignedCrmName, partyObj.assignedAsmId,
+        partyObj.assignedAsmName, partyObj.assignedTsmId, partyObj.assignedTsmName, partyObj.status, partyObj.createdAt
+      ];
+      await pool.query(query, values);
+      res.json({ success: true, party: partyObj });
+    } catch (err) {
+      console.error("POST /api/crm/parties error:", err.message);
+      res.status(500).json({ error: "Failed to save CRM party." });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.crmParties) data.crmParties = [];
+    const index = data.crmParties.findIndex(x => x.id === partyObj.id);
+    if (index !== -1) {
+      data.crmParties[index] = partyObj;
+    } else {
+      data.crmParties.push(partyObj);
+    }
+    writeLocalJson(data);
+    res.json({ success: true, party: partyObj });
+  }
+});
+
+// 3. POST /api/crm/parties/batch - Bulk create/update parties
+app.post("/api/crm/parties/batch", async (req, res) => {
+  const { parties } = req.body;
+  if (!Array.isArray(parties)) {
+    return res.status(400).json({ error: "Parties array is required." });
+  }
+
+  if (isPg) {
+    try {
+      await pool.query("BEGIN");
+      for (const p of parties) {
+        const query = `
+          INSERT INTO crm_parties (
+            "id", "name", "contactPerson", "phone", "email", "city", "state", "gstin",
+            "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName",
+            "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+          ON CONFLICT ("id") DO UPDATE SET
+            "name" = EXCLUDED."name",
+            "contactPerson" = EXCLUDED."contactPerson",
+            "phone" = EXCLUDED."phone",
+            "email" = EXCLUDED."email",
+            "city" = EXCLUDED."city",
+            "state" = EXCLUDED."state",
+            "gstin" = EXCLUDED."gstin",
+            "creditLimit" = EXCLUDED."creditLimit",
+            "outstanding" = EXCLUDED."outstanding",
+            "paymentTerms" = EXCLUDED."paymentTerms",
+            "assignedCrmId" = EXCLUDED."assignedCrmId",
+            "assignedCrmName" = EXCLUDED."assignedCrmName",
+            "assignedAsmId" = EXCLUDED."assignedAsmId",
+            "assignedAsmName" = EXCLUDED."assignedAsmName",
+            "assignedTsmId" = EXCLUDED."assignedTsmId",
+            "assignedTsmName" = EXCLUDED."assignedTsmName",
+            "status" = EXCLUDED."status"
+        `;
+        const values = [
+          p.id || `pty-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          p.name, p.contactPerson || "", p.phone || "", p.email || "",
+          p.city || "", p.state || "", p.gstin || "", p.creditLimit || 0, p.outstanding || 0,
+          p.paymentTerms || "30 Days", p.assignedCrmId || "", p.assignedCrmName || "",
+          p.assignedAsmId || "", p.assignedAsmName || "", p.assignedTsmId || "", p.assignedTsmName || "",
+          p.status || "Active", p.createdAt || new Date().toISOString().split("T")[0]
+        ];
+        await pool.query(query, values);
+      }
+      await pool.query("COMMIT");
+      res.json({ success: true, count: parties.length });
+    } catch (err) {
+      await pool.query("ROLLBACK");
+      console.error("POST /api/crm/parties/batch error:", err.message);
+      res.status(500).json({ error: "Failed to batch save CRM parties." });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.crmParties) data.crmParties = [];
+    parties.forEach(p => {
+      const idx = data.crmParties.findIndex(x => x.id === p.id);
+      if (idx !== -1) {
+        data.crmParties[idx] = p;
+      } else {
+        data.crmParties.push(p);
+      }
+    });
+    writeLocalJson(data);
+    res.json({ success: true, count: parties.length });
+  }
+});
+
+// 4. DELETE /api/crm/parties/:id - Delete CRM Party
+app.delete("/api/crm/parties/:id", async (req, res) => {
+  const partyId = req.params.id;
+  if (isPg) {
+    try {
+      await pool.query('DELETE FROM crm_parties WHERE "id" = $1', [partyId]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/crm/parties error:", err.message);
+      res.status(500).json({ error: "Failed to delete CRM party." });
+    }
+  } else {
+    const data = readLocalJson();
+    data.crmParties = (data.crmParties || []).filter(x => x.id !== partyId);
+    writeLocalJson(data);
+    res.json({ success: true });
+  }
+});
+
+// 5. POST /api/crm/sales-orders - Create or Update CRM Sales Order
+app.post("/api/crm/sales-orders", async (req, res) => {
+  const so = req.body;
+  if (!so || !so.partyId) {
+    return res.status(400).json({ error: "Party ID and Item are required." });
+  }
+
+  const orderObj = {
+    id: so.id || `so-${Date.now()}`,
+    orderNo: so.orderNo || `SO-2026-${Math.floor(100 + Math.random() * 900)}`,
+    orderDate: so.orderDate || new Date().toISOString().split("T")[0],
+    partyId: so.partyId,
+    partyName: so.partyName || "",
+    itemModel: so.itemModel || "",
+    category: so.category || "General",
+    orderQty: parseInt(so.orderQty || 0),
+    unitPriceInr: parseFloat(so.unitPriceInr || 0),
+    totalInr: parseFloat(so.totalInr || (parseFloat(so.unitPriceInr || 0) * parseInt(so.orderQty || 0))),
+    dispatchedQty: parseInt(so.dispatchedQty || 0),
+    pendingQty: Math.max(0, parseInt(so.orderQty || 0) - parseInt(so.dispatchedQty || 0)),
+    status: so.status || (parseInt(so.dispatchedQty || 0) >= parseInt(so.orderQty || 0) ? "Dispatched" : (parseInt(so.dispatchedQty || 0) > 0 ? "Partially Dispatched" : "Pending Dispatch")),
+    assignedCrmId: so.assignedCrmId || "",
+    assignedAsmId: so.assignedAsmId || "",
+    assignedTsmId: so.assignedTsmId || "",
+    notes: so.notes || ""
+  };
+
+  if (isPg) {
+    try {
+      const query = `
+        INSERT INTO crm_sales_orders (
+          "id", "orderNo", "orderDate", "partyId", "partyName", "itemModel", "category",
+          "orderQty", "unitPriceInr", "totalInr", "dispatchedQty", "pendingQty", "status",
+          "assignedCrmId", "assignedAsmId", "assignedTsmId", "notes"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        ON CONFLICT ("id") DO UPDATE SET
+          "orderNo" = EXCLUDED."orderNo",
+          "orderDate" = EXCLUDED."orderDate",
+          "partyId" = EXCLUDED."partyId",
+          "partyName" = EXCLUDED."partyName",
+          "itemModel" = EXCLUDED."itemModel",
+          "category" = EXCLUDED."category",
+          "orderQty" = EXCLUDED."orderQty",
+          "unitPriceInr" = EXCLUDED."unitPriceInr",
+          "totalInr" = EXCLUDED."totalInr",
+          "dispatchedQty" = EXCLUDED."dispatchedQty",
+          "pendingQty" = EXCLUDED."pendingQty",
+          "status" = EXCLUDED."status",
+          "assignedCrmId" = EXCLUDED."assignedCrmId",
+          "assignedAsmId" = EXCLUDED."assignedAsmId",
+          "assignedTsmId" = EXCLUDED."assignedTsmId",
+          "notes" = EXCLUDED."notes"
+      `;
+      const values = [
+        orderObj.id, orderObj.orderNo, orderObj.orderDate, orderObj.partyId, orderObj.partyName,
+        orderObj.itemModel, orderObj.category, orderObj.orderQty, orderObj.unitPriceInr, orderObj.totalInr,
+        orderObj.dispatchedQty, orderObj.pendingQty, orderObj.status, orderObj.assignedCrmId, orderObj.assignedAsmId,
+        orderObj.assignedTsmId, orderObj.notes
+      ];
+      await pool.query(query, values);
+      res.json({ success: true, order: orderObj });
+    } catch (err) {
+      console.error("POST /api/crm/sales-orders error:", err.message);
+      res.status(500).json({ error: "Failed to save CRM sales order." });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.crmSalesOrders) data.crmSalesOrders = [];
+    const index = data.crmSalesOrders.findIndex(x => x.id === orderObj.id);
+    if (index !== -1) {
+      data.crmSalesOrders[index] = orderObj;
+    } else {
+      data.crmSalesOrders.unshift(orderObj);
+    }
+    writeLocalJson(data);
+    res.json({ success: true, order: orderObj });
+  }
+});
+
+// 6. DELETE /api/crm/sales-orders/:id - Delete Sales Order
+app.delete("/api/crm/sales-orders/:id", async (req, res) => {
+  const orderId = req.params.id;
+  if (isPg) {
+    try {
+      await pool.query('DELETE FROM crm_sales_orders WHERE "id" = $1', [orderId]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/crm/sales-orders error:", err.message);
+      res.status(500).json({ error: "Failed to delete CRM sales order." });
+    }
+  } else {
+    const data = readLocalJson();
+    data.crmSalesOrders = (data.crmSalesOrders || []).filter(x => x.id !== orderId);
+    writeLocalJson(data);
+    res.json({ success: true });
+  }
+});
+
+// 7. POST /api/crm/dispatches - Create or Update CRM Dispatch
+app.post("/api/crm/dispatches", async (req, res) => {
+  const d = req.body;
+  if (!d || !d.partyId) {
+    return res.status(400).json({ error: "Dispatch party and quantity are required." });
+  }
+
+  const dispatchObj = {
+    id: d.id || `dsp-${Date.now()}`,
+    orderId: d.orderId || "",
+    orderNo: d.orderNo || "",
+    partyId: d.partyId,
+    partyName: d.partyName || "",
+    itemModel: d.itemModel || "",
+    dispatchedQty: parseInt(d.dispatchedQty || 0),
+    transporterName: d.transporterName || "Standard Transport",
+    docketNo: d.docketNo || "",
+    invoiceNo: d.invoiceNo || "",
+    dispatchDate: d.dispatchDate || new Date().toISOString().split("T")[0],
+    deliveryDate: d.deliveryDate || "",
+    status: d.status || "In Transit",
+    assignedCrmId: d.assignedCrmId || "",
+    assignedAsmId: d.assignedAsmId || "",
+    assignedTsmId: d.assignedTsmId || ""
+  };
+
+  if (isPg) {
+    try {
+      const query = `
+        INSERT INTO crm_dispatches (
+          "id", "orderId", "orderNo", "partyId", "partyName", "itemModel", "dispatchedQty",
+          "transporterName", "docketNo", "invoiceNo", "dispatchDate", "deliveryDate", "status",
+          "assignedCrmId", "assignedAsmId", "assignedTsmId"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        ON CONFLICT ("id") DO UPDATE SET
+          "orderId" = EXCLUDED."orderId",
+          "orderNo" = EXCLUDED."orderNo",
+          "partyId" = EXCLUDED."partyId",
+          "partyName" = EXCLUDED."partyName",
+          "itemModel" = EXCLUDED."itemModel",
+          "dispatchedQty" = EXCLUDED."dispatchedQty",
+          "transporterName" = EXCLUDED."transporterName",
+          "docketNo" = EXCLUDED."docketNo",
+          "invoiceNo" = EXCLUDED."invoiceNo",
+          "dispatchDate" = EXCLUDED."dispatchDate",
+          "deliveryDate" = EXCLUDED."deliveryDate",
+          "status" = EXCLUDED."status",
+          "assignedCrmId" = EXCLUDED."assignedCrmId",
+          "assignedAsmId" = EXCLUDED."assignedAsmId",
+          "assignedTsmId" = EXCLUDED."assignedTsmId"
+      `;
+      const values = [
+        dispatchObj.id, dispatchObj.orderId, dispatchObj.orderNo, dispatchObj.partyId, dispatchObj.partyName,
+        dispatchObj.itemModel, dispatchObj.dispatchedQty, dispatchObj.transporterName, dispatchObj.docketNo,
+        dispatchObj.invoiceNo, dispatchObj.dispatchDate, dispatchObj.deliveryDate, dispatchObj.status,
+        dispatchObj.assignedCrmId, dispatchObj.assignedAsmId, dispatchObj.assignedTsmId
+      ];
+      await pool.query(query, values);
+
+      // If linked to an order, update dispatchedQty on the order
+      if (dispatchObj.orderId) {
+        await pool.query(`
+          UPDATE crm_sales_orders
+          SET "dispatchedQty" = "dispatchedQty" + $1,
+              "pendingQty" = GREATEST(0, "orderQty" - ("dispatchedQty" + $1)),
+              "status" = CASE WHEN ("dispatchedQty" + $1) >= "orderQty" THEN 'Dispatched' ELSE 'Partially Dispatched' END
+          WHERE "id" = $2
+        `, [dispatchObj.dispatchedQty, dispatchObj.orderId]);
+      }
+
+      res.json({ success: true, dispatch: dispatchObj });
+    } catch (err) {
+      console.error("POST /api/crm/dispatches error:", err.message);
+      res.status(500).json({ error: "Failed to save CRM dispatch." });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.crmDispatches) data.crmDispatches = [];
+    const index = data.crmDispatches.findIndex(x => x.id === dispatchObj.id);
+    if (index !== -1) {
+      data.crmDispatches[index] = dispatchObj;
+    } else {
+      data.crmDispatches.unshift(dispatchObj);
+    }
+
+    if (dispatchObj.orderId && data.crmSalesOrders) {
+      const oIdx = data.crmSalesOrders.findIndex(x => x.id === dispatchObj.orderId);
+      if (oIdx !== -1) {
+        const order = data.crmSalesOrders[oIdx];
+        order.dispatchedQty = (order.dispatchedQty || 0) + dispatchObj.dispatchedQty;
+        order.pendingQty = Math.max(0, order.orderQty - order.dispatchedQty);
+        order.status = order.dispatchedQty >= order.orderQty ? "Dispatched" : "Partially Dispatched";
+      }
+    }
+
+    writeLocalJson(data);
+    res.json({ success: true, dispatch: dispatchObj });
+  }
+});
+
+// 8. DELETE /api/crm/dispatches/:id - Delete Dispatch
+app.delete("/api/crm/dispatches/:id", async (req, res) => {
+  const dispatchId = req.params.id;
+  if (isPg) {
+    try {
+      await pool.query('DELETE FROM crm_dispatches WHERE "id" = $1', [dispatchId]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/crm/dispatches error:", err.message);
+      res.status(500).json({ error: "Failed to delete CRM dispatch." });
+    }
+  } else {
+    const data = readLocalJson();
+    data.crmDispatches = (data.crmDispatches || []).filter(x => x.id !== dispatchId);
+    writeLocalJson(data);
+    res.json({ success: true });
+  }
+});
 // GET /api/audit-logs - Retrieve all activity logs
 app.get("/api/audit-logs", async (req, res) => {
   if (isPg) {

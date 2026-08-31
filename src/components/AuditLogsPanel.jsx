@@ -151,7 +151,7 @@ export default function AuditLogsPanel({ auditLogs = [], users = [], requests = 
             <History size={22} /> Version History & System Audit Logs
           </h3>
           <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "2px" }}>
-            Complete real-time Google Sheets-style activity log — trace who made every change, when, and what values were modified.
+            Complete real-time Google Sheets-style activity log - trace who made every change, when, and what values were modified.
           </p>
         </div>
 
@@ -303,7 +303,7 @@ export default function AuditLogsPanel({ auditLogs = [], users = [], requests = 
                 <strong>Action:</strong> {inspectLog.action} | <strong>User:</strong> {inspectLog.userName} ({inspectLog.role})
               </div>
               <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                {inspectLog.timestamp} — {inspectLog.details}
+                {inspectLog.timestamp} - {inspectLog.details}
               </div>
 
               {inspectLog.oldData && (
