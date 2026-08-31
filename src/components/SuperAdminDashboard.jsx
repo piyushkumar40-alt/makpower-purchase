@@ -169,6 +169,7 @@ export default function SuperAdminDashboard({
   const handleParseBulkParties = (rawText, customMode = partyParseMode, defaultCrmId = bulkDefaultCrmId) => {
     setBulkPartyRawText(rawText);
     setBulkPartyUploadMsg("");
+    setIsUploadingParties(false);
     if (!rawText || !rawText.trim()) {
       setBulkParsedParties([]);
       return;
@@ -177,14 +178,45 @@ export default function SuperAdminDashboard({
     const lines = rawText.trim().split(/\r?\n/);
     const parsed = [];
 
+    // Helper: Split line into columns accurately without breaking multi-word party names
+    const parseLineCols = (line) => {
+      if (line.includes("\t")) {
+        return line.split("\t").map(c => c.trim().replace(/^["']|["']$/g, ""));
+      }
+      
+      if (line.includes(",")) {
+        const cols = [];
+        let curr = "";
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"' || ch === "'") {
+            inQuotes = !inQuotes;
+          } else if (ch === ',' && !inQuotes) {
+            cols.push(curr.trim().replace(/^["']|["']$/g, ""));
+            curr = "";
+          } else {
+            curr += ch;
+          }
+        }
+        cols.push(curr.trim().replace(/^["']|["']$/g, ""));
+        return cols;
+      }
+
+      const emailMatch = line.match(/^([^\s@]+@[^\s@]+\.[^\s@]+)\s+(.+)$/);
+      if (emailMatch) {
+        return [emailMatch[1].trim(), emailMatch[2].trim()];
+      }
+      
+      return [line.trim()];
+    };
+
     // Check if line 0 is a header row
     let headerIndices = null;
     if (lines.length > 0) {
       const firstLine = lines[0].toLowerCase();
-      if (firstLine.includes("party") || firstLine.includes("firm") || firstLine.includes("city") || firstLine.includes("station") || firstLine.includes("crm") || firstLine.includes("email") || firstLine.includes("sr")) {
-        const rawHeaderCols = lines[0].includes("\t") 
-          ? lines[0].split("\t").map(c => c.trim().toLowerCase()) 
-          : lines[0].split(",").map(c => c.trim().toLowerCase().replace(/^"|"$/g, ""));
+      if (firstLine.includes("party") || firstLine.includes("firm") || firstLine.includes("city") || firstLine.includes("station") || firstLine.includes("crm") || firstLine.includes("email") || firstLine.includes("sr") || firstLine.includes("contact")) {
+        const rawHeaderCols = parseLineCols(lines[0]).map(c => c.toLowerCase());
 
         headerIndices = {};
         rawHeaderCols.forEach((col, idx) => {
@@ -208,16 +240,9 @@ export default function SuperAdminDashboard({
       if (!line.trim()) return;
 
       // Skip header row if identified
-      if (index === 0 && headerIndices) return;
+      if (index === 0 && headerIndices && Object.keys(headerIndices).length >= 1) return;
 
-      let cols = [];
-      if (line.includes("\t")) {
-        cols = line.split("\t").map(c => c.trim().replace(/^"|"$/g, ""));
-      } else {
-        const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(",");
-        cols = matches.map(c => c.trim().replace(/^"|"$/g, ""));
-      }
-
+      const cols = parseLineCols(line);
       if (cols.length === 0 || cols.every(c => !c)) return;
 
       let crmIdentifier = "";
@@ -248,7 +273,16 @@ export default function SuperAdminDashboard({
           workingCols.shift();
         }
 
-        if (customMode === "city_first") {
+        if (customMode === "crm_first") {
+          // Explicit Format: [CRM Email | Party Name | Contact | Phone | City | State | GSTIN]
+          crmIdentifier = workingCols[0] || "";
+          partyName = workingCols[1] || "";
+          contactPerson = workingCols[2] || "";
+          phone = workingCols[3] || "";
+          city = workingCols[4] || "";
+          state = workingCols[5] || "";
+          gstin = workingCols[6] || "";
+        } else if (customMode === "city_first") {
           // Explicit Format: [City / Station | Party Name | Contact | Phone | State | GSTIN]
           city = workingCols[0] || "";
           partyName = workingCols[1] || "";
@@ -264,100 +298,41 @@ export default function SuperAdminDashboard({
           phone = workingCols[3] || "";
           state = workingCols[4] || "";
           gstin = workingCols[5] || "";
-        } else if (customMode === "crm_first") {
-          // Explicit Format: [CRM Email | Party Name | City | Contact | Phone]
-          crmIdentifier = workingCols[0] || "";
-          partyName = workingCols[1] || "";
-          city = workingCols[2] || "";
-          contactPerson = workingCols[3] || "";
-          phone = workingCols[4] || "";
         } else {
           // Smart Auto-Detect Mode
-          // 1. Find CRM column if any contains @ or matches CRM user
-          let foundCrmIdx = -1;
-          for (let i = 0; i < workingCols.length; i++) {
-            const val = workingCols[i].toLowerCase();
-            if (val.includes("@") || users.some(u => u.name.toLowerCase() === val || u.email.toLowerCase() === val)) {
-              crmIdentifier = workingCols[i];
-              foundCrmIdx = i;
-              break;
-            }
-          }
-          if (foundCrmIdx !== -1) {
-            workingCols.splice(foundCrmIdx, 1);
-          }
-
-          // 2. Find Phone column (10+ digits)
-          let foundPhoneIdx = -1;
-          for (let i = 0; i < workingCols.length; i++) {
-            const cleaned = workingCols[i].replace(/\D/g, "");
-            if (cleaned.length >= 10 && cleaned.length <= 13) {
-              phone = workingCols[i];
-              foundPhoneIdx = i;
-              break;
-            }
-          }
-          if (foundPhoneIdx !== -1) {
-            workingCols.splice(foundPhoneIdx, 1);
-          }
-
-          // 3. Find GSTIN column (15 alphanumeric characters)
-          let foundGstIdx = -1;
-          for (let i = 0; i < workingCols.length; i++) {
-            if (/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i.test(workingCols[i].trim())) {
-              gstin = workingCols[i].toUpperCase();
-              foundGstIdx = i;
-              break;
-            }
-          }
-          if (foundGstIdx !== -1) {
-            workingCols.splice(foundGstIdx, 1);
-          }
-
-          // 4. Now evaluate the remaining 2 primary text columns (Party Name vs City)
-          const col0 = (workingCols[0] || "").trim();
-          const col1 = (workingCols[1] || "").trim();
-          const col2 = (workingCols[2] || "").trim();
-
-          const col0Lower = col0.toLowerCase();
-          const col1Lower = col1.toLowerCase();
-
-          const col0IsCity = KNOWN_CITIES.has(col0Lower) || (col0 === col0.toUpperCase() && col0.split(" ").length === 1 && col0.length < 15);
-          const col1IsCity = KNOWN_CITIES.has(col1Lower) || (col1 === col1.toUpperCase() && col1.split(" ").length === 1 && col1.length < 15);
-
-          const businessKeywords = ["telecom", "mobile", "electronics", "traders", "enterprises", "agency", "stores", "hub", "solutions", "electricals", "power", "accessories", "pvt", "ltd", "corporation", "sales", "bhandar", "infotech", "battery", "care", "service", "point"];
-          const col0HasBizKeyword = businessKeywords.some(kw => col0Lower.includes(kw));
-          const col1HasBizKeyword = businessKeywords.some(kw => col1Lower.includes(kw));
-
-          if (col0 && !col1) {
-            partyName = col0;
-          } else if (col0IsCity && !col1IsCity) {
-            // e.g. "SAMASTIPUR", "Shree Ganesh Electronics" -> City is SAMASTIPUR, Party is Shree Ganesh Electronics
-            city = col0;
-            partyName = col1;
-            contactPerson = col2;
-          } else if (col1IsCity && !col0IsCity) {
-            // e.g. "Shree Ganesh Electronics", "SAMASTIPUR" -> Party is Shree Ganesh Electronics, City is SAMASTIPUR
-            partyName = col0;
-            city = col1;
-            contactPerson = col2;
-          } else if (col1HasBizKeyword && !col0HasBizKeyword) {
-            city = col0;
-            partyName = col1;
-            contactPerson = col2;
-          } else if (col0HasBizKeyword && !col1HasBizKeyword) {
-            partyName = col0;
-            city = col1;
-            contactPerson = col2;
-          } else if (col1.split(" ").length > col0.split(" ").length && col0.length < 14) {
-            // col0 is likely a short single word station name (e.g. BEAWAR, SAHARSA, DIBRUGARH)
-            city = col0;
-            partyName = col1;
-            contactPerson = col2;
+          // 1. Check if column 0 contains an email or matches a known CRM user
+          if (workingCols[0] && (workingCols[0].includes("@") || users.some(u => (u.email || "").toLowerCase() === workingCols[0].toLowerCase() || (u.name || "").toLowerCase() === workingCols[0].toLowerCase()))) {
+            crmIdentifier = workingCols[0];
+            partyName = workingCols[1] || "";
+            contactPerson = workingCols[2] || "";
+            phone = workingCols[3] || "";
+            city = workingCols[4] || "";
+            state = workingCols[5] || "";
+            gstin = workingCols[6] || "";
           } else {
-            partyName = col0;
-            city = col1;
-            contactPerson = col2;
+            const col0 = (workingCols[0] || "").trim();
+            const col1 = (workingCols[1] || "").trim();
+            const col2 = (workingCols[2] || "").trim();
+
+            const col0Lower = col0.toLowerCase();
+            const col1Lower = col1.toLowerCase();
+
+            const col0IsCity = KNOWN_CITIES.has(col0Lower) || (col0 === col0.toUpperCase() && col0.split(" ").length === 1 && col0.length < 15);
+            const col1IsCity = KNOWN_CITIES.has(col1Lower) || (col1 === col1.toUpperCase() && col1.split(" ").length === 1 && col1.length < 15);
+
+            if (col0IsCity && !col1IsCity && col1) {
+              city = col0;
+              partyName = col1;
+              contactPerson = col2;
+              phone = workingCols[3] || "";
+              state = workingCols[4] || "";
+            } else {
+              partyName = col0;
+              city = col1;
+              contactPerson = col2;
+              phone = workingCols[3] || "";
+              state = workingCols[4] || "";
+            }
           }
         }
       }
@@ -369,25 +344,41 @@ export default function SuperAdminDashboard({
       }
 
       const cleanIdent = crmIdentifier.trim().toLowerCase();
+      const emailUserPart = cleanIdent.includes("@") ? cleanIdent.split("@")[0].toLowerCase() : cleanIdent;
+
       let matchedCrm = null;
       if (cleanIdent) {
-        matchedCrm = users.find(u => 
-          (u.email || "").toLowerCase() === cleanIdent ||
-          (u.name || "").toLowerCase() === cleanIdent ||
-          (u.id || "").toLowerCase() === cleanIdent
-        );
+        matchedCrm = users.find(u => {
+          const uEmail = (u.email || "").trim().toLowerCase();
+          const uName = (u.name || "").trim().toLowerCase();
+          const uId = (u.id || "").trim().toLowerCase();
+          
+          if (uEmail === cleanIdent || uName === cleanIdent || uId === cleanIdent) return true;
+          if (emailUserPart && (uEmail.startsWith(emailUserPart) || uName.toLowerCase().startsWith(emailUserPart) || emailUserPart.startsWith(uName.toLowerCase()))) {
+            return true;
+          }
+          return false;
+        });
       }
+
       if (!matchedCrm && defaultCrmUser) {
         matchedCrm = defaultCrmUser;
+      }
+
+      let crmDisplayName = "Unassigned";
+      if (matchedCrm) {
+        crmDisplayName = matchedCrm.name;
+      } else if (emailUserPart) {
+        crmDisplayName = emailUserPart.charAt(0).toUpperCase() + emailUserPart.slice(1);
       }
 
       parsed.push({
         id: `pty-${Date.now()}-${index}-${Math.floor(Math.random() * 1000)}`,
         name: partyName.trim(),
         assignedCrmId: matchedCrm ? matchedCrm.id : "",
-        assignedCrmName: matchedCrm ? matchedCrm.name : (crmIdentifier ? crmIdentifier : "Unassigned"),
+        assignedCrmName: crmDisplayName,
         crmEmailProvided: crmIdentifier,
-        isCrmMatched: !!matchedCrm,
+        isCrmMatched: !!matchedCrm || !!crmIdentifier,
         contactPerson: contactPerson.trim(),
         phone: phone.trim(),
         city: city.trim(),
@@ -3124,17 +3115,11 @@ export default function SuperAdminDashboard({
                               </div>
                             </td>
                             <td>
-                              {p.isCrmMatched ? (
-                                <span className="badge badge-primary" style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                  ✓ {p.assignedCrmName}
-                                </span>
-                              ) : (
-                                <span className="badge badge-warning" style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                  ⚠️ {p.assignedCrmName || "Unassigned"}
-                                </span>
-                              )}
+                              <span className="badge badge-primary" style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "5px", padding: "4px 8px", fontSize: "0.82rem" }}>
+                                <User size={13} /> {p.assignedCrmName || "Unassigned"}
+                              </span>
                               {p.crmEmailProvided && (
-                                <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                                <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginTop: "3px", fontFamily: "monospace" }}>
                                   {p.crmEmailProvided}
                                 </div>
                               )}
@@ -3150,6 +3135,25 @@ export default function SuperAdminDashboard({
                         ))}
                       </tbody>
                     </table>
+
+                    {/* Bottom Action Toolbar */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "18px", paddingTop: "14px", borderTop: "1px solid var(--border-glass)", flexWrap: "wrap", gap: "12px" }}>
+                      <div style={{ fontSize: "0.86rem", color: "var(--text-muted)" }}>
+                        Ready to import <strong style={{ color: "var(--primary)" }}>{bulkParsedParties.length}</strong> CRM party records.
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleCommitBulkParties}
+                        disabled={bulkParsedParties.length === 0 || isUploadingParties}
+                        className="btn btn-primary"
+                        style={{ padding: "10px 28px", fontWeight: 800, display: "inline-flex", alignItems: "center", gap: "8px", fontSize: "0.95rem", boxShadow: "0 4px 20px rgba(56, 189, 248, 0.35)" }}
+                      >
+                        {isUploadingParties ? <RefreshCw size={17} className="spin" /> : <CheckCircle2 size={18} />}
+                        {isUploadingParties ? "Saving to Database..." : `Commit & Save ${bulkParsedParties.length} Parties to Database`}
+                      </button>
+                    </div>
+
                   </div>
                 )}
               </div>
