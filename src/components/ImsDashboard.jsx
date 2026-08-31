@@ -83,14 +83,30 @@ export default function ImsDashboard({
     const terms = [];
     searchQueries.forEach(q => {
       if (!q) return;
-      // Support multiple items separated by comma as well
-      q.split(",").map(s => s.trim().toLowerCase()).filter(Boolean).forEach(t => {
-        if (!terms.includes(t)) terms.push(t);
-      });
+      if (q.includes(",")) {
+        q.split(",").forEach(part => {
+          const trimmed = part.trim().toLowerCase();
+          if (trimmed && !terms.includes(trimmed)) terms.push(trimmed);
+        });
+      } else {
+        const trimmed = q.trim().toLowerCase();
+        if (trimmed && !terms.includes(trimmed)) terms.push(trimmed);
+      }
     });
     return terms;
   }, [searchQueries]);
 
+  // Distinct Parties found across all transactions for quick dropdown filter
+  const distinctParties = useMemo(() => {
+    const set = new Set();
+    effectiveTransactions.forEach(tx => {
+      const p = (tx.partyName || tx.party || "").trim();
+      if (p && p !== "—") set.add(p);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [effectiveTransactions]);
+
+  const [selectedPartyFilter, setSelectedPartyFilter] = useState("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [movementFilter, setMovementFilter] = useState("all"); // "all" | "IN" | "OUT"
@@ -111,7 +127,7 @@ export default function ImsDashboard({
   // Reset current page whenever filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQueries, startDate, endDate, movementFilter, missingIdFilter, locationFilter, selectedItemFilter]);
+  }, [searchQueries, selectedPartyFilter, startDate, endDate, movementFilter, missingIdFilter, locationFilter, selectedItemFilter]);
 
   // Multi-row Checkbox Selection
   const [selectedTxIds, setSelectedTxIds] = useState([]);
@@ -202,18 +218,42 @@ export default function ImsDashboard({
   // ==================== FILTERED TRANSACTIONS ====================
   const filteredTransactions = useMemo(() => {
     return effectiveTransactions.filter(tx => {
-      // Multi-term Search (Item name, party name, remarks, itemId, location)
+      // Multi-term Search (Party name, Item name, remarks, itemId, location, etc.)
       if (activeSearchTerms.length > 0) {
+        const txSearchStr = [
+          tx.partyName || "",
+          tx.party || "",
+          tx.customer || "",
+          tx.vendorName || "",
+          tx.vendor || "",
+          tx.itemName || "",
+          tx.item || "",
+          tx.name || "",
+          tx.itemId || "",
+          tx.id || "",
+          tx.remarks || "",
+          tx.narration || "",
+          tx.location || "",
+          tx.godown || "",
+          tx.warehouse || "",
+          tx.date || ""
+        ].join(" ").toLowerCase();
+
+        // Match if record satisfies ANY of the active search terms
         const match = activeSearchTerms.some(term => {
-          return (
-            (tx.itemName || "").toLowerCase().includes(term) ||
-            (tx.partyName || "").toLowerCase().includes(term) ||
-            (tx.remarks || "").toLowerCase().includes(term) ||
-            (tx.location || "").toLowerCase().includes(term) ||
-            (tx.itemId || "").toLowerCase().includes(term)
-          );
+          const words = term.split(/\s+/).filter(Boolean);
+          if (words.length > 1) {
+            return words.every(w => txSearchStr.includes(w));
+          }
+          return txSearchStr.includes(term);
         });
         if (!match) return false;
+      }
+
+      // Party Name Quick Filter
+      if (selectedPartyFilter !== "all") {
+        const partyVal = (tx.partyName || tx.party || "").trim().toLowerCase();
+        if (partyVal !== selectedPartyFilter.trim().toLowerCase()) return false;
       }
 
       // Warehouse Location Filter
@@ -1183,6 +1223,22 @@ export default function ImsDashboard({
                 <option value="linked">✓ Verified Linked ID</option>
               </select>
 
+              {/* Party Name Dropdown Filter */}
+              {distinctParties.length > 0 && (
+                <select
+                  value={selectedPartyFilter}
+                  onChange={e => setSelectedPartyFilter(e.target.value)}
+                  className="form-control"
+                  style={{ width: "auto", maxWidth: "200px", height: "36px", fontSize: "0.82rem", fontWeight: 600 }}
+                  title="Filter directly by Party Name"
+                >
+                  <option value="all">👥 All Parties ({distinctParties.length})</option>
+                  {distinctParties.map(p => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+              )}
+
               {/* Date Range Filter with Presets */}
               <DateRangeFilter
                 startDate={startDate}
@@ -1195,10 +1251,11 @@ export default function ImsDashboard({
                 }}
               />
 
-              {(startDate || endDate || activeSearchTerms.length > 0 || locationFilter !== "all" || movementFilter !== "all" || missingIdFilter !== "all") && (
+              {(startDate || endDate || activeSearchTerms.length > 0 || selectedPartyFilter !== "all" || locationFilter !== "all" || movementFilter !== "all" || missingIdFilter !== "all") && (
                 <button
                   onClick={() => {
                     setSearchQueries([""]);
+                    setSelectedPartyFilter("all");
                     setStartDate("");
                     setEndDate("");
                     setLocationFilter("all");
@@ -1215,7 +1272,7 @@ export default function ImsDashboard({
 
             {/* Export & Actions */}
             <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-              {(locationFilter !== "all" || startDate || endDate || activeSearchTerms.length > 0 || movementFilter !== "all" || missingIdFilter !== "all" || selectedItemFilter !== "all") && filteredTransactions.length > 0 && (
+              {(locationFilter !== "all" || startDate || endDate || activeSearchTerms.length > 0 || selectedPartyFilter !== "all" || movementFilter !== "all" || missingIdFilter !== "all" || selectedItemFilter !== "all") && filteredTransactions.length > 0 && (
                 <button 
                   onClick={handleExecuteDeleteAllFiltered}
                   className="btn btn-danger btn-sm"
