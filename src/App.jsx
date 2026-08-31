@@ -46,21 +46,30 @@ export default function App() {
   };
 
   // Load initial data from localStorage or mockData
-  // Load initial data from Express DB API
-  const [users, setUsers] = useState([]);
-  const [vendors, setVendors] = useState([]);
-  const [requests, setRequests] = useState([]);
-  const [cargos, setCargos] = useState([]);
-  const [cargoCompanies, setCargoCompanies] = useState([]);
-  const [items, setItems] = useState([]);
-  const [designations, setDesignations] = useState([]);
-  const [crmParties, setCrmParties] = useState([]);
-  const [crmSalesOrders, setCrmSalesOrders] = useState([]);
-  const [crmDispatches, setCrmDispatches] = useState([]);
-  const [imsTransactions, setImsTransactions] = useState([]);
+  // Load initial data from localStorage cache for 0ms instant startup
+  const cachedState = React.useMemo(() => {
+    try {
+      const saved = localStorage.getItem("makpower_app_state_cache");
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  }, []);
+
+  const [users, setUsers] = useState(() => cachedState?.users || []);
+  const [vendors, setVendors] = useState(() => cachedState?.vendors || []);
+  const [requests, setRequests] = useState(() => cachedState?.requests || []);
+  const [cargos, setCargos] = useState(() => cachedState?.cargos || []);
+  const [cargoCompanies, setCargoCompanies] = useState(() => cachedState?.cargoCompanies || []);
+  const [items, setItems] = useState(() => cachedState?.items || []);
+  const [designations, setDesignations] = useState(() => cachedState?.designations || []);
+  const [crmParties, setCrmParties] = useState(() => cachedState?.crmParties || []);
+  const [crmSalesOrders, setCrmSalesOrders] = useState(() => cachedState?.crmSalesOrders || []);
+  const [crmDispatches, setCrmDispatches] = useState(() => cachedState?.crmDispatches || []);
+  const [imsTransactions, setImsTransactions] = useState(() => cachedState?.imsTransactions || []);
   const [auditLogs, setAuditLogs] = useState([]);
-  const [settings, setSettings] = useState({ isHidden: false, redirectUrl: "https://www.instagram.com/makpowerofficial/" });
-  const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState(() => cachedState?.settings || { isHidden: false, redirectUrl: "https://www.instagram.com/makpowerofficial/" });
+  const [loading, setLoading] = useState(() => !cachedState);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
 
   const handleHardCacheRefresh = async () => {
@@ -154,33 +163,37 @@ export default function App() {
   const sanitizeUserName = (name) => {
     if (!name) return "";
     let clean = String(name).trim();
-    // Clean up stacked duplicate salutations like "Mr. Mrs. Himanshi" -> "Mrs. Himanshi"
     clean = clean.replace(/^(mr\.|mrs\.|miss|ms\.)\s+((mr\.|mrs\.|miss|ms\.)\s+)/i, "$2");
     return clean;
   };
 
-  // Fetch full state on mount & set up 10-second polling
+  // Fetch full state on mount & set up 15-second background sync
   useEffect(() => {
+    let isMounted = true;
+
+    // Safety timeout: never let loading screen hang for more than 2 seconds
+    const safetyTimer = setTimeout(() => {
+      if (isMounted) setLoading(false);
+    }, 2000);
+
     async function loadData(isInterval = false) {
       try {
-        const [res, auditRes] = await Promise.all([
-          fetch("/api/state"),
-          fetch("/api/audit-logs")
-        ]);
+        const res = await fetch("/api/state");
         const data = await res.json();
-        setUsers((data.users || []).map(u => ({ ...u, name: sanitizeUserName(u.name) })));
-        setVendors(data.vendors || []);
-        setRequests((data.requests || []).map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
-        setCargos(data.cargos || []);
-        setCargoCompanies(data.cargoCompanies || []);
-        setItems(data.items || []);
-        setDesignations(data.designations || []);
-        setCrmParties(data.crmParties || []);
-        setCrmSalesOrders(data.crmSalesOrders || []);
-        setCrmDispatches(data.crmDispatches || []);
-        if (Array.isArray(data.imsTransactions)) {
-          setImsTransactions(data.imsTransactions);
-        }
+        if (!isMounted) return;
+
+        if (Array.isArray(data.users)) setUsers(data.users.map(u => ({ ...u, name: sanitizeUserName(u.name) })));
+        if (Array.isArray(data.vendors)) setVendors(data.vendors);
+        if (Array.isArray(data.requests)) setRequests(data.requests.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
+        if (Array.isArray(data.cargos)) setCargos(data.cargos);
+        if (Array.isArray(data.cargoCompanies)) setCargoCompanies(data.cargoCompanies);
+        if (Array.isArray(data.items)) setItems(data.items);
+        if (Array.isArray(data.designations)) setDesignations(data.designations);
+        if (Array.isArray(data.crmParties)) setCrmParties(data.crmParties);
+        if (Array.isArray(data.crmSalesOrders)) setCrmSalesOrders(data.crmSalesOrders);
+        if (Array.isArray(data.crmDispatches)) setCrmDispatches(data.crmDispatches);
+        if (Array.isArray(data.imsTransactions)) setImsTransactions(data.imsTransactions);
+        
         if (data.settings) {
           setSettings(data.settings);
           if (data.settings.forceRefreshTimestamp) {
@@ -195,14 +208,35 @@ export default function App() {
           }
         }
 
-        if (auditRes.ok) {
-          const aLogs = await auditRes.json();
-          setAuditLogs(aLogs || []);
+        try {
+          localStorage.setItem("makpower_app_state_cache", JSON.stringify({
+            users: data.users || [],
+            vendors: data.vendors || [],
+            requests: data.requests || [],
+            cargos: data.cargos || [],
+            cargoCompanies: data.cargoCompanies || [],
+            items: data.items || [],
+            designations: data.designations || [],
+            crmParties: data.crmParties || [],
+            crmSalesOrders: data.crmSalesOrders || [],
+            crmDispatches: data.crmDispatches || [],
+            imsTransactions: data.imsTransactions || [],
+            settings: data.settings || {}
+          }));
+        } catch (storageErr) {
+          // Ignore localStorage quota errors
+        }
+
+        if (!isInterval) {
+          fetch("/api/audit-logs")
+            .then(r => r.json())
+            .then(logs => { if (isMounted && Array.isArray(logs)) setAuditLogs(logs); })
+            .catch(() => {});
         }
       } catch (err) {
         console.error("Failed to load state from database API:", err);
       } finally {
-        if (!isInterval) {
+        if (isMounted && !isInterval) {
           setLoading(false);
         }
       }
@@ -210,11 +244,18 @@ export default function App() {
     
     loadData();
 
+    // Smart background sync: every 15s when active/visible
     const intervalId = setInterval(() => {
-      loadData(true);
-    }, 3000);
+      if (document.visibilityState === "visible") {
+        loadData(true);
+      }
+    }, 15000);
 
-    return () => clearInterval(intervalId);
+    return () => {
+      isMounted = false;
+      clearTimeout(safetyTimer);
+      clearInterval(intervalId);
+    };
   }, []);
 
   // Add Designation Handler
@@ -1516,11 +1557,20 @@ export default function App() {
 
       {/* Loading Screen Overlay */}
       {loading ? (
-        <div style={{ display: "flex", flex: 1, justifyContent: "center", alignItems: "center", height: "80vh" }}>
-          <div className="glass-panel" style={{ padding: "40px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
-            <div style={{ width: "40px", height: "40px", borderRadius: "50%", border: "4px solid var(--primary-glow)", borderTopColor: "var(--primary)", animation: "spin 1s linear infinite" }}></div>
-            <h2 style={{ fontSize: "1.4rem", textShadow: "0 0 10px var(--primary-glow)" }}>Connecting...</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Syncing Mak Power Purchase Ledger</p>
+        <div style={{ display: "flex", flex: 1, justifyContent: "center", alignItems: "center", minHeight: "80vh", padding: "20px" }}>
+          <div className="glass-panel card-fade-in" style={{ padding: "36px 30px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", maxWidth: "420px", width: "100%" }}>
+            <div style={{ width: "42px", height: "42px", borderRadius: "50%", border: "4px solid rgba(56, 189, 248, 0.2)", borderTopColor: "#38bdf8", animation: "spin 0.9s linear infinite" }}></div>
+            <div>
+              <h2 style={{ fontSize: "1.3rem", fontWeight: 800, color: "#fff", margin: "0 0 6px 0" }}>Connecting...</h2>
+              <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: 0 }}>Syncing Mak Power Purchase Ledger</p>
+            </div>
+            <button
+              onClick={() => setLoading(false)}
+              className="btn btn-secondary btn-sm"
+              style={{ fontSize: "0.78rem", padding: "5px 14px", marginTop: "8px", opacity: 0.8 }}
+            >
+              Continue with Cached Data →
+            </button>
           </div>
           <style>{`
             @keyframes spin {

@@ -629,6 +629,14 @@ app.use(async (req, res, next) => {
   next();
 });
 
+// Auto-invalidate server state cache whenever mutations occur
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/") && ["POST", "PUT", "DELETE", "PATCH"].includes(req.method)) {
+    invalidateStateCache();
+  }
+  next();
+});
+
 // ==================== API ENDPOINTS ====================
 
 // Active Sessions & Auth Audit Logs Store
@@ -1336,22 +1344,55 @@ app.post("/api/storage/delete-all-cloudinary", async (req, res) => {
   }
 });
 
-// 1. GET /api/state - Fetches full system state
+// High-performance State Cache to prevent DB pool exhaustion
+let stateCache = null;
+let stateCacheTimestamp = 0;
+const STATE_CACHE_TTL_MS = 3000;
+
+function invalidateStateCache() {
+  stateCache = null;
+  stateCacheTimestamp = 0;
+}
+
+// 1. GET /api/state - Fetches full system state with concurrent DB queries & memory cache
 app.get("/api/state", async (req, res) => {
+  const now = Date.now();
+  if (stateCache && (now - stateCacheTimestamp < STATE_CACHE_TTL_MS)) {
+    return res.json(stateCache);
+  }
+
   if (isPg) {
     try {
-      const usersRes = await pool.query("SELECT * FROM users");
-      const vendorsRes = await pool.query("SELECT * FROM vendors");
-      const cargoCompaniesRes = await pool.query("SELECT * FROM cargo_companies");
-      const cargosRes = await pool.query("SELECT * FROM cargos");
-      const requestsRes = await pool.query("SELECT * FROM requests");
-      const settingsRes = await pool.query("SELECT * FROM settings");
-      const itemsRes = await pool.query("SELECT * FROM items ORDER BY CAST(NULLIF(regexp_replace(\"id\", '\\D', '', 'g'), '') AS INTEGER) ASC, \"id\" ASC");
+      const [
+        usersRes,
+        vendorsRes,
+        cargoCompaniesRes,
+        cargosRes,
+        requestsRes,
+        settingsRes,
+        itemsRes,
+        crmPartiesRes,
+        crmSalesOrdersRes,
+        crmDispatchesRes,
+        imsRes
+      ] = await Promise.all([
+        pool.query("SELECT * FROM users"),
+        pool.query("SELECT * FROM vendors"),
+        pool.query("SELECT * FROM cargo_companies"),
+        pool.query("SELECT * FROM cargos"),
+        pool.query("SELECT * FROM requests"),
+        pool.query("SELECT * FROM settings"),
+        pool.query("SELECT * FROM items ORDER BY CAST(NULLIF(regexp_replace(\"id\", '\\D', '', 'g'), '') AS INTEGER) ASC, \"id\" ASC"),
+        pool.query("SELECT * FROM crm_parties ORDER BY \"name\" ASC"),
+        pool.query("SELECT * FROM crm_sales_orders ORDER BY \"orderDate\" DESC"),
+        pool.query("SELECT * FROM crm_dispatches ORDER BY \"dispatchDate\" DESC"),
+        pool.query("SELECT * FROM ims_transactions ORDER BY \"date\" DESC, \"createdAt\" DESC")
+      ]);
 
       // Format types back
       const vendors = vendorsRes.rows.map(v => ({
         ...v,
-        purchaserIds: v.purchaserIds ? JSON.parse(v.purchaserIds) : []
+        purchaserIds: v.purchaserIds ? (typeof v.purchaserIds === "string" ? JSON.parse(v.purchaserIds) : v.purchaserIds) : []
       }));
 
       const requests = requestsRes.rows.map(r => ({
@@ -1379,12 +1420,7 @@ app.get("/api/state", async (req, res) => {
       if (settings.isHidden === undefined) settings.isHidden = false;
       if (!settings.redirectUrl) settings.redirectUrl = "https://www.instagram.com/makpowerofficial/";
 
-      const crmPartiesRes = await pool.query("SELECT * FROM crm_parties ORDER BY \"name\" ASC");
-      const crmSalesOrdersRes = await pool.query("SELECT * FROM crm_sales_orders ORDER BY \"orderDate\" DESC");
-      const crmDispatchesRes = await pool.query("SELECT * FROM crm_dispatches ORDER BY \"dispatchDate\" DESC");
-      const imsRes = await pool.query("SELECT * FROM ims_transactions ORDER BY \"date\" DESC, \"createdAt\" DESC");
-
-      res.json({
+      const fullState = {
         users: usersRes.rows,
         vendors,
         cargoCompanies: cargoCompaniesRes.rows,
@@ -1411,9 +1447,17 @@ app.get("/api/state", async (req, res) => {
           location: row.location || "Delhi",
           isMissingId: !!row.isMissingId
         }))
-      });
+      };
+
+      stateCache = fullState;
+      stateCacheTimestamp = Date.now();
+
+      res.json(fullState);
     } catch (err) {
       console.error("GET /api/state error:", err.message);
+      if (stateCache) {
+        return res.json(stateCache);
+      }
       res.status(500).json({ error: "Failed to query PG state." });
     }
   } else {
