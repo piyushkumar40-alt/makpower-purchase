@@ -8,6 +8,7 @@ import {
 import Pagination, { SmartSelectionBar } from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
 import { initialImsTransactions } from "../mockData";
+import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 
 export default function ImsDashboard({
   currentUser,
@@ -177,9 +178,10 @@ export default function ImsDashboard({
         if (txLoc !== locationFilter.toLowerCase()) return false;
       }
 
-      // Date range
-      if (startDate && (tx.date || "") < startDate) return false;
-      if (endDate && (tx.date || "") > endDate) return false;
+      // Date range filter
+      if (startDate || endDate) {
+        if (!isDateInBetween(tx.date, startDate, endDate)) return false;
+      }
 
       // Movement Type
       if (movementFilter === "IN" && (parseInt(tx.stockQty) || 0) <= 0) return false;
@@ -854,26 +856,17 @@ export default function ImsDashboard({
                 <option value="linked">✓ Verified Linked ID</option>
               </select>
 
-              {/* Date Filters */}
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={e => setStartDate(e.target.value)}
-                  className="form-control"
-                  style={{ width: "auto", height: "36px", fontSize: "0.8rem", padding: "4px 8px" }}
-                  title="From Date (2026+)"
-                />
-                <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>to</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={e => setEndDate(e.target.value)}
-                  className="form-control"
-                  style={{ width: "auto", height: "36px", fontSize: "0.8rem", padding: "4px 8px" }}
-                  title="To Date"
-                />
-              </div>
+              {/* Date Range Filter with Presets */}
+              <DateRangeFilter
+                startDate={startDate}
+                endDate={endDate}
+                onStartDateChange={setStartDate}
+                onEndDateChange={setEndDate}
+                onClear={() => {
+                  setStartDate("");
+                  setEndDate("");
+                }}
+              />
 
               {(startDate || endDate || searchQuery || locationFilter !== "all" || movementFilter !== "all" || missingIdFilter !== "all") && (
                 <button

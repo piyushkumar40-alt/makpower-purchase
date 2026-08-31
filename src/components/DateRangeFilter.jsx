@@ -89,27 +89,64 @@ export default function DateRangeFilter({
   );
 }
 
-// Helper utility to check if a date string falls in range
-export function isDateInBetween(dateStr, startDate, endDate) {
-  if (!dateStr) return true;
-  if (!startDate && !endDate) return true;
-
-  try {
-    const target = new Date(dateStr).getTime();
-    if (isNaN(target)) return true;
-
-    if (startDate) {
-      const start = new Date(startDate).setHours(0, 0, 0, 0);
-      if (target < start) return false;
-    }
-
-    if (endDate) {
-      const end = new Date(endDate).setHours(23, 59, 59, 999);
-      if (target > end) return false;
-    }
-
-    return true;
-  } catch (err) {
-    return true;
+// Helper utility to parse various date formats reliably into Unix timestamp
+export function parseDateTimestamp(dateStr) {
+  if (!dateStr) return null;
+  if (dateStr instanceof Date) {
+    const t = dateStr.getTime();
+    return isNaN(t) ? null : t;
   }
+  const str = String(dateStr).trim();
+  if (!str) return null;
+
+  // Check ISO YYYY-MM-DD (e.g. "2026-01-05" or "2026-01-05T10:30:00Z")
+  const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (isoMatch) {
+    const y = parseInt(isoMatch[1], 10);
+    const m = parseInt(isoMatch[2], 10) - 1;
+    const d = parseInt(isoMatch[3], 10);
+    return new Date(y, m, d).getTime();
+  }
+
+  // Check DD-MM-YYYY or DD/MM/YYYY (e.g. "05-01-2026", "25/08/2026")
+  const dmyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (dmyMatch) {
+    const d = parseInt(dmyMatch[1], 10);
+    const m = parseInt(dmyMatch[2], 10) - 1;
+    const y = parseInt(dmyMatch[3], 10);
+    return new Date(y, m, d).getTime();
+  }
+
+  // Fallback to standard JavaScript Date parser
+  const parsed = Date.parse(str);
+  if (!isNaN(parsed)) return parsed;
+  return null;
 }
+
+// Helper utility to check if a date string falls in range (inclusive)
+export function isDateInBetween(dateStr, startDate, endDate) {
+  if (!startDate && !endDate) return true;
+  if (!dateStr) return false;
+
+  const targetTs = parseDateTimestamp(dateStr);
+  if (!targetTs) return true; // If unparseable, don't hide by default unless strict
+
+  if (startDate) {
+    const startTs = parseDateTimestamp(startDate);
+    if (startTs) {
+      const startDay = new Date(startTs).setHours(0, 0, 0, 0);
+      if (targetTs < startDay) return false;
+    }
+  }
+
+  if (endDate) {
+    const endTs = parseDateTimestamp(endDate);
+    if (endTs) {
+      const endDay = new Date(endTs).setHours(23, 59, 59, 999);
+      if (targetTs > endDay) return false;
+    }
+  }
+
+  return true;
+}
+
