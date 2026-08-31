@@ -630,18 +630,25 @@ export default function ImsDashboard({
     }
   };
 
-  // Helper date formatter
+  // Helper date formatter (Robust for M/D/YYYY, D/M/YYYY, DD-MMM-YYYY, YYYY-MM-DD)
   function formatDateForInput(dStr) {
     if (!dStr) return new Date().toISOString().split("T")[0];
-    const clean = dStr.trim();
+    const clean = String(dStr).trim();
 
-    // Months map
+    // 1. Check if YYYY-MM-DD or YYYY/MM/DD
+    const ymdMatch = clean.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+    if (ymdMatch) {
+      const year = ymdMatch[1];
+      const month = ymdMatch[2].padStart(2, "0");
+      const day = ymdMatch[3].padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    // 2. Check if DD-MMM-YYYY or DD-MMM-YY (e.g. 15-May-2026 or 15-May-26)
     const monthMap = {
       jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
       jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12"
     };
-
-    // Check if DD-MMM-YYYY or DD-MMM-YY (e.g. 15-May-2026 or 15-May-26)
     const mmmMatch = clean.match(/^(\d{1,2})[-\/\s]([a-zA-Z]{3})[-\/\s](\d{2,4})/);
     if (mmmMatch) {
       const day = mmmMatch[1].padStart(2, "0");
@@ -652,22 +659,29 @@ export default function ImsDashboard({
       return `${year}-${month}-${day}`;
     }
 
-    // Check if DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY or DD/MM/YY
-    const dmyMatch = clean.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
-    if (dmyMatch) {
-      const day = dmyMatch[1].padStart(2, "0");
-      const month = dmyMatch[2].padStart(2, "0");
-      let year = dmyMatch[3];
+    // 3. Check M/D/YYYY vs D/M/YYYY (e.g. 8/31/2025, 9/1/2025, 31/8/2025)
+    const slashMatch = clean.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
+    if (slashMatch) {
+      const n1 = parseInt(slashMatch[1], 10);
+      const n2 = parseInt(slashMatch[2], 10);
+      let year = slashMatch[3];
       if (year.length === 2) year = `20${year}`;
-      return `${year}-${month}-${day}`;
-    }
 
-    // Check if YYYY-MM-DD
-    const ymdMatch = clean.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
-    if (ymdMatch) {
-      const year = ymdMatch[1];
-      const month = ymdMatch[2].padStart(2, "0");
-      const day = ymdMatch[3].padStart(2, "0");
+      let month, day;
+      if (n1 > 12) {
+        // n1 > 12 must be day (e.g. 31/8/2025)
+        day = String(n1).padStart(2, "0");
+        month = String(Math.min(12, Math.max(1, n2))).padStart(2, "0");
+      } else if (n2 > 12) {
+        // n2 > 12 must be day (e.g. 8/31/2025, 9/15/2025)
+        month = String(Math.min(12, Math.max(1, n1))).padStart(2, "0");
+        day = String(n2).padStart(2, "0");
+      } else {
+        // Ambiguous (e.g. 9/1/2025 or 1/2/2026): Excel standard M/D/YYYY
+        month = String(Math.min(12, Math.max(1, n1))).padStart(2, "0");
+        day = String(n2).padStart(2, "0");
+      }
+
       return `${year}-${month}-${day}`;
     }
 

@@ -2769,6 +2769,32 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
     return res.status(400).json({ error: "No transactions provided for bulk upload." });
   }
 
+  function cleanIsoDate(dStr) {
+    if (!dStr) return new Date().toISOString().split("T")[0];
+    const clean = String(dStr).trim();
+    const ymdMatch = clean.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+    if (ymdMatch) {
+      return `${ymdMatch[1]}-${ymdMatch[2].padStart(2, "0")}-${ymdMatch[3].padStart(2, "0")}`;
+    }
+    const slashMatch = clean.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
+    if (slashMatch) {
+      const n1 = parseInt(slashMatch[1], 10);
+      const n2 = parseInt(slashMatch[2], 10);
+      let year = slashMatch[3];
+      if (year.length === 2) year = `20${year}`;
+      let month, day;
+      if (n1 > 12) {
+        day = String(n1).padStart(2, "0");
+        month = String(Math.min(12, Math.max(1, n2))).padStart(2, "0");
+      } else {
+        month = String(Math.min(12, Math.max(1, n1))).padStart(2, "0");
+        day = String(n2).padStart(2, "0");
+      }
+      return `${year}-${month}-${day}`;
+    }
+    return clean;
+  }
+
   if (isPg) {
     try {
       const itemsRes = await pool.query("SELECT id, name FROM items");
@@ -2812,7 +2838,7 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
 
           chunkObjects.push({
             id: t.id || `ims-${Date.now()}-${Math.random().toString(36).substr(2, 6)}-${insertedCount + chunkObjects.length}`,
-            date: t.date || new Date().toISOString().split("T")[0],
+            date: cleanIsoDate(t.date),
             itemName,
             itemId,
             stockQty: finalStockQty,
