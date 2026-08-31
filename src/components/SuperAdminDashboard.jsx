@@ -57,7 +57,7 @@ export default function SuperAdminDashboard({
 
   // CRM Parties Studio State
   const [crmPartySearch, setCrmPartySearch] = useState("");
-  const { startLoading, finishLoading } = useLoading();
+  const { startLoading, finishLoading, showSuccessToast, showErrorToast } = useLoading();
 
   const [crmPartyFilter, setCrmPartyFilter] = useState("all");
   const [showPartyModal, setShowPartyModal] = useState(false);
@@ -67,6 +67,8 @@ export default function SuperAdminDashboard({
   const [bulkPartyUploadMsg, setBulkPartyUploadMsg] = useState("");
   const [isUploadingParties, setIsUploadingParties] = useState(false);
   const [partyStudioMode, setPartyStudioMode] = useState("directory"); // "directory" | "bulk"
+  const [partyParseMode, setPartyParseMode] = useState("auto"); // "auto" | "city_first" | "name_first" | "sr_city_name" | "crm_first"
+  const [bulkDefaultCrmId, setBulkDefaultCrmId] = useState("");
 
   // Missing Item IDs state for IMS
   const [resolvingAdminItemName, setResolvingAdminItemName] = useState(null);
@@ -151,11 +153,23 @@ export default function SuperAdminDashboard({
     document.body.removeChild(link);
   };
 
-  // Bulk Party Parser (Excel paste / CSV)
-  const handleParseBulkParties = (rawText) => {
+  // Indian Cities & Station list for smart auto-detection
+  const KNOWN_CITIES = React.useMemo(() => new Set([
+    "samastipur", "ludhiana", "saharsa", "dibrugarh", "beawar", "jaipur", "delhi", "mumbai",
+    "ahmedabad", "surat", "pune", "kolkata", "indore", "patna", "kanpur", "lucknow", "raipur",
+    "ranchi", "guwahati", "jodhpur", "kota", "udaipur", "gwalior", "agra", "meerut", "varanasi",
+    "bhopal", "nagpur", "vadodara", "rajkot", "chandigarh", "jalandhar", "amritsar", "dehradun",
+    "bhubaneswar", "cuttack", "hyderabad", "bengaluru", "chennai", "coimbatore", "kochi",
+    "jabalpur", "bikaner", "ajmer", "alwar", "bhilwara", "sikar", "sriganganagar", "hanumangarh",
+    "muzaffarpur", "bhagalpur", "gaya", "darbhanga", "purnia", "siliguri", "asansol", "dhanbad",
+    "jamshedpur", "bokaro", "bilaspur", "durg", "bhilai", "korba", "satna", "rewa", "ujjain"
+  ]), []);
+
+  // Bulk Party Parser (Excel paste / CSV) with Smart Column Detection
+  const handleParseBulkParties = (rawText, customMode = partyParseMode, defaultCrmId = bulkDefaultCrmId) => {
     setBulkPartyRawText(rawText);
     setBulkPartyUploadMsg("");
-    if (!rawText.trim()) {
+    if (!rawText || !rawText.trim()) {
       setBulkParsedParties([]);
       return;
     }
@@ -163,8 +177,38 @@ export default function SuperAdminDashboard({
     const lines = rawText.trim().split(/\r?\n/);
     const parsed = [];
 
+    // Check if line 0 is a header row
+    let headerIndices = null;
+    if (lines.length > 0) {
+      const firstLine = lines[0].toLowerCase();
+      if (firstLine.includes("party") || firstLine.includes("firm") || firstLine.includes("city") || firstLine.includes("station") || firstLine.includes("crm") || firstLine.includes("email") || firstLine.includes("sr")) {
+        const rawHeaderCols = lines[0].includes("\t") 
+          ? lines[0].split("\t").map(c => c.trim().toLowerCase()) 
+          : lines[0].split(",").map(c => c.trim().toLowerCase().replace(/^"|"$/g, ""));
+
+        headerIndices = {};
+        rawHeaderCols.forEach((col, idx) => {
+          if (col.includes("party") || col.includes("firm") || col.includes("customer") || col.includes("dealer") || col.includes("client")) headerIndices.partyName = idx;
+          else if (col.includes("city") || col.includes("station") || col.includes("place") || col.includes("location") || col.includes("town")) headerIndices.city = idx;
+          else if (col.includes("crm") || col.includes("email") || col.includes("executive") || col.includes("assigned")) headerIndices.crm = idx;
+          else if (col.includes("contact") || col.includes("person") || col.includes("owner")) headerIndices.contact = idx;
+          else if (col.includes("phone") || col.includes("mobile") || col.includes("tel") || col.includes("contact no")) headerIndices.phone = idx;
+          else if (col.includes("state") || col.includes("province")) headerIndices.state = idx;
+          else if (col.includes("gst") || col.includes("gstin") || col.includes("tax")) headerIndices.gstin = idx;
+          else if (col.includes("limit") || col.includes("credit")) headerIndices.creditLimit = idx;
+          else if (col.includes("term") || col.includes("payment")) headerIndices.paymentTerms = idx;
+          else if (col.includes("sr") || col.includes("s.no") || col.includes("sno") || col === "#" || col === "no") headerIndices.srNo = idx;
+        });
+      }
+    }
+
+    const defaultCrmUser = defaultCrmId ? users.find(u => u.id === defaultCrmId) : null;
+
     lines.forEach((line, index) => {
       if (!line.trim()) return;
+
+      // Skip header row if identified
+      if (index === 0 && headerIndices) return;
 
       let cols = [];
       if (line.includes("\t")) {
@@ -174,11 +218,7 @@ export default function SuperAdminDashboard({
         cols = matches.map(c => c.trim().replace(/^"|"$/g, ""));
       }
 
-      const firstCol = (cols[0] || "").toLowerCase();
-      const secondCol = (cols[1] || "").toLowerCase();
-      if (index === 0 && (firstCol.includes("crm") || firstCol.includes("email") || firstCol.includes("party") || secondCol.includes("party"))) {
-        return;
-      }
+      if (cols.length === 0 || cols.every(c => !c)) return;
 
       let crmIdentifier = "";
       let partyName = "";
@@ -190,40 +230,156 @@ export default function SuperAdminDashboard({
       let creditLimit = 0;
       let paymentTerms = "30 Days";
 
-      if (cols.length === 1) {
-        partyName = cols[0];
+      if (headerIndices && Object.keys(headerIndices).length >= 2) {
+        // Use explicitly identified header indices
+        if (headerIndices.partyName !== undefined) partyName = cols[headerIndices.partyName] || "";
+        if (headerIndices.city !== undefined) city = cols[headerIndices.city] || "";
+        if (headerIndices.crm !== undefined) crmIdentifier = cols[headerIndices.crm] || "";
+        if (headerIndices.contact !== undefined) contactPerson = cols[headerIndices.contact] || "";
+        if (headerIndices.phone !== undefined) phone = cols[headerIndices.phone] || "";
+        if (headerIndices.state !== undefined) state = cols[headerIndices.state] || "";
+        if (headerIndices.gstin !== undefined) gstin = cols[headerIndices.gstin] || "";
+        if (headerIndices.creditLimit !== undefined) creditLimit = parseFloat(cols[headerIndices.creditLimit]) || 0;
+        if (headerIndices.paymentTerms !== undefined) paymentTerms = cols[headerIndices.paymentTerms] || "30 Days";
       } else {
-        if (cols[0].includes("@") || users.some(u => u.name.toLowerCase() === cols[0].toLowerCase() || u.email.toLowerCase() === cols[0].toLowerCase())) {
-          crmIdentifier = cols[0];
-          partyName = cols[1] || "";
-          contactPerson = cols[2] || "";
-          phone = cols[3] || "";
-          city = cols[4] || "";
-          state = cols[5] || "";
-          gstin = cols[6] || "";
-          creditLimit = parseFloat(cols[7]) || 0;
-          paymentTerms = cols[8] || "30 Days";
+        // Strip leading numeric serial number if present (e.g. 1, 2, 3...)
+        let workingCols = [...cols];
+        if (workingCols.length >= 2 && /^\d+$/.test(workingCols[0])) {
+          workingCols.shift();
+        }
+
+        if (customMode === "city_first") {
+          // Explicit Format: [City / Station | Party Name | Contact | Phone | State | GSTIN]
+          city = workingCols[0] || "";
+          partyName = workingCols[1] || "";
+          contactPerson = workingCols[2] || "";
+          phone = workingCols[3] || "";
+          state = workingCols[4] || "";
+          gstin = workingCols[5] || "";
+        } else if (customMode === "name_first") {
+          // Explicit Format: [Party Name | City / Station | Contact | Phone | State | GSTIN]
+          partyName = workingCols[0] || "";
+          city = workingCols[1] || "";
+          contactPerson = workingCols[2] || "";
+          phone = workingCols[3] || "";
+          state = workingCols[4] || "";
+          gstin = workingCols[5] || "";
+        } else if (customMode === "crm_first") {
+          // Explicit Format: [CRM Email | Party Name | City | Contact | Phone]
+          crmIdentifier = workingCols[0] || "";
+          partyName = workingCols[1] || "";
+          city = workingCols[2] || "";
+          contactPerson = workingCols[3] || "";
+          phone = workingCols[4] || "";
         } else {
-          partyName = cols[0];
-          crmIdentifier = cols[1] || "";
-          contactPerson = cols[2] || "";
-          phone = cols[3] || "";
-          city = cols[4] || "";
-          state = cols[5] || "";
-          gstin = cols[6] || "";
-          creditLimit = parseFloat(cols[7]) || 0;
-          paymentTerms = cols[8] || "30 Days";
+          // Smart Auto-Detect Mode
+          // 1. Find CRM column if any contains @ or matches CRM user
+          let foundCrmIdx = -1;
+          for (let i = 0; i < workingCols.length; i++) {
+            const val = workingCols[i].toLowerCase();
+            if (val.includes("@") || users.some(u => u.name.toLowerCase() === val || u.email.toLowerCase() === val)) {
+              crmIdentifier = workingCols[i];
+              foundCrmIdx = i;
+              break;
+            }
+          }
+          if (foundCrmIdx !== -1) {
+            workingCols.splice(foundCrmIdx, 1);
+          }
+
+          // 2. Find Phone column (10+ digits)
+          let foundPhoneIdx = -1;
+          for (let i = 0; i < workingCols.length; i++) {
+            const cleaned = workingCols[i].replace(/\D/g, "");
+            if (cleaned.length >= 10 && cleaned.length <= 13) {
+              phone = workingCols[i];
+              foundPhoneIdx = i;
+              break;
+            }
+          }
+          if (foundPhoneIdx !== -1) {
+            workingCols.splice(foundPhoneIdx, 1);
+          }
+
+          // 3. Find GSTIN column (15 alphanumeric characters)
+          let foundGstIdx = -1;
+          for (let i = 0; i < workingCols.length; i++) {
+            if (/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i.test(workingCols[i].trim())) {
+              gstin = workingCols[i].toUpperCase();
+              foundGstIdx = i;
+              break;
+            }
+          }
+          if (foundGstIdx !== -1) {
+            workingCols.splice(foundGstIdx, 1);
+          }
+
+          // 4. Now evaluate the remaining 2 primary text columns (Party Name vs City)
+          const col0 = (workingCols[0] || "").trim();
+          const col1 = (workingCols[1] || "").trim();
+          const col2 = (workingCols[2] || "").trim();
+
+          const col0Lower = col0.toLowerCase();
+          const col1Lower = col1.toLowerCase();
+
+          const col0IsCity = KNOWN_CITIES.has(col0Lower) || (col0 === col0.toUpperCase() && col0.split(" ").length === 1 && col0.length < 15);
+          const col1IsCity = KNOWN_CITIES.has(col1Lower) || (col1 === col1.toUpperCase() && col1.split(" ").length === 1 && col1.length < 15);
+
+          const businessKeywords = ["telecom", "mobile", "electronics", "traders", "enterprises", "agency", "stores", "hub", "solutions", "electricals", "power", "accessories", "pvt", "ltd", "corporation", "sales", "bhandar", "infotech", "battery", "care", "service", "point"];
+          const col0HasBizKeyword = businessKeywords.some(kw => col0Lower.includes(kw));
+          const col1HasBizKeyword = businessKeywords.some(kw => col1Lower.includes(kw));
+
+          if (col0 && !col1) {
+            partyName = col0;
+          } else if (col0IsCity && !col1IsCity) {
+            // e.g. "SAMASTIPUR", "Shree Ganesh Electronics" -> City is SAMASTIPUR, Party is Shree Ganesh Electronics
+            city = col0;
+            partyName = col1;
+            contactPerson = col2;
+          } else if (col1IsCity && !col0IsCity) {
+            // e.g. "Shree Ganesh Electronics", "SAMASTIPUR" -> Party is Shree Ganesh Electronics, City is SAMASTIPUR
+            partyName = col0;
+            city = col1;
+            contactPerson = col2;
+          } else if (col1HasBizKeyword && !col0HasBizKeyword) {
+            city = col0;
+            partyName = col1;
+            contactPerson = col2;
+          } else if (col0HasBizKeyword && !col1HasBizKeyword) {
+            partyName = col0;
+            city = col1;
+            contactPerson = col2;
+          } else if (col1.split(" ").length > col0.split(" ").length && col0.length < 14) {
+            // col0 is likely a short single word station name (e.g. BEAWAR, SAHARSA, DIBRUGARH)
+            city = col0;
+            partyName = col1;
+            contactPerson = col2;
+          } else {
+            partyName = col0;
+            city = col1;
+            contactPerson = col2;
+          }
         }
       }
 
-      if (!partyName || !partyName.trim()) return;
+      if (!partyName && !city) return;
+      if (!partyName && city) {
+        partyName = city;
+        city = "";
+      }
 
       const cleanIdent = crmIdentifier.trim().toLowerCase();
-      const matchedCrm = users.find(u => 
-        (u.email || "").toLowerCase() === cleanIdent ||
-        (u.name || "").toLowerCase() === cleanIdent ||
-        (u.id || "").toLowerCase() === cleanIdent
-      );
+      let matchedCrm = null;
+      if (cleanIdent) {
+        matchedCrm = users.find(u => 
+          (u.email || "").toLowerCase() === cleanIdent ||
+          (u.name || "").toLowerCase() === cleanIdent ||
+          (u.id || "").toLowerCase() === cleanIdent
+        );
+      }
+      if (!matchedCrm && defaultCrmUser) {
+        matchedCrm = defaultCrmUser;
+      }
 
       parsed.push({
         id: `pty-${Date.now()}-${index}-${Math.floor(Math.random() * 1000)}`,
@@ -237,8 +393,8 @@ export default function SuperAdminDashboard({
         city: city.trim(),
         state: state.trim(),
         gstin: gstin.trim(),
-        creditLimit,
-        paymentTerms,
+        creditLimit: parseFloat(creditLimit) || 0,
+        paymentTerms: paymentTerms || "30 Days",
         status: "Active"
       });
     });
@@ -246,29 +402,57 @@ export default function SuperAdminDashboard({
     setBulkParsedParties(parsed);
   };
 
+  // Flip Party Name and City for all parsed rows if inverted
+  const handleFlipAllParsedNamesAndCities = () => {
+    setBulkParsedParties(prev => prev.map(p => ({
+      ...p,
+      name: p.city || p.name,
+      city: p.name !== p.city ? p.name : ""
+    })));
+  };
+
+  // Bulk assign all parsed parties to a specific CRM executive
+  const handleBulkAssignAllCrm = (crmId) => {
+    setBulkDefaultCrmId(crmId);
+    if (!crmId) return;
+    const crmObj = users.find(u => u.id === crmId);
+    if (!crmObj) return;
+
+    setBulkParsedParties(prev => prev.map(p => ({
+      ...p,
+      assignedCrmId: crmObj.id,
+      assignedCrmName: crmObj.name,
+      isCrmMatched: true
+    })));
+  };
+
   // Commit Bulk Parties to Server Database
   const handleCommitBulkParties = async () => {
     if (bulkParsedParties.length === 0) return;
     setIsUploadingParties(true);
     setBulkPartyUploadMsg("");
-    startLoading("Importing CRM Parties...", `Uploading and matching ${bulkParsedParties.length} party records...`, 15);
+    startLoading("Saving CRM Parties...", `Committing ${bulkParsedParties.length} party records to database...`, 20);
 
     try {
       if (onBatchUploadParties) {
         const res = await onBatchUploadParties(bulkParsedParties);
         if (res && res.success) {
-          finishLoading(`Imported ${res.count || bulkParsedParties.length} parties!`);
-          setBulkPartyUploadMsg(`✅ Successfully imported ${res.count || bulkParsedParties.length} parties into CRM database!`);
+          const successCount = res.count || bulkParsedParties.length;
+          finishLoading(`🎉 Saved successfully! ${successCount} Parties added to database.`);
+          setBulkPartyUploadMsg(`✅ Successfully saved and committed ${successCount} parties into CRM database!`);
+          showSuccessToast(`🎉 Saved successfully! ${successCount} Parties added to CRM database.`);
           setBulkParsedParties([]);
           setBulkPartyRawText("");
           setTimeout(() => setPartyStudioMode("directory"), 1800);
         } else {
           finishLoading();
+          showErrorToast(res?.error || "Failed to commit parties");
           setBulkPartyUploadMsg(`❌ Upload failed: ${res?.error || "Unknown server error"}`);
         }
       }
     } catch (err) {
       finishLoading();
+      showErrorToast(err.message || "Failed to commit parties");
       setBulkPartyUploadMsg(`❌ Upload Error: ${err.message}`);
     } finally {
       setIsUploadingParties(false);
@@ -2758,13 +2942,34 @@ export default function SuperAdminDashboard({
                         <Upload size={20} /> Bulk Upload CRM Parties from Excel / CSV
                       </h3>
                       <p style={{ color: "var(--text-muted)", fontSize: "0.84rem", marginTop: "4px", margin: 0 }}>
-                        Paste rows directly from Excel or upload a file. Supported formats: <code>CRM Email, Party Name</code> OR just <code>Party Name</code>.
+                        Paste rows directly from Excel or upload a file. Auto-detects Station/City, Party Name, Contact, and CRM Email.
                       </p>
                     </div>
 
-                    <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border-glass)", borderRadius: "8px", padding: "8px 14px", fontSize: "0.76rem" }}>
-                      <span style={{ fontWeight: 700, color: "#818cf8" }}>Columns Order:</span><br />
-                      <code>CRM Email | Party Name | Contact Person | Phone | City | State | GSTIN | Credit Limit | Terms</code>
+                    {/* Column Layout Selection Chips */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "flex-end" }}>
+                      <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600 }}>Paste Column Layout:</span>
+                      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", background: "rgba(0,0,0,0.3)", padding: "4px", borderRadius: "10px", border: "1px solid var(--border-glass)" }}>
+                        {[
+                          { id: "auto", label: "✨ Auto-Detect" },
+                          { id: "city_first", label: "📍 City | Party Name" },
+                          { id: "name_first", label: "🏢 Party Name | City" },
+                          { id: "crm_first", label: "👤 CRM | Party | City" }
+                        ].map(mode => (
+                          <button
+                            key={mode.id}
+                            type="button"
+                            onClick={() => {
+                              setPartyParseMode(mode.id);
+                              if (bulkPartyRawText) handleParseBulkParties(bulkPartyRawText, mode.id);
+                            }}
+                            className={`btn btn-sm ${partyParseMode === mode.id ? "btn-primary" : "btn-ghost"}`}
+                            style={{ fontSize: "0.76rem", padding: "4px 10px", fontWeight: partyParseMode === mode.id ? 700 : 500 }}
+                          >
+                            {mode.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
@@ -2776,22 +2981,27 @@ export default function SuperAdminDashboard({
 
                   {/* Paste Textarea */}
                   <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 700 }}>Paste Excel Cells or CSV Rows</label>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                      <label className="form-label" style={{ fontWeight: 700, margin: 0 }}>Paste Excel Cells or CSV Rows</label>
+                      <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                        {bulkParsedParties.length > 0 ? `📊 Parsed ${bulkParsedParties.length} party records` : "Supports tab-separated & comma-separated text"}
+                      </span>
+                    </div>
                     <textarea
                       rows={6}
                       value={bulkPartyRawText}
                       onChange={e => handleParseBulkParties(e.target.value)}
-                      placeholder={"ankita@makpowerindia.com\tShree Ganesh Electronics\tMr. Ramesh Gupta\t9820192831\tMumbai\t27AAAAA0000A1Z5\najit@makpowerindia.com\tMahalaxmi Power Hub\tMr. Suresh Jain\t9840192832\tAhmedabad\t24BBBBB1111B1Z2\nprince@makpowerindia.com\tMarwar Mobile Accessories\tMr. Prakash Singh\t9890192833\tJaipur\t08CCCCC2222C1Z9\nsimran@makpowerindia.com\tMetro Power Solutions\tMr. Amit Sharma\t9870192834\tDelhi\t07DDDDD3333D1Z4\nharish@makpowerindia.com\tBalaji Telecom\tMr. Naresh Patel\t9810192835\tSurat\t24EEEEE4444E1Z7"}
+                      placeholder={"SAMASTIPUR\tShree Ganesh Electronics\tMr. Ramesh Gupta\t9820192831\tBihar\nludhiana\tMarwar Mobile Accessories\tMr. Suresh Jain\t9840192832\tPunjab\nSAHARSA\tBalaji Telecom\tMr. Prakash Singh\t9890192833\tBihar\nDIBRUGARH\tPower Solutions\tMr. Amit Sharma\t9870192834\tAssam\nBEAWAR\tMetro Mobile Point\tMr. Naresh Patel\t9810192835\tRajasthan"}
                       className="form-control"
                       style={{ fontFamily: "monospace", fontSize: "0.82rem", lineHeight: 1.4 }}
                     />
                   </div>
 
-                  {/* File Upload & Actions */}
+                  {/* File Upload & Actions Toolbar */}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "12px", flexWrap: "wrap", gap: "12px" }}>
-                    <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
                       <label className="btn btn-secondary btn-sm" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                        <FileText size={14} /> Choose CSV / Text File
+                        <FileText size={14} /> Choose CSV / Excel File
                         <input 
                           type="file" 
                           accept=".csv,.txt,.tsv" 
@@ -2815,12 +3025,24 @@ export default function SuperAdminDashboard({
                       >
                         <Download size={13} /> Sample CSV
                       </button>
+
+                      {bulkParsedParties.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleFlipAllParsedNamesAndCities}
+                          className="btn btn-secondary btn-sm"
+                          style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", color: "#f59e0b", borderColor: "rgba(245, 158, 11, 0.4)" }}
+                          title="Click if Party Name and City columns are swapped"
+                        >
+                          <RefreshCw size={13} /> ⇄ Flip Party Name & City
+                        </button>
+                      )}
                     </div>
 
-                    <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
                       {bulkParsedParties.length > 0 && (
                         <span style={{ fontSize: "0.85rem", color: "var(--success)", fontWeight: 700 }}>
-                          ✓ {bulkParsedParties.length} party rows parsed ready to import
+                          ✓ {bulkParsedParties.length} parties ready to commit
                         </span>
                       )}
 
@@ -2828,10 +3050,10 @@ export default function SuperAdminDashboard({
                         onClick={handleCommitBulkParties}
                         disabled={bulkParsedParties.length === 0 || isUploadingParties}
                         className="btn btn-primary"
-                        style={{ padding: "8px 22px", fontWeight: 800, display: "inline-flex", alignItems: "center", gap: "8px" }}
+                        style={{ padding: "9px 24px", fontWeight: 800, display: "inline-flex", alignItems: "center", gap: "8px", fontSize: "0.9rem", boxShadow: "0 4px 15px rgba(56, 189, 248, 0.3)" }}
                       >
-                        {isUploadingParties ? <RefreshCw size={15} className="spin" /> : <CheckCircle2 size={16} />}
-                        Commit & Save {bulkParsedParties.length} Parties to Database
+                        {isUploadingParties ? <RefreshCw size={16} className="spin" /> : <CheckCircle2 size={17} />}
+                        {isUploadingParties ? "Saving to Database..." : `Commit & Save ${bulkParsedParties.length} Parties to Database`}
                       </button>
                     </div>
                   </div>
@@ -2841,32 +3063,73 @@ export default function SuperAdminDashboard({
                 {/* Parsed Preview Table */}
                 {bulkParsedParties.length > 0 && (
                   <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
-                    <h4 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "12px", color: "var(--text-main)" }}>
-                      Live Parse & CRM Assignment Preview ({bulkParsedParties.length})
-                    </h4>
-                    <table className="table" style={{ width: "100%", minWidth: "850px" }}>
+                    
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
+                      <div>
+                        <h4 style={{ fontSize: "1.05rem", fontWeight: 800, margin: 0, color: "var(--text-main)", display: "flex", alignItems: "center", gap: "8px" }}>
+                          <CheckCircle2 size={18} style={{ color: "var(--success)" }} /> Live Parse & CRM Assignment Preview ({bulkParsedParties.length})
+                        </h4>
+                        <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                          Review the extracted party names, cities, and CRM executive assignments below.
+                        </span>
+                      </div>
+
+                      {/* Bulk Assign Dropdown */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Assign All to:</span>
+                        <select
+                          value={bulkDefaultCrmId}
+                          onChange={e => handleBulkAssignAllCrm(e.target.value)}
+                          className="form-control"
+                          style={{ width: "auto", height: "34px", fontSize: "0.82rem" }}
+                        >
+                          <option value="">-- Choose CRM Executive --</option>
+                          {crmExecutives.map(u => (
+                            <option key={u.id} value={u.id}>{u.name} (CRM)</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <table className="table" style={{ width: "100%", minWidth: "900px" }}>
                       <thead>
                         <tr>
-                          <th style={{ width: "30%" }}>Party Name / Firm</th>
-                          <th style={{ width: "25%" }}>Assigned CRM Executive</th>
-                          <th style={{ width: "20%" }}>Contact & Phone</th>
-                          <th style={{ width: "15%" }}>City / State</th>
-                          <th style={{ width: "10%" }}>GSTIN</th>
+                          <th style={{ width: "5%", textAlign: "center" }}>#</th>
+                          <th style={{ width: "32%" }}>Party Name / Firm</th>
+                          <th style={{ width: "16%" }}>City / Station</th>
+                          <th style={{ width: "22%" }}>Assigned CRM Executive</th>
+                          <th style={{ width: "15%" }}>Contact & Phone</th>
+                          <th style={{ width: "10%" }}>State</th>
                         </tr>
                       </thead>
                       <tbody>
                         {bulkParsedParties.map((p, idx) => (
-                          <tr key={idx}>
-                            <td style={{ fontWeight: 700, color: "var(--text-main)" }}>
-                              {p.name}
+                          <tr key={p.id || idx}>
+                            <td style={{ textAlign: "center", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                              {idx + 1}
+                            </td>
+                            <td style={{ wordBreak: "break-word", whiteSpace: "normal" }}>
+                              <div style={{ fontWeight: 800, color: "var(--primary)", fontSize: "0.95rem", lineHeight: 1.3 }}>
+                                {p.name}
+                              </div>
+                              {p.gstin && (
+                                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontFamily: "monospace" }}>
+                                  GST: {p.gstin}
+                                </span>
+                              )}
+                            </td>
+                            <td>
+                              <div style={{ fontWeight: 600, color: "var(--text-main)", fontSize: "0.88rem" }}>
+                                {p.city || "—"}
+                              </div>
                             </td>
                             <td>
                               {p.isCrmMatched ? (
-                                <span className="badge badge-primary" style={{ fontWeight: 700 }}>
+                                <span className="badge badge-primary" style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
                                   ✓ {p.assignedCrmName}
                                 </span>
                               ) : (
-                                <span className="badge badge-warning" style={{ fontWeight: 700 }}>
+                                <span className="badge badge-warning" style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
                                   ⚠️ {p.assignedCrmName || "Unassigned"}
                                 </span>
                               )}
@@ -2877,14 +3140,11 @@ export default function SuperAdminDashboard({
                               )}
                             </td>
                             <td style={{ fontSize: "0.85rem" }}>
-                              {p.contactPerson || "—"}<br />
+                              <span style={{ fontWeight: 600 }}>{p.contactPerson || "—"}</span><br />
                               <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{p.phone || ""}</span>
                             </td>
-                            <td style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-                              {p.city || "—"} {p.state ? `(${p.state})` : ""}
-                            </td>
-                            <td style={{ fontSize: "0.82rem", fontFamily: "monospace" }}>
-                              {p.gstin || "—"}
+                            <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                              {p.state || "—"}
                             </td>
                           </tr>
                         ))}

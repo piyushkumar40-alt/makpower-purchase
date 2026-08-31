@@ -1977,58 +1977,86 @@ app.post("/api/crm/parties", async (req, res) => {
   }
 });
 
-// 3. POST /api/crm/parties/batch - Bulk create/update parties
+// 3. POST /api/crm/parties/batch - Bulk create/update parties with chunked high-performance ingestion
 app.post("/api/crm/parties/batch", async (req, res) => {
   const { parties } = req.body;
-  if (!Array.isArray(parties)) {
+  if (!Array.isArray(parties) || parties.length === 0) {
     return res.status(400).json({ error: "Parties array is required." });
   }
 
   if (isPg) {
     try {
-      await pool.query("BEGIN");
-      for (const p of parties) {
-        const query = `
-          INSERT INTO crm_parties (
-            "id", "name", "contactPerson", "phone", "email", "city", "state", "gstin",
-            "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName",
-            "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-          ON CONFLICT ("id") DO UPDATE SET
-            "name" = EXCLUDED."name",
-            "contactPerson" = EXCLUDED."contactPerson",
-            "phone" = EXCLUDED."phone",
-            "email" = EXCLUDED."email",
-            "city" = EXCLUDED."city",
-            "state" = EXCLUDED."state",
-            "gstin" = EXCLUDED."gstin",
-            "creditLimit" = EXCLUDED."creditLimit",
-            "outstanding" = EXCLUDED."outstanding",
-            "paymentTerms" = EXCLUDED."paymentTerms",
-            "assignedCrmId" = EXCLUDED."assignedCrmId",
-            "assignedCrmName" = EXCLUDED."assignedCrmName",
-            "assignedAsmId" = EXCLUDED."assignedAsmId",
-            "assignedAsmName" = EXCLUDED."assignedAsmName",
-            "assignedTsmId" = EXCLUDED."assignedTsmId",
-            "assignedTsmName" = EXCLUDED."assignedTsmName",
-            "status" = EXCLUDED."status"
-        `;
-        const values = [
-          p.id || `pty-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-          p.name, p.contactPerson || "", p.phone || "", p.email || "",
-          p.city || "", p.state || "", p.gstin || "", p.creditLimit || 0, p.outstanding || 0,
-          p.paymentTerms || "30 Days", p.assignedCrmId || "", p.assignedCrmName || "",
-          p.assignedAsmId || "", p.assignedAsmName || "", p.assignedTsmId || "", p.assignedTsmName || "",
-          p.status || "Active", p.createdAt || new Date().toISOString().split("T")[0]
-        ];
-        await pool.query(query, values);
+      const CHUNK_SIZE = 250;
+      let insertedCount = 0;
+
+      for (let i = 0; i < parties.length; i += CHUNK_SIZE) {
+        const chunk = parties.slice(i, i + CHUNK_SIZE);
+        const valuePlaceholders = [];
+        const queryParams = [];
+        let pIdx = 1;
+
+        for (const p of chunk) {
+          if (!p.name) continue;
+          valuePlaceholders.push(`($${pIdx}, $${pIdx+1}, $${pIdx+2}, $${pIdx+3}, $${pIdx+4}, $${pIdx+5}, $${pIdx+6}, $${pIdx+7}, $${pIdx+8}, $${pIdx+9}, $${pIdx+10}, $${pIdx+11}, $${pIdx+12}, $${pIdx+13}, $${pIdx+14}, $${pIdx+15}, $${pIdx+16}, $${pIdx+17}, $${pIdx+18})`);
+          queryParams.push(
+            p.id || `pty-${Date.now()}-${insertedCount + valuePlaceholders.length}-${Math.random().toString(36).substr(2, 4)}`,
+            (p.name || "").trim(),
+            (p.contactPerson || "").trim(),
+            (p.phone || "").trim(),
+            (p.email || "").trim(),
+            (p.city || "").trim(),
+            (p.state || "").trim(),
+            (p.gstin || "").trim(),
+            p.creditLimit != null ? parseFloat(p.creditLimit) : 0,
+            p.outstanding != null ? parseFloat(p.outstanding) : 0,
+            (p.paymentTerms || "30 Days").trim(),
+            p.assignedCrmId || "",
+            p.assignedCrmName || "",
+            p.assignedAsmId || "",
+            p.assignedAsmName || "",
+            p.assignedTsmId || "",
+            p.assignedTsmName || "",
+            p.status || "Active",
+            p.createdAt || new Date().toISOString().split("T")[0]
+          );
+          pIdx += 19;
+        }
+
+        if (valuePlaceholders.length > 0) {
+          const bulkSql = `
+            INSERT INTO crm_parties (
+              "id", "name", "contactPerson", "phone", "email", "city", "state", "gstin",
+              "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName",
+              "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt"
+            ) VALUES ${valuePlaceholders.join(", ")}
+            ON CONFLICT ("id") DO UPDATE SET
+              "name" = EXCLUDED."name",
+              "contactPerson" = EXCLUDED."contactPerson",
+              "phone" = EXCLUDED."phone",
+              "email" = EXCLUDED."email",
+              "city" = EXCLUDED."city",
+              "state" = EXCLUDED."state",
+              "gstin" = EXCLUDED."gstin",
+              "creditLimit" = EXCLUDED."creditLimit",
+              "outstanding" = EXCLUDED."outstanding",
+              "paymentTerms" = EXCLUDED."paymentTerms",
+              "assignedCrmId" = EXCLUDED."assignedCrmId",
+              "assignedCrmName" = EXCLUDED."assignedCrmName",
+              "assignedAsmId" = EXCLUDED."assignedAsmId",
+              "assignedAsmName" = EXCLUDED."assignedAsmName",
+              "assignedTsmId" = EXCLUDED."assignedTsmId",
+              "assignedTsmName" = EXCLUDED."assignedTsmName",
+              "status" = EXCLUDED."status"
+          `;
+          await pool.query(bulkSql, queryParams);
+          insertedCount += valuePlaceholders.length;
+        }
       }
-      await pool.query("COMMIT");
-      res.json({ success: true, count: parties.length });
+
+      res.json({ success: true, count: insertedCount });
     } catch (err) {
-      await pool.query("ROLLBACK");
       console.error("POST /api/crm/parties/batch error:", err.message);
-      res.status(500).json({ error: "Failed to batch save CRM parties." });
+      res.status(500).json({ error: "Failed to batch save CRM parties: " + err.message });
     }
   } else {
     const data = readLocalJson();
@@ -2036,7 +2064,7 @@ app.post("/api/crm/parties/batch", async (req, res) => {
     parties.forEach(p => {
       const idx = data.crmParties.findIndex(x => x.id === p.id);
       if (idx !== -1) {
-        data.crmParties[idx] = p;
+        data.crmParties[idx] = { ...data.crmParties[idx], ...p };
       } else {
         data.crmParties.push(p);
       }

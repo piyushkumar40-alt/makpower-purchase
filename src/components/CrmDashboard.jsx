@@ -7,6 +7,7 @@ import {
   X, Check, ExternalLink, Share2, Briefcase, User, Send, Lock
 } from "lucide-react";
 import Pagination from "./Pagination";
+import { useLoading } from "../context/LoadingContext";
 
 export default function CrmDashboard({
   currentUser,
@@ -27,6 +28,7 @@ export default function CrmDashboard({
   onUpdateUser,
   onLogout
 }) {
+  const { startLoading, finishLoading, showSuccessToast, showErrorToast } = useLoading();
   // Determine if user is superadmin or owner
   const isElevated = currentUser?.role === "superadmin" || currentUser?.role === "owner" || currentUser?.designation?.toLowerCase() === "system admin" || currentUser?.designation?.toLowerCase() === "owner";
   const isAdminOrOwner = isElevated;
@@ -1132,12 +1134,18 @@ export default function CrmDashboard({
           currentExecutive={activeExecutive || currentUser}
           currentUser={currentUser}
           onSave={async (partyData) => {
-            if (editingParty) {
-              await onUpdateParty(partyData);
-              setEditingParty(null);
-            } else {
-              await onAddParty(partyData);
-              setShowAddPartyModal(false);
+            try {
+              if (editingParty) {
+                await onUpdateParty(partyData);
+                showSuccessToast(`✅ Saved successfully! Updated party "${partyData.name}".`);
+                setEditingParty(null);
+              } else {
+                await onAddParty(partyData);
+                showSuccessToast(`✅ Saved successfully! Added new party "${partyData.name}".`);
+                setShowAddPartyModal(false);
+              }
+            } catch (err) {
+              showErrorToast(err.message || "Failed to save party.");
             }
           }}
           onClose={() => {
@@ -1163,12 +1171,18 @@ export default function CrmDashboard({
           member={editingTeamMember}
           currentExecutive={activeExecutive || currentUser}
           onSave={async (memberData) => {
-            if (editingTeamMember) {
-              await onUpdateUser(editingTeamMember.id, memberData);
-              setEditingTeamMember(null);
-            } else {
-              await onAddUser(memberData.name, memberData.email, memberData.password, memberData.designation, memberData.role);
-              setShowAddTeamModal(false);
+            try {
+              if (editingTeamMember) {
+                await onUpdateUser(editingTeamMember.id, memberData);
+                showSuccessToast(`✅ Saved successfully! Updated user ${memberData.name}.`);
+                setEditingTeamMember(null);
+              } else {
+                await onAddUser(memberData.name, memberData.email, memberData.password, memberData.designation, memberData.role);
+                showSuccessToast(`✅ Saved successfully! Created team member ${memberData.name}.`);
+                setShowAddTeamModal(false);
+              }
+            } catch (err) {
+              showErrorToast(err.message || "Failed to save user account.");
             }
           }}
           onClose={() => {
@@ -1185,8 +1199,13 @@ export default function CrmDashboard({
           items={items}
           currentExecutive={activeExecutive || currentUser}
           onSave={async (orderData) => {
-            await onAddSalesOrder(orderData);
-            setShowAddOrderModal(false);
+            try {
+              await onAddSalesOrder(orderData);
+              showSuccessToast("✅ Submitted successfully! New Sales Order created.");
+              setShowAddOrderModal(false);
+            } catch (err) {
+              showErrorToast(err.message || "Failed to create sales order.");
+            }
           }}
           onClose={() => setShowAddOrderModal(false)}
         />
@@ -1197,9 +1216,14 @@ export default function CrmDashboard({
         <DispatchModal
           order={selectedOrderForDispatch}
           onSave={async (dispatchData) => {
-            await onAddDispatch(dispatchData);
-            setShowRecordDispatchModal(false);
-            setSelectedOrderForDispatch(null);
+            try {
+              await onAddDispatch(dispatchData);
+              showSuccessToast("✅ Submitted successfully! Dispatch shipment recorded.");
+              setShowRecordDispatchModal(false);
+              setSelectedOrderForDispatch(null);
+            } catch (err) {
+              showErrorToast(err.message || "Failed to record dispatch.");
+            }
           }}
           onClose={() => {
             setShowRecordDispatchModal(false);

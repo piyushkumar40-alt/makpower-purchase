@@ -37,6 +37,9 @@ export function QuickCreateVendorModal({ isOpen, onClose, onAddVendor, currentUs
         const createdVendor = res?.vendor || { id: `v-${Date.now()}`, name: trimmedName };
         const msg = res?.message || `✅ Vendor "${createdVendor.name}" saved to database successfully!`;
         setSuccessMsg(msg);
+        if (typeof window !== "undefined" && window.__showSuccessToast) {
+          window.__showSuccessToast(msg);
+        }
         
         if (onVendorCreated) {
           onVendorCreated(createdVendor);
@@ -170,6 +173,9 @@ export function QuickCreateCargoCompanyModal({ isOpen, onClose, onAddCargoCompan
         const created = res?.company || { id: `cc-${Date.now()}`, name: trimmedName };
         const msg = res?.message || `✅ Transport Company "${created.name}" saved to database successfully!`;
         setSuccessMsg(msg);
+        if (typeof window !== "undefined" && window.__showSuccessToast) {
+          window.__showSuccessToast(msg);
+        }
         
         if (onCompanyCreated) {
           onCompanyCreated(created);
@@ -314,6 +320,9 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
       } else {
         const msg = res?.message || `✅ Item "${newItem.name}" saved to database catalog successfully!`;
         setSuccessMsg(msg);
+        if (typeof window !== "undefined" && window.__showSuccessToast) {
+          window.__showSuccessToast(msg);
+        }
 
         if (onItemCreated) onItemCreated(newItem);
 
@@ -455,6 +464,9 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
         const created = res?.user || { id: `u-${Date.now()}`, name: fullName };
         const msg = res?.message || `✅ User "${created.name}" created in database successfully!`;
         setSuccessMsg(msg);
+        if (typeof window !== "undefined" && window.__showSuccessToast) {
+          window.__showSuccessToast(msg);
+        }
 
         if (onUserCreated) onUserCreated(created);
 
@@ -610,6 +622,9 @@ export function QuickCreateDesignationModal({ isOpen, onClose, onAddDesignation,
 
       const msg = res?.message || `✅ Designation "${trimmedTitle}" saved to database successfully!`;
       setSuccessMsg(msg);
+      if (typeof window !== "undefined" && window.__showSuccessToast) {
+        window.__showSuccessToast(msg);
+      }
 
       if (onDesignationCreated) onDesignationCreated(trimmedTitle);
 

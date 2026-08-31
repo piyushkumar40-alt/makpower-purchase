@@ -1,27 +1,33 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from "react";
-import { CheckCircle2, RefreshCw, Sparkles } from "lucide-react";
+import { CheckCircle2, AlertCircle, Info, X, RefreshCw, Sparkles } from "lucide-react";
 
 const LoadingContext = createContext({
   startLoading: () => {},
   updateProgress: () => {},
   finishLoading: () => {},
-  withLoading: async () => {}
+  withLoading: async () => {},
+  showToast: () => {},
+  showSuccessToast: () => {},
+  showErrorToast: () => {},
+  showInfoToast: () => {}
 });
 
 export const useLoading = () => useContext(LoadingContext);
 
 /**
- * Universal Loading Progress Provider
- * - Displays a 0-100% progress modal ONLY when an operation takes longer than 2 seconds (2000ms threshold).
- * - Animates progress smoothly from 0 to 100%.
+ * Universal Loading Progress & Toast Popup Notification Provider
  */
 export function LoadingProvider({ children }) {
+  // Modal Loading State
   const [active, setActive] = useState(false);
   const [visible, setVisible] = useState(false);
   const [progress, setProgress] = useState(0);
   const [title, setTitle] = useState("Processing...");
   const [detail, setDetail] = useState("");
   const [isCompleted, setIsCompleted] = useState(false);
+
+  // Toast Notification Popup State
+  const [toasts, setToasts] = useState([]); // [{ id, message, type: 'success'|'error'|'info', title }]
 
   const delayTimerRef = useRef(null);
   const tickerIntervalRef = useRef(null);
@@ -35,6 +41,35 @@ export function LoadingProvider({ children }) {
     };
   }, []);
 
+  const showToast = useCallback((message, type = "success", customTitle = "") => {
+    const id = "toast_" + Date.now() + "_" + Math.random().toString(36).substr(2, 4);
+    const newToast = {
+      id,
+      message: message || (type === "success" ? "Saved successfully!" : "Notification"),
+      type,
+      title: customTitle || (type === "success" ? "Success" : type === "error" ? "Error" : "Notice")
+    };
+
+    setToasts(prev => [newToast, ...prev.slice(0, 4)]);
+
+    // Auto dismiss after 3.8s
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 3800);
+  }, []);
+
+  const showSuccessToast = useCallback((msg, title = "Saved Successfully") => {
+    showToast(msg || "Saved successfully!", "success", title);
+  }, [showToast]);
+
+  const showErrorToast = useCallback((msg, title = "Action Failed") => {
+    showToast(msg || "An error occurred while processing.", "error", title);
+  }, [showToast]);
+
+  const showInfoToast = useCallback((msg, title = "Information") => {
+    showToast(msg, "info", title);
+  }, [showToast]);
+
   const updateProgress = useCallback((percent, customDetail) => {
     const clamped = Math.min(100, Math.max(0, Math.round(percent)));
     setProgress(clamped);
@@ -44,7 +79,6 @@ export function LoadingProvider({ children }) {
   }, []);
 
   const startLoading = useCallback((taskTitle = "Processing...", initialDetail = "", initialPercent = 5) => {
-    // Clear any previous timers
     if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
     if (tickerIntervalRef.current) clearInterval(tickerIntervalRef.current);
 
@@ -56,12 +90,10 @@ export function LoadingProvider({ children }) {
     setTitle(taskTitle);
     setDetail(initialDetail || "Please wait while operation completes...");
 
-    // Rule: Appears ONLY if the task takes more than 2 seconds (2000ms)
+    // Show progress modal if task exceeds 1.5s
     delayTimerRef.current = setTimeout(() => {
       if (activeRef.current) {
         setVisible(true);
-
-        // Smoothly tick progress towards 95% if manual progress updates aren't provided
         tickerIntervalRef.current = setInterval(() => {
           setProgress(prev => {
             if (prev < 30) return prev + Math.floor(Math.random() * 8 + 4);
@@ -71,16 +103,15 @@ export function LoadingProvider({ children }) {
           });
         }, 300);
       }
-    }, 2000);
+    }, 1500);
   }, []);
 
-  const finishLoading = useCallback((completedMessage = "Completed successfully!") => {
+  const finishLoading = useCallback((completedMessage = "Saved successfully!", showPopup = true) => {
     activeRef.current = false;
     if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
     if (tickerIntervalRef.current) clearInterval(tickerIntervalRef.current);
 
     if (visible) {
-      // If modal was already shown to user, animate to 100% and show success briefly
       setProgress(100);
       setIsCompleted(true);
       if (completedMessage) setDetail(completedMessage);
@@ -89,19 +120,21 @@ export function LoadingProvider({ children }) {
         setVisible(false);
         setActive(false);
         setIsCompleted(false);
-      }, 600);
+        if (showPopup && completedMessage) {
+          showSuccessToast(completedMessage);
+        }
+      }, 500);
     } else {
-      // Finished before 2s: instantly reset without ever showing modal
       setVisible(false);
       setActive(false);
       setIsCompleted(false);
+      if (showPopup && completedMessage) {
+        showSuccessToast(completedMessage);
+      }
     }
-  }, [visible]);
+  }, [visible, showSuccessToast]);
 
-  /**
-   * Helper wrapper to execute any async function with progress
-   */
-  const withLoading = useCallback(async (asyncFn, { title = "Processing...", detail = "", total = null } = {}) => {
+  const withLoading = useCallback(async (asyncFn, { title = "Processing...", detail = "", total = null, successMsg = "Saved successfully!" } = {}) => {
     startLoading(title, detail, total ? 5 : 10);
     try {
       const result = await asyncFn((current, customText) => {
@@ -116,13 +149,14 @@ export function LoadingProvider({ children }) {
           setDetail(current);
         }
       });
-      finishLoading();
+      finishLoading(successMsg);
       return result;
     } catch (err) {
       finishLoading();
+      showErrorToast(err.message || "Failed to complete operation");
       throw err;
     }
-  }, [startLoading, updateProgress, finishLoading]);
+  }, [startLoading, updateProgress, finishLoading, showErrorToast]);
 
   // Expose global window access for non-React contexts if needed
   useEffect(() => {
@@ -130,19 +164,137 @@ export function LoadingProvider({ children }) {
     window.__updateLoadingProgress = updateProgress;
     window.__finishLoadingProgress = finishLoading;
     window.__withLoadingProgress = withLoading;
+    window.__showSuccessToast = showSuccessToast;
+    window.__showErrorToast = showErrorToast;
     return () => {
       delete window.__startLoadingProgress;
       delete window.__updateLoadingProgress;
       delete window.__finishLoadingProgress;
       delete window.__withLoadingProgress;
+      delete window.__showSuccessToast;
+      delete window.__showErrorToast;
     };
-  }, [startLoading, updateProgress, finishLoading, withLoading]);
+  }, [startLoading, updateProgress, finishLoading, withLoading, showSuccessToast, showErrorToast]);
 
   return (
-    <LoadingContext.Provider value={{ startLoading, updateProgress, finishLoading, withLoading }}>
+    <LoadingContext.Provider value={{ 
+      startLoading, 
+      updateProgress, 
+      finishLoading, 
+      withLoading, 
+      showToast, 
+      showSuccessToast, 
+      showErrorToast, 
+      showInfoToast 
+    }}>
       {children}
 
-      {/* Global 0-100% Progress Modal Overlay (Visible only after 2 seconds) */}
+      {/* ==================== GLOBAL FLOATING TOAST POPUPS ==================== */}
+      {toasts.length > 0 && (
+        <div 
+          style={{
+            position: "fixed",
+            top: "24px",
+            right: "24px",
+            zIndex: 9999999,
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+            maxWidth: "420px",
+            width: "calc(100% - 48px)",
+            pointerEvents: "none"
+          }}
+        >
+          {toasts.map(t => {
+            const isSuccess = t.type === "success";
+            const isError = t.type === "error";
+
+            return (
+              <div
+                key={t.id}
+                style={{
+                  pointerEvents: "auto",
+                  padding: "16px 20px",
+                  borderRadius: "14px",
+                  background: isSuccess 
+                    ? "linear-gradient(135deg, rgba(16, 185, 129, 0.96) 0%, rgba(5, 150, 105, 0.96) 100%)"
+                    : isError
+                    ? "linear-gradient(135deg, rgba(239, 68, 68, 0.96) 0%, rgba(185, 28, 28, 0.96) 100%)"
+                    : "linear-gradient(135deg, rgba(15, 23, 42, 0.96) 0%, rgba(30, 41, 59, 0.96) 100%)",
+                  color: "#ffffff",
+                  boxShadow: isSuccess 
+                    ? "0 12px 30px -6px rgba(16, 185, 129, 0.5), 0 0 0 1px rgba(255,255,255,0.2)"
+                    : isError
+                    ? "0 12px 30px -6px rgba(239, 68, 68, 0.5), 0 0 0 1px rgba(255,255,255,0.2)"
+                    : "0 12px 30px -6px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.15)",
+                  backdropFilter: "blur(12px)",
+                  WebkitBackdropFilter: "blur(12px)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "14px",
+                  animation: "slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+                  cursor: "pointer"
+                }}
+                onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))}
+              >
+                <div 
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "50%",
+                    background: "rgba(255, 255, 255, 0.22)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0
+                  }}
+                >
+                  {isSuccess ? (
+                    <CheckCircle2 size={22} style={{ color: "#ffffff" }} />
+                  ) : isError ? (
+                    <AlertCircle size={22} style={{ color: "#ffffff" }} />
+                  ) : (
+                    <Info size={22} style={{ color: "#ffffff" }} />
+                  )}
+                </div>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: "0.92rem", fontWeight: 800, lineHeight: 1.2, letterSpacing: "-0.01em" }}>
+                    {t.message}
+                  </div>
+                  <div style={{ fontSize: "0.75rem", opacity: 0.88, marginTop: "2px" }}>
+                    {isSuccess ? "Action completed & verified" : isError ? "Please check details and retry" : "System Notification"}
+                  </div>
+                </div>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setToasts(prev => prev.filter(x => x.id !== t.id));
+                  }}
+                  style={{
+                    background: "rgba(255,255,255,0.15)",
+                    border: "none",
+                    borderRadius: "50%",
+                    width: "24px",
+                    height: "24px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#ffffff",
+                    cursor: "pointer",
+                    flexShrink: 0
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Global 0-100% Progress Modal Overlay (Visible for long tasks) */}
       {visible && (
         <div 
           style={{
@@ -179,7 +331,6 @@ export function LoadingProvider({ children }) {
               gap: "20px"
             }}
           >
-            {/* Top Animated Icon */}
             <div 
               style={{
                 width: "64px",
@@ -205,7 +356,6 @@ export function LoadingProvider({ children }) {
               )}
             </div>
 
-            {/* Title & Progress % Display */}
             <div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", marginBottom: "6px" }}>
                 <h3 style={{ fontSize: "1.25rem", fontWeight: 800, color: "#fff", margin: 0 }}>
@@ -231,7 +381,6 @@ export function LoadingProvider({ children }) {
               </p>
             </div>
 
-            {/* Sleek 0-100 Progress Bar */}
             <div 
               style={{
                 width: "100%",
@@ -260,7 +409,6 @@ export function LoadingProvider({ children }) {
               />
             </div>
 
-            {/* Bottom Status Tip */}
             <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.75rem", color: "rgba(255, 255, 255, 0.45)" }}>
               <Sparkles size={12} style={{ color: "#38bdf8" }} />
               <span>Processing your request securely in real-time</span>
