@@ -35,7 +35,7 @@ export function QuickCreateVendorModal({ isOpen, onClose, onAddVendor, currentUs
         setError(res.message || "Failed to create vendor in database.");
       } else {
         const createdVendor = res?.vendor || { id: `v-${Date.now()}`, name: trimmedName };
-        const msg = res?.message || `? Vendor "${createdVendor.name}" saved to database successfully!`;
+        const msg = res?.message || `✅ Vendor "${createdVendor.name}" saved to database successfully!`;
         setSuccessMsg(msg);
         
         if (onVendorCreated) {
@@ -168,7 +168,7 @@ export function QuickCreateCargoCompanyModal({ isOpen, onClose, onAddCargoCompan
         setError(res.message || "Failed to create transport company in database.");
       } else {
         const created = res?.company || { id: `cc-${Date.now()}`, name: trimmedName };
-        const msg = res?.message || `? Transport Company "${created.name}" saved to database successfully!`;
+        const msg = res?.message || `✅ Transport Company "${created.name}" saved to database successfully!`;
         setSuccessMsg(msg);
         
         if (onCompanyCreated) {
@@ -312,7 +312,7 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
       if (res && res.error) {
         setError(res.error);
       } else {
-        const msg = res?.message || `? Item "${newItem.name}" saved to database catalog successfully!`;
+        const msg = res?.message || `✅ Item "${newItem.name}" saved to database catalog successfully!`;
         setSuccessMsg(msg);
 
         if (onItemCreated) onItemCreated(newItem);
@@ -453,7 +453,7 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
         setError(res.message || "Failed to create user in database.");
       } else {
         const created = res?.user || { id: `u-${Date.now()}`, name: fullName };
-        const msg = res?.message || `? User "${created.name}" created in database successfully!`;
+        const msg = res?.message || `✅ User "${created.name}" created in database successfully!`;
         setSuccessMsg(msg);
 
         if (onUserCreated) onUserCreated(created);
@@ -608,7 +608,7 @@ export function QuickCreateDesignationModal({ isOpen, onClose, onAddDesignation,
         res = await onAddDesignation({ title: trimmedTitle, description: description.trim(), role });
       }
 
-      const msg = res?.message || `? Designation "${trimmedTitle}" saved to database successfully!`;
+      const msg = res?.message || `✅ Designation "${trimmedTitle}" saved to database successfully!`;
       setSuccessMsg(msg);
 
       if (onDesignationCreated) onDesignationCreated(trimmedTitle);

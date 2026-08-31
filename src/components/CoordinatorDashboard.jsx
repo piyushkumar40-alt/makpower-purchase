@@ -25,7 +25,7 @@ export default function CoordinatorDashboard({ currentUser, requests, vendors, c
   requests.forEach(r => {
     const purchaser = users.find(u => u.id === r.purchaserId);
     const purchaserName = purchaser?.name || "Purchaser";
-    const vendorName = vendors.find(v => v.id === r.vendorId)?.name || "-";
+    const vendorName = vendors.find(v => v.id === r.vendorId)?.name || "—";
     const cargo = cargos.find(c => c.id === r.cargoId);
 
     // 1. PURCHASER: Awaiting Price (Step 1)
@@ -43,7 +43,7 @@ export default function CoordinatorDashboard({ currentUser, requests, vendors, c
         itemDesc: `${r.model} (${r.orderQuantity} qty)`,
         vendor: vendorName,
         stage: "Step 1: Commercial Spec",
-        targetDate: r.requiredByDate || "-",
+        targetDate: r.requiredByDate || "—",
         isDelayed,
         daysOverdue,
         severity: daysOverdue > 7 ? "Critical" : daysOverdue > 0 ? "Warning" : "Normal"
@@ -67,7 +67,7 @@ export default function CoordinatorDashboard({ currentUser, requests, vendors, c
         itemDesc: `${r.model} (${r.orderQuantity} qty)`,
         vendor: vendorName,
         stage: "Step 3: Cargo Consolidation",
-        targetDate: delayDate || "-",
+        targetDate: delayDate || "—",
         isDelayed,
         daysOverdue,
         severity: daysOverdue > 5 ? "Critical" : daysOverdue > 0 ? "Warning" : "Normal"
@@ -90,7 +90,7 @@ export default function CoordinatorDashboard({ currentUser, requests, vendors, c
         itemDesc: `${r.model} (${r.orderQuantity} qty)`,
         vendor: vendorName,
         stage: "Nitin Checklist",
-        targetDate: delayDate || "-",
+        targetDate: delayDate || "—",
         isDelayed,
         daysOverdue,
         severity: daysOverdue > 3 ? "Critical" : daysOverdue > 0 ? "Warning" : "Normal"
@@ -113,7 +113,7 @@ export default function CoordinatorDashboard({ currentUser, requests, vendors, c
         itemDesc: `${r.model} (${r.orderQuantity} qty)`,
         vendor: vendorName,
         stage: "Rahul Checklist",
-        targetDate: delayDate || "-",
+        targetDate: delayDate || "—",
         isDelayed,
         daysOverdue,
         severity: daysOverdue > 3 ? "Critical" : daysOverdue > 0 ? "Warning" : "Normal"
@@ -142,9 +142,9 @@ export default function CoordinatorDashboard({ currentUser, requests, vendors, c
         taskType: "Transit Tracking",
         taskName: `Track Cargo Delivery (${c.id})`,
         itemDesc: `Cargo: ${c.cargoDetail || "Consolidated Cargo"}`,
-        vendor: vendors.find(v => v.id === c.vendorId)?.name || "-",
+        vendor: vendors.find(v => v.id === c.vendorId)?.name || "—",
         stage: "Step 5: Transit Tracking",
-        targetDate: c.cargoEta || "-",
+        targetDate: c.cargoEta || "—",
         isDelayed,
         daysOverdue,
         severity: daysOverdue > 5 ? "Critical" : daysOverdue > 0 ? "Warning" : "Normal"

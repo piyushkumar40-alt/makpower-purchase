@@ -113,7 +113,7 @@ export default function SuperAdminDashboard({
       }
     }
 
-    setStorageStatusMsg(`? Successfully deleted ${successCount} file assets!`);
+    setStorageStatusMsg(`✅ Successfully deleted ${successCount} file assets!`);
     setSelectedFileIds([]);
     loadStorageData(currentFolder);
     setTimeout(() => setStorageStatusMsg(""), 3500);
@@ -129,31 +129,31 @@ export default function SuperAdminDashboard({
       });
       const data = await res.json();
       if (data.success) {
-        setStorageStatusMsg(`? Deleted asset ${public_id}`);
+        setStorageStatusMsg(`✅ Deleted asset ${public_id}`);
         loadStorageData(currentFolder);
         setTimeout(() => setStorageStatusMsg(""), 3000);
       } else {
-        setStorageStatusMsg(`? Delete failed: ${data.error}`);
+        setStorageStatusMsg(`❌ Delete failed: ${data.error}`);
       }
     } catch (err) {
-      setStorageStatusMsg(`? Delete error: ${err.message}`);
+      setStorageStatusMsg(`❌ Delete error: ${err.message}`);
     }
   };
 
   const handleDeleteAllCloudinaryImages = async () => {
-    if (!window.confirm("?? ARE YOU SURE? This will permanently delete ALL images from Cloudinary storage itself!")) return;
+    if (!window.confirm("⚠️ ARE YOU SURE? This will permanently delete ALL images from Cloudinary storage itself!")) return;
     setLoadingStorage(true);
     try {
       const res = await fetch("/api/storage/delete-all-cloudinary", { method: "POST" });
       const data = await res.json();
       if (data.success) {
-        setStorageStatusMsg(`? ${data.message}`);
+        setStorageStatusMsg(`✅ ${data.message}`);
         loadStorageData(currentFolder);
       } else {
-        setStorageStatusMsg(`? Purge failed: ${data.error}`);
+        setStorageStatusMsg(`❌ Purge failed: ${data.error}`);
       }
     } catch (err) {
-      setStorageStatusMsg(`? Purge error: ${err.message}`);
+      setStorageStatusMsg(`❌ Purge error: ${err.message}`);
     } finally {
       setLoadingStorage(false);
     }
@@ -187,14 +187,14 @@ export default function SuperAdminDashboard({
       const adminUser = users.find(u => u.role === "superadmin" || u.id === "u-admin") || { id: "u-admin" };
       const res = await onUpdateUserInfo(adminUser.id, { password: newAdminPassword.trim() });
       if (res && res.success) {
-        setAdminPassMsg({ text: "? Admin password updated successfully! Use your new password on next login.", type: "success" });
+        setAdminPassMsg({ text: "✅ Admin password updated successfully! Use your new password on next login.", type: "success" });
         setNewAdminPassword("");
         setConfirmAdminPassword("");
       } else {
-        setAdminPassMsg({ text: `? Update failed: ${res?.message || "Unknown error"}`, type: "danger" });
+        setAdminPassMsg({ text: `❌ Update failed: ${res?.message || "Unknown error"}`, type: "danger" });
       }
     } catch (err) {
-      setAdminPassMsg({ text: `? Error: ${err.message}`, type: "danger" });
+      setAdminPassMsg({ text: `❌ Error: ${err.message}`, type: "danger" });
     } finally {
       setUpdatingAdminPass(false);
     }
@@ -218,12 +218,12 @@ export default function SuperAdminDashboard({
       const res = await fetch("/api/migrate-photos-to-cloudinary", { method: "POST" });
       const data = await res.json();
       if (data.success) {
-        setMigrationStatusMsg(`? ${data.message}`);
+        setMigrationStatusMsg(`✅ ${data.message}`);
       } else {
-        setMigrationStatusMsg(`? Migration Error: ${data.error}`);
+        setMigrationStatusMsg(`❌ Migration Error: ${data.error}`);
       }
     } catch (err) {
-      setMigrationStatusMsg(`? Network Error: ${err.message}`);
+      setMigrationStatusMsg(`❌ Network Error: ${err.message}`);
     } finally {
       setMigratingPhotos(false);
     }
@@ -251,12 +251,12 @@ export default function SuperAdminDashboard({
       const res = await fetch("/api/google-sheets/sync", { method: "POST" });
       const data = await res.json();
       if (data.success) {
-        setSheetStatusMsg(`? Successfully synced ${data.count} rows to Google Sheets at ${data.syncedAt}!`);
+        setSheetStatusMsg(`✅ Successfully synced ${data.count} rows to Google Sheets at ${data.syncedAt}!`);
       } else {
-        setSheetStatusMsg(`? Sync Error: ${data.error}`);
+        setSheetStatusMsg(`❌ Sync Error: ${data.error}`);
       }
     } catch (err) {
-      setSheetStatusMsg(`? Network Error: ${err.message}`);
+      setSheetStatusMsg(`❌ Network Error: ${err.message}`);
     } finally {
       setSheetSyncing(false);
     }
@@ -632,7 +632,7 @@ export default function SuperAdminDashboard({
                           <tr key={s.sessionId}>
                             <td style={{ textAlign: "center" }}>
                               <span className="badge badge-success" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#fff" }}></span> ?? Active Now
+                                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#fff" }}></span> 🟢 Active Now
                               </span>
                             </td>
                             <td style={{ fontWeight: 700, color: "var(--primary)", textAlign: "center" }}>{displayName}</td>
@@ -755,7 +755,7 @@ export default function SuperAdminDashboard({
                     className={`btn btn-sm ${staffFilterTab === "crm" ? "btn-primary" : "btn-secondary"}`}
                     style={{ fontSize: "0.78rem", background: staffFilterTab === "crm" ? "linear-gradient(135deg, #0284c7, #6366f1)" : "" }}
                   >
-                    ?? CRM ({users.filter(u => u.role === "crm" && u.status === "active").length})
+                    💼 CRM ({users.filter(u => u.role === "crm" && u.status === "active").length})
                   </button>
                   <button 
                     type="button" 
@@ -763,7 +763,7 @@ export default function SuperAdminDashboard({
                     className={`btn btn-sm ${staffFilterTab === "sales" ? "btn-primary" : "btn-secondary"}`}
                     style={{ fontSize: "0.78rem" }}
                   >
-                    ?? ASM/TSM ({users.filter(u => (u.role === "asm" || u.role === "tsm") && u.status === "active").length})
+                    🟢 ASM/TSM ({users.filter(u => (u.role === "asm" || u.role === "tsm") && u.status === "active").length})
                   </button>
                   <button 
                     type="button" 
@@ -771,7 +771,7 @@ export default function SuperAdminDashboard({
                     className={`btn btn-sm ${staffFilterTab === "purchaser" ? "btn-primary" : "btn-secondary"}`}
                     style={{ fontSize: "0.78rem" }}
                   >
-                    ?? Purchasers ({users.filter(u => u.role === "purchaser" && u.status === "active").length})
+                    🛒 Purchasers ({users.filter(u => u.role === "purchaser" && u.status === "active").length})
                   </button>
                 </div>
 
@@ -910,15 +910,15 @@ export default function SuperAdminDashboard({
                                   else if (r === "tsm") setEditDesignationVal("Territory Sales Manager (TSM)");
                                 }}
                               >
-                                <option value="crm">?? CRM (Customer Relationship Management)</option>
-                                <option value="asm">?? ASM (Area Sales Manager)</option>
-                                <option value="tsm">?? TSM (Territory Sales Manager)</option>
-                                <option value="owner">?? Owner (Executive Dashboard)</option>
-                                <option value="purchaser">?? Purchaser (Order Processing)</option>
-                                <option value="nitin">?? Packing</option>
-                                <option value="rahul">?? Accounts & Updates</option>
-                                <option value="coordinator">?? Logistics Coordinator</option>
-                                <option value="superadmin">? System Admin</option>
+                                <option value="crm">💼 CRM (Customer Relationship Management)</option>
+                                <option value="asm">🟢 ASM (Area Sales Manager)</option>
+                                <option value="tsm">🟡 TSM (Territory Sales Manager)</option>
+                                <option value="owner">👑 Owner (Executive Dashboard)</option>
+                                <option value="purchaser">🛒 Purchaser (Order Processing)</option>
+                                <option value="nitin">📦 Packing</option>
+                                <option value="rahul">💰 Accounts & Updates</option>
+                                <option value="coordinator">🚚 Logistics Coordinator</option>
+                                <option value="superadmin">⚡ System Admin</option>
                               </select>
                             </div>
 
@@ -1022,7 +1022,7 @@ export default function SuperAdminDashboard({
                   
                   const des = pDesignation === "Custom" ? customDesignationInput.trim() : pDesignation;
                   onAddPurchaser(finalPName, pEmail.trim(), pPassword.trim(), des, pRole);
-                  setPSuccess(`? Account for "${finalPName}" created successfully with role ${pRole.toUpperCase()}!`);
+                  setPSuccess(`✅ Account for "${finalPName}" created successfully with role ${pRole.toUpperCase()}!`);
                   setPName("");
                   setPEmail("");
                   setPPassword("");
@@ -1090,14 +1090,14 @@ export default function SuperAdminDashboard({
                       }}
                       style={{ fontWeight: 700, borderColor: pRole === "crm" ? "#6366f1" : "" }}
                     >
-                      <option value="crm">?? CRM (Customer Relationship Management)</option>
-                      <option value="asm">?? Area Sales Manager (ASM)</option>
-                      <option value="tsm">?? Territory Sales Manager (TSM)</option>
-                      <option value="purchaser">?? Purchaser</option>
-                      <option value="nitin">?? Packing (Nitin)</option>
-                      <option value="rahul">?? Accounts & Updates (Rahul)</option>
-                      <option value="coordinator">?? Logistics PC</option>
-                      <option value="owner">?? Owner (Executive Dashboard)</option>
+                      <option value="crm">💼 CRM (Customer Relationship Management)</option>
+                      <option value="asm">🟢 Area Sales Manager (ASM)</option>
+                      <option value="tsm">🟡 Territory Sales Manager (TSM)</option>
+                      <option value="purchaser">🛒 Purchaser</option>
+                      <option value="nitin">📦 Packing (Nitin)</option>
+                      <option value="rahul">💰 Accounts & Updates (Rahul)</option>
+                      <option value="coordinator">🚚 Logistics PC</option>
+                      <option value="owner">👑 Owner (Executive Dashboard)</option>
                     </select>
                   </div>
 
@@ -1127,17 +1127,17 @@ export default function SuperAdminDashboard({
                       value={pDesignation}
                       onChange={e => setPDesignation(e.target.value)}
                     >
-                      <option value="CRM Executive">?? CRM Executive (Customer Relationship)</option>
-                      <option value="Area Sales Manager (ASM)">?? Area Sales Manager (ASM)</option>
-                      <option value="Territory Sales Manager (TSM)">?? Territory Sales Manager (TSM)</option>
-                      <option value="Purchaser">?? Purchaser</option>
-                      <option value="Packing">?? Packing</option>
-                      <option value="Accounts and Updates">?? Accounts and Updates</option>
+                      <option value="CRM Executive">💼 CRM Executive (Customer Relationship)</option>
+                      <option value="Area Sales Manager (ASM)">🟢 Area Sales Manager (ASM)</option>
+                      <option value="Territory Sales Manager (TSM)">🟡 Territory Sales Manager (TSM)</option>
+                      <option value="Purchaser">🛒 Purchaser</option>
+                      <option value="Packing">📦 Packing</option>
+                      <option value="Accounts and Updates">💰 Accounts and Updates</option>
                       <option value="Accounts">Accounts</option>
                       <option value="Warehouse">Warehouse</option>
-                      <option value="Logistics">?? Logistics</option>
-                      <option value="Owner">?? Owner (Executive Dashboard)</option>
-                      <option value="System Admin">? System Admin</option>
+                      <option value="Logistics">🚚 Logistics</option>
+                      <option value="Owner">👑 Owner (Executive Dashboard)</option>
+                      <option value="System Admin">⚡ System Admin</option>
                       {(designations || []).map(d => (
                         <option key={d.id} value={d.title}>{d.title}</option>
                       ))}
@@ -1400,7 +1400,7 @@ export default function SuperAdminDashboard({
                 </p>
 
                 {migrationStatusMsg && (
-                  <div className={`alert-strip ${migrationStatusMsg.includes("?") ? "alert-danger" : "alert-success"}`} style={{ marginBottom: "16px" }}>
+                  <div className={`alert-strip ${migrationStatusMsg.includes("❌") ? "alert-danger" : "alert-success"}`} style={{ marginBottom: "16px" }}>
                     {migrationStatusMsg}
                   </div>
                 )}
@@ -1546,7 +1546,7 @@ export default function SuperAdminDashboard({
                 </p>
 
                 {migrationStatusMsg && (
-                  <div className={`alert-strip ${migrationStatusMsg.includes("?") ? "alert-danger" : "alert-success"}`} style={{ marginBottom: "16px" }}>
+                  <div className={`alert-strip ${migrationStatusMsg.includes("❌") ? "alert-danger" : "alert-success"}`} style={{ marginBottom: "16px" }}>
                     {migrationStatusMsg}
                   </div>
                 )}
@@ -1574,10 +1574,10 @@ export default function SuperAdminDashboard({
 
                 <button
                   onClick={async () => {
-                    if (!window.confirm("?? ARE YOU SURE? This will permanently delete ALL orders, vendors, items, and cargo shipments!")) return;
+                    if (!window.confirm("⚠️ ARE YOU SURE? This will permanently delete ALL orders, vendors, items, and cargo shipments!")) return;
                     if (onPurgeAllData) {
                       await onPurgeAllData(true);
-                      alert("? All operational data, vendors, and items have been purged successfully!");
+                      alert("✅ All operational data, vendors, and items have been purged successfully!");
                     }
                   }}
                   className="btn btn-danger"
@@ -1605,13 +1605,13 @@ export default function SuperAdminDashboard({
 
                 <button
                   onClick={async () => {
-                    if (!window.confirm("? Are you sure you want to broadcast the red update banner to ALL connected browsers?")) return;
+                    if (!window.confirm("⚡ Are you sure you want to broadcast the red update banner to ALL connected browsers?")) return;
                     try {
                       setForceRefreshLoading(true);
                       const res = await fetch("/api/settings/force-refresh", { method: "POST" });
                       const json = await res.json();
                       if (json.success) {
-                        setForceRefreshMsg("? Red update banner broadcasted to all connected browsers!");
+                        setForceRefreshMsg("⚡ Red update banner broadcasted to all connected browsers!");
                         setTimeout(() => setForceRefreshMsg(""), 5000);
                       }
                     } catch (err) {
@@ -1624,7 +1624,7 @@ export default function SuperAdminDashboard({
                   className="btn btn-danger"
                   style={{ width: "100%", padding: "12px", fontSize: "0.9rem", fontWeight: 700, background: "linear-gradient(135deg, #dc2626, #ef4444)" }}
                 >
-                  <RefreshCw size={16} className={forceRefreshLoading ? "spin" : ""} /> {forceRefreshLoading ? "Broadcasting..." : "? Broadcast Red Update Banner to All Browsers"}
+                  <RefreshCw size={16} className={forceRefreshLoading ? "spin" : ""} /> {forceRefreshLoading ? "Broadcasting..." : "⚡ Broadcast Red Update Banner to All Browsers"}
                 </button>
               </div>
 
@@ -1705,7 +1705,7 @@ export default function SuperAdminDashboard({
                 </p>
 
                 {sheetStatusMsg && (
-                  <div className={`alert-strip ${sheetStatusMsg.includes("?") ? "alert-danger" : "alert-success"}`} style={{ marginBottom: "16px" }}>
+                  <div className={`alert-strip ${sheetStatusMsg.includes("❌") ? "alert-danger" : "alert-success"}`} style={{ marginBottom: "16px" }}>
                     {sheetStatusMsg}
                   </div>
                 )}
@@ -1765,14 +1765,14 @@ export default function SuperAdminDashboard({
                       className="btn btn-secondary btn-sm"
                       style={{ fontSize: "0.8rem" }}
                     >
-                      {showAppsScriptCode ? "Hide Google Apps Script Setup Code" : "?? View Google Apps Script Setup Code"}
+                      {showAppsScriptCode ? "Hide Google Apps Script Setup Code" : "📋 View Google Apps Script Setup Code"}
                     </button>
                   </div>
                 </div>
 
                 {showAppsScriptCode && (
                   <div style={{ marginTop: "20px", background: "rgba(0,0,0,0.3)", padding: "16px", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
-                    <h4 style={{ fontSize: "0.88rem", color: "var(--primary)", marginBottom: "8px" }}>Google Apps Script Receiver Code (Copy & Paste into Google Sheets ? Extensions ? Apps Script):</h4>
+                    <h4 style={{ fontSize: "0.88rem", color: "var(--primary)", marginBottom: "8px" }}>Google Apps Script Receiver Code (Copy & Paste into Google Sheets → Extensions → Apps Script):</h4>
                     <pre style={{ background: "#0f172a", color: "#38bdf8", padding: "12px", borderRadius: "6px", fontSize: "0.75rem", overflowX: "auto", whiteSpace: "pre-wrap" }}>
 {`function doPost(e) {
   var data = JSON.parse(e.postData.contents);
@@ -1934,7 +1934,7 @@ export default function SuperAdminDashboard({
                       {storageMetrics?.postgres?.sizeStr || "Loading..."}
                     </div>
                     <div style={{ fontSize: "0.78rem", color: "#38bdf8", marginTop: "2px", fontWeight: 600 }}>
-                      {storageFilterSource === "postgres" ? "? FILTERING: PostgreSQL Data Only" : "Click to show PostgreSQL Data only"}
+                      {storageFilterSource === "postgres" ? "✓ FILTERING: PostgreSQL Data Only" : "Click to show PostgreSQL Data only"}
                     </div>
                   </div>
                 </div>
@@ -1964,7 +1964,7 @@ export default function SuperAdminDashboard({
                       {storageMetrics?.cloudinary?.usageStr || "Loading..."}
                     </div>
                     <div style={{ fontSize: "0.78rem", color: "#f59e0b", marginTop: "2px", fontWeight: 600 }}>
-                      {storageFilterSource === "cloudinary" ? "? FILTERING: Cloudinary Data Only" : "Click to show Cloudinary Data only"}
+                      {storageFilterSource === "cloudinary" ? "✓ FILTERING: Cloudinary Data Only" : "Click to show Cloudinary Data only"}
                     </div>
                   </div>
                 </div>
@@ -2079,7 +2079,7 @@ export default function SuperAdminDashboard({
                 </div>
 
                 {storageStatusMsg && (
-                  <div className={`alert-strip ${storageStatusMsg.includes("?") ? "alert-danger" : "alert-success"}`} style={{ marginBottom: "16px" }}>
+                  <div className={`alert-strip ${storageStatusMsg.includes("❌") ? "alert-danger" : "alert-success"}`} style={{ marginBottom: "16px" }}>
                     {storageStatusMsg}
                   </div>
                 )}

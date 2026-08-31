@@ -86,7 +86,7 @@ export default function LoginPage({ onLogin, onEnterAsGuest, users }) {
                 autoComplete="off"
                 data-lpignore="true"
                 className="form-control" 
-                placeholder="........" 
+                placeholder="••••••••" 
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required

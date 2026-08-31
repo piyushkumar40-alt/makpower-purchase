@@ -1,4 +1,4 @@
-export const formatIndianCurrency = (amount, symbol = "?") => {
+export const formatIndianCurrency = (amount, symbol = "₹") => {
   const rawNum = parseFloat(amount || 0);
   if (isNaN(rawNum) || rawNum === 0) return `${symbol} 0`;
   

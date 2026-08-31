@@ -117,7 +117,7 @@ export default function HomePage({
             </h1>
           </div>
           <p style={{ color: "var(--text-muted)", fontSize: "0.92rem", margin: 0 }}>
-            Mak Power Purchase Ledger & Operations Command Center . Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{currentUser?.role || "Staff"}</strong>
+            Mak Power Purchase Ledger & Operations Command Center • Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{currentUser?.role || "Staff"}</strong>
           </p>
         </div>
 
@@ -256,7 +256,7 @@ export default function HomePage({
 
                       return (
                         <tr key={req.id}>
-                          <td><strong>{req.orderDate || "-"}</strong></td>
+                          <td><strong>{req.orderDate || "—"}</strong></td>
                           <td style={{ fontWeight: 600 }}>{req.model}</td>
                           <td>{req.orderQuantity} units</td>
                           <td>{vName}</td>
@@ -520,7 +520,7 @@ export default function HomePage({
                           </span>
                         </td>
                         <td style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-                          {uVendors.length > 0 ? `${uVendors.length} vendors` : "-"}
+                          {uVendors.length > 0 ? `${uVendors.length} vendors` : "—"}
                         </td>
                         <td>
                           <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", fontWeight: 600, color: isOnline ? "var(--success)" : "var(--text-muted)" }}>

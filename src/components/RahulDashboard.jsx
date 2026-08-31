@@ -290,7 +290,7 @@ export default function RahulDashboard({ currentUser, requests, vendors, cargos,
               </thead>
               <tbody>
                 {sortedDisplayRequests.map(r => {
-                  const vName = vendors.find(v => v.id === r.vendorId)?.name || "-";
+                  const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
                   const cargo = cargos.find(c => c.id === r.cargoId);
                   const isChecked = checkedIds.includes(r.id);
 
@@ -315,18 +315,18 @@ export default function RahulDashboard({ currentUser, requests, vendors, cargos,
                       </td>
                       <td style={{ fontWeight: 600 }}>{r.model}</td>
                       <td style={{ fontWeight: 600 }}>{r.orderQuantity}</td>
-                      <td>{r.vendorEdd || "-"}</td>
+                      <td>{r.vendorEdd || "—"}</td>
                       
                       {/* Cargo columns */}
-                      <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{cargo?.cargoOrderDate || "-"}</td>
-                      <td style={{ fontSize: "0.8rem", color: "var(--text-muted)", maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={cargo?.cargoDetail}>{cargo?.cargoDetail || "-"}</td>
+                      <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{cargo?.cargoOrderDate || "—"}</td>
+                      <td style={{ fontSize: "0.8rem", color: "var(--text-muted)", maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={cargo?.cargoDetail}>{cargo?.cargoDetail || "—"}</td>
                       <td>
                         {cargo?.modeOfTransport ? (
                           <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--primary)" }}>{cargo.modeOfTransport}</span>
-                        ) : "-"}
+                        ) : "—"}
                       </td>
-                      <td style={{ fontSize: "0.8rem" }}>{cargo?.cargoShippingDate || "-"}</td>
-                      <td style={{ fontSize: "0.8rem" }}>{cargo?.cargoEta || "-"}</td>
+                      <td style={{ fontSize: "0.8rem" }}>{cargo?.cargoShippingDate || "—"}</td>
+                      <td style={{ fontSize: "0.8rem" }}>{cargo?.cargoEta || "—"}</td>
                       
                       {/* Purchase Updated badge */}
                       <td>
@@ -348,17 +348,17 @@ export default function RahulDashboard({ currentUser, requests, vendors, cargos,
                           <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                             {cargo.packingListFile && (
                               <span className="doc-link" style={{ fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "2px" }}>
-                                ?? PL: {cargo.packingListFile.length > 12 ? `${cargo.packingListFile.substring(0, 10)}...` : cargo.packingListFile}
+                                📄 PL: {cargo.packingListFile.length > 12 ? `${cargo.packingListFile.substring(0, 10)}...` : cargo.packingListFile}
                               </span>
                             )}
                             {cargo.invoiceFile && (
                               <span className="doc-link" style={{ fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "2px" }}>
-                                ?? INV: {cargo.invoiceFile.length > 12 ? `${cargo.invoiceFile.substring(0, 10)}...` : cargo.invoiceFile}
+                                📄 INV: {cargo.invoiceFile.length > 12 ? `${cargo.invoiceFile.substring(0, 10)}...` : cargo.invoiceFile}
                               </span>
                             )}
                           </div>
                         ) : (
-                          <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>-</span>
+                          <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>—</span>
                         )}
                       </td>
                     </tr>
