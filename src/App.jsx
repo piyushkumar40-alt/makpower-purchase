@@ -858,6 +858,25 @@ export default function App() {
     }
   };
 
+  const handleDeleteImsRange = async (startDate, endDate, ids = null) => {
+    try {
+      const res = await postData("/api/ims/transactions/delete-range", { startDate, endDate, ids });
+      if (res && res.success) {
+        if (Array.isArray(ids) && ids.length > 0) {
+          setImsTransactions(prev => prev.filter(t => !ids.includes(t.id)));
+          logSystemActivity("IMS_BULK_DELETE", `Bulk deleted ${res.count} selected IMS stock transactions`, "IMS", "bulk_delete");
+        } else {
+          setImsTransactions(prev => prev.filter(t => t.date < startDate || t.date > endDate));
+          logSystemActivity("IMS_RANGE_DELETE", `Bulk deleted ${res.count} IMS transactions between ${startDate} and ${endDate}`, "IMS", "range_delete");
+        }
+      }
+      return res;
+    } catch (err) {
+      console.error("Failed to delete IMS range:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
   const handleResolveMissingId = async (oldItemName, targetItemId, targetItemName) => {
     try {
       const res = await postData("/api/ims/resolve-missing-id", { oldItemName, targetItemId, targetItemName });
@@ -1606,6 +1625,7 @@ export default function App() {
             onAddTransaction={handleAddImsTransaction}
             onBatchUploadTransactions={handleBatchUploadIms}
             onDeleteTransaction={handleDeleteImsTransaction}
+            onDeleteRange={handleDeleteImsRange}
             onResolveMissingId={handleResolveMissingId}
             onAddItem={addItem}
             onNavigateView={setActiveView}

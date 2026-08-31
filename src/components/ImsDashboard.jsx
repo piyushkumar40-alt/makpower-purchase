@@ -15,6 +15,7 @@ export default function ImsDashboard({
   onAddTransaction,
   onBatchUploadTransactions,
   onDeleteTransaction,
+  onDeleteRange,
   onResolveMissingId,
   onAddItem,
   onNavigateView
@@ -29,6 +30,15 @@ export default function ImsDashboard({
   const [movementFilter, setMovementFilter] = useState("all"); // "all" | "IN" | "OUT"
   const [missingIdFilter, setMissingIdFilter] = useState("all"); // "all" | "missing" | "linked"
   const [selectedItemFilter, setSelectedItemFilter] = useState("all");
+
+  // Multi-row Checkbox Selection
+  const [selectedTxIds, setSelectedTxIds] = useState([]);
+
+  // Date Range Purge / Bulk Delete Modal State
+  const [showDeleteRangeModal, setShowDeleteRangeModal] = useState(false);
+  const [delRangeStart, setDelRangeStart] = useState("");
+  const [delRangeEnd, setDelRangeEnd] = useState("");
+  const [isDeletingRange, setIsDeletingRange] = useState(false);
 
   // Single Transaction Modal
   const [showAddModal, setShowAddModal] = useState(false);
@@ -348,6 +358,76 @@ export default function ImsDashboard({
     document.body.removeChild(link);
   };
 
+  // Matched transactions within the deletion range modal
+  const rangeMatchedTransactions = useMemo(() => {
+    if (!delRangeStart || !delRangeEnd) return [];
+    return imsTransactions.filter(tx => tx.date >= delRangeStart && tx.date <= delRangeEnd);
+  }, [imsTransactions, delRangeStart, delRangeEnd]);
+
+  const rangeMatchedNetQty = useMemo(() => {
+    return rangeMatchedTransactions.reduce((sum, tx) => sum + (parseInt(tx.stockQty) || 0), 0);
+  }, [rangeMatchedTransactions]);
+
+  // Execute Range Deletion
+  const handleExecuteDeleteRange = async () => {
+    if (!delRangeStart || !delRangeEnd) return;
+    if (rangeMatchedTransactions.length === 0) {
+      alert("No transactions found between the selected dates.");
+      return;
+    }
+    const confirmMsg = `⚠️ Are you sure you want to PERMANENTLY DELETE ALL ${rangeMatchedTransactions.length} inventory transactions between ${delRangeStart} and ${delRangeEnd}?\n\nThis action cannot be undone.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setIsDeletingRange(true);
+    try {
+      if (onDeleteRange) {
+        await onDeleteRange(delRangeStart, delRangeEnd);
+      }
+      setSelectedTxIds(prev => prev.filter(id => !rangeMatchedTransactions.some(t => t.id === id)));
+      setShowDeleteRangeModal(false);
+      setDelRangeStart("");
+      setDelRangeEnd("");
+    } catch (err) {
+      alert("Failed to delete range: " + err.message);
+    } finally {
+      setIsDeletingRange(false);
+    }
+  };
+
+  // Execute Selected Rows Deletion
+  const handleExecuteDeleteSelected = async () => {
+    if (selectedTxIds.length === 0) return;
+    const confirmMsg = `⚠️ Are you sure you want to permanently delete the ${selectedTxIds.length} selected transaction(s)?\n\nThis action cannot be undone.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      if (onDeleteRange) {
+        await onDeleteRange(null, null, selectedTxIds);
+      } else if (onDeleteTransaction) {
+        for (const id of selectedTxIds) {
+          await onDeleteTransaction(id);
+        }
+      }
+      setSelectedTxIds([]);
+    } catch (err) {
+      alert("Failed to delete selected rows: " + err.message);
+    }
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedTxIds.length === filteredTransactions.length && filteredTransactions.length > 0) {
+      setSelectedTxIds([]);
+    } else {
+      setSelectedTxIds(filteredTransactions.map(t => t.id));
+    }
+  };
+
+  const handleToggleSelectRow = (txId) => {
+    setSelectedTxIds(prev => 
+      prev.includes(txId) ? prev.filter(id => id !== txId) : [...prev, txId]
+    );
+  };
+
   // Quick Resolve Missing ID - 1-Click Create Master Item
   const handleCreateAndResolveMasterItem = async (e) => {
     e.preventDefault();
@@ -657,11 +737,21 @@ export default function ImsDashboard({
                 >
                   Clear Filters
                 </button>
-              )}
-            </div>
+                       {/* Export & Actions */}
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+              <button 
+                onClick={() => {
+                  setDelRangeStart(startDate || "2026-01-01");
+                  setDelRangeEnd(endDate || new Date().toISOString().split("T")[0]);
+                  setShowDeleteRangeModal(true);
+                }}
+                className="btn btn-secondary btn-sm"
+                style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", color: "#f87171", borderColor: "rgba(239, 68, 68, 0.4)" }}
+                title="Select date range to delete all transactions at once"
+              >
+                <Trash2 size={14} /> Delete by Date Range
+              </button>
 
-            {/* Export & Actions */}
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <button 
                 onClick={handleExportCsv}
                 className="btn btn-secondary btn-sm"
@@ -672,6 +762,35 @@ export default function ImsDashboard({
             </div>
           </div>
 
+          {/* Floating Selected Rows Action Strip */}
+          {selectedTxIds.length > 0 && (
+            <div className="glass-panel card-fade-in" style={{ padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(239, 68, 68, 0.12)", border: "1px solid rgba(239, 68, 68, 0.3)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <CheckCircle2 size={18} style={{ color: "var(--danger)" }} />
+                <span style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text-main)" }}>
+                  {selectedTxIds.length} transaction(s) selected
+                </span>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button
+                  onClick={() => setSelectedTxIds([])}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: "0.8rem" }}
+                >
+                  Clear Selection
+                </button>
+                <button
+                  onClick={handleExecuteDeleteSelected}
+                  className="btn btn-danger btn-sm"
+                  style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
+                >
+                  <Trash2 size={14} /> Delete Selected ({selectedTxIds.length})
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Ledger Table */}
           <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
             {filteredTransactions.length === 0 ? (
@@ -681,27 +800,36 @@ export default function ImsDashboard({
                 <p style={{ fontSize: "0.85rem" }}>Click "Log Stock Movement" or "Bulk Excel/CSV Upload" to record inventory transactions.</p>
               </div>
             ) : (
-              <table className="table" style={{ width: "100%", minWidth: "950px" }}>
+              <table className="table" style={{ width: "100%", minWidth: "980px" }}>
                 <thead>
                   <tr>
+                    <th style={{ width: "4%", textAlign: "center" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedTxIds.length > 0 && selectedTxIds.length === filteredTransactions.length}
+                        onChange={handleToggleSelectAll}
+                        style={{ cursor: "pointer" }}
+                        title="Select All Filtered Rows"
+                      />
+                    </th>
                     <th style={{ width: "11%", cursor: "pointer" }} onClick={() => { setSortField("date"); setSortAsc(!sortAsc); }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                         Date <ArrowUpDown size={12} />
                       </div>
                     </th>
-                    <th style={{ width: "24%", cursor: "pointer" }} onClick={() => { setSortField("itemName"); setSortAsc(!sortAsc); }}>
+                    <th style={{ width: "23%", cursor: "pointer" }} onClick={() => { setSortField("itemName"); setSortAsc(!sortAsc); }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                         Item Name & Model <ArrowUpDown size={12} />
                       </div>
                     </th>
-                    <th style={{ width: "13%" }}>Item ID</th>
+                    <th style={{ width: "12%" }}>Item ID</th>
                     <th style={{ width: "14%", textAlign: "center", cursor: "pointer" }} onClick={() => { setSortField("stockQty"); setSortAsc(!sortAsc); }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "4px" }}>
                         Stock Movement <ArrowUpDown size={12} />
                       </div>
                     </th>
-                    <th style={{ width: "16%" }}>Party Name</th>
-                    <th style={{ width: "14%" }}>Remarks</th>
+                    <th style={{ width: "15%" }}>Party Name</th>
+                    <th style={{ width: "13%" }}>Remarks</th>
                     <th style={{ width: "8%", textAlign: "center" }}>Actions</th>
                   </tr>
                 </thead>
@@ -709,10 +837,21 @@ export default function ImsDashboard({
                   {filteredTransactions.map(tx => {
                     const isPositive = (parseInt(tx.stockQty) || 0) > 0;
                     const isZero = (parseInt(tx.stockQty) || 0) === 0;
+                    const isRowSelected = selectedTxIds.includes(tx.id);
 
                     return (
-                      <tr key={tx.id} style={{ background: tx.isMissingId ? "rgba(245, 158, 11, 0.03)" : "" }}>
+                      <tr key={tx.id} style={{ background: isRowSelected ? "rgba(99, 102, 241, 0.12)" : tx.isMissingId ? "rgba(245, 158, 11, 0.03)" : "" }}>
                         
+                        {/* 0. Row Checkbox */}
+                        <td style={{ textAlign: "center" }}>
+                          <input 
+                            type="checkbox" 
+                            checked={isRowSelected}
+                            onChange={() => handleToggleSelectRow(tx.id)}
+                            style={{ cursor: "pointer" }}
+                          />
+                        </td>
+
                         {/* 1. Date */}
                         <td style={{ fontWeight: 600, fontSize: "0.86rem", color: "var(--text-main)" }}>
                           {tx.date}
@@ -731,7 +870,7 @@ export default function ImsDashboard({
                                 fontSize: "0.66rem", 
                                 background: "rgba(245, 158, 11, 0.15)", 
                                 color: "#f59e0b", 
-                                border: "1px solid rgba(245, 158, 11, 0.3)",
+                                border: "1px solid rgba(245, 158, 11, 0.3)", 
                                 cursor: "pointer",
                                 marginTop: "2px",
                                 display: "inline-flex",
@@ -830,6 +969,7 @@ export default function ImsDashboard({
                 </tbody>
               </table>
             )}
+          </div>           )}
           </div>
 
         </div>
@@ -1267,6 +1407,107 @@ export default function ImsDashboard({
                   Map & Update IMS Transactions
                 </button>
               </form>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ==================== MODAL: DELETE BY DATE RANGE ==================== */}
+      {showDeleteRangeModal && (
+        <div className="modal-backdrop" onClick={() => setShowDeleteRangeModal(false)}>
+          <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "540px", padding: "28px" }}>
+            
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{ padding: "8px", borderRadius: "8px", background: "rgba(239, 68, 68, 0.15)", color: "var(--danger)" }}>
+                  <Trash2 size={22} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--danger)", margin: 0 }}>
+                    Delete Entries by Date Range
+                  </h3>
+                  <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>Permanent bulk deletion tool</span>
+                </div>
+              </div>
+              <button onClick={() => setShowDeleteRangeModal(false)} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={20} /></button>
+            </div>
+
+            <p style={{ fontSize: "0.86rem", color: "var(--text-muted)", marginBottom: "16px" }}>
+              Select a start and end date. All stock movement records within this date range will be permanently removed.
+            </p>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "18px" }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontWeight: 700, fontSize: "0.82rem" }}>From Date</label>
+                <input
+                  type="date"
+                  value={delRangeStart}
+                  onChange={e => setDelRangeStart(e.target.value)}
+                  className="form-control"
+                  style={{ fontSize: "0.88rem" }}
+                  required
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontWeight: 700, fontSize: "0.82rem" }}>To Date</label>
+                <input
+                  type="date"
+                  value={delRangeEnd}
+                  onChange={e => setDelRangeEnd(e.target.value)}
+                  className="form-control"
+                  style={{ fontSize: "0.88rem" }}
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Range Match Preview Pill */}
+            {delRangeStart && delRangeEnd && (
+              <div style={{ 
+                padding: "14px 16px", 
+                borderRadius: "10px", 
+                background: rangeMatchedTransactions.length > 0 ? "rgba(239, 68, 68, 0.1)" : "rgba(16, 185, 129, 0.1)", 
+                border: `1px solid ${rangeMatchedTransactions.length > 0 ? "rgba(239, 68, 68, 0.3)" : "rgba(16, 185, 129, 0.3)"}`,
+                marginBottom: "20px" 
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: "0.86rem", fontWeight: 700, color: rangeMatchedTransactions.length > 0 ? "#f87171" : "var(--success)" }}>
+                    {rangeMatchedTransactions.length > 0 ? `⚠️ Found ${rangeMatchedTransactions.length} transaction(s)` : "✓ No transactions match this range"}
+                  </span>
+                  {rangeMatchedTransactions.length > 0 && (
+                    <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                      Net Qty: <strong>{rangeMatchedNetQty > 0 ? `+${rangeMatchedNetQty}` : rangeMatchedNetQty} Pcs</strong>
+                    </span>
+                  )}
+                </div>
+                {rangeMatchedTransactions.length > 0 && (
+                  <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "6px", margin: 0 }}>
+                    Date Range: <strong>{delRangeStart}</strong> to <strong>{delRangeEnd}</strong>
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+              <button 
+                type="button" 
+                onClick={() => setShowDeleteRangeModal(false)} 
+                className="btn btn-secondary"
+                disabled={isDeletingRange}
+              >
+                Cancel
+              </button>
+              <button 
+                type="button" 
+                onClick={handleExecuteDeleteRange}
+                disabled={!delRangeStart || !delRangeEnd || rangeMatchedTransactions.length === 0 || isDeletingRange}
+                className="btn btn-danger"
+                style={{ fontWeight: 800, display: "inline-flex", alignItems: "center", gap: "6px" }}
+              >
+                {isDeletingRange ? <RefreshCw size={15} className="spin" /> : <Trash2 size={15} />}
+                Permanently Delete ({rangeMatchedTransactions.length}) Entries
+              </button>
             </div>
 
           </div>
