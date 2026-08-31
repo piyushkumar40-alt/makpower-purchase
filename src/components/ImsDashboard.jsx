@@ -737,7 +737,10 @@ export default function ImsDashboard({
                 >
                   Clear Filters
                 </button>
-                       {/* Export & Actions */}
+              )}
+            </div>
+
+            {/* Export & Actions */}
             <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
               <button 
                 onClick={() => {
@@ -969,7 +972,6 @@ export default function ImsDashboard({
                 </tbody>
               </table>
             )}
-          </div>           )}
           </div>
 
         </div>
