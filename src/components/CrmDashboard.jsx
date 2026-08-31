@@ -29,6 +29,7 @@ export default function CrmDashboard({
 }) {
   // Determine if user is superadmin or owner
   const isElevated = currentUser?.role === "superadmin" || currentUser?.role === "owner" || currentUser?.designation?.toLowerCase() === "system admin" || currentUser?.designation?.toLowerCase() === "owner";
+  const isAdminOrOwner = isElevated;
 
   // Available CRM Executives
   const crmExecutives = useMemo(() => {
