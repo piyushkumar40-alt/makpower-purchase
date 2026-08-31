@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { 
   Package, TrendingUp, TrendingDown, Layers, Search, Filter, Download, 
   Plus, UploadCloud, AlertTriangle, CheckCircle2, RefreshCw, X, Edit2, 
   Trash2, FileText, ArrowUpDown, Calendar, Building2, Tag, ShieldAlert,
   ChevronRight, Database, Check, Eye
 } from "lucide-react";
+import Pagination, { SmartSelectionBar } from "./Pagination";
 
 export default function ImsDashboard({
   currentUser,
@@ -31,6 +32,21 @@ export default function ImsDashboard({
   const [missingIdFilter, setMissingIdFilter] = useState("all"); // "all" | "missing" | "linked"
   const [locationFilter, setLocationFilter] = useState("all"); // "all" | "Delhi" | "Mumbai"
   const [selectedItemFilter, setSelectedItemFilter] = useState("all");
+
+  // Pagination States (Default 100 rows per page)
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(100);
+
+  const [matrixPage, setMatrixPage] = useState(1);
+  const [matrixPerPage, setMatrixPerPage] = useState(100);
+
+  const [missingPage, setMissingPage] = useState(1);
+  const [missingPerPage, setMissingPerPage] = useState(100);
+
+  // Reset current page whenever filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, startDate, endDate, movementFilter, missingIdFilter, locationFilter, selectedItemFilter]);
 
   // Multi-row Checkbox Selection
   const [selectedTxIds, setSelectedTxIds] = useState([]);
@@ -169,6 +185,16 @@ export default function ImsDashboard({
     });
   }, [imsTransactions, searchQuery, locationFilter, startDate, endDate, movementFilter, missingIdFilter, selectedItemFilter, sortField, sortAsc]);
 
+  // Paginated Transactions Slice (100 rows per page)
+  const paginatedTransactions = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredTransactions.slice(start, start + itemsPerPage);
+  }, [filteredTransactions, currentPage, itemsPerPage]);
+
+  // Multi-page Selection Flags
+  const isAllFilteredSelected = filteredTransactions.length > 0 && selectedTxIds.length === filteredTransactions.length;
+  const isPageSelected = paginatedTransactions.length > 0 && paginatedTransactions.every(t => selectedTxIds.includes(t.id));
+
   // ==================== ITEM STOCK MATRIX SUMMARY ====================
   const itemStockMatrix = useMemo(() => {
     const map = new Map();
@@ -232,6 +258,18 @@ export default function ImsDashboard({
 
     return Array.from(map.values());
   }, [items, imsTransactions]);
+
+  // Paginated Matrix Slice (100 rows per page)
+  const paginatedMatrix = useMemo(() => {
+    const start = (matrixPage - 1) * matrixPerPage;
+    return itemStockMatrix.slice(start, start + matrixPerPage);
+  }, [itemStockMatrix, matrixPage, matrixPerPage]);
+
+  // Paginated Missing IDs Slice (100 rows per page)
+  const paginatedMissing = useMemo(() => {
+    const start = (missingPage - 1) * missingPerPage;
+    return distinctMissingItems.slice(start, start + missingPerPage);
+  }, [distinctMissingItems, missingPage, missingPerPage]);
 
   // ==================== BULK UPLOAD PARSER ====================
   const handleParseBulkText = (text) => {
@@ -466,10 +504,12 @@ export default function ImsDashboard({
   };
 
   const handleToggleSelectAll = () => {
-    if (selectedTxIds.length === filteredTransactions.length && filteredTransactions.length > 0) {
-      setSelectedTxIds([]);
+    if (isPageSelected || isAllFilteredSelected) {
+      // Deselect rows on the current page
+      setSelectedTxIds(prev => prev.filter(id => !paginatedTransactions.some(t => t.id === id)));
     } else {
-      setSelectedTxIds(filteredTransactions.map(t => t.id));
+      // Select all rows on the current page
+      setSelectedTxIds(prev => Array.from(new Set([...prev, ...paginatedTransactions.map(t => t.id)])));
     }
   };
 
@@ -843,34 +883,26 @@ export default function ImsDashboard({
             </div>
           </div>
 
-          {/* Floating Selected Rows Action Strip */}
-          {selectedTxIds.length > 0 && (
-            <div className="glass-panel card-fade-in" style={{ padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(239, 68, 68, 0.12)", border: "1px solid rgba(239, 68, 68, 0.3)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <CheckCircle2 size={18} style={{ color: "var(--danger)" }} />
-                <span style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text-main)" }}>
-                  {selectedTxIds.length} transaction(s) selected
-                </span>
-              </div>
-
-              <div style={{ display: "flex", gap: "10px" }}>
-                <button
-                  onClick={() => setSelectedTxIds([])}
-                  className="btn btn-secondary btn-sm"
-                  style={{ fontSize: "0.8rem" }}
-                >
-                  Clear Selection
-                </button>
-                <button
-                  onClick={handleExecuteDeleteSelected}
-                  className="btn btn-danger btn-sm"
-                  style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
-                >
-                  <Trash2 size={14} /> Delete Selected ({selectedTxIds.length})
-                </button>
-              </div>
-            </div>
-          )}
+          {/* Smart Selection Bar (Gmail-style current page vs all filtered selector) */}
+          <SmartSelectionBar
+            selectedCount={selectedTxIds.length}
+            currentPageCount={paginatedTransactions.length}
+            totalFilteredCount={filteredTransactions.length}
+            isAllFilteredSelected={isAllFilteredSelected}
+            onSelectAllCurrentPage={() => setSelectedTxIds(paginatedTransactions.map(t => t.id))}
+            onSelectAllFiltered={() => setSelectedTxIds(filteredTransactions.map(t => t.id))}
+            onClearSelection={() => setSelectedTxIds([])}
+            entityName="transactions"
+            actions={
+              <button
+                onClick={handleExecuteDeleteSelected}
+                className="btn btn-danger btn-sm"
+                style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
+              >
+                <Trash2 size={14} /> Delete Selected ({selectedTxIds.length})
+              </button>
+            }
+          />
 
           {/* Ledger Table */}
           <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
@@ -887,10 +919,10 @@ export default function ImsDashboard({
                     <th style={{ width: "4%", textAlign: "center" }}>
                       <input 
                         type="checkbox" 
-                        checked={selectedTxIds.length > 0 && selectedTxIds.length === filteredTransactions.length}
+                        checked={paginatedTransactions.length > 0 && (isPageSelected || isAllFilteredSelected)}
                         onChange={handleToggleSelectAll}
                         style={{ cursor: "pointer" }}
-                        title="Select All Filtered Rows"
+                        title={isAllFilteredSelected ? "Deselect all rows" : isPageSelected ? "Deselect this page" : "Select all 100 rows on this page"}
                       />
                     </th>
                     <th style={{ width: "10%", cursor: "pointer" }} onClick={() => { setSortField("date"); setSortAsc(!sortAsc); }}>
@@ -920,7 +952,7 @@ export default function ImsDashboard({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredTransactions.map(tx => {
+                  {paginatedTransactions.map(tx => {
                     const isPositive = (parseInt(tx.stockQty) || 0) > 0;
                     const isZero = (parseInt(tx.stockQty) || 0) === 0;
                     const isRowSelected = selectedTxIds.includes(tx.id);
@@ -1070,6 +1102,19 @@ export default function ImsDashboard({
                 </tbody>
               </table>
             )}
+
+            {/* Universal Pagination (100 rows per page) */}
+            <Pagination
+              currentPage={currentPage}
+              totalItems={filteredTransactions.length}
+              itemsPerPage={itemsPerPage}
+              onPageChange={setCurrentPage}
+              onItemsPerPageChange={(n) => {
+                setItemsPerPage(n);
+                setCurrentPage(1);
+              }}
+              perPageOptions={[50, 100, 200, 500]}
+            />
           </div>
 
         </div>
@@ -1125,7 +1170,7 @@ export default function ImsDashboard({
                 </tr>
               </thead>
               <tbody>
-                {itemStockMatrix.map(item => (
+                {paginatedMatrix.map(item => (
                   <tr key={item.id} style={{ background: item.isUnlinked ? "rgba(245, 158, 11, 0.03)" : "" }}>
                     <td>
                       {item.isUnlinked ? (
@@ -1170,6 +1215,19 @@ export default function ImsDashboard({
                 ))}
               </tbody>
             </table>
+
+            {/* Matrix Pagination */}
+            <Pagination
+              currentPage={matrixPage}
+              totalItems={itemStockMatrix.length}
+              itemsPerPage={matrixPerPage}
+              onPageChange={setMatrixPage}
+              onItemsPerPageChange={(n) => {
+                setMatrixPerPage(n);
+                setMatrixPage(1);
+              }}
+              perPageOptions={[50, 100, 200, 500]}
+            />
           </div>
 
         </div>
@@ -1388,7 +1446,7 @@ export default function ImsDashboard({
                   </tr>
                 </thead>
                 <tbody>
-                  {distinctMissingItems.map(item => (
+                  {paginatedMissing.map(item => (
                     <tr key={item.name}>
                       <td style={{ fontWeight: 700, color: "var(--text-main)", fontSize: "0.92rem" }}>
                         {item.name}
@@ -1417,6 +1475,19 @@ export default function ImsDashboard({
                   ))}
                 </tbody>
               </table>
+
+              {/* Missing IDs Pagination */}
+              <Pagination
+                currentPage={missingPage}
+                totalItems={distinctMissingItems.length}
+                itemsPerPage={missingPerPage}
+                onPageChange={setMissingPage}
+                onItemsPerPageChange={(n) => {
+                  setMissingPerPage(n);
+                  setMissingPage(1);
+                }}
+                perPageOptions={[50, 100, 200, 500]}
+              />
             </div>
           )}
 

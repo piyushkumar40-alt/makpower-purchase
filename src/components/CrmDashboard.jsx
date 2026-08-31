@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { 
   Users, Building2, TrendingUp, Truck, Package, Plus, Search, Filter, 
   Download, Eye, Edit2, Trash2, CheckCircle2, Clock, AlertCircle, 
@@ -6,6 +6,7 @@ import {
   Shield, Calendar, FileText, BarChart2, RefreshCw, Layers, DollarSign,
   X, Check, ExternalLink, Share2, Briefcase, User, Send, Lock
 } from "lucide-react";
+import Pagination from "./Pagination";
 
 export default function CrmDashboard({
   currentUser,
@@ -145,6 +146,19 @@ export default function CrmDashboard({
       return matchSearch && matchState && matchAsm && matchTsm;
     });
   }, [currentParties, partySearch, partyStateFilter, partyAsmFilter, partyTsmFilter]);
+
+  // Parties Pagination State (Default 100 rows per page)
+  const [partiesPage, setPartiesPage] = useState(1);
+  const [partiesPerPage, setPartiesPerPage] = useState(100);
+
+  useEffect(() => {
+    setPartiesPage(1);
+  }, [partySearch, partyStateFilter, partyAsmFilter, partyTsmFilter, selectedExecutiveId]);
+
+  const paginatedParties = useMemo(() => {
+    const start = (partiesPage - 1) * partiesPerPage;
+    return filteredParties.slice(start, start + partiesPerPage);
+  }, [filteredParties, partiesPage, partiesPerPage]);
 
   // Aggregated Item-Wise Sales Data
   const itemWiseSalesData = useMemo(() => {
@@ -535,7 +549,7 @@ export default function CrmDashboard({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredParties.map(party => {
+                  {paginatedParties.map(party => {
                     return (
                       <tr key={party.id}>
                         <td>
@@ -631,6 +645,19 @@ export default function CrmDashboard({
                 </tbody>
               </table>
             )}
+
+            {/* Parties Pagination (100 rows per page) */}
+            <Pagination
+              currentPage={partiesPage}
+              totalItems={filteredParties.length}
+              itemsPerPage={partiesPerPage}
+              onPageChange={setPartiesPage}
+              onItemsPerPageChange={(n) => {
+                setPartiesPerPage(n);
+                setPartiesPage(1);
+              }}
+              perPageOptions={[50, 100, 200, 500]}
+            />
           </div>
 
         </div>

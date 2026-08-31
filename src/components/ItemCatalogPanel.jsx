@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Layers, Plus, Upload, Trash2, Search, CheckSquare, Square, FileSpreadsheet, Package, AlertCircle, RefreshCw, GitMerge, Edit3, Info, Download, Image, ListPlus, Eye, User, Camera, Copy, Check } from "lucide-react";
 import ItemDetailModal from "./ItemDetailModal";
 import { useSortableData } from "../utils/useSortableData";
+import Pagination, { SmartSelectionBar } from "./Pagination";
 
 // Normalize item names for fuzzy duplicate detection (e.g. DC02, DC 02, DC2, DC-2, DC-02 -> DC2)
 export function normalizeItemKey(str) {
@@ -34,6 +35,15 @@ export default function ItemCatalogPanel({
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [copiedId, setCopiedId] = useState(null);
+
+  // Pagination states (Default 100 rows per page)
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(100);
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, categoryFilter]);
 
   const handleCopyModelName = (name, id, e) => {
     if (e) e.stopPropagation();
@@ -118,6 +128,25 @@ export default function ItemCatalogPanel({
   }, [items, categoryFilter, typeFilter, searchQuery]);
 
   const { items: sortedCatalogItems, RenderSortHeader } = useSortableData(filteredItems);
+
+  // Paginated Catalog Slice (100 rows per page)
+  const paginatedCatalogItems = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return sortedCatalogItems.slice(start, start + itemsPerPage);
+  }, [sortedCatalogItems, currentPage, itemsPerPage]);
+
+  // Multi-page Selection Flags
+  const isAllFilteredSelected = filteredItems.length > 0 && selectedIds.length === filteredItems.length;
+  const isPageSelected = paginatedCatalogItems.length > 0 && paginatedCatalogItems.every(i => selectedIds.includes(i.id));
+
+  // Checkbox toggle (page vs all)
+  const toggleSelectAll = () => {
+    if (isPageSelected || isAllFilteredSelected) {
+      setSelectedIds(prev => prev.filter(id => !paginatedCatalogItems.some(i => i.id === id)));
+    } else {
+      setSelectedIds(prev => Array.from(new Set([...prev, ...paginatedCatalogItems.map(i => i.id)])));
+    }
+  };
 
   // Auto-generate next unique ID when opening add form
   const handleOpenAddForm = () => {
@@ -436,15 +465,6 @@ export default function ItemCatalogPanel({
       setMergeMsg(`Merge error: ${err.message}`);
     } finally {
       setMerging(false);
-    }
-  };
-
-  // Checkbox toggle
-  const toggleSelectAll = () => {
-    if (selectedIds.length === filteredItems.length) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(filteredItems.map(i => i.id));
     }
   };
 
@@ -1306,6 +1326,29 @@ export default function ItemCatalogPanel({
         </div>
       </div>
 
+      {/* Smart Selection Bar (Gmail-style Multi-Page Selector) */}
+      <SmartSelectionBar
+        selectedCount={selectedIds.length}
+        currentPageCount={paginatedCatalogItems.length}
+        totalFilteredCount={filteredItems.length}
+        isAllFilteredSelected={isAllFilteredSelected}
+        onSelectAllCurrentPage={() => setSelectedIds(paginatedCatalogItems.map(i => i.id))}
+        onSelectAllFiltered={() => setSelectedIds(filteredItems.map(i => i.id))}
+        onClearSelection={() => setSelectedIds([])}
+        entityName="catalog items"
+        actions={
+          isSuperAdmin && (
+            <button
+              onClick={handleBulkDelete}
+              className="btn btn-danger btn-sm"
+              style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
+            >
+              <Trash2 size={14} /> Delete Selected ({selectedIds.length})
+            </button>
+          )
+        }
+      />
+
       {/* Master Items Table */}
       <div className="glass-panel" style={{ padding: "4px" }}>
         <div className="table-container" style={{ maxHeight: "65vh", overflowY: "auto", overflowX: "auto" }}>
@@ -1315,9 +1358,10 @@ export default function ItemCatalogPanel({
                     <th style={{ width: "40px", textAlign: "center" }}>
                       <input 
                         type="checkbox"
-                        checked={filteredItems.length > 0 && selectedIds.length === filteredItems.length}
+                        checked={paginatedCatalogItems.length > 0 && (isPageSelected || isAllFilteredSelected)}
                         onChange={toggleSelectAll}
                         style={{ cursor: "pointer" }}
+                        title={isAllFilteredSelected ? "Deselect all rows" : isPageSelected ? "Deselect this page" : "Select all 100 items on this page"}
                       />
                     </th>
                     <th style={{ width: "50px", textAlign: "center" }}>Image</th>
@@ -1333,7 +1377,7 @@ export default function ItemCatalogPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedCatalogItems.length === 0 ? (
+                  {filteredItems.length === 0 ? (
                     <tr>
                       <td colSpan={isSuperAdmin ? "11" : "9"} style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
                         {searchQuery || categoryFilter !== "all" || typeFilter !== "all"
@@ -1342,7 +1386,7 @@ export default function ItemCatalogPanel({
                       </td>
                     </tr>
                   ) : (
-                    sortedCatalogItems.map(item => {
+                    paginatedCatalogItems.map(item => {
                   const isSelected = selectedIds.includes(item.id);
                   const isFG = item.itemType === "FG";
 
@@ -1498,6 +1542,19 @@ export default function ItemCatalogPanel({
             </tbody>
           </table>
         </div>
+
+        {/* Master Catalog Pagination (100 rows per page) */}
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredItems.length}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onItemsPerPageChange={(n) => {
+            setItemsPerPage(n);
+            setCurrentPage(1);
+          }}
+          perPageOptions={[50, 100, 200, 500]}
+        />
       </div>
 
       {/* Item Detail Modal Popup */}
