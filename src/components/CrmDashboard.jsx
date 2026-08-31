@@ -26,7 +26,11 @@ export default function CrmDashboard({
   onDeleteDispatch,
   onAddUser,
   onUpdateUser,
-  onLogout
+  onLogout,
+  onPullModuleData,
+  loadingModules = {},
+  recordSectionVisit,
+  currentUserId
 }) {
   const { startLoading, finishLoading, showSuccessToast, showErrorToast } = useLoading();
   // Determine if user is superadmin or owner
@@ -63,6 +67,34 @@ export default function CrmDashboard({
 
   // Navigation Tabs: "parties" | "team" | "salesreport" | "dispatchreport" | "orders"
   const [activeTab, setActiveTab] = useState("parties");
+
+  const handleCrmTabSwitch = (tab) => {
+    setActiveTab(tab);
+    let modKey = null;
+    if (tab === "parties") modKey = "crmParties";
+    else if (tab === "orders" || tab === "salesreport") modKey = "crmSalesOrders";
+    else if (tab === "dispatchreport") modKey = "crmDispatches";
+
+    if (modKey) {
+      const uId = currentUserId || currentUser?.id;
+      if (recordSectionVisit && uId) {
+        recordSectionVisit(uId, modKey);
+      }
+      if (onPullModuleData) {
+        onPullModuleData(modKey);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (onPullModuleData) {
+      onPullModuleData("crmParties");
+    }
+    const uId = currentUserId || currentUser?.id;
+    if (recordSectionVisit && uId) {
+      recordSectionVisit(uId, "crmParties");
+    }
+  }, []);
 
   // Filtered Parties based on selected executive
   const currentParties = useMemo(() => {

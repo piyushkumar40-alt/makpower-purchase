@@ -1565,6 +1565,164 @@ app.get("/api/state", async (req, res) => {
   }
 });
 
+// Granular On-Demand Data Pulling Endpoints (Optimized Lazy Loading)
+
+// GET /api/vendors - On-demand Vendor Hub pull
+app.get("/api/vendors", async (req, res) => {
+  if (isPg) {
+    try {
+      const result = await pool.query('SELECT * FROM vendors ORDER BY "name" ASC');
+      const vendors = result.rows.map(v => ({
+        ...v,
+        purchaserIds: v.purchaserIds ? (typeof v.purchaserIds === "string" ? JSON.parse(v.purchaserIds) : v.purchaserIds) : []
+      }));
+      res.json(vendors);
+    } catch (err) {
+      console.error("GET /api/vendors error:", err.message);
+      res.status(500).json({ error: "Failed to fetch vendors." });
+    }
+  } else {
+    const data = readLocalJson();
+    res.json(data.vendors || []);
+  }
+});
+
+// GET /api/cargo-companies - On-demand Cargo Companies pull
+app.get("/api/cargo-companies", async (req, res) => {
+  if (isPg) {
+    try {
+      const result = await pool.query('SELECT * FROM cargo_companies ORDER BY "name" ASC');
+      res.json(result.rows || []);
+    } catch (err) {
+      console.error("GET /api/cargo-companies error:", err.message);
+      res.status(500).json({ error: "Failed to fetch cargo companies." });
+    }
+  } else {
+    const data = readLocalJson();
+    res.json(data.cargoCompanies || []);
+  }
+});
+
+// GET /api/cargos - On-demand Cargo Shipments pull
+app.get("/api/cargos", async (req, res) => {
+  if (isPg) {
+    try {
+      const result = await pool.query('SELECT * FROM cargos ORDER BY "cargoOrderDate" DESC');
+      const cargos = result.rows.map(c => ({
+        ...c,
+        cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
+        cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
+        totalCargoPrice: c.totalCargoPrice ? parseFloat(c.totalCargoPrice) : ""
+      }));
+      res.json(cargos);
+    } catch (err) {
+      console.error("GET /api/cargos error:", err.message);
+      res.status(500).json({ error: "Failed to fetch cargos." });
+    }
+  } else {
+    const data = readLocalJson();
+    res.json(data.cargos || []);
+  }
+});
+
+// GET /api/requests - On-demand Purchase Requests pull
+app.get("/api/requests", async (req, res) => {
+  if (isPg) {
+    try {
+      const result = await pool.query('SELECT * FROM requests ORDER BY "orderDate" DESC');
+      const requests = result.rows.map(r => ({
+        ...r,
+        orderQuantity: r.orderQuantity ? parseInt(r.orderQuantity) : 0,
+        priceRmb: r.priceRmb ? parseFloat(r.priceRmb) : "",
+        totalRmb: r.totalRmb ? parseFloat(r.totalRmb) : "",
+        advancePayment: r.advancePayment ? parseFloat(r.advancePayment) : "",
+        balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : ""
+      }));
+      res.json(requests);
+    } catch (err) {
+      console.error("GET /api/requests error:", err.message);
+      res.status(500).json({ error: "Failed to fetch requests." });
+    }
+  } else {
+    const data = readLocalJson();
+    res.json(data.requests || []);
+  }
+});
+
+// GET /api/users - On-demand User Accounts pull
+app.get("/api/users", async (req, res) => {
+  if (isPg) {
+    try {
+      const result = await pool.query('SELECT * FROM users ORDER BY "name" ASC');
+      res.json(result.rows.map(u => ({ ...u, status: u.status || "active" })));
+    } catch (err) {
+      console.error("GET /api/users error:", err.message);
+      res.status(500).json({ error: "Failed to fetch users." });
+    }
+  } else {
+    const data = readLocalJson();
+    res.json((data.users || []).map(u => ({ ...u, status: u.status || "active" })));
+  }
+});
+
+// GET /api/designations - On-demand Designations pull
+app.get("/api/designations", async (req, res) => {
+  if (isPg) {
+    try {
+      const result = await pool.query('SELECT * FROM designations ORDER BY "title" ASC');
+      res.json((result.rows && result.rows.length > 0) ? result.rows : initialDesignations);
+    } catch (err) {
+      console.error("GET /api/designations error:", err.message);
+      res.json(initialDesignations);
+    }
+  } else {
+    const data = readLocalJson();
+    res.json(data.designations || initialDesignations);
+  }
+});
+
+// GET /api/crm/sales-orders - On-demand CRM Sales Orders pull
+app.get("/api/crm/sales-orders", async (req, res) => {
+  if (isPg) {
+    try {
+      const result = await pool.query('SELECT * FROM crm_sales_orders ORDER BY "orderDate" DESC');
+      res.json((result.rows || []).map(so => ({
+        ...so,
+        orderQty: so.orderQty ? parseInt(so.orderQty) : 0,
+        unitPriceInr: so.unitPriceInr ? parseFloat(so.unitPriceInr) : 0,
+        totalInr: so.totalInr ? parseFloat(so.totalInr) : 0,
+        dispatchedQty: so.dispatchedQty ? parseInt(so.dispatchedQty) : 0,
+        pendingQty: so.pendingQty != null ? parseInt(so.pendingQty) : 0
+      })));
+    } catch (err) {
+      console.error("GET /api/crm/sales-orders error:", err.message);
+      res.status(500).json({ error: "Failed to fetch sales orders." });
+    }
+  } else {
+    const data = readLocalJson();
+    res.json(data.crmSalesOrders || []);
+  }
+});
+
+// GET /api/crm/dispatches - On-demand CRM Dispatches pull
+app.get("/api/crm/dispatches", async (req, res) => {
+  if (isPg) {
+    try {
+      const result = await pool.query('SELECT * FROM crm_dispatches ORDER BY "dispatchDate" DESC');
+      res.json((result.rows || []).map(d => ({
+        ...d,
+        dispatchedQty: d.dispatchedQty ? parseInt(d.dispatchedQty) : 0
+      })));
+    } catch (err) {
+      console.error("GET /api/crm/dispatches error:", err.message);
+      res.status(500).json({ error: "Failed to fetch dispatches." });
+    }
+  } else {
+    const data = readLocalJson();
+    res.json(data.crmDispatches || []);
+  }
+});
+
 // 2. POST /api/requests - Adds or Updates requests
 app.post("/api/requests", async (req, res) => {
   const r = req.body;

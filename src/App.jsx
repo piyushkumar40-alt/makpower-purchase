@@ -15,6 +15,12 @@ import HomePage from "./components/HomePage";
 import CrmDashboard from "./components/CrmDashboard";
 import ImsDashboard from "./components/ImsDashboard";
 import { initialUsers, initialVendors, initialRequests, initialCargoShipments, initialCargoCompanies, initialCrmParties, initialCrmSalesOrders, initialCrmDispatches, initialImsTransactions } from "./mockData";
+import { 
+  recordUserLogin, 
+  recordSectionVisit, 
+  getPredictivePreloadSections, 
+  TRACKABLE_MODULES 
+} from "./utils/userIntentionTracker";
 
 export default function App() {
   // Mobile drawer state
@@ -89,6 +95,95 @@ export default function App() {
     const saved = localStorage.getItem("makpower_current_user");
     return saved ? JSON.parse(saved) : null;
   });
+
+  // On-Demand Data Pulling & Loading State
+  const [loadingModules, setLoadingModules] = useState({});
+  const activePullPromisesRef = React.useRef({});
+  const loadedModulesRef = React.useRef(new Set());
+
+  const pullModuleData = React.useCallback(async (moduleKey, force = false) => {
+    if (!moduleKey) return;
+    if (!force && loadedModulesRef.current.has(moduleKey) && !activePullPromisesRef.current[moduleKey]) {
+      return; // Already loaded and cached in memory
+    }
+    if (activePullPromisesRef.current[moduleKey]) {
+      return activePullPromisesRef.current[moduleKey]; // Deduplicate concurrent in-flight pulls
+    }
+
+    setLoadingModules(prev => ({ ...prev, [moduleKey]: true }));
+
+    const pullPromise = (async () => {
+      try {
+        if (moduleKey === TRACKABLE_MODULES.VENDORS) {
+          const res = await fetch("/api/vendors");
+          const data = await res.json();
+          if (Array.isArray(data)) setVendors(data);
+        } else if (moduleKey === TRACKABLE_MODULES.CARGO_COMPANIES) {
+          const res = await fetch("/api/cargo-companies");
+          const data = await res.json();
+          if (Array.isArray(data)) setCargoCompanies(data);
+        } else if (moduleKey === TRACKABLE_MODULES.CARGOS) {
+          const res = await fetch("/api/cargos");
+          const data = await res.json();
+          if (Array.isArray(data)) setCargos(data);
+        } else if (moduleKey === TRACKABLE_MODULES.REQUESTS) {
+          const res = await fetch("/api/requests");
+          const data = await res.json();
+          if (Array.isArray(data)) setRequests(data.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
+        } else if (moduleKey === TRACKABLE_MODULES.ITEMS) {
+          const res = await fetch("/api/items");
+          const data = await res.json();
+          if (Array.isArray(data)) setItems(data);
+        } else if (moduleKey === TRACKABLE_MODULES.CRM_PARTIES) {
+          const res = await fetch("/api/crm/parties");
+          const data = await res.json();
+          if (Array.isArray(data)) setCrmParties(data);
+        } else if (moduleKey === TRACKABLE_MODULES.CRM_SALES_ORDERS) {
+          const res = await fetch("/api/crm/sales-orders");
+          const data = await res.json();
+          if (Array.isArray(data)) setCrmSalesOrders(data);
+        } else if (moduleKey === TRACKABLE_MODULES.CRM_DISPATCHES) {
+          const res = await fetch("/api/crm/dispatches");
+          const data = await res.json();
+          if (Array.isArray(data)) setCrmDispatches(data);
+        } else if (moduleKey === TRACKABLE_MODULES.IMS_TRANSACTIONS) {
+          const res = await fetch("/api/ims/transactions");
+          const data = await res.json();
+          if (Array.isArray(data)) setImsTransactions(data);
+        } else if (moduleKey === TRACKABLE_MODULES.AUDIT_LOGS) {
+          const res = await fetch("/api/audit-logs");
+          const data = await res.json();
+          if (Array.isArray(data)) setAuditLogs(data);
+        } else if (moduleKey === TRACKABLE_MODULES.DESIGNATIONS) {
+          const res = await fetch("/api/designations");
+          const data = await res.json();
+          if (Array.isArray(data)) setDesignations(data);
+        }
+        loadedModulesRef.current.add(moduleKey);
+      } catch (err) {
+        console.error(`Error pulling module data [${moduleKey}]:`, err);
+      } finally {
+        setLoadingModules(prev => ({ ...prev, [moduleKey]: false }));
+        delete activePullPromisesRef.current[moduleKey];
+      }
+    })();
+
+    activePullPromisesRef.current[moduleKey] = pullPromise;
+    return pullPromise;
+  }, []);
+
+  // Adaptive Predictive Preload Trigger on Login / Session Start
+  useEffect(() => {
+    if (currentUser && currentUser.id) {
+      recordUserLogin(currentUser.id);
+      const predictivePreloads = getPredictivePreloadSections(currentUser.id);
+      if (predictivePreloads.length > 0) {
+        predictivePreloads.forEach(modKey => {
+          pullModuleData(modKey, false);
+        });
+      }
+    }
+  }, [currentUser, pullModuleData]);
 
   // System Audit Activity Logger (Google Sheets-style version history)
   const logSystemActivity = async (action, details, entityType = "", entityId = "", oldData = null, newData = null) => {
@@ -1706,6 +1801,10 @@ export default function App() {
             onUpdateParty={handleUpdateParty}
             onDeleteParty={handleDeleteParty}
             onBatchUploadParties={handleBatchUploadParties}
+            onPullModuleData={pullModuleData}
+            loadingModules={loadingModules}
+            recordSectionVisit={recordSectionVisit}
+            currentUserId={currentUser?.id}
           />
         )}
 
@@ -1745,6 +1844,10 @@ export default function App() {
             onAddUser={addPurchaser}
             onUpdateUser={updateUserInfo}
             onLogout={handleLogout}
+            onPullModuleData={pullModuleData}
+            loadingModules={loadingModules}
+            recordSectionVisit={recordSectionVisit}
+            currentUserId={currentUser?.id}
           />
         )}
 

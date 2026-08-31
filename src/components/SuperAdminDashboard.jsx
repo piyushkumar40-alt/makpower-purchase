@@ -51,11 +51,56 @@ export default function SuperAdminDashboard({
   onDeleteParty,
   onBatchUploadParties,
   designations = [],
-  onAddDesignation
+  onAddDesignation,
+  onPullModuleData,
+  loadingModules = {},
+  recordSectionVisit,
+  currentUserId
 }) {
   const [subTab, setSubTab] = useState(() => {
     return localStorage.getItem("makpower_admin_subtab") || "purchasers";
   });
+
+  const handleTabSwitch = (targetTab) => {
+    setSubTab(targetTab);
+    localStorage.setItem("makpower_admin_subtab", targetTab);
+
+    let modKey = null;
+    if (targetTab === "vendors") modKey = "vendors";
+    else if (targetTab === "cargocompanies") modKey = "cargoCompanies";
+    else if (targetTab === "crmparties") modKey = "crmParties";
+    else if (targetTab === "audit") modKey = "auditLogs";
+    else if (targetTab === "itemmaster") modKey = "items";
+    else if (targetTab === "purchasers") modKey = "users";
+
+    if (modKey) {
+      if (recordSectionVisit && currentUserId) {
+        recordSectionVisit(currentUserId, modKey);
+      }
+      if (onPullModuleData) {
+        onPullModuleData(modKey);
+      }
+    }
+  };
+
+  useEffect(() => {
+    let modKey = null;
+    if (subTab === "vendors") modKey = "vendors";
+    else if (subTab === "cargocompanies") modKey = "cargoCompanies";
+    else if (subTab === "crmparties") modKey = "crmParties";
+    else if (subTab === "audit") modKey = "auditLogs";
+    else if (subTab === "itemmaster") modKey = "items";
+    else if (subTab === "purchasers") modKey = "users";
+
+    if (modKey) {
+      if (recordSectionVisit && currentUserId) {
+        recordSectionVisit(currentUserId, modKey);
+      }
+      if (onPullModuleData) {
+        onPullModuleData(modKey);
+      }
+    }
+  }, []);
 
   // CRM Parties Studio State
   const [crmPartySearch, setCrmPartySearch] = useState("");
@@ -897,6 +942,18 @@ export default function SuperAdminDashboard({
     fileReader.readAsText(file);
   };
 
+  const renderModuleLoader = (title) => (
+    <div className="glass-panel card-fade-in" style={{ padding: "80px 20px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "16px", minHeight: "350px", border: "1px dashed rgba(56, 189, 248, 0.3)" }}>
+      <div style={{ width: "42px", height: "42px", border: "3px solid rgba(56, 189, 248, 0.2)", borderTopColor: "var(--primary)", borderRadius: "50%", animation: "spin 0.75s linear infinite" }}></div>
+      <div style={{ fontSize: "1.15rem", fontWeight: 800, color: "var(--primary)", letterSpacing: "0.02em" }}>
+        Pulling {title} from Database...
+      </div>
+      <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", maxWidth: "380px" }}>
+        Fetching fresh data on-demand. Adaptive predictive caching active.
+      </div>
+    </div>
+  );
+
   return (
     <div className="main-layout">
       {/* Sidebar navigation */}
@@ -908,14 +965,14 @@ export default function SuperAdminDashboard({
         </div>
 
         <button 
-          onClick={() => setSubTab("purchasers")}
+          onClick={() => handleTabSwitch("purchasers")}
           className={`sidebar-link ${subTab === "purchasers" ? "active" : ""}`}
         >
           <Users size={16} /> Users (CRM & Staff)
         </button>
 
         <button 
-          onClick={() => setSubTab("crmparties")}
+          onClick={() => handleTabSwitch("crmparties")}
           className={`sidebar-link ${subTab === "crmparties" ? "active" : ""}`}
           style={{ color: "#818cf8", fontWeight: 700, display: "flex", justifyContent: "space-between", alignItems: "center" }}
         >
@@ -930,42 +987,42 @@ export default function SuperAdminDashboard({
         </button>
 
         <button 
-          onClick={() => setSubTab("vendors")}
+          onClick={() => handleTabSwitch("vendors")}
           className={`sidebar-link ${subTab === "vendors" ? "active" : ""}`}
         >
           <Building size={16} /> Vendor Hub
         </button>
 
         <button 
-          onClick={() => setSubTab("cargocompanies")}
+          onClick={() => handleTabSwitch("cargocompanies")}
           className={`sidebar-link ${subTab === "cargocompanies" ? "active" : ""}`}
         >
           <Truck size={16} /> Cargo Companies
         </button>
 
         <button 
-          onClick={() => setSubTab("audit")}
+          onClick={() => handleTabSwitch("audit")}
           className={`sidebar-link ${subTab === "audit" ? "active" : ""}`}
         >
           <FileText size={16} /> Audit Purchase Logs
         </button>
 
         <button 
-          onClick={() => setSubTab("backup")}
+          onClick={() => handleTabSwitch("backup")}
           className={`sidebar-link ${subTab === "backup" ? "active" : ""}`}
         >
           <Database size={16} /> Database Backup
         </button>
 
         <button 
-          onClick={() => setSubTab("settings")}
+          onClick={() => handleTabSwitch("settings")}
           className={`sidebar-link ${subTab === "settings" ? "active" : ""}`}
         >
           <Sliders size={16} /> System Settings
         </button>
 
         <button 
-          onClick={() => setSubTab("itemmaster")}
+          onClick={() => handleTabSwitch("itemmaster")}
           className={`sidebar-link ${subTab === "itemmaster" ? "active" : ""}`}
           style={{ color: "#38bdf8", fontWeight: 700 }}
         >
@@ -973,7 +1030,7 @@ export default function SuperAdminDashboard({
         </button>
 
         <button 
-          onClick={() => setSubTab("missingids")}
+          onClick={() => handleTabSwitch("missingids")}
           className={`sidebar-link ${subTab === "missingids" ? "active" : ""}`}
           style={{ 
             color: adminMissingImsItems.length > 0 ? "#f59e0b" : "var(--text-muted)", 
@@ -994,7 +1051,7 @@ export default function SuperAdminDashboard({
         </button>
 
         <button 
-          onClick={() => setSubTab("sessions")}
+          onClick={() => handleTabSwitch("sessions")}
           className={`sidebar-link ${subTab === "sessions" ? "active" : ""}`}
           style={{ color: "#10b981", fontWeight: 700 }}
         >
@@ -1002,7 +1059,7 @@ export default function SuperAdminDashboard({
         </button>
 
         <button 
-          onClick={() => setSubTab("filemanager")}
+          onClick={() => handleTabSwitch("filemanager")}
           className={`sidebar-link ${subTab === "filemanager" ? "active" : ""}`}
           style={{ color: "#f59e0b", fontWeight: 700 }}
         >
@@ -1157,20 +1214,24 @@ export default function SuperAdminDashboard({
 
         {/* ITEM MASTER & STOCK TAB */}
         {subTab === "itemmaster" && (
-          <ItemCatalogPanel 
-            items={items}
-            onAddItem={onAddItem}
-            onBulkAddItems={onBulkAddItems}
-            onDeleteItems={onDeleteItems}
-            onUpdateItem={onUpdateItem}
-            onMergeItems={onMergeItems}
-            currentUser={{ role: "superadmin", name: "Admin" }}
-            requests={requests}
-            cargos={cargos}
-            vendors={vendors}
-            users={users}
-            cargoCompanies={cargoCompanies}
-          />
+          loadingModules.items && items.length === 0 ? (
+            renderModuleLoader("Item Catalog & Master Stock")
+          ) : (
+            <ItemCatalogPanel 
+              items={items}
+              onAddItem={onAddItem}
+              onBulkAddItems={onBulkAddItems}
+              onDeleteItems={onDeleteItems}
+              onUpdateItem={onUpdateItem}
+              onMergeItems={onMergeItems}
+              currentUser={{ role: "superadmin", name: "Admin" }}
+              requests={requests}
+              cargos={cargos}
+              vendors={vendors}
+              users={users}
+              cargoCompanies={cargoCompanies}
+            />
+          )
         )}
 
         {/* PURCHASERS & CRM USERS MANAGEMENT TAB */}
@@ -1639,157 +1700,204 @@ export default function SuperAdminDashboard({
 
         {/* VENDORS MANAGEMENT TAB */}
         {subTab === "vendors" && (
-          <div className="card-fade-in">
-            <h2 style={{ fontSize: "1.8rem", marginBottom: "20px" }}>Vendor Hub</h2>
+          loadingModules.vendors && vendors.length === 0 ? (
+            renderModuleLoader("Vendor Hub")
+          ) : (
+            <div className="card-fade-in">
+              <h2 style={{ fontSize: "1.8rem", marginBottom: "20px" }}>Vendor Hub</h2>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))", gap: "30px", alignItems: "start" }}>
-              
-              {/* Vendors List & Reassign */}
-              <div className="glass-panel" style={{ padding: "24px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                  <h3 style={{ fontSize: "1.2rem", color: "var(--primary)", margin: 0 }}>Registered Vendors</h3>
-                  <label style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
-                    <input 
-                      type="checkbox" 
-                      checked={showInactiveVendors} 
-                      onChange={e => setShowInactiveVendors(e.target.checked)} 
-                      style={{ cursor: "pointer" }}
-                    />
-                    Show Inactive
-                  </label>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "500px", overflowY: "auto", paddingRight: "8px" }}>
-                  {vendors.filter(v => showInactiveVendors || v.status !== "Inactive").length === 0 ? (
-                    <div style={{ color: "var(--text-muted)", fontSize: "0.9rem", textAlign: "center", padding: "20px 0" }}>
-                      No vendors found.
-                    </div>
-                  ) : (
-                    vendors
-                      .filter(v => showInactiveVendors || v.status !== "Inactive")
-                      .map(vendor => (
-                        <div 
-                          key={vendor.id} 
-                          className="glass-panel" 
-                          onClick={() => setSelectedVendorForDetail(vendor)}
-                          style={{ 
-                            padding: "16px 20px", 
-                            background: "rgba(255, 255, 255, 0.02)", 
-                            cursor: "pointer", 
-                            display: "flex", 
-                            justifyContent: "space-between", 
-                            alignItems: "center",
-                            borderRadius: "8px",
-                            border: "1px solid var(--border-glass)",
-                            transition: "all 0.2s ease",
-                            opacity: vendor.status === "Inactive" ? 0.55 : 1
-                          }}
-                        >
-                          <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>
-                            {vendor.name} {vendor.status === "Inactive" && <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontStyle: "italic" }}>(Inactive)</span>}
-                          </span>
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>View Details & Share</span>
-                            <ChevronRight size={16} style={{ color: "var(--primary)" }} />
-                          </div>
-                        </div>
-                      ))
-                  )}
-                </div>
-              </div>
-
-              {/* Add Vendor Form */}
-              <div className="glass-panel" style={{ padding: "24px" }}>
-                <h3 style={{ fontSize: "1.2rem", marginBottom: "16px", color: "var(--primary)" }}>Register New Vendor</h3>
-                {vSuccess && <div className="alert-strip alert-success" style={{ marginBottom: "14px" }}>{vSuccess}</div>}
-                {vError && <div className="alert-strip alert-danger" style={{ marginBottom: "14px" }}>{vError}</div>}
-
-                <form onSubmit={handleAddVendorSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                  <div className="form-group">
-                    <label className="form-label">Vendor / Supplier Name</label>
-                    <input 
-                      type="text" 
-                      className="form-control"
-                      placeholder="e.g. Guangzhou Metalworks Ltd"
-                      value={vName}
-                      onChange={e => setVName(e.target.value)}
-                      required
-                    />
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))", gap: "30px", alignItems: "start" }}>
+                
+                {/* Vendors List & Reassign */}
+                <div className="glass-panel" style={{ padding: "24px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                    <h3 style={{ fontSize: "1.2rem", color: "var(--primary)", margin: 0 }}>Registered Vendors</h3>
+                    <label style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={showInactiveVendors} 
+                        onChange={e => setShowInactiveVendors(e.target.checked)} 
+                        style={{ cursor: "pointer" }}
+                      />
+                      Show Inactive
+                    </label>
                   </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Location / Address</label>
-                    <input 
-                      type="text" 
-                      className="form-control"
-                      placeholder="e.g. Guangzhou, China"
-                      value={vLocation}
-                      onChange={e => setVLocation(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Phone Number</label>
-                    <input 
-                      type="text" 
-                      className="form-control"
-                      placeholder="e.g. +86 20 8888 7777"
-                      value={vPhone}
-                      onChange={e => setVPhone(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">History / Notes</label>
-                    <textarea 
-                      className="form-control"
-                      placeholder="e.g. Primary metal casting supplier..."
-                      value={vHistory}
-                      onChange={e => setVHistory(e.target.value)}
-                      rows="2"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Assign Purchasers (Can select multiple)</label>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "10px", background: "rgba(0,0,0,0.15)", borderRadius: "8px", border: "1px solid var(--border-glass)", maxHeight: "150px", overflowY: "auto" }}>
-                      {activePurchasers.map(p => (
-                        <label key={p.id} className="checkbox-label" style={{ fontSize: "0.85rem" }}>
-                          <input 
-                            type="checkbox"
-                            className="checkbox-input"
-                            checked={vPurchaserIds.includes(p.id)}
-                            onChange={e => {
-                              if (e.target.checked) {
-                                setVPurchaserIds(prev => [...prev, p.id]);
-                              } else {
-                                setVPurchaserIds(prev => prev.filter(id => id !== p.id));
-                              }
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "500px", overflowY: "auto", paddingRight: "8px" }}>
+                    {vendors.filter(v => showInactiveVendors || v.status !== "Inactive").length === 0 ? (
+                      <div style={{ color: "var(--text-muted)", fontSize: "0.9rem", textAlign: "center", padding: "20px 0" }}>
+                        No vendors found.
+                      </div>
+                    ) : (
+                      vendors
+                        .filter(v => showInactiveVendors || v.status !== "Inactive")
+                        .map(vendor => (
+                          <div 
+                            key={vendor.id} 
+                            className="glass-panel" 
+                            style={{ 
+                              padding: "14px", 
+                              display: "flex", 
+                              flexDirection: "column", 
+                              gap: "8px", 
+                              background: "rgba(255, 255, 255, 0.01)",
+                              opacity: vendor.status === "Inactive" ? 0.6 : 1,
+                              borderLeft: vendor.status === "Inactive" ? "3px solid #ef4444" : "3px solid var(--primary)"
                             }}
-                          />
-                          {p.name}
-                        </label>
-                      ))}
-                    </div>
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <div>
+                                <span 
+                                  onClick={() => setSelectedVendorForDetail(vendor)}
+                                  style={{ fontWeight: 600, color: "var(--primary)", cursor: "pointer", textDecoration: "underline" }}
+                                  title="Click to view full vendor profile"
+                                >
+                                  {vendor.name}
+                                </span>
+                                {vendor.status === "Inactive" && (
+                                  <span className="badge badge-danger" style={{ marginLeft: "8px", fontSize: "0.7rem" }}>Inactive</span>
+                                )}
+                              </div>
+                              <div style={{ display: "flex", gap: "6px" }}>
+                                <button 
+                                  onClick={() => setEditingVendor(vendor)} 
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ padding: "4px 8px" }}
+                                  title="Edit Vendor"
+                                >
+                                  <Edit2 size={12} />
+                                </button>
+                                {vendor.status !== "Inactive" && (
+                                  <button 
+                                    onClick={() => onRemoveVendor(vendor.id)} 
+                                    className="btn btn-danger btn-sm"
+                                    style={{ padding: "4px 8px" }}
+                                    title="Deactivate Vendor"
+                                  >
+                                    <UserMinus size={12} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                              {vendor.location && <span>📍 {vendor.location}</span>}
+                              {vendor.phone && <span>📞 {vendor.phone}</span>}
+                            </div>
+
+                            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                              <strong style={{ color: "var(--text)" }}>Assigned Purchasers:</strong>{" "}
+                              {vendor.purchaserIds && vendor.purchaserIds.length > 0 ? (
+                                vendor.purchaserIds.map(pid => {
+                                  const p = users.find(u => u.id === pid);
+                                  return p ? p.name : pid;
+                                }).join(", ")
+                              ) : (
+                                <span style={{ color: "#ef4444" }}>None (Unassigned)</span>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                    )}
                   </div>
+                </div>
 
-                  <button 
-                    type="submit" 
-                    className="btn btn-primary" 
-                    style={{ width: "100%", marginTop: "10px" }}
-                    disabled={vPurchaserIds.length === 0}
-                  >
-                    <Plus size={16} /> Register Vendor
-                  </button>
-                </form>
+                {/* Register Vendor Form */}
+                <div className="glass-panel" style={{ padding: "24px" }}>
+                  <h3 style={{ fontSize: "1.2rem", marginBottom: "16px", color: "var(--primary)" }}>Register New Vendor</h3>
+                  {vSuccess && <div className="badge badge-success" style={{ display: "block", padding: "8px", marginBottom: "12px", textAlign: "center" }}>{vSuccess}</div>}
+                  {vError && <div className="badge badge-danger" style={{ display: "block", padding: "8px", marginBottom: "12px", textAlign: "center" }}>{vError}</div>}
+                  
+                  <form onSubmit={handleAddVendorSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                    <div className="form-group">
+                      <label className="form-label">Vendor Company Name</label>
+                      <input 
+                        type="text" 
+                        className="form-control" 
+                        placeholder="e.g. Shenzhen Electronics Co."
+                        value={vName}
+                        onChange={e => setVName(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Location / Address</label>
+                      <input 
+                        type="text" 
+                        className="form-control" 
+                        placeholder="e.g. Guangzhou, China"
+                        value={vLocation}
+                        onChange={e => setVLocation(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Phone / WhatsApp / WeChat</label>
+                      <input 
+                        type="text" 
+                        className="form-control" 
+                        placeholder="+86..."
+                        value={vPhone}
+                        onChange={e => setVPhone(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Assign Purchasers (Select multiple)</label>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "120px", overflowY: "auto", background: "rgba(0,0,0,0.2)", padding: "8px", borderRadius: "4px" }}>
+                        {users.filter(u => u.role !== "superadmin" && u.status === "active").map(p => (
+                          <label key={p.id} style={{ fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                            <input 
+                              type="checkbox" 
+                              checked={vPurchaserIds.includes(p.id)}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  setVPurchaserIds(prev => [...prev, p.id]);
+                                } else {
+                                  setVPurchaserIds(prev => prev.filter(id => id !== p.id));
+                                }
+                              }}
+                            />
+                            {p.name} ({p.role})
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Notes / History</label>
+                      <textarea 
+                        className="form-control" 
+                        placeholder="Payment terms, contact person, etc."
+                        rows="2"
+                        value={vHistory}
+                        onChange={e => setVHistory(e.target.value)}
+                      />
+                    </div>
+
+                    <button 
+                      type="submit" 
+                      className="btn btn-primary" 
+                      style={{ width: "100%", marginTop: "10px" }}
+                      disabled={vPurchaserIds.length === 0}
+                    >
+                      <Plus size={16} /> Register Vendor
+                    </button>
+                  </form>
+                </div>
+
               </div>
-
             </div>
-          </div>
+          )
         )}
 
         {/* AUDIT LOG TAB */}
         {subTab === "audit" && (
-          <AuditLogsPanel auditLogs={auditLogs} users={users} requests={requests} vendors={vendors} />
+          loadingModules.auditLogs && auditLogs.length === 0 ? (
+            renderModuleLoader("Audit Purchase Logs")
+          ) : (
+            <AuditLogsPanel auditLogs={auditLogs} users={users} requests={requests} vendors={vendors} />
+          )
         )}
 
         {/* DATABASE BACKUP TAB */}
@@ -1867,16 +1975,20 @@ export default function SuperAdminDashboard({
 
         {/* CARGO COMPANIES MANAGEMENT TAB */}
         {subTab === "cargocompanies" && (
-          <div className="card-fade-in">
-            <h2 style={{ fontSize: "1.8rem", marginBottom: "20px" }}>Cargo Companies</h2>
-            <CargoCompaniesPanel 
-              cargoCompanies={cargoCompanies}
-              onAddCargoCompany={onAddCargoCompany}
-              onUpdateCargoCompany={onUpdateCargoCompany}
-              onRemoveCargoCompany={onRemoveCargoCompany}
-              onSelectCargoCompany={setSelectedCargoCompanyForDetail}
-            />
-          </div>
+          loadingModules.cargoCompanies && cargoCompanies.length === 0 ? (
+            renderModuleLoader("Cargo Companies")
+          ) : (
+            <div className="card-fade-in">
+              <h2 style={{ fontSize: "1.8rem", marginBottom: "20px" }}>Cargo Companies</h2>
+              <CargoCompaniesPanel 
+                cargoCompanies={cargoCompanies}
+                onAddCargoCompany={onAddCargoCompany}
+                onUpdateCargoCompany={onUpdateCargoCompany}
+                onRemoveCargoCompany={onRemoveCargoCompany}
+                onSelectCargoCompany={setSelectedCargoCompanyForDetail}
+              />
+            </div>
+          )
         )}
 
         {/* SYSTEM SETTINGS TAB */}
@@ -2871,7 +2983,10 @@ export default function SuperAdminDashboard({
 
         {/* ==================== CRM PARTIES & BULK UPLOAD TAB ==================== */}
         {subTab === "crmparties" && (
-          <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          loadingModules.crmParties && crmParties.length === 0 ? (
+            renderModuleLoader("CRM Parties & Bulk Upload Studio")
+          ) : (
+            <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
             
             {/* Header & Sub-Navigation */}
             <div className="glass-panel" style={{ padding: "22px 26px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
@@ -3437,7 +3552,8 @@ export default function SuperAdminDashboard({
               </div>
             )}
 
-          </div>
+            </div>
+          )
         )}
 
       </section>
