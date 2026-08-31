@@ -658,11 +658,19 @@ const dbInitPromise = initDatabase().catch(err => {
   console.error("Database initialization error:", err);
 });
 
-// Middleware: Ensure database is initialized before handling requests
-app.use(async (req, res, next) => {
+// Immediate Health Check Endpoints (never blocked by DB initialization)
+app.get("/healthz", (req, res) => res.status(200).send("OK"));
+app.get("/api/health", (req, res) => res.json({ status: "ok", uptime: process.uptime() }));
+
+// Middleware: Ensure database is initialized before handling API requests (with 2s safety timeout)
+app.use("/api", async (req, res, next) => {
+  if (req.path === "/health") return next();
   if (dbInitPromise) {
     try {
-      await dbInitPromise;
+      await Promise.race([
+        dbInitPromise,
+        new Promise(resolve => setTimeout(resolve, 2000))
+      ]);
     } catch (err) {
       console.warn("DB init wait notice:", err.message);
     }
