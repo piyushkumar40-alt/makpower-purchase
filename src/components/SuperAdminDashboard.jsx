@@ -15,10 +15,10 @@ import { QuickCreateDesignationModal, QuickCreateVendorModal, QuickCreateCargoCo
 import { useLoading } from "../context/LoadingContext";
 
 export default function SuperAdminDashboard({
-  users,
-  vendors,
-  requests,
-  cargos,
+  users = [],
+  vendors = [],
+  requests = [],
+  cargos = [],
   cargoCompanies = [],
   auditLogs = [],
   onAddPurchaser,
@@ -1192,7 +1192,7 @@ export default function SuperAdminDashboard({
                     className={`btn btn-sm ${staffFilterTab === "all" ? "btn-primary" : "btn-secondary"}`}
                     style={{ fontSize: "0.78rem" }}
                   >
-                    All Users ({users.filter(u => u.role !== "superadmin" && u.status === "active").length})
+                    All Users ({users.filter(u => u.role !== "superadmin" && u.status !== "inactive" && u.status !== "disabled").length})
                   </button>
                   <button 
                     type="button" 
@@ -1200,7 +1200,7 @@ export default function SuperAdminDashboard({
                     className={`btn btn-sm ${staffFilterTab === "crm" ? "btn-primary" : "btn-secondary"}`}
                     style={{ fontSize: "0.78rem", background: staffFilterTab === "crm" ? "linear-gradient(135deg, #0284c7, #6366f1)" : "" }}
                   >
-                    💼 CRM ({users.filter(u => u.role === "crm" && u.status === "active").length})
+                    💼 CRM ({users.filter(u => u.role === "crm" && u.status !== "inactive" && u.status !== "disabled").length})
                   </button>
                   <button 
                     type="button" 
@@ -1208,7 +1208,7 @@ export default function SuperAdminDashboard({
                     className={`btn btn-sm ${staffFilterTab === "sales" ? "btn-primary" : "btn-secondary"}`}
                     style={{ fontSize: "0.78rem" }}
                   >
-                    🟢 ASM/TSM ({users.filter(u => (u.role === "asm" || u.role === "tsm") && u.status === "active").length})
+                    🟢 ASM/TSM ({users.filter(u => (u.role === "asm" || u.role === "tsm") && u.status !== "inactive" && u.status !== "disabled").length})
                   </button>
                   <button 
                     type="button" 
@@ -1216,13 +1216,13 @@ export default function SuperAdminDashboard({
                     className={`btn btn-sm ${staffFilterTab === "purchaser" ? "btn-primary" : "btn-secondary"}`}
                     style={{ fontSize: "0.78rem" }}
                   >
-                    🛒 Purchasers ({users.filter(u => u.role === "purchaser" && u.status === "active").length})
+                    🛒 Purchasers ({users.filter(u => u.role === "purchaser" && u.status !== "inactive" && u.status !== "disabled").length})
                   </button>
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                   {users.filter(u => {
-                    if (u.role === "superadmin" || u.status !== "active") return false;
+                    if (u.role === "superadmin" || u.status === "inactive" || u.status === "disabled") return false;
                     if (staffFilterTab === "crm") return u.role === "crm";
                     if (staffFilterTab === "sales") return u.role === "asm" || u.role === "tsm";
                     if (staffFilterTab === "purchaser") return u.role === "purchaser";

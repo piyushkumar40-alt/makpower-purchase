@@ -94,7 +94,7 @@ const DB_FILE = path.join(__dirname, "db.json");
 function readLocalJson() {
   if (!fs.existsSync(DB_FILE)) {
     const defaultData = {
-      users: initialUsers,
+      users: initialUsers.map(u => ({ ...u, status: "active" })),
       vendors: initialVendors,
       requests: initialRequests,
       cargos: initialCargoShipments,
@@ -104,11 +104,26 @@ function readLocalJson() {
       crmDispatches: initialCrmDispatches,
       imsTransactions: [],
       designations: initialDesignations,
+      items: [],
       settings: {
         isHidden: false,
         redirectUrl: "https://www.instagram.com/makpowerofficial/"
       }
     };
+    const distinctModels = Array.from(new Set((initialRequests || []).map(r => r.model).filter(Boolean)));
+    defaultData.items = distinctModels.map((m, idx) => {
+      const match = (initialRequests || []).find(r => r.model === m);
+      return {
+        id: String(idx + 1),
+        name: m,
+        category: match?.category || "General",
+        itemType: match?.type || "FG",
+        itemNature: match?.itemNature || "Non Consumables",
+        unit: "Pcs",
+        description: "",
+        currentStock: 0
+      };
+    });
     fs.writeFileSync(DB_FILE, JSON.stringify(defaultData, null, 2));
     return defaultData;
   }
@@ -120,28 +135,40 @@ function readLocalJson() {
         redirectUrl: "https://www.instagram.com/makpowerofficial/"
       };
     }
-    if (!Array.isArray(data.crmParties)) {
-      data.crmParties = initialCrmParties;
+    if (!Array.isArray(data.crmParties)) data.crmParties = initialCrmParties;
+    if (!Array.isArray(data.crmSalesOrders)) data.crmSalesOrders = initialCrmSalesOrders;
+    if (!Array.isArray(data.crmDispatches)) data.crmDispatches = initialCrmDispatches;
+    if (!Array.isArray(data.imsTransactions)) data.imsTransactions = [];
+    if (!Array.isArray(data.designations)) data.designations = initialDesignations;
+    if (!Array.isArray(data.items) || data.items.length === 0) {
+      const distinctModels = Array.from(new Set((data.requests || initialRequests || []).map(r => r.model).filter(Boolean)));
+      data.items = distinctModels.map((m, idx) => {
+        const match = (data.requests || initialRequests || []).find(r => r.model === m);
+        return {
+          id: String(idx + 1),
+          name: m,
+          category: match?.category || "General",
+          itemType: match?.type || "FG",
+          itemNature: match?.itemNature || "Non Consumables",
+          unit: "Pcs",
+          description: "",
+          currentStock: 0
+        };
+      });
     }
-    if (!Array.isArray(data.crmSalesOrders)) {
-      data.crmSalesOrders = initialCrmSalesOrders;
-    }
-    if (!Array.isArray(data.crmDispatches)) {
-      data.crmDispatches = initialCrmDispatches;
-    }
-    if (!Array.isArray(data.imsTransactions)) {
-      data.imsTransactions = [];
-    }
-    if (!Array.isArray(data.designations)) {
-      data.designations = initialDesignations;
-    }
-    // Ensure all CRM initial users exist in user list
+    if (!Array.isArray(data.users)) data.users = [];
     initialUsers.forEach(initU => {
-      const exists = (data.users || []).some(u => u.email.toLowerCase() === initU.email.toLowerCase());
-      if (!exists) {
-        data.users.push(initU);
+      const idx = data.users.findIndex(u => (u.email || "").toLowerCase() === initU.email.toLowerCase() || u.id === initU.id);
+      if (idx === -1) {
+        data.users.push({ ...initU, status: "active" });
+      } else {
+        data.users[idx].status = "active";
+        data.users[idx].designation = data.users[idx].designation || initU.designation;
+        data.users[idx].role = data.users[idx].role || initU.role;
       }
     });
+    data.users = data.users.map(u => ({ ...u, status: u.status || "active" }));
+
     if (Array.isArray(data.requests)) {
       data.requests = data.requests.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" }));
     }
@@ -155,7 +182,7 @@ function readLocalJson() {
   } catch (e) {
     console.error("Error reading db.json, returning default mock data:", e.message);
     return {
-      users: initialUsers,
+      users: initialUsers.map(u => ({ ...u, status: "active" })),
       vendors: initialVendors,
       requests: initialRequests,
       cargos: initialCargoShipments,
@@ -164,6 +191,7 @@ function readLocalJson() {
       crmSalesOrders: initialCrmSalesOrders,
       crmDispatches: initialCrmDispatches,
       designations: initialDesignations,
+      items: [],
       settings: {
         isHidden: false,
         redirectUrl: "https://www.instagram.com/makpowerofficial/"
@@ -461,6 +489,30 @@ async function setupPgDatabase() {
     `);
 
     await pool.query(`
+      CREATE TABLE IF NOT EXISTS designations (
+        "id" TEXT PRIMARY KEY,
+        "title" TEXT,
+        "description" TEXT,
+        "role" TEXT
+      );
+    `);
+
+    // Seed default designations if empty
+    try {
+      const desCheck = await pool.query("SELECT COUNT(*) FROM designations");
+      if (parseInt(desCheck.rows[0].count) === 0) {
+        for (const d of initialDesignations) {
+          await pool.query(
+            `INSERT INTO designations ("id", "title", "description", "role") VALUES ($1, $2, $3, $4) ON CONFLICT ("id") DO NOTHING`,
+            [d.id, d.title, d.description || "", d.role || "purchaser"]
+          );
+        }
+      }
+    } catch (desErr) {
+      console.warn("Designations table seed warning:", desErr.message);
+    }
+
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS audit_logs (
         "id" TEXT PRIMARY KEY,
         "userId" TEXT,
@@ -477,17 +529,38 @@ async function setupPgDatabase() {
       );
     `);
 
-    // Sync Users to new @makpowerindia.com list if legacy users exist
-    const legacyUserCheck = await pool.query("SELECT COUNT(*) FROM users WHERE email LIKE '%@company.com'");
-    if (parseInt(legacyUserCheck.rows[0].count) > 0) {
-      await pool.query("DELETE FROM users");
-      for (const u of initialUsers) {
-        await pool.query(
-          `INSERT INTO users ("id", "name", "email", "password", "role", "status") VALUES ($1, $2, $3, $4, $5, $6)`,
-          [u.id, u.name, u.email, u.password, u.role, u.status]
-        );
+    // Ensure all standard initial users exist in PG with active status & designations
+    for (const u of initialUsers) {
+      await pool.query(
+        `INSERT INTO users ("id", "name", "email", "password", "role", "designation", "status", "phone", "territory", "parentCrmId")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         ON CONFLICT ("id") DO UPDATE SET
+           "status" = 'active',
+           "designation" = COALESCE(users."designation", EXCLUDED."designation"),
+           "role" = COALESCE(users."role", EXCLUDED."role")`,
+        [u.id, u.name, u.email, u.password, u.role, u.designation || "Staff", "active", u.phone || "", u.territory || "", u.parentCrmId || ""]
+      );
+    }
+    await pool.query(`UPDATE users SET "status" = 'active' WHERE "status" IS NULL OR "status" = ''`);
+
+    // Auto-seed items table from requests if empty
+    try {
+      const itemCheck = await pool.query("SELECT COUNT(*) FROM items");
+      if (parseInt(itemCheck.rows[0].count) === 0) {
+        const reqModels = await pool.query("SELECT DISTINCT model, category, type, \"itemNature\" FROM requests WHERE model IS NOT NULL AND model != ''");
+        let idx = 1;
+        for (const row of reqModels.rows) {
+          await pool.query(
+            `INSERT INTO items ("id", "name", "category", "itemType", "itemNature", "unit", "description", "currentStock")
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT ("id") DO NOTHING`,
+            [String(idx++), row.model, row.category || "General", row.type || "FG", row.itemNature || "Non Consumables", "Pcs", "", 0]
+          );
+        }
+        console.log(`Auto-seeded items table with ${reqModels.rows.length} master items.`);
       }
-      console.log("Re-synced users to @makpowerindia.com domain.");
+    } catch (itErr) {
+      console.warn("Items auto-seeding notice:", itErr.message);
     }
 
     // 2. Check if seeding is required
@@ -499,8 +572,8 @@ async function setupPgDatabase() {
       // Seed Users
       for (const u of initialUsers) {
         await pool.query(
-          `INSERT INTO users ("id", "name", "email", "password", "role", "status") VALUES ($1, $2, $3, $4, $5, $6)`,
-          [u.id, u.name, u.email, u.password, u.role, u.status]
+          `INSERT INTO users ("id", "name", "email", "password", "role", "designation", "status") VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [u.id, u.name, u.email, u.password, u.role, u.designation || "Staff", "active"]
         );
       }
 
@@ -583,6 +656,18 @@ async function setupPgDatabase() {
 // Run DB setup in background asynchronously on startup
 const dbInitPromise = initDatabase().catch(err => {
   console.error("Database initialization error:", err);
+});
+
+// Middleware: Ensure database is initialized before handling requests
+app.use(async (req, res, next) => {
+  if (dbInitPromise) {
+    try {
+      await dbInitPromise;
+    } catch (err) {
+      console.warn("DB init wait notice:", err.message);
+    }
+  }
+  next();
 });
 
 // Helper to parse cookies manually
@@ -1386,7 +1471,8 @@ app.get("/api/state", async (req, res) => {
         crmPartiesRes,
         crmSalesOrdersRes,
         crmDispatchesRes,
-        imsRes
+        imsRes,
+        designationsRes
       ] = await Promise.all([
         pool.query("SELECT * FROM users"),
         pool.query("SELECT * FROM vendors"),
@@ -1398,7 +1484,8 @@ app.get("/api/state", async (req, res) => {
         pool.query("SELECT * FROM crm_parties ORDER BY \"name\" ASC"),
         pool.query("SELECT * FROM crm_sales_orders ORDER BY \"orderDate\" DESC"),
         pool.query("SELECT * FROM crm_dispatches ORDER BY \"dispatchDate\" DESC"),
-        pool.query("SELECT * FROM ims_transactions ORDER BY \"date\" DESC, \"createdAt\" DESC")
+        pool.query("SELECT * FROM ims_transactions ORDER BY \"date\" DESC, \"createdAt\" DESC"),
+        pool.query("SELECT * FROM designations")
       ]);
 
       // Format types back
@@ -1433,13 +1520,14 @@ app.get("/api/state", async (req, res) => {
       if (!settings.redirectUrl) settings.redirectUrl = "https://www.instagram.com/makpowerofficial/";
 
       const fullState = {
-        users: usersRes.rows,
+        users: (usersRes.rows || []).map(u => ({ ...u, status: u.status || "active" })),
         vendors,
         cargoCompanies: cargoCompaniesRes.rows,
         cargos,
         requests,
         settings,
         items: itemsRes.rows || [],
+        designations: (designationsRes.rows && designationsRes.rows.length > 0) ? designationsRes.rows : initialDesignations,
         crmParties: crmPartiesRes.rows || [],
         crmSalesOrders: (crmSalesOrdersRes.rows || []).map(so => ({
           ...so,
