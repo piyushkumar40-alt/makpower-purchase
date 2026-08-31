@@ -2454,6 +2454,29 @@ export default function SuperAdminDashboard({
           );
         })()}
 
+        {/* ITEM CATALOG & MASTER STOCK TAB */}
+        {subTab === "itemmaster" && (
+          <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            <ItemCatalogPanel 
+              items={items}
+              onAddItem={onAddItem}
+              onBulkAddItems={onBulkAddItems}
+              onDeleteItems={onDeleteItems}
+              onUpdateItem={onUpdateItem}
+              onMergeItems={onMergeItems}
+              currentUser={{ role: "superadmin", name: "Super Admin" }}
+              requests={requests}
+              cargos={cargos}
+              vendors={vendors}
+              users={users}
+              cargoCompanies={cargoCompanies}
+              onViewItemDetail={(item) => {
+                if (onNavigateView) onNavigateView("itemcatalog");
+              }}
+            />
+          </div>
+        )}
+
         {/* ==================== MISSING ITEM IDS RESOLUTION TAB (IMS) ==================== */}
         {subTab === "missingids" && (
           <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>

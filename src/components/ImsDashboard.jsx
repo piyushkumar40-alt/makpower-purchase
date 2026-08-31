@@ -29,6 +29,7 @@ export default function ImsDashboard({
   const [endDate, setEndDate] = useState("");
   const [movementFilter, setMovementFilter] = useState("all"); // "all" | "IN" | "OUT"
   const [missingIdFilter, setMissingIdFilter] = useState("all"); // "all" | "missing" | "linked"
+  const [locationFilter, setLocationFilter] = useState("all"); // "all" | "Delhi" | "Mumbai"
   const [selectedItemFilter, setSelectedItemFilter] = useState("all");
 
   // Multi-row Checkbox Selection
@@ -67,20 +68,31 @@ export default function ImsDashboard({
     totalNetStock,
     totalInwardUnits,
     totalOutwardUnits,
+    delhiStock,
+    mumbaiStock,
     missingIdsCount,
     distinctMissingItems
   } = useMemo(() => {
     let net = 0;
     let inUnits = 0;
     let outUnits = 0;
+    let delhiNet = 0;
+    let mumbaiNet = 0;
     let missingCount = 0;
     const missingSet = new Map(); // itemName -> { count, totalQty }
 
     imsTransactions.forEach(tx => {
       const q = parseInt(tx.stockQty) || 0;
+      const loc = (tx.location || "Delhi").trim();
       net += q;
       if (q > 0) inUnits += q;
       else outUnits += Math.abs(q);
+
+      if (loc.toLowerCase() === "mumbai") {
+        mumbaiNet += q;
+      } else {
+        delhiNet += q;
+      }
 
       if (tx.isMissingId || !tx.itemId) {
         missingCount++;
@@ -98,6 +110,8 @@ export default function ImsDashboard({
       totalNetStock: net,
       totalInwardUnits: inUnits,
       totalOutwardUnits: outUnits,
+      delhiStock: delhiNet,
+      mumbaiStock: mumbaiNet,
       missingIdsCount: missingCount,
       distinctMissingItems: Array.from(missingSet.values())
     };
@@ -106,15 +120,22 @@ export default function ImsDashboard({
   // ==================== FILTERED TRANSACTIONS ====================
   const filteredTransactions = useMemo(() => {
     return imsTransactions.filter(tx => {
-      // Search query (Item name, party name, remarks, itemId)
+      // Search query (Item name, party name, remarks, itemId, location)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const match = 
           (tx.itemName || "").toLowerCase().includes(q) ||
           (tx.partyName || "").toLowerCase().includes(q) ||
           (tx.remarks || "").toLowerCase().includes(q) ||
+          (tx.location || "").toLowerCase().includes(q) ||
           (tx.itemId || "").toLowerCase().includes(q);
         if (!match) return false;
+      }
+
+      // Warehouse Location Filter
+      if (locationFilter !== "all") {
+        const txLoc = (tx.location || "Delhi").trim().toLowerCase();
+        if (txLoc !== locationFilter.toLowerCase()) return false;
       }
 
       // Date range
@@ -146,7 +167,7 @@ export default function ImsDashboard({
       if (valA > valB) return sortAsc ? 1 : -1;
       return 0;
     });
-  }, [imsTransactions, searchQuery, startDate, endDate, movementFilter, missingIdFilter, selectedItemFilter, sortField, sortAsc]);
+  }, [imsTransactions, searchQuery, locationFilter, startDate, endDate, movementFilter, missingIdFilter, selectedItemFilter, sortField, sortAsc]);
 
   // ==================== ITEM STOCK MATRIX SUMMARY ====================
   const itemStockMatrix = useMemo(() => {
@@ -160,6 +181,8 @@ export default function ImsDashboard({
         category: it.category || "General",
         inward: 0,
         outward: 0,
+        delhiStock: 0,
+        mumbaiStock: 0,
         currentStock: 0,
         txCount: 0,
         lastDate: ""
@@ -169,6 +192,7 @@ export default function ImsDashboard({
     // Aggregate transactions
     imsTransactions.forEach(tx => {
       const q = parseInt(tx.stockQty) || 0;
+      const loc = (tx.location || "Delhi").trim();
       let key = tx.itemId;
       if (!key || !map.has(key)) {
         key = `unlinked_${tx.itemName}`;
@@ -179,6 +203,8 @@ export default function ImsDashboard({
             category: "Uncategorized (Missing ID)",
             inward: 0,
             outward: 0,
+            delhiStock: 0,
+            mumbaiStock: 0,
             currentStock: 0,
             txCount: 0,
             lastDate: "",
@@ -190,6 +216,13 @@ export default function ImsDashboard({
       const rec = map.get(key);
       if (q > 0) rec.inward += q;
       else rec.outward += Math.abs(q);
+
+      if (loc.toLowerCase() === "mumbai") {
+        rec.mumbaiStock = (rec.mumbaiStock || 0) + q;
+      } else {
+        rec.delhiStock = (rec.delhiStock || 0) + q;
+      }
+
       rec.currentStock += q;
       rec.txCount++;
       if (!rec.lastDate || (tx.date && tx.date > rec.lastDate)) {
@@ -233,13 +266,29 @@ export default function ImsDashboard({
         continue;
       }
 
-      // Expected columns: [0: Date, 1: Item Name, 2: Stock, 3: Remarks, 4: Party Name, 5: Item ID]
+      // Expected columns: [0: Date, 1: Item Name, 2: Stock, 3: Remarks, 4: Party Name, 5: Item ID, 6: Location]
       const rawDate = cols[0] || new Date().toISOString().split("T")[0];
       const rawItemName = cols[1] || "";
       const rawStock = parseInt(cols[2]) || 0;
       const rawRemarks = cols[3] || "";
       const rawParty = cols[4] || "";
       let rawItemId = cols[5] || "";
+      let rawLocation = cols[6] || "";
+
+      // Smart location detection if passed in other column positions
+      if (!rawLocation) {
+        if (cols[5] && (cols[5].toLowerCase() === "delhi" || cols[5].toLowerCase() === "mumbai")) {
+          rawLocation = cols[5];
+          rawItemId = "";
+        } else if (cols[3] && (cols[3].toLowerCase() === "delhi" || cols[3].toLowerCase() === "mumbai")) {
+          rawLocation = cols[3];
+        } else {
+          rawLocation = "Delhi";
+        }
+      }
+
+      // Format location nicely (e.g. "delhi" -> "Delhi", "mumbai" -> "Mumbai")
+      rawLocation = rawLocation.toLowerCase().includes("mumbai") ? "Mumbai" : "Delhi";
 
       if (!rawItemName && !rawItemId) continue;
 
@@ -261,6 +310,7 @@ export default function ImsDashboard({
         remarks: rawRemarks,
         partyName: rawParty,
         itemId: rawItemId,
+        location: rawLocation,
         isMissingId: !isMatched,
         source: "bulk_upload"
       });
@@ -308,11 +358,12 @@ export default function ImsDashboard({
 
   // CSV Export for Ledger
   const handleExportCsv = () => {
-    const headers = ["Date", "Item Name", "Item ID", "Stock Movement Qty", "Movement Type", "Party Name", "Remarks", "ID Status", "Source"];
+    const headers = ["Date", "Item Name", "Item ID", "Warehouse Location", "Stock Movement Qty", "Movement Type", "Party Name", "Remarks", "ID Status", "Source"];
     const rows = filteredTransactions.map(t => [
       t.date,
       t.itemName,
       t.itemId || "UNLINKED",
+      t.location || "Delhi",
       t.stockQty,
       t.stockQty >= 0 ? "IN" : "OUT",
       t.partyName,
@@ -336,14 +387,14 @@ export default function ImsDashboard({
   // Download Sample CSV Template
   const handleDownloadSampleCsv = () => {
     const sampleRows = [
-      ["Date", "Item Name", "Stock", "Remarks", "Party Name", "Item ID"],
-      ["2026-01-05", "MP-CH-65W Gan Fast Charger", "500", "Initial 2026 Opening Factory Shipment Received", "Shenzhen TopPower Electronics", "it-1"],
-      ["2026-01-12", "MP-CH-65W Gan Fast Charger", "-50", "Dispatched against SO-2026-001 (LR #VRL-882194)", "Shree Ganesh Electronics", "it-1"],
-      ["2026-02-02", "MP-PB-20000 Ultra Power Bank", "800", "Cargo lot #CRG-902 received at warehouse", "Dongguan Battery Tech Co", "it-2"],
-      ["2026-02-18", "MP-PB-20000 Ultra Power Bank", "-120", "Order fulfillment #SO-2026-004", "Mahalaxmi Power Hub", "it-2"],
-      ["2026-03-01", "MP-CB-Braided Type-C to Lightning 2M", "1000", "Imported legacy batch from Feb shipment", "Guangzhou Cable Master Co.", ""],
-      ["2026-03-10", "MP-CB-Braided Type-C to Lightning 2M", "-200", "Dealer sample shipment", "Marwar Mobile Accessories", ""],
-      ["2026-04-15", "MP-AD-Car Charger Dual Port 45W", "450", "New model trial run 2026", "Ningbo Auto Power Ltd", ""]
+      ["Date", "Item Name", "Stock", "Remarks", "Party Name", "Item ID", "Location"],
+      ["2026-01-05", "MP-CH-65W Gan Fast Charger", "500", "Initial 2026 Opening Factory Shipment Received", "Shenzhen TopPower Electronics", "it-1", "Delhi"],
+      ["2026-01-12", "MP-CH-65W Gan Fast Charger", "-50", "Dispatched against SO-2026-001 (LR #VRL-882194)", "Shree Ganesh Electronics", "it-1", "Mumbai"],
+      ["2026-02-02", "MP-PB-20000 Ultra Power Bank", "800", "Cargo lot #CRG-902 received at warehouse", "Dongguan Battery Tech Co", "it-2", "Delhi"],
+      ["2026-02-18", "MP-PB-20000 Ultra Power Bank", "-120", "Order fulfillment #SO-2026-004", "Mahalaxmi Power Hub", "it-2", "Mumbai"],
+      ["2026-03-01", "MP-CB-Braided Type-C to Lightning 2M", "1000", "Imported legacy batch from Feb shipment", "Guangzhou Cable Master Co.", "", "Delhi"],
+      ["2026-03-10", "MP-CB-Braided Type-C to Lightning 2M", "-200", "Dealer sample shipment", "Marwar Mobile Accessories", "", "Mumbai"],
+      ["2026-04-15", "MP-AD-Car Charger Dual Port 45W", "450", "New model trial run 2026", "Ningbo Auto Power Ltd", "", "Delhi"]
     ];
 
     const csvContent = "data:text/csv;charset=utf-8," + 
@@ -552,62 +603,76 @@ export default function ImsDashboard({
         </div>
       )}
 
-      {/* ==================== 4 KPI SUMMARY CARDS ==================== */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px" }}>
+      {/* ==================== 5 KPI SUMMARY CARDS ==================== */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px" }}>
         
         {/* Card 1: Total Physical Stock */}
-        <div className="glass-panel" style={{ padding: "18px 20px", display: "flex", alignItems: "center", gap: "14px" }}>
-          <div style={{ padding: "12px", borderRadius: "12px", background: "rgba(56, 189, 248, 0.12)", color: "#38bdf8" }}>
-            <Package size={26} />
+        <div className="glass-panel" style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{ padding: "10px", borderRadius: "10px", background: "rgba(56, 189, 248, 0.12)", color: "#38bdf8" }}>
+            <Package size={24} />
           </div>
           <div>
-            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", fontWeight: 600 }}>Current On-Hand Stock</div>
-            <div style={{ fontSize: "1.65rem", fontWeight: 800, color: totalNetStock >= 0 ? "var(--text-main)" : "var(--danger)" }}>
-              {totalNetStock.toLocaleString()} <span style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>Pcs</span>
+            <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total All On-Hand</div>
+            <div style={{ fontSize: "1.45rem", fontWeight: 800, color: totalNetStock >= 0 ? "var(--text-main)" : "var(--danger)" }}>
+              {totalNetStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
             </div>
-            <div style={{ fontSize: "0.72rem", color: "#38bdf8", marginTop: "2px" }}>Net Physical Warehouse Balance</div>
+            <div style={{ fontSize: "0.68rem", color: "#38bdf8", marginTop: "1px" }}>Combined Warehouses</div>
           </div>
         </div>
 
-        {/* Card 2: Total Inward Movement */}
-        <div className="glass-panel" style={{ padding: "18px 20px", display: "flex", alignItems: "center", gap: "14px" }}>
-          <div style={{ padding: "12px", borderRadius: "12px", background: "rgba(16, 185, 129, 0.12)", color: "var(--success)" }}>
-            <TrendingUp size={26} />
+        {/* Card 2: Delhi Warehouse Stock */}
+        <div className="glass-panel" style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: "12px", border: "1px solid rgba(56, 189, 248, 0.3)", background: "rgba(56, 189, 248, 0.04)" }}>
+          <div style={{ padding: "10px", borderRadius: "10px", background: "rgba(56, 189, 248, 0.18)", color: "#38bdf8" }}>
+            <Building2 size={24} />
           </div>
           <div>
-            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Inward Stock (+)</div>
-            <div style={{ fontSize: "1.65rem", fontWeight: 800, color: "var(--success)" }}>
-              +{totalInwardUnits.toLocaleString()} <span style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>Pcs</span>
+            <div style={{ fontSize: "0.74rem", color: "#38bdf8", fontWeight: 700 }}>🏢 Delhi Warehouse</div>
+            <div style={{ fontSize: "1.45rem", fontWeight: 800, color: delhiStock >= 0 ? "#38bdf8" : "var(--danger)" }}>
+              {delhiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
             </div>
-            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>Factory & Vendor receipts</div>
+            <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Delhi On-Hand Stock</div>
           </div>
         </div>
 
-        {/* Card 3: Total Outward Movement */}
-        <div className="glass-panel" style={{ padding: "18px 20px", display: "flex", alignItems: "center", gap: "14px" }}>
-          <div style={{ padding: "12px", borderRadius: "12px", background: "rgba(239, 68, 68, 0.12)", color: "var(--danger)" }}>
-            <TrendingDown size={26} />
+        {/* Card 3: Mumbai Warehouse Stock */}
+        <div className="glass-panel" style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: "12px", border: "1px solid rgba(168, 85, 247, 0.3)", background: "rgba(168, 85, 247, 0.04)" }}>
+          <div style={{ padding: "10px", borderRadius: "10px", background: "rgba(168, 85, 247, 0.18)", color: "#c084fc" }}>
+            <Building2 size={24} />
           </div>
           <div>
-            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Outward Dispatched (-)</div>
-            <div style={{ fontSize: "1.65rem", fontWeight: 800, color: "var(--danger)" }}>
-              -{totalOutwardUnits.toLocaleString()} <span style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>Pcs</span>
+            <div style={{ fontSize: "0.74rem", color: "#c084fc", fontWeight: 700 }}>🏢 Mumbai Warehouse</div>
+            <div style={{ fontSize: "1.45rem", fontWeight: 800, color: mumbaiStock >= 0 ? "#c084fc" : "var(--danger)" }}>
+              {mumbaiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
             </div>
-            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>Party shipments & dealer dispatches</div>
+            <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Mumbai On-Hand Stock</div>
           </div>
         </div>
 
-        {/* Card 4: Tracked SKU Master Count */}
-        <div className="glass-panel" style={{ padding: "18px 20px", display: "flex", alignItems: "center", gap: "14px" }}>
-          <div style={{ padding: "12px", borderRadius: "12px", background: "rgba(99, 102, 241, 0.12)", color: "#818cf8" }}>
-            <Layers size={26} />
+        {/* Card 4: Total Inward Movement */}
+        <div className="glass-panel" style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{ padding: "10px", borderRadius: "10px", background: "rgba(16, 185, 129, 0.12)", color: "var(--success)" }}>
+            <TrendingUp size={24} />
           </div>
           <div>
-            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", fontWeight: 600 }}>Item Master Catalog</div>
-            <div style={{ fontSize: "1.65rem", fontWeight: 800, color: "var(--text-main)" }}>
-              {items.length} <span style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>SKUs</span>
+            <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Inward (+)</div>
+            <div style={{ fontSize: "1.45rem", fontWeight: 800, color: "var(--success)" }}>
+              +{totalInwardUnits.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
             </div>
-            <div style={{ fontSize: "0.72rem", color: "#818cf8", marginTop: "2px" }}>{distinctMissingItems.length} unlinked models</div>
+            <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Factory & Vendor Inflows</div>
+          </div>
+        </div>
+
+        {/* Card 5: Total Outward Movement */}
+        <div className="glass-panel" style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{ padding: "10px", borderRadius: "10px", background: "rgba(239, 68, 68, 0.12)", color: "var(--danger)" }}>
+            <TrendingDown size={24} />
+          </div>
+          <div>
+            <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Dispatched (-)</div>
+            <div style={{ fontSize: "1.45rem", fontWeight: 800, color: "var(--danger)" }}>
+              -{totalOutwardUnits.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
+            </div>
+            <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Party & Dealer Outflows</div>
           </div>
         </div>
 
@@ -666,17 +731,29 @@ export default function ImsDashboard({
             
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: "280px", flexWrap: "wrap" }}>
               {/* Search */}
-              <div style={{ position: "relative", flex: 1, minWidth: "200px" }}>
+              <div style={{ position: "relative", flex: 1, minWidth: "180px" }}>
                 <Search size={15} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
                 <input
                   type="text"
-                  placeholder="Search item, party, remarks, ID..."
+                  placeholder="Search item, party, location, ID..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   className="form-control"
                   style={{ paddingLeft: "36px", height: "36px", fontSize: "0.85rem" }}
                 />
               </div>
+
+              {/* Warehouse Location Filter */}
+              <select
+                value={locationFilter}
+                onChange={e => setLocationFilter(e.target.value)}
+                className="form-control"
+                style={{ width: "auto", height: "36px", fontSize: "0.82rem", fontWeight: 600 }}
+              >
+                <option value="all">🏢 All Warehouses</option>
+                <option value="Delhi">📍 Delhi Warehouse</option>
+                <option value="Mumbai">📍 Mumbai Warehouse</option>
+              </select>
 
               {/* Movement Type Filter */}
               <select
@@ -723,12 +800,13 @@ export default function ImsDashboard({
                 />
               </div>
 
-              {(startDate || endDate || searchQuery || movementFilter !== "all" || missingIdFilter !== "all") && (
+              {(startDate || endDate || searchQuery || locationFilter !== "all" || movementFilter !== "all" || missingIdFilter !== "all") && (
                 <button
                   onClick={() => {
                     setSearchQuery("");
                     setStartDate("");
                     setEndDate("");
+                    setLocationFilter("all");
                     setMovementFilter("all");
                     setMissingIdFilter("all");
                   }}
@@ -803,7 +881,7 @@ export default function ImsDashboard({
                 <p style={{ fontSize: "0.85rem" }}>Click "Log Stock Movement" or "Bulk Excel/CSV Upload" to record inventory transactions.</p>
               </div>
             ) : (
-              <table className="table" style={{ width: "100%", minWidth: "980px" }}>
+              <table className="table" style={{ width: "100%", minWidth: "1040px" }}>
                 <thead>
                   <tr>
                     <th style={{ width: "4%", textAlign: "center" }}>
@@ -815,25 +893,30 @@ export default function ImsDashboard({
                         title="Select All Filtered Rows"
                       />
                     </th>
-                    <th style={{ width: "11%", cursor: "pointer" }} onClick={() => { setSortField("date"); setSortAsc(!sortAsc); }}>
+                    <th style={{ width: "10%", cursor: "pointer" }} onClick={() => { setSortField("date"); setSortAsc(!sortAsc); }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                         Date <ArrowUpDown size={12} />
                       </div>
                     </th>
-                    <th style={{ width: "23%", cursor: "pointer" }} onClick={() => { setSortField("itemName"); setSortAsc(!sortAsc); }}>
+                    <th style={{ width: "20%", cursor: "pointer" }} onClick={() => { setSortField("itemName"); setSortAsc(!sortAsc); }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                         Item Name & Model <ArrowUpDown size={12} />
                       </div>
                     </th>
-                    <th style={{ width: "12%" }}>Item ID</th>
+                    <th style={{ width: "10%" }}>Item ID</th>
+                    <th style={{ width: "12%", cursor: "pointer" }} onClick={() => { setSortField("location"); setSortAsc(!sortAsc); }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        Location <ArrowUpDown size={12} />
+                      </div>
+                    </th>
                     <th style={{ width: "14%", textAlign: "center", cursor: "pointer" }} onClick={() => { setSortField("stockQty"); setSortAsc(!sortAsc); }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "4px" }}>
                         Stock Movement <ArrowUpDown size={12} />
                       </div>
                     </th>
-                    <th style={{ width: "15%" }}>Party Name</th>
-                    <th style={{ width: "13%" }}>Remarks</th>
-                    <th style={{ width: "8%", textAlign: "center" }}>Actions</th>
+                    <th style={{ width: "14%" }}>Party Name</th>
+                    <th style={{ width: "10%" }}>Remarks</th>
+                    <th style={{ width: "6%", textAlign: "center" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -841,6 +924,8 @@ export default function ImsDashboard({
                     const isPositive = (parseInt(tx.stockQty) || 0) > 0;
                     const isZero = (parseInt(tx.stockQty) || 0) === 0;
                     const isRowSelected = selectedTxIds.includes(tx.id);
+                    const txLoc = (tx.location || "Delhi").trim();
+                    const isMumbai = txLoc.toLowerCase() === "mumbai";
 
                     return (
                       <tr key={tx.id} style={{ background: isRowSelected ? "rgba(99, 102, 241, 0.12)" : tx.isMissingId ? "rgba(245, 158, 11, 0.03)" : "" }}>
@@ -911,7 +996,20 @@ export default function ImsDashboard({
                           )}
                         </td>
 
-                        {/* 4. Stock Movement Column (+2 for In, -2 for Out) */}
+                        {/* 4. Warehouse Location */}
+                        <td>
+                          {isMumbai ? (
+                            <span className="badge" style={{ background: "rgba(168, 85, 247, 0.15)", color: "#c084fc", border: "1px solid rgba(168, 85, 247, 0.3)", fontWeight: 700, fontSize: "0.75rem" }}>
+                              🏢 Mumbai
+                            </span>
+                          ) : (
+                            <span className="badge" style={{ background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)", fontWeight: 700, fontSize: "0.75rem" }}>
+                              🏢 Delhi
+                            </span>
+                          )}
+                        </td>
+
+                        {/* 5. Stock Movement Column (+2 for In, -2 for Out) */}
                         <td style={{ textAlign: "center" }}>
                           {isPositive ? (
                             <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 10px", borderRadius: "8px", background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.3)", color: "var(--success)", fontWeight: 800, fontSize: "0.92rem" }}>
@@ -926,17 +1024,17 @@ export default function ImsDashboard({
                           )}
                         </td>
 
-                        {/* 5. Party Name */}
+                        {/* 6. Party Name */}
                         <td style={{ fontSize: "0.85rem", color: tx.partyName ? "var(--text-main)" : "var(--text-muted)" }}>
                           {tx.partyName || "—"}
                         </td>
 
-                        {/* 6. Remarks */}
+                        {/* 7. Remarks */}
                         <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
                           {tx.remarks || "—"}
                         </td>
 
-                        {/* 7. Actions */}
+                        {/* 8. Actions */}
                         <td style={{ textAlign: "center" }}>
                           <div style={{ display: "inline-flex", gap: "6px" }}>
                             <button
@@ -993,9 +1091,9 @@ export default function ImsDashboard({
             <div style={{ display: "flex", gap: "8px" }}>
               <button 
                 onClick={() => {
-                  const headers = ["Item ID", "Item Name", "Category", "Total Inward (+)", "Total Outward (-)", "Current Physical Balance", "Status", "Last Movement Date"];
+                  const headers = ["Item ID", "Item Name", "Category", "Delhi Warehouse Stock", "Mumbai Warehouse Stock", "Total Inward (+)", "Total Outward (-)", "Current Physical Balance", "Status", "Last Movement Date"];
                   const rows = itemStockMatrix.map(m => [
-                    m.id, m.name, m.category, m.inward, m.outward, m.currentStock,
+                    m.id, m.name, m.category, m.delhiStock || 0, m.mumbaiStock || 0, m.inward, m.outward, m.currentStock,
                     m.currentStock > 100 ? "In Stock" : m.currentStock > 0 ? "Low Stock" : "Out of Stock",
                     m.lastDate || "—"
                   ]);
@@ -1014,16 +1112,16 @@ export default function ImsDashboard({
           </div>
 
           <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
-            <table className="table" style={{ width: "100%", minWidth: "850px" }}>
+            <table className="table" style={{ width: "100%", minWidth: "980px" }}>
               <thead>
                 <tr>
-                  <th style={{ width: "12%" }}>Item ID</th>
-                  <th style={{ width: "26%" }}>Item Model / Name</th>
-                  <th style={{ width: "15%" }}>Category</th>
-                  <th style={{ width: "12%", textAlign: "right", color: "var(--success)" }}>Total Inward (+)</th>
-                  <th style={{ width: "12%", textAlign: "right", color: "var(--danger)" }}>Total Outward (-)</th>
-                  <th style={{ width: "13%", textAlign: "right" }}>Current Net Balance</th>
-                  <th style={{ width: "10%", textAlign: "center" }}>Stock Status</th>
+                  <th style={{ width: "10%" }}>Item ID</th>
+                  <th style={{ width: "24%" }}>Item Model / Name</th>
+                  <th style={{ width: "13%" }}>Category</th>
+                  <th style={{ width: "13%", textAlign: "right", color: "#38bdf8" }}>🏢 Delhi Stock</th>
+                  <th style={{ width: "13%", textAlign: "right", color: "#c084fc" }}>🏢 Mumbai Stock</th>
+                  <th style={{ width: "15%", textAlign: "right" }}>Total Net Balance</th>
+                  <th style={{ width: "12%", textAlign: "center" }}>Stock Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -1050,11 +1148,11 @@ export default function ImsDashboard({
                     <td style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
                       {item.category}
                     </td>
-                    <td style={{ textAlign: "right", fontWeight: 700, color: "var(--success)" }}>
-                      +{item.inward.toLocaleString()}
+                    <td style={{ textAlign: "right", fontWeight: 700, color: (item.delhiStock || 0) >= 0 ? "#38bdf8" : "var(--danger)" }}>
+                      {(item.delhiStock || 0).toLocaleString()} Pcs
                     </td>
-                    <td style={{ textAlign: "right", fontWeight: 700, color: "var(--danger)" }}>
-                      -{item.outward.toLocaleString()}
+                    <td style={{ textAlign: "right", fontWeight: 700, color: (item.mumbaiStock || 0) >= 0 ? "#c084fc" : "var(--danger)" }}>
+                      {(item.mumbaiStock || 0).toLocaleString()} Pcs
                     </td>
                     <td style={{ textAlign: "right", fontWeight: 800, fontSize: "0.95rem", color: item.currentStock >= 0 ? "var(--text-main)" : "var(--danger)" }}>
                       {item.currentStock.toLocaleString()} Pcs
@@ -1089,7 +1187,7 @@ export default function ImsDashboard({
                   <UploadCloud size={22} /> Bulk Upload IMS Transactions (2026 to Present)
                 </h3>
                 <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px", margin: 0 }}>
-                  Paste rows directly from Excel or upload a CSV file with columns: <code>Date, Item Name, Stock, Remarks, Party Name, Item ID</code>
+                  Paste rows directly from Excel or upload a CSV file with columns: <code>Date, Item Name, Stock, Remarks, Party Name, Item ID, Location</code>
                 </p>
               </div>
 
@@ -1103,7 +1201,7 @@ export default function ImsDashboard({
                   <Download size={14} /> Download Sample CSV Template
                 </button>
                 <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border-glass)", borderRadius: "8px", padding: "6px 12px", fontSize: "0.76rem" }}>
-                  <span style={{ fontWeight: 700, color: "#38bdf8" }}>Columns Order:</span> <code>Date | Item Name | Stock (+/-) | Remarks | Party Name | Item ID</code>
+                  <span style={{ fontWeight: 700, color: "#38bdf8" }}>Columns Order:</span> <code>Date | Item Name | Stock (+/-) | Remarks | Party Name | Item ID | Location</code>
                 </div>
               </div>
             </div>
@@ -1121,7 +1219,7 @@ export default function ImsDashboard({
                 rows={6}
                 value={bulkRawText}
                 onChange={e => handleParseBulkText(e.target.value)}
-                placeholder={"2026-01-05\tMP-CH-65W Gan Fast Charger\t500\tOpening Stock\tShenzhen Tech\tit-1\n2026-01-12\tMP-CH-65W Gan Fast Charger\t-50\tDispatched SO-01\tShree Ganesh\tit-1\n2026-02-01\tMP-CB-Braided Fast Cable\t1000\tNew Batch\tGuangzhou Co\t"}
+                placeholder={"2026-01-05\tMP-CH-65W Gan Fast Charger\t500\tOpening Stock\tShenzhen Tech\tit-1\tDelhi\n2026-01-12\tMP-CH-65W Gan Fast Charger\t-50\tDispatched SO-01\tShree Ganesh\tit-1\tMumbai\n2026-02-01\tMP-CB-Braided Fast Cable\t1000\tNew Batch\tGuangzhou Co\t\tDelhi"}
                 className="form-control"
                 style={{ fontFamily: "monospace", fontSize: "0.82rem", lineHeight: 1.4 }}
               />
@@ -1197,6 +1295,7 @@ export default function ImsDashboard({
                     <th>Date</th>
                     <th>Item Name</th>
                     <th>Item ID</th>
+                    <th>Location</th>
                     <th style={{ textAlign: "center" }}>Stock (+/-)</th>
                     <th>Party Name</th>
                     <th>Remarks</th>
@@ -1213,6 +1312,17 @@ export default function ImsDashboard({
                           <span className="badge badge-secondary" style={{ fontFamily: "monospace" }}>#{row.itemId}</span>
                         ) : (
                           <span style={{ color: "var(--text-muted)" }}>(None)</span>
+                        )}
+                      </td>
+                      <td>
+                        {row.location === "Mumbai" ? (
+                          <span className="badge" style={{ background: "rgba(168, 85, 247, 0.15)", color: "#c084fc", border: "1px solid rgba(168, 85, 247, 0.3)", fontWeight: 700, fontSize: "0.74rem" }}>
+                            🏢 Mumbai
+                          </span>
+                        ) : (
+                          <span className="badge" style={{ background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)", fontWeight: 700, fontSize: "0.74rem" }}>
+                            🏢 Delhi
+                          </span>
                         )}
                       </td>
                       <td style={{ textAlign: "center", fontWeight: 700, color: row.stockQty >= 0 ? "var(--success)" : "var(--danger)" }}>
@@ -1527,6 +1637,7 @@ function StockMovementModal({ transaction, items, crmParties, vendors, onSave, o
   const [itemId, setItemId] = useState(transaction?.itemId || "");
   const [stockQty, setStockQty] = useState(transaction ? Math.abs(parseInt(transaction.stockQty) || 0) : 100);
   const [movementType, setMovementType] = useState(transaction ? (parseInt(transaction.stockQty) >= 0 ? "IN" : "OUT") : "IN");
+  const [location, setLocation] = useState(transaction?.location || "Delhi");
   const [partyName, setPartyName] = useState(transaction?.partyName || "");
   const [remarks, setRemarks] = useState(transaction?.remarks || "");
 
@@ -1558,6 +1669,7 @@ function StockMovementModal({ transaction, items, crmParties, vendors, onSave, o
       movementType,
       partyName: partyName.trim(),
       remarks: remarks.trim(),
+      location: (location || "Delhi").trim(),
       source: transaction?.source || "manual",
       isMissingId: !itemId.trim()
     });
@@ -1619,6 +1731,53 @@ function StockMovementModal({ transaction, items, crmParties, vendors, onSave, o
             >
               <TrendingDown size={16} /> Stock OUT (- Outward / Dispatch)
             </button>
+          </div>
+
+          {/* Warehouse Location Selector */}
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label" style={{ fontWeight: 700 }}>Warehouse Location *</label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              <button
+                type="button"
+                onClick={() => setLocation("Delhi")}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: "8px",
+                  border: location === "Delhi" ? "2px solid #38bdf8" : "1px solid var(--border-glass)",
+                  background: location === "Delhi" ? "rgba(56, 189, 248, 0.15)" : "transparent",
+                  color: location === "Delhi" ? "#38bdf8" : "var(--text-muted)",
+                  fontWeight: 700,
+                  fontSize: "0.86rem",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                  cursor: "pointer"
+                }}
+              >
+                🏢 Delhi Warehouse
+              </button>
+              <button
+                type="button"
+                onClick={() => setLocation("Mumbai")}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: "8px",
+                  border: location === "Mumbai" ? "2px solid #c084fc" : "1px solid var(--border-glass)",
+                  background: location === "Mumbai" ? "rgba(168, 85, 247, 0.15)" : "transparent",
+                  color: location === "Mumbai" ? "#c084fc" : "var(--text-muted)",
+                  fontWeight: 700,
+                  fontSize: "0.86rem",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                  cursor: "pointer"
+                }}
+              >
+                🏢 Mumbai Warehouse
+              </button>
+            </div>
           </div>
 
           {/* Date & Quantity */}

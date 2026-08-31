@@ -328,9 +328,13 @@ async function setupPgDatabase() {
           "remarks" TEXT,
           "source" TEXT,
           "isMissingId" BOOLEAN,
+          "location" TEXT,
           "createdAt" TEXT
         );
       `);
+
+      // Migration: Add location column to existing database if missing
+      await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "location" TEXT;`);
 
       // Automatically purge legacy pre-seeded mock transactions from PG
       await pool.query(`DELETE FROM ims_transactions WHERE "id" IN ('ims-1001', 'ims-1002', 'ims-1003', 'ims-1004', 'ims-1005', 'ims-1006', 'ims-1007')`);
@@ -1404,6 +1408,7 @@ app.get("/api/state", async (req, res) => {
         imsTransactions: (imsRes.rows || []).map(row => ({
           ...row,
           stockQty: row.stockQty ? parseInt(row.stockQty) : 0,
+          location: row.location || "Delhi",
           isMissingId: !!row.isMissingId
         }))
       });
@@ -2329,6 +2334,7 @@ app.post("/api/ims/transactions", async (req, res) => {
         movementType,
         partyName: (t.partyName || "").trim(),
         remarks: (t.remarks || "").trim(),
+        location: (t.location || "Delhi").trim(),
         source: t.source || "manual",
         isMissingId,
         createdAt: t.createdAt || new Date().toISOString()
@@ -2337,8 +2343,8 @@ app.post("/api/ims/transactions", async (req, res) => {
       const query = `
         INSERT INTO ims_transactions (
           "id", "date", "itemName", "itemId", "stockQty", "movementType",
-          "partyName", "remarks", "source", "isMissingId", "createdAt"
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          "partyName", "remarks", "location", "source", "isMissingId", "createdAt"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         ON CONFLICT ("id") DO UPDATE SET
           "date" = EXCLUDED."date",
           "itemName" = EXCLUDED."itemName",
@@ -2347,12 +2353,13 @@ app.post("/api/ims/transactions", async (req, res) => {
           "movementType" = EXCLUDED."movementType",
           "partyName" = EXCLUDED."partyName",
           "remarks" = EXCLUDED."remarks",
+          "location" = EXCLUDED."location",
           "source" = EXCLUDED."source",
           "isMissingId" = EXCLUDED."isMissingId"
       `;
       const values = [
         txObj.id, txObj.date, txObj.itemName, txObj.itemId, txObj.stockQty,
-        txObj.movementType, txObj.partyName, txObj.remarks, txObj.source,
+        txObj.movementType, txObj.partyName, txObj.remarks, txObj.location, txObj.source,
         txObj.isMissingId, txObj.createdAt
       ];
       await pool.query(query, values);
@@ -2387,6 +2394,7 @@ app.post("/api/ims/transactions", async (req, res) => {
       movementType,
       partyName: (t.partyName || "").trim(),
       remarks: (t.remarks || "").trim(),
+      location: (t.location || "Delhi").trim(),
       source: t.source || "manual",
       isMissingId,
       createdAt: t.createdAt || new Date().toISOString()
@@ -2451,6 +2459,7 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
           movementType,
           partyName: (t.partyName || "").trim(),
           remarks: (t.remarks || "").trim(),
+          location: (t.location || "Delhi").trim(),
           source: t.source || "bulk_upload",
           isMissingId,
           createdAt: t.createdAt || new Date().toISOString()
@@ -2459,8 +2468,8 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
         const query = `
           INSERT INTO ims_transactions (
             "id", "date", "itemName", "itemId", "stockQty", "movementType",
-            "partyName", "remarks", "source", "isMissingId", "createdAt"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            "partyName", "remarks", "location", "source", "isMissingId", "createdAt"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
           ON CONFLICT ("id") DO UPDATE SET
             "date" = EXCLUDED."date",
             "itemName" = EXCLUDED."itemName",
@@ -2469,12 +2478,13 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
             "movementType" = EXCLUDED."movementType",
             "partyName" = EXCLUDED."partyName",
             "remarks" = EXCLUDED."remarks",
+            "location" = EXCLUDED."location",
             "source" = EXCLUDED."source",
             "isMissingId" = EXCLUDED."isMissingId"
         `;
         const values = [
           txObj.id, txObj.date, txObj.itemName, txObj.itemId, txObj.stockQty,
-          txObj.movementType, txObj.partyName, txObj.remarks, txObj.source,
+          txObj.movementType, txObj.partyName, txObj.remarks, txObj.location, txObj.source,
           txObj.isMissingId, txObj.createdAt
         ];
         await pool.query(query, values);
@@ -2524,6 +2534,7 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
         movementType,
         partyName: (t.partyName || "").trim(),
         remarks: (t.remarks || "").trim(),
+        location: (t.location || "Delhi").trim(),
         source: t.source || "bulk_upload",
         isMissingId,
         createdAt: t.createdAt || new Date().toISOString()

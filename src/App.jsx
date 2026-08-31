@@ -1677,7 +1677,7 @@ export default function App() {
           />
         )}
 
-        {(activeView === "dashboard" || (currentUser && !["login", "home", "requester", "nitin", "rahul", "coordinator", "owner", "admin", "crm", "itemcatalog"].includes(activeView))) && (
+        {(activeView === "dashboard" || (currentUser && !["login", "home", "requester", "nitin", "rahul", "coordinator", "owner", "admin", "crm", "itemcatalog", "itemdetail", "ims"].includes(activeView))) && (
           <PurchaserDashboard 
             currentUser={currentUser}
             requests={requests}
