@@ -7,8 +7,7 @@ import {
 } from "lucide-react";
 import Pagination, { SmartSelectionBar } from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
-import { initialImsTransactions } from "../mockData";
-import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
+import DateRangeFilter, { isDateInBetween, parseDateTimestamp } from "./DateRangeFilter";
 
 export default function ImsDashboard({
   currentUser,
@@ -200,15 +199,58 @@ export default function ImsDashboard({
     }).sort((a, b) => {
       let valA = a[sortField] || "";
       let valB = b[sortField] || "";
-      if (sortField === "stockQty") {
+      if (sortField === "date") {
+        valA = parseDateTimestamp(a.date) || 0;
+        valB = parseDateTimestamp(b.date) || 0;
+      } else if (sortField === "stockQty") {
         valA = parseInt(valA) || 0;
         valB = parseInt(valB) || 0;
+      } else if (typeof valA === "string") {
+        valA = valA.toLowerCase();
+        valB = String(valB).toLowerCase();
       }
       if (valA < valB) return sortAsc ? -1 : 1;
       if (valA > valB) return sortAsc ? 1 : -1;
       return 0;
     });
   }, [effectiveTransactions, searchQuery, locationFilter, startDate, endDate, movementFilter, missingIdFilter, selectedItemFilter, sortField, sortAsc]);
+
+  // Dynamic metrics calculated from filtered transactions
+  const {
+    filteredNetStock,
+    filteredInwardUnits,
+    filteredOutwardUnits,
+    filteredDelhiStock,
+    filteredMumbaiStock
+  } = useMemo(() => {
+    let net = 0;
+    let inUnits = 0;
+    let outUnits = 0;
+    let delhiNet = 0;
+    let mumbaiNet = 0;
+
+    filteredTransactions.forEach(tx => {
+      const q = parseInt(tx.stockQty) || 0;
+      const loc = (tx.location || "Delhi").trim().toLowerCase();
+      net += q;
+      if (q > 0) inUnits += q;
+      else outUnits += Math.abs(q);
+
+      if (loc === "mumbai") {
+        mumbaiNet += q;
+      } else {
+        delhiNet += q;
+      }
+    });
+
+    return {
+      filteredNetStock: net,
+      filteredInwardUnits: inUnits,
+      filteredOutwardUnits: outUnits,
+      filteredDelhiStock: delhiNet,
+      filteredMumbaiStock: mumbaiNet
+    };
+  }, [filteredTransactions]);
 
   // Paginated Transactions Slice (100 rows per page)
   const paginatedTransactions = useMemo(() => {
@@ -602,22 +644,14 @@ export default function ImsDashboard({
     <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "22px", padding: "20px 24px", maxWidth: "1500px", margin: "0 auto", width: "100%" }}>
       
       {/* ==================== IMS TOP HEADER BAR ==================== */}
-      <div className="glass-panel" style={{ padding: "22px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "18px" }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div style={{ padding: "8px", borderRadius: "10px", background: "linear-gradient(135deg, #0284c7, #6366f1)", color: "#fff" }}>
-              <Layers size={22} />
-            </div>
-            <div>
-              <span className="badge badge-primary" style={{ fontSize: "0.72rem", marginBottom: "4px" }}>Mak Power Logistics</span>
-              <h1 style={{ fontSize: "1.6rem", fontWeight: 800, color: "var(--text-main)", margin: 0 }}>
-                IMS Stock Movement & Inventory Ledger
-              </h1>
-            </div>
+      <div className="glass-panel" style={{ padding: "18px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{ padding: "8px", borderRadius: "10px", background: "linear-gradient(135deg, #0284c7, #6366f1)", color: "#fff" }}>
+            <Layers size={22} />
           </div>
-          <p style={{ color: "var(--text-muted)", fontSize: "0.86rem", marginTop: "6px", margin: 0 }}>
-            Real-time chronological inventory transactions, stock inflows (+), outflows (-), batch upload (2026 to date), and SKU mapping.
-          </p>
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--text-main)", margin: 0 }}>
+            IMS Stock Movement & Inventory Ledger
+          </h1>
         </div>
 
         {/* Global Action Buttons */}
@@ -679,81 +713,6 @@ export default function ImsDashboard({
           </button>
         </div>
       )}
-
-      {/* ==================== 5 KPI SUMMARY CARDS ==================== */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px" }}>
-        
-        {/* Card 1: Total Physical Stock */}
-        <div className="glass-panel" style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: "12px" }}>
-          <div style={{ padding: "10px", borderRadius: "10px", background: "rgba(56, 189, 248, 0.12)", color: "#38bdf8" }}>
-            <Package size={24} />
-          </div>
-          <div>
-            <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total All On-Hand</div>
-            <div style={{ fontSize: "1.45rem", fontWeight: 800, color: totalNetStock >= 0 ? "var(--text-main)" : "var(--danger)" }}>
-              {totalNetStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
-            </div>
-            <div style={{ fontSize: "0.68rem", color: "#38bdf8", marginTop: "1px" }}>Combined Warehouses</div>
-          </div>
-        </div>
-
-        {/* Card 2: Delhi Warehouse Stock */}
-        <div className="glass-panel" style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: "12px", border: "1px solid rgba(56, 189, 248, 0.3)", background: "rgba(56, 189, 248, 0.04)" }}>
-          <div style={{ padding: "10px", borderRadius: "10px", background: "rgba(56, 189, 248, 0.18)", color: "#38bdf8" }}>
-            <Building2 size={24} />
-          </div>
-          <div>
-            <div style={{ fontSize: "0.74rem", color: "#38bdf8", fontWeight: 700 }}>🏢 Delhi Warehouse</div>
-            <div style={{ fontSize: "1.45rem", fontWeight: 800, color: delhiStock >= 0 ? "#38bdf8" : "var(--danger)" }}>
-              {delhiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
-            </div>
-            <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Delhi On-Hand Stock</div>
-          </div>
-        </div>
-
-        {/* Card 3: Mumbai Warehouse Stock */}
-        <div className="glass-panel" style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: "12px", border: "1px solid rgba(168, 85, 247, 0.3)", background: "rgba(168, 85, 247, 0.04)" }}>
-          <div style={{ padding: "10px", borderRadius: "10px", background: "rgba(168, 85, 247, 0.18)", color: "#c084fc" }}>
-            <Building2 size={24} />
-          </div>
-          <div>
-            <div style={{ fontSize: "0.74rem", color: "#c084fc", fontWeight: 700 }}>🏢 Mumbai Warehouse</div>
-            <div style={{ fontSize: "1.45rem", fontWeight: 800, color: mumbaiStock >= 0 ? "#c084fc" : "var(--danger)" }}>
-              {mumbaiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
-            </div>
-            <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Mumbai On-Hand Stock</div>
-          </div>
-        </div>
-
-        {/* Card 4: Total Inward Movement */}
-        <div className="glass-panel" style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: "12px" }}>
-          <div style={{ padding: "10px", borderRadius: "10px", background: "rgba(16, 185, 129, 0.12)", color: "var(--success)" }}>
-            <TrendingUp size={24} />
-          </div>
-          <div>
-            <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Inward (+)</div>
-            <div style={{ fontSize: "1.45rem", fontWeight: 800, color: "var(--success)" }}>
-              +{totalInwardUnits.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
-            </div>
-            <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Factory & Vendor Inflows</div>
-          </div>
-        </div>
-
-        {/* Card 5: Total Outward Movement */}
-        <div className="glass-panel" style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: "12px" }}>
-          <div style={{ padding: "10px", borderRadius: "10px", background: "rgba(239, 68, 68, 0.12)", color: "var(--danger)" }}>
-            <TrendingDown size={24} />
-          </div>
-          <div>
-            <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Dispatched (-)</div>
-            <div style={{ fontSize: "1.45rem", fontWeight: 800, color: "var(--danger)" }}>
-              -{totalOutwardUnits.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
-            </div>
-            <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Party & Dealer Outflows</div>
-          </div>
-        </div>
-
-      </div>
 
       {/* ==================== NAVIGATION TABS ==================== */}
       <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "8px", overflowX: "auto" }}>
@@ -911,6 +870,81 @@ export default function ImsDashboard({
             </div>
           </div>
 
+          {/* ==================== 5 DYNAMIC KPI SUMMARY CARDS (Updates with Filters) ==================== */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px" }}>
+            
+            {/* Card 1: Total Physical Stock */}
+            <div className="glass-panel" style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: "12px" }}>
+              <div style={{ padding: "10px", borderRadius: "10px", background: "rgba(56, 189, 248, 0.12)", color: "#38bdf8" }}>
+                <Package size={22} />
+              </div>
+              <div>
+                <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total All On-Hand</div>
+                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: filteredNetStock >= 0 ? "var(--text-main)" : "var(--danger)" }}>
+                  {filteredNetStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
+                </div>
+                <div style={{ fontSize: "0.68rem", color: "#38bdf8", marginTop: "1px" }}>Combined Warehouses</div>
+              </div>
+            </div>
+
+            {/* Card 2: Delhi Warehouse Stock */}
+            <div className="glass-panel" style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: "12px", border: "1px solid rgba(56, 189, 248, 0.3)", background: "rgba(56, 189, 248, 0.04)" }}>
+              <div style={{ padding: "10px", borderRadius: "10px", background: "rgba(56, 189, 248, 0.18)", color: "#38bdf8" }}>
+                <Building2 size={22} />
+              </div>
+              <div>
+                <div style={{ fontSize: "0.74rem", color: "#38bdf8", fontWeight: 700 }}>🏢 Delhi Warehouse</div>
+                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: filteredDelhiStock >= 0 ? "#38bdf8" : "var(--danger)" }}>
+                  {filteredDelhiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
+                </div>
+                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Delhi On-Hand Stock</div>
+              </div>
+            </div>
+
+            {/* Card 3: Mumbai Warehouse Stock */}
+            <div className="glass-panel" style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: "12px", border: "1px solid rgba(168, 85, 247, 0.3)", background: "rgba(168, 85, 247, 0.04)" }}>
+              <div style={{ padding: "10px", borderRadius: "10px", background: "rgba(168, 85, 247, 0.18)", color: "#c084fc" }}>
+                <Building2 size={22} />
+              </div>
+              <div>
+                <div style={{ fontSize: "0.74rem", color: "#c084fc", fontWeight: 700 }}>🏢 Mumbai Warehouse</div>
+                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: filteredMumbaiStock >= 0 ? "#c084fc" : "var(--danger)" }}>
+                  {filteredMumbaiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
+                </div>
+                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Mumbai On-Hand Stock</div>
+              </div>
+            </div>
+
+            {/* Card 4: Total Inward Movement */}
+            <div className="glass-panel" style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: "12px" }}>
+              <div style={{ padding: "10px", borderRadius: "10px", background: "rgba(16, 185, 129, 0.12)", color: "var(--success)" }}>
+                <TrendingUp size={22} />
+              </div>
+              <div>
+                <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Inward (+)</div>
+                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--success)" }}>
+                  +{filteredInwardUnits.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
+                </div>
+                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Factory & Vendor Inflows</div>
+              </div>
+            </div>
+
+            {/* Card 5: Total Outward Movement */}
+            <div className="glass-panel" style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: "12px" }}>
+              <div style={{ padding: "10px", borderRadius: "10px", background: "rgba(239, 68, 68, 0.12)", color: "var(--danger)" }}>
+                <TrendingDown size={22} />
+              </div>
+              <div>
+                <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Dispatched (-)</div>
+                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--danger)" }}>
+                  -{filteredOutwardUnits.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span>
+                </div>
+                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Party & Dealer Outflows</div>
+              </div>
+            </div>
+
+          </div>
+
           {/* Smart Selection Bar (Gmail-style current page vs all filtered selector) */}
           <SmartSelectionBar
             selectedCount={selectedTxIds.length}
@@ -974,7 +1008,11 @@ export default function ImsDashboard({
                         Stock Movement <ArrowUpDown size={12} />
                       </div>
                     </th>
-                    <th style={{ width: "14%" }}>Party Name</th>
+                    <th style={{ width: "14%", cursor: "pointer" }} onClick={() => { setSortField("partyName"); setSortAsc(!sortAsc); }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        Party Name <ArrowUpDown size={12} />
+                      </div>
+                    </th>
                     <th style={{ width: "10%" }}>Remarks</th>
                     <th style={{ width: "6%", textAlign: "center" }}>Actions</th>
                   </tr>
