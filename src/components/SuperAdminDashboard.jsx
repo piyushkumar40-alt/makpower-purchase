@@ -49,7 +49,9 @@ export default function SuperAdminDashboard({
   onAddParty,
   onUpdateParty,
   onDeleteParty,
-  onBatchUploadParties
+  onBatchUploadParties,
+  designations = [],
+  onAddDesignation
 }) {
   const [subTab, setSubTab] = useState(() => {
     return localStorage.getItem("makpower_admin_subtab") || "purchasers";
