@@ -1,5 +1,10 @@
 import React, { useState } from "react";
-import { Users, Building, Database, FileText, Plus, UserMinus, RefreshCw, Download, Upload, Eye, Truck, ChevronRight, Sliders, Package, ShieldCheck, Clock, UserX, LogOut, Folder, HardDrive, Trash2, Copy, ExternalLink, Key, Check, CheckCircle, CheckCircle2 } from "lucide-react";
+import { 
+  Users, Building, Database, FileText, Plus, UserMinus, RefreshCw, Download, 
+  Upload, Eye, Truck, ChevronRight, Sliders, Package, ShieldCheck, Clock, 
+  UserX, LogOut, Folder, HardDrive, Trash2, Copy, ExternalLink, Key, Check, 
+  CheckCircle, CheckCircle2, Layers, AlertTriangle, ShieldAlert, X
+} from "lucide-react";
 import TransferModal from "./TransferModal";
 import { getCurrencySymbol, CargoCompaniesPanel, VendorDetailModal, CargoCompanyDetailModal } from "./PurchaserDashboard";
 import ItemMasterView from "./ItemMasterView";
@@ -37,11 +42,38 @@ export default function SuperAdminDashboard({
   onUpdateItem,
   onMergeItems,
   designations = [],
-  onAddDesignation
+  onAddDesignation,
+  imsTransactions = [],
+  onResolveMissingId,
+  onNavigateView
 }) {
   const [subTab, setSubTab] = useState(() => {
     return localStorage.getItem("makpower_admin_subtab") || "purchasers";
   });
+
+  // Missing Item IDs state for IMS
+  const [resolvingAdminItemName, setResolvingAdminItemName] = useState(null);
+  const [adminItemCategory, setAdminItemCategory] = useState("Chargers");
+  const [adminItemType, setAdminItemType] = useState("FG");
+  const [adminItemUnit, setAdminItemUnit] = useState("Pcs");
+  const [adminItemDesc, setAdminItemDesc] = useState("");
+  const [adminMapTargetId, setAdminMapTargetId] = useState("");
+
+  const adminMissingImsItems = React.useMemo(() => {
+    const map = new Map();
+    (imsTransactions || []).forEach(tx => {
+      if (tx.isMissingId || !tx.itemId) {
+        const key = (tx.itemName || "Unknown Item").trim();
+        if (!map.has(key)) {
+          map.set(key, { name: key, count: 0, totalQty: 0, sampleDate: tx.date, sampleParty: tx.partyName });
+        }
+        const e = map.get(key);
+        e.count++;
+        e.totalQty += (parseInt(tx.stockQty) || 0);
+      }
+    });
+    return Array.from(map.values());
+  }, [imsTransactions]);
 
   const [forceRefreshLoading, setForceRefreshLoading] = useState(false);
   const [forceRefreshMsg, setForceRefreshMsg] = useState("");
@@ -546,6 +578,27 @@ export default function SuperAdminDashboard({
           style={{ color: "#38bdf8", fontWeight: 700 }}
         >
           <Package size={16} /> Item Catalog & Stock
+        </button>
+
+        <button 
+          onClick={() => setSubTab("missingids")}
+          className={`sidebar-link ${subTab === "missingids" ? "active" : ""}`}
+          style={{ 
+            color: adminMissingImsItems.length > 0 ? "#f59e0b" : "var(--text-muted)", 
+            fontWeight: 700, 
+            display: "flex", 
+            justifyContent: "space-between", 
+            alignItems: "center" 
+          }}
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <ShieldAlert size={16} /> Missing Item IDs (IMS)
+          </span>
+          {adminMissingImsItems.length > 0 && (
+            <span className="badge badge-warning" style={{ fontSize: "0.68rem", padding: "2px 6px" }}>
+              {adminMissingImsItems.length}
+            </span>
+          )}
         </button>
 
         <button 
@@ -2192,6 +2245,214 @@ export default function SuperAdminDashboard({
             </div>
           );
         })()}
+
+        {/* ==================== MISSING ITEM IDS RESOLUTION TAB (IMS) ==================== */}
+        {subTab === "missingids" && (
+          <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            
+            {/* Header */}
+            <div className="glass-panel" style={{ padding: "22px 26px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+              <div>
+                <h2 style={{ fontSize: "1.5rem", fontWeight: 800, color: "#f59e0b", display: "flex", alignItems: "center", gap: "10px", margin: 0 }}>
+                  <ShieldAlert size={26} /> Missing Item IDs Resolution Studio (IMS)
+                </h2>
+                <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px", margin: 0 }}>
+                  Review unlinked item names uploaded in the IMS Stock Ledger. Create them as Master Catalog items in 1 click or map them to existing SKUs to automatically resolve all historical entries.
+                </p>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button 
+                  onClick={() => onNavigateView && onNavigateView("ims")}
+                  className="btn btn-secondary"
+                  style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
+                >
+                  <Layers size={15} /> Open Full IMS Ledger
+                </button>
+              </div>
+            </div>
+
+            {adminMissingImsItems.length === 0 ? (
+              <div className="glass-panel" style={{ padding: "60px 20px", textAlign: "center" }}>
+                <CheckCircle2 size={48} style={{ color: "var(--success)", marginBottom: "14px" }} />
+                <h3 style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--success)" }}>
+                  All Item IDs are 100% Linked & Resolved!
+                </h3>
+                <p style={{ color: "var(--text-muted)", fontSize: "0.88rem", maxWidth: "500px", margin: "8px auto 0" }}>
+                  Every transaction in the IMS stock ledger is linked to a valid Master Item ID in your catalog.
+                </p>
+              </div>
+            ) : (
+              <div className="glass-panel" style={{ padding: "24px", overflowX: "auto" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                  <h3 style={{ fontSize: "1.15rem", fontWeight: 700, margin: 0 }}>
+                    Unlinked Item Models Found in IMS ({adminMissingImsItems.length})
+                  </h3>
+                </div>
+
+                <table className="table" style={{ width: "100%", minWidth: "850px" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: "35%" }}>Unlinked Item Name in IMS</th>
+                      <th style={{ width: "15%", textAlign: "center" }}>Affected Transactions</th>
+                      <th style={{ width: "15%", textAlign: "right" }}>Total Stock Qty</th>
+                      <th style={{ width: "15%" }}>Sample Date / Party</th>
+                      <th style={{ width: "20%", textAlign: "center" }}>Resolution Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminMissingImsItems.map(item => (
+                      <tr key={item.name}>
+                        <td style={{ fontWeight: 700, color: "var(--text-main)", fontSize: "0.92rem" }}>
+                          {item.name}
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <span className="badge badge-warning" style={{ fontWeight: 800 }}>
+                            {item.count} Transactions
+                          </span>
+                        </td>
+                        <td style={{ textAlign: "right", fontWeight: 700, color: item.totalQty >= 0 ? "var(--success)" : "var(--danger)" }}>
+                          {item.totalQty > 0 ? `+${item.totalQty}` : item.totalQty} Pcs
+                        </td>
+                        <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                          {item.sampleDate || "2026"} • {item.sampleParty || "—"}
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <button
+                            onClick={() => setResolvingAdminItemName(item.name)}
+                            className="btn btn-primary btn-sm"
+                            style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
+                          >
+                            <Plus size={13} /> Create Master Item / Link
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Modal for Admin Missing ID Resolution */}
+            {resolvingAdminItemName && (
+              <div className="modal-backdrop" onClick={() => setResolvingAdminItemName(null)}>
+                <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "600px", padding: "28px" }}>
+                  
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
+                    <div>
+                      <span className="badge badge-warning" style={{ marginBottom: "4px" }}>Admin SKU Resolution</span>
+                      <h3 style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--primary)", margin: 0 }}>
+                        Create Master Item for "{resolvingAdminItemName}"
+                      </h3>
+                    </div>
+                    <button onClick={() => setResolvingAdminItemName(null)} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={20} /></button>
+                  </div>
+
+                  {/* Option 1: 1-Click Create in Master Catalog */}
+                  <div style={{ background: "rgba(99, 102, 241, 0.08)", border: "1px solid rgba(99, 102, 241, 0.25)", borderRadius: "10px", padding: "18px", marginBottom: "18px" }}>
+                    <h4 style={{ fontSize: "0.95rem", fontWeight: 700, color: "#818cf8", marginBottom: "10px", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <Plus size={16} /> Option 1: Create as New Master SKU
+                    </h4>
+                    <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "12px" }}>
+                      Creates the item in the Master Item Catalog with a new unique Item ID and automatically backfills all historical IMS rows!
+                    </p>
+
+                    <form onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (!resolvingAdminItemName) return;
+
+                      const nextIdNum = items.reduce((max, it) => {
+                        const n = parseInt(String(it.id).replace(/\D/g, ""), 10);
+                        return !isNaN(n) && n > max ? n : max;
+                      }, 100) + 1;
+                      const newItemId = `it-${nextIdNum}`;
+
+                      await onAddItem({
+                        id: newItemId,
+                        name: resolvingAdminItemName.trim(),
+                        category: adminItemCategory,
+                        itemType: adminItemType,
+                        unit: adminItemUnit,
+                        description: adminItemDesc || `Created from IMS missing ID resolution`,
+                        currentStock: 0
+                      });
+
+                      if (onResolveMissingId) {
+                        await onResolveMissingId(resolvingAdminItemName.trim(), newItemId, resolvingAdminItemName.trim());
+                      }
+
+                      setResolvingAdminItemName(null);
+                      setAdminItemDesc("");
+                    }} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label className="form-label" style={{ fontSize: "0.78rem" }}>Category</label>
+                          <select value={adminItemCategory} onChange={e => setAdminItemCategory(e.target.value)} className="form-control" style={{ fontSize: "0.82rem" }}>
+                            <option value="Chargers">Chargers</option>
+                            <option value="Cables">Cables</option>
+                            <option value="Power Banks">Power Banks</option>
+                            <option value="Car Chargers">Car Chargers</option>
+                            <option value="Audio / TWS">Audio / TWS</option>
+                            <option value="Accessories">Accessories</option>
+                          </select>
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label className="form-label" style={{ fontSize: "0.78rem" }}>Type</label>
+                          <select value={adminItemType} onChange={e => setAdminItemType(e.target.value)} className="form-control" style={{ fontSize: "0.82rem" }}>
+                            <option value="FG">Finished Goods (FG)</option>
+                            <option value="RM">Raw Material (RM)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <button type="submit" className="btn btn-primary btn-sm" style={{ fontWeight: 700, padding: "8px", marginTop: "6px" }}>
+                        ✓ Create Master Item & Link All IMS Records
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Option 2: Map to Existing Master Item */}
+                  <div style={{ background: "rgba(255, 255, 255, 0.02)", border: "1px solid var(--border-glass)", borderRadius: "10px", padding: "18px" }}>
+                    <h4 style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "10px", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <Check size={16} /> Option 2: Map to an Existing Master Item
+                    </h4>
+
+                    <form onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (!resolvingAdminItemName || !adminMapTargetId) return;
+
+                      const targetItem = items.find(i => i.id === adminMapTargetId);
+                      if (!targetItem) return;
+
+                      if (onResolveMissingId) {
+                        await onResolveMissingId(resolvingAdminItemName.trim(), targetItem.id, targetItem.name);
+                      }
+                      setResolvingAdminItemName(null);
+                      setAdminMapTargetId("");
+                    }} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <select value={adminMapTargetId} onChange={e => setAdminMapTargetId(e.target.value)} className="form-control" style={{ fontSize: "0.85rem" }} required>
+                          <option value="">-- Choose Existing Master Item --</option>
+                          {items.map(it => (
+                            <option key={it.id} value={it.id}>
+                              #{it.id} - {it.name} ({it.category || "General"})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <button type="submit" disabled={!adminMapTargetId} className="btn btn-secondary btn-sm" style={{ fontWeight: 700, padding: "8px" }}>
+                        Map & Update IMS Transactions
+                      </button>
+                    </form>
+                  </div>
+
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
 
       </section>
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { LogIn, ShoppingCart, ShieldAlert, LogOut, Settings, BarChart2, Package, Sun, Moon, Home, Menu, X, Building2, RefreshCw, Search, Bell, Briefcase } from "lucide-react";
+import { LogIn, ShoppingCart, ShieldAlert, LogOut, Settings, BarChart2, Package, Sun, Moon, Home, Menu, X, Building2, RefreshCw, Search, Bell, Briefcase, Layers } from "lucide-react";
 import LoginPage from "./components/LoginPage";
 import RequesterForm from "./components/RequesterForm";
 import PurchaserDashboard from "./components/PurchaserDashboard";
@@ -13,7 +13,8 @@ import OwnerDashboard from "./components/OwnerDashboard";
 import ItemDetailModal from "./components/ItemDetailModal";
 import HomePage from "./components/HomePage";
 import CrmDashboard from "./components/CrmDashboard";
-import { initialUsers, initialVendors, initialRequests, initialCargoShipments, initialCargoCompanies, initialCrmParties, initialCrmSalesOrders, initialCrmDispatches } from "./mockData";
+import ImsDashboard from "./components/ImsDashboard";
+import { initialUsers, initialVendors, initialRequests, initialCargoShipments, initialCargoCompanies, initialCrmParties, initialCrmSalesOrders, initialCrmDispatches, initialImsTransactions } from "./mockData";
 
 export default function App() {
   // Mobile drawer state
@@ -56,6 +57,7 @@ export default function App() {
   const [crmParties, setCrmParties] = useState([]);
   const [crmSalesOrders, setCrmSalesOrders] = useState([]);
   const [crmDispatches, setCrmDispatches] = useState([]);
+  const [imsTransactions, setImsTransactions] = useState(initialImsTransactions);
   const [auditLogs, setAuditLogs] = useState([]);
   const [settings, setSettings] = useState({ isHidden: false, redirectUrl: "https://www.instagram.com/makpowerofficial/" });
   const [loading, setLoading] = useState(true);
@@ -176,6 +178,9 @@ export default function App() {
         setCrmParties(data.crmParties || []);
         setCrmSalesOrders(data.crmSalesOrders || []);
         setCrmDispatches(data.crmDispatches || []);
+        if (Array.isArray(data.imsTransactions)) {
+          setImsTransactions(data.imsTransactions);
+        }
         if (data.settings) {
           setSettings(data.settings);
           if (data.settings.forceRefreshTimestamp) {
@@ -796,6 +801,87 @@ export default function App() {
     }
   };
 
+  // ==================== IMS INVENTORY MANAGEMENT HANDLERS ====================
+  const handleAddImsTransaction = async (txData) => {
+    try {
+      const res = await postData("/api/ims/transactions", txData);
+      if (res && res.success) {
+        setImsTransactions(prev => {
+          const idx = prev.findIndex(t => t.id === res.transaction.id);
+          if (idx !== -1) {
+            const next = [...prev];
+            next[idx] = res.transaction;
+            return next;
+          }
+          return [res.transaction, ...prev];
+        });
+        logSystemActivity("IMS_STOCK_MOVEMENT", `Logged stock movement for ${txData.itemName} (${txData.stockQty > 0 ? "+" : ""}${txData.stockQty} Pcs)`, "IMS", txData.id);
+      }
+      return res;
+    } catch (err) {
+      console.error("Failed to add IMS transaction:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const handleBatchUploadIms = async (transactions) => {
+    try {
+      const res = await postData("/api/ims/transactions/batch", { transactions });
+      if (res && res.success) {
+        // Fetch fresh state to ensure sync
+        const stateRes = await fetch("/api/state");
+        const sData = await stateRes.json();
+        if (Array.isArray(sData.imsTransactions)) {
+          setImsTransactions(sData.imsTransactions);
+        }
+        logSystemActivity("IMS_BATCH_UPLOAD", `Bulk imported ${res.count} historical stock records (${res.missingIdCount} unlinked IDs)`, "IMS", "batch");
+      }
+      return res;
+    } catch (err) {
+      console.error("Failed to batch upload IMS transactions:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const handleDeleteImsTransaction = async (txId) => {
+    try {
+      const res = await fetch(`/api/ims/transactions/${txId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        setImsTransactions(prev => prev.filter(t => t.id !== txId));
+        logSystemActivity("IMS_DELETE_TRANSACTION", `Deleted stock movement #${txId}`, "IMS", txId);
+      }
+      return data;
+    } catch (err) {
+      console.error("Failed to delete IMS transaction:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const handleResolveMissingId = async (oldItemName, targetItemId, targetItemName) => {
+    try {
+      const res = await postData("/api/ims/resolve-missing-id", { oldItemName, targetItemId, targetItemName });
+      if (res && res.success) {
+        setImsTransactions(prev => prev.map(t => {
+          if ((t.itemName || "").toLowerCase() === oldItemName.toLowerCase() || (t.isMissingId && t.itemId === targetItemId)) {
+            return {
+              ...t,
+              itemId: targetItemId,
+              itemName: targetItemName || oldItemName,
+              isMissingId: false
+            };
+          }
+          return t;
+        }));
+        logSystemActivity("IMS_RESOLVE_MISSING_ID", `Resolved "${oldItemName}" to Master Item #${targetItemId} (${res.resolvedCount} rows updated)`, "IMS", targetItemId);
+      }
+      return res;
+    } catch (err) {
+      console.error("Failed to resolve missing ID:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
   const addVendor = async (name, purchaserIds, location = "", phone = "", history = "") => {
     const trimmedName = name.trim();
     const existing = vendors.find(v => v.name.trim().toLowerCase() === trimmedName.toLowerCase());
@@ -1138,6 +1224,16 @@ export default function App() {
                     CRM Dashboard
                   </button>
                 )}
+
+                {currentUser && (
+                  <button 
+                    onClick={() => setActiveView("ims")} 
+                    className={`nav-tab-item ${activeView === "ims" ? "active" : ""}`}
+                    style={{ color: "#38bdf8", fontWeight: 700 }}
+                  >
+                    IMS Stock Ledger
+                  </button>
+                )}
                 
                 {currentUser.role !== "superadmin" && !["crm", "asm", "tsm"].includes(currentUser.role) && (
                   <button 
@@ -1283,6 +1379,15 @@ export default function App() {
                       className={`mobile-nav-item ${activeView === "crm" ? "active" : ""}`}
                     >
                       <Briefcase size={18} /> <span>CRM Command Center</span>
+                    </button>
+                  )}
+
+                  {currentUser && (
+                    <button 
+                      onClick={() => { setActiveView("ims"); setMobileMenuOpen(false); }} 
+                      className={`mobile-nav-item ${activeView === "ims" ? "active" : ""}`}
+                    >
+                      <Layers size={18} /> <span>IMS Stock Ledger</span>
                     </button>
                   )}
                   
@@ -1485,6 +1590,25 @@ export default function App() {
             onPurgeAllData={purgeAllData}
             designations={designations}
             onAddDesignation={addDesignation}
+            imsTransactions={imsTransactions}
+            onResolveMissingId={handleResolveMissingId}
+            onNavigateView={setActiveView}
+          />
+        )}
+
+        {activeView === "ims" && currentUser && (
+          <ImsDashboard 
+            currentUser={currentUser}
+            items={items}
+            imsTransactions={imsTransactions}
+            crmParties={crmParties}
+            vendors={vendors}
+            onAddTransaction={handleAddImsTransaction}
+            onBatchUploadTransactions={handleBatchUploadIms}
+            onDeleteTransaction={handleDeleteImsTransaction}
+            onResolveMissingId={handleResolveMissingId}
+            onAddItem={addItem}
+            onNavigateView={setActiveView}
           />
         )}
 

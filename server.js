@@ -13,7 +13,8 @@ import {
   initialCrmParties,
   initialCrmSalesOrders,
   initialCrmDispatches,
-  initialDesignations
+  initialDesignations,
+  initialImsTransactions
 } from "./src/mockData.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -96,6 +97,7 @@ function readLocalJson() {
       crmParties: initialCrmParties,
       crmSalesOrders: initialCrmSalesOrders,
       crmDispatches: initialCrmDispatches,
+      imsTransactions: initialImsTransactions,
       designations: initialDesignations,
       settings: {
         isHidden: false,
@@ -121,6 +123,9 @@ function readLocalJson() {
     }
     if (!Array.isArray(data.crmDispatches)) {
       data.crmDispatches = initialCrmDispatches;
+    }
+    if (!Array.isArray(data.imsTransactions)) {
+      data.imsTransactions = initialImsTransactions;
     }
     if (!Array.isArray(data.designations)) {
       data.designations = initialDesignations;
@@ -309,8 +314,37 @@ async function setupPgDatabase() {
           [u.id, u.name, u.email, u.password, u.role, u.designation || "Staff", u.status, u.phone || "", u.territory || "", u.parentCrmId || ""]
         );
       }
+
+      // Seed IMS Transactions
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ims_transactions (
+          "id" TEXT PRIMARY KEY,
+          "date" TEXT,
+          "itemName" TEXT,
+          "itemId" TEXT,
+          "stockQty" INTEGER,
+          "movementType" TEXT,
+          "partyName" TEXT,
+          "remarks" TEXT,
+          "source" TEXT,
+          "isMissingId" BOOLEAN,
+          "createdAt" TEXT
+        );
+      `);
+
+      const imsCheck = await pool.query("SELECT COUNT(*) FROM ims_transactions");
+      if (parseInt(imsCheck.rows[0].count) === 0) {
+        for (const ims of initialImsTransactions) {
+          await pool.query(
+            `INSERT INTO ims_transactions ("id", "date", "itemName", "itemId", "stockQty", "movementType", "partyName", "remarks", "source", "isMissingId", "createdAt")
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+             ON CONFLICT ("id") DO NOTHING`,
+            [ims.id, ims.date, ims.itemName, ims.itemId, ims.stockQty, ims.movementType, ims.partyName, ims.remarks, ims.source, ims.isMissingId, ims.createdAt]
+          );
+        }
+      }
     } catch (crmSeedErr) {
-      console.warn("CRM table seeding notice:", crmSeedErr.message);
+      console.warn("CRM / IMS table seeding notice:", crmSeedErr.message);
     }
 
     await pool.query(`
@@ -1353,6 +1387,7 @@ app.get("/api/state", async (req, res) => {
       const crmPartiesRes = await pool.query("SELECT * FROM crm_parties ORDER BY \"name\" ASC");
       const crmSalesOrdersRes = await pool.query("SELECT * FROM crm_sales_orders ORDER BY \"orderDate\" DESC");
       const crmDispatchesRes = await pool.query("SELECT * FROM crm_dispatches ORDER BY \"dispatchDate\" DESC");
+      const imsRes = await pool.query("SELECT * FROM ims_transactions ORDER BY \"date\" DESC, \"createdAt\" DESC");
 
       res.json({
         users: usersRes.rows,
@@ -1374,6 +1409,11 @@ app.get("/api/state", async (req, res) => {
         crmDispatches: (crmDispatchesRes.rows || []).map(d => ({
           ...d,
           dispatchedQty: d.dispatchedQty ? parseInt(d.dispatchedQty) : 0
+        })),
+        imsTransactions: (imsRes.rows || []).map(row => ({
+          ...row,
+          stockQty: row.stockQty ? parseInt(row.stockQty) : 0,
+          isMissingId: !!row.isMissingId
         }))
       });
     } catch (err) {
@@ -2187,6 +2227,387 @@ app.delete("/api/crm/dispatches/:id", async (req, res) => {
     data.crmDispatches = (data.crmDispatches || []).filter(x => x.id !== dispatchId);
     writeLocalJson(data);
     res.json({ success: true });
+  }
+});
+
+// ==================== IMS (INVENTORY MANAGEMENT SYSTEM) ENDPOINTS ====================
+
+// 1. GET /api/ims/transactions - Query IMS Stock Movements
+app.get("/api/ims/transactions", async (req, res) => {
+  const { itemId, itemName, partyName, isMissingId, startDate, endDate } = req.query;
+  if (isPg) {
+    try {
+      let query = "SELECT * FROM ims_transactions";
+      const conditions = [];
+      const values = [];
+      let idx = 1;
+
+      if (itemId) {
+        conditions.push(`"itemId" = $${idx++}`);
+        values.push(itemId);
+      }
+      if (itemName) {
+        conditions.push(`"itemName" ILIKE $${idx++}`);
+        values.push(`%${itemName}%`);
+      }
+      if (partyName) {
+        conditions.push(`"partyName" ILIKE $${idx++}`);
+        values.push(`%${partyName}%`);
+      }
+      if (isMissingId !== undefined && isMissingId !== "") {
+        conditions.push(`"isMissingId" = $${idx++}`);
+        values.push(isMissingId === "true");
+      }
+      if (startDate) {
+        conditions.push(`"date" >= $${idx++}`);
+        values.push(startDate);
+      }
+      if (endDate) {
+        conditions.push(`"date" <= $${idx++}`);
+        values.push(endDate);
+      }
+
+      if (conditions.length > 0) {
+        query += " WHERE " + conditions.join(" AND ");
+      }
+      query += " ORDER BY \"date\" DESC, \"createdAt\" DESC";
+
+      const result = await pool.query(query, values);
+      const rows = result.rows.map(r => ({
+        ...r,
+        stockQty: r.stockQty ? parseInt(r.stockQty) : 0,
+        isMissingId: !!r.isMissingId
+      }));
+      res.json({ success: true, transactions: rows });
+    } catch (err) {
+      console.error("GET /api/ims/transactions error:", err.message);
+      res.status(500).json({ error: "Failed to fetch IMS transactions." });
+    }
+  } else {
+    const data = readLocalJson();
+    let list = data.imsTransactions || [];
+    if (itemId) list = list.filter(t => t.itemId === itemId);
+    if (itemName) list = list.filter(t => (t.itemName || "").toLowerCase().includes(itemName.toLowerCase()));
+    if (partyName) list = list.filter(t => (t.partyName || "").toLowerCase().includes(partyName.toLowerCase()));
+    if (isMissingId !== undefined && isMissingId !== "") {
+      const matchBool = isMissingId === "true";
+      list = list.filter(t => !!t.isMissingId === matchBool);
+    }
+    if (startDate) list = list.filter(t => (t.date || "") >= startDate);
+    if (endDate) list = list.filter(t => (t.date || "") <= endDate);
+    res.json({ success: true, transactions: list });
+  }
+});
+
+// 2. POST /api/ims/transactions - Single Stock Movement Entry
+app.post("/api/ims/transactions", async (req, res) => {
+  const t = req.body;
+  if (!t || !t.itemName) {
+    return res.status(400).json({ error: "Item name is required for IMS stock movement." });
+  }
+
+  const rawQty = parseInt(t.stockQty) || 0;
+  const movementType = t.movementType || (rawQty >= 0 ? "IN" : "OUT");
+  const finalStockQty = movementType === "OUT" ? -Math.abs(rawQty) : Math.abs(rawQty);
+
+  let itemId = (t.itemId || "").trim();
+  let isMissingId = !itemId;
+
+  // If itemId is given, check if it matches an existing item, otherwise if empty check by name
+  if (isPg) {
+    try {
+      if (itemId) {
+        const checkItem = await pool.query('SELECT * FROM items WHERE "id" = $1', [itemId]);
+        isMissingId = checkItem.rows.length === 0;
+      } else {
+        const checkName = await pool.query('SELECT * FROM items WHERE LOWER("name") = LOWER($1)', [t.itemName.trim()]);
+        if (checkName.rows.length > 0) {
+          itemId = checkName.rows[0].id;
+          isMissingId = false;
+        } else {
+          isMissingId = true;
+        }
+      }
+
+      const txObj = {
+        id: t.id || `ims-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        date: t.date || new Date().toISOString().split("T")[0],
+        itemName: (t.itemName || "").trim(),
+        itemId,
+        stockQty: finalStockQty,
+        movementType,
+        partyName: (t.partyName || "").trim(),
+        remarks: (t.remarks || "").trim(),
+        source: t.source || "manual",
+        isMissingId,
+        createdAt: t.createdAt || new Date().toISOString()
+      };
+
+      const query = `
+        INSERT INTO ims_transactions (
+          "id", "date", "itemName", "itemId", "stockQty", "movementType",
+          "partyName", "remarks", "source", "isMissingId", "createdAt"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        ON CONFLICT ("id") DO UPDATE SET
+          "date" = EXCLUDED."date",
+          "itemName" = EXCLUDED."itemName",
+          "itemId" = EXCLUDED."itemId",
+          "stockQty" = EXCLUDED."stockQty",
+          "movementType" = EXCLUDED."movementType",
+          "partyName" = EXCLUDED."partyName",
+          "remarks" = EXCLUDED."remarks",
+          "source" = EXCLUDED."source",
+          "isMissingId" = EXCLUDED."isMissingId"
+      `;
+      const values = [
+        txObj.id, txObj.date, txObj.itemName, txObj.itemId, txObj.stockQty,
+        txObj.movementType, txObj.partyName, txObj.remarks, txObj.source,
+        txObj.isMissingId, txObj.createdAt
+      ];
+      await pool.query(query, values);
+      res.json({ success: true, transaction: txObj });
+    } catch (err) {
+      console.error("POST /api/ims/transactions error:", err.message);
+      res.status(500).json({ error: "Failed to record IMS transaction." });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.imsTransactions) data.imsTransactions = [];
+    const items = data.items || [];
+
+    if (itemId) {
+      isMissingId = !items.some(i => i.id === itemId);
+    } else {
+      const match = items.find(i => i.name.trim().toLowerCase() === t.itemName.trim().toLowerCase());
+      if (match) {
+        itemId = match.id;
+        isMissingId = false;
+      } else {
+        isMissingId = true;
+      }
+    }
+
+    const txObj = {
+      id: t.id || `ims-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      date: t.date || new Date().toISOString().split("T")[0],
+      itemName: (t.itemName || "").trim(),
+      itemId,
+      stockQty: finalStockQty,
+      movementType,
+      partyName: (t.partyName || "").trim(),
+      remarks: (t.remarks || "").trim(),
+      source: t.source || "manual",
+      isMissingId,
+      createdAt: t.createdAt || new Date().toISOString()
+    };
+
+    const idx = data.imsTransactions.findIndex(x => x.id === txObj.id);
+    if (idx !== -1) {
+      data.imsTransactions[idx] = txObj;
+    } else {
+      data.imsTransactions.unshift(txObj);
+    }
+    writeLocalJson(data);
+    res.json({ success: true, transaction: txObj });
+  }
+});
+
+// 3. POST /api/ims/transactions/batch - Bulk Upload Historical IMS Transactions (Excel / CSV)
+app.post("/api/ims/transactions/batch", async (req, res) => {
+  const { transactions } = req.body;
+  if (!Array.isArray(transactions) || transactions.length === 0) {
+    return res.status(400).json({ error: "No transactions provided for bulk upload." });
+  }
+
+  if (isPg) {
+    try {
+      const itemsRes = await pool.query("SELECT id, name FROM items");
+      const itemsMap = new Map();
+      const namesMap = new Map();
+      itemsRes.rows.forEach(i => {
+        itemsMap.set(String(i.id).trim().toLowerCase(), i);
+        namesMap.set(String(i.name).trim().toLowerCase(), i);
+      });
+
+      let insertedCount = 0;
+      let missingIdCount = 0;
+
+      for (const t of transactions) {
+        if (!t.itemName) continue;
+        const rawQty = parseInt(t.stockQty) || 0;
+        const movementType = t.movementType || (rawQty >= 0 ? "IN" : "OUT");
+        const finalStockQty = movementType === "OUT" ? -Math.abs(rawQty) : Math.abs(rawQty);
+
+        let itemId = String(t.itemId || "").trim();
+        let isMissingId = false;
+
+        if (itemId && itemsMap.has(itemId.toLowerCase())) {
+          isMissingId = false;
+        } else if (namesMap.has(t.itemName.trim().toLowerCase())) {
+          itemId = namesMap.get(t.itemName.trim().toLowerCase()).id;
+          isMissingId = false;
+        } else {
+          isMissingId = true;
+          missingIdCount++;
+        }
+
+        const txObj = {
+          id: t.id || `ims-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          date: t.date || new Date().toISOString().split("T")[0],
+          itemName: (t.itemName || "").trim(),
+          itemId,
+          stockQty: finalStockQty,
+          movementType,
+          partyName: (t.partyName || "").trim(),
+          remarks: (t.remarks || "").trim(),
+          source: t.source || "bulk_upload",
+          isMissingId,
+          createdAt: t.createdAt || new Date().toISOString()
+        };
+
+        const query = `
+          INSERT INTO ims_transactions (
+            "id", "date", "itemName", "itemId", "stockQty", "movementType",
+            "partyName", "remarks", "source", "isMissingId", "createdAt"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          ON CONFLICT ("id") DO UPDATE SET
+            "date" = EXCLUDED."date",
+            "itemName" = EXCLUDED."itemName",
+            "itemId" = EXCLUDED."itemId",
+            "stockQty" = EXCLUDED."stockQty",
+            "movementType" = EXCLUDED."movementType",
+            "partyName" = EXCLUDED."partyName",
+            "remarks" = EXCLUDED."remarks",
+            "source" = EXCLUDED."source",
+            "isMissingId" = EXCLUDED."isMissingId"
+        `;
+        const values = [
+          txObj.id, txObj.date, txObj.itemName, txObj.itemId, txObj.stockQty,
+          txObj.movementType, txObj.partyName, txObj.remarks, txObj.source,
+          txObj.isMissingId, txObj.createdAt
+        ];
+        await pool.query(query, values);
+        insertedCount++;
+      }
+
+      res.json({ success: true, count: insertedCount, missingIdCount });
+    } catch (err) {
+      console.error("POST /api/ims/transactions/batch error:", err.message);
+      res.status(500).json({ error: "Failed to batch upload IMS transactions." });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.imsTransactions) data.imsTransactions = [];
+    const items = data.items || [];
+    let insertedCount = 0;
+    let missingIdCount = 0;
+
+    for (const t of transactions) {
+      if (!t.itemName) continue;
+      const rawQty = parseInt(t.stockQty) || 0;
+      const movementType = t.movementType || (rawQty >= 0 ? "IN" : "OUT");
+      const finalStockQty = movementType === "OUT" ? -Math.abs(rawQty) : Math.abs(rawQty);
+
+      let itemId = String(t.itemId || "").trim();
+      let isMissingId = false;
+
+      const matchId = items.find(i => i.id.toLowerCase() === itemId.toLowerCase());
+      const matchName = items.find(i => i.name.trim().toLowerCase() === t.itemName.trim().toLowerCase());
+
+      if (itemId && matchId) {
+        isMissingId = false;
+      } else if (matchName) {
+        itemId = matchName.id;
+        isMissingId = false;
+      } else {
+        isMissingId = true;
+        missingIdCount++;
+      }
+
+      const txObj = {
+        id: t.id || `ims-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        date: t.date || new Date().toISOString().split("T")[0],
+        itemName: (t.itemName || "").trim(),
+        itemId,
+        stockQty: finalStockQty,
+        movementType,
+        partyName: (t.partyName || "").trim(),
+        remarks: (t.remarks || "").trim(),
+        source: t.source || "bulk_upload",
+        isMissingId,
+        createdAt: t.createdAt || new Date().toISOString()
+      };
+
+      const idx = data.imsTransactions.findIndex(x => x.id === txObj.id);
+      if (idx !== -1) {
+        data.imsTransactions[idx] = txObj;
+      } else {
+        data.imsTransactions.unshift(txObj);
+      }
+      insertedCount++;
+    }
+
+    writeLocalJson(data);
+    res.json({ success: true, count: insertedCount, missingIdCount });
+  }
+});
+
+// 4. DELETE /api/ims/transactions/:id - Delete an IMS Transaction
+app.delete("/api/ims/transactions/:id", async (req, res) => {
+  const txId = req.params.id;
+  if (isPg) {
+    try {
+      await pool.query('DELETE FROM ims_transactions WHERE "id" = $1', [txId]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/ims/transactions error:", err.message);
+      res.status(500).json({ error: "Failed to delete IMS transaction." });
+    }
+  } else {
+    const data = readLocalJson();
+    data.imsTransactions = (data.imsTransactions || []).filter(x => x.id !== txId);
+    writeLocalJson(data);
+    res.json({ success: true });
+  }
+});
+
+// 5. POST /api/ims/resolve-missing-id - Bulk Resolve Missing Item IDs
+app.post("/api/ims/resolve-missing-id", async (req, res) => {
+  const { oldItemName, targetItemId, targetItemName } = req.body;
+  if (!oldItemName || !targetItemId) {
+    return res.status(400).json({ error: "oldItemName and targetItemId are required." });
+  }
+
+  const finalName = targetItemName ? targetItemName.trim() : oldItemName.trim();
+
+  if (isPg) {
+    try {
+      const updateRes = await pool.query(`
+        UPDATE ims_transactions
+        SET "itemId" = $1, "itemName" = $2, "isMissingId" = false
+        WHERE LOWER("itemName") = LOWER($3) OR ("isMissingId" = true AND "itemId" = $1)
+      `, [targetItemId.trim(), finalName, oldItemName.trim()]);
+
+      res.json({ success: true, resolvedCount: updateRes.rowCount || 0 });
+    } catch (err) {
+      console.error("POST /api/ims/resolve-missing-id error:", err.message);
+      res.status(500).json({ error: "Failed to resolve missing item ID in IMS." });
+    }
+  } else {
+    const data = readLocalJson();
+    let count = 0;
+    if (data.imsTransactions) {
+      data.imsTransactions.forEach(tx => {
+        if ((tx.itemName || "").toLowerCase() === oldItemName.trim().toLowerCase() || (tx.isMissingId && tx.itemId === targetItemId.trim())) {
+          tx.itemId = targetItemId.trim();
+          tx.itemName = finalName;
+          tx.isMissingId = false;
+          count++;
+        }
+      });
+    }
+    writeLocalJson(data);
+    res.json({ success: true, resolvedCount: count });
   }
 });
 // GET /api/audit-logs - Retrieve all activity logs
