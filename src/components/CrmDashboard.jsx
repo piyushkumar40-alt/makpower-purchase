@@ -4,7 +4,7 @@ import {
   Download, Eye, Edit2, Trash2, CheckCircle2, Clock, AlertCircle, 
   Phone, Mail, MapPin, ChevronRight, ArrowUpDown, UserPlus, UserCheck, 
   Shield, Calendar, FileText, BarChart2, RefreshCw, Layers, DollarSign,
-  X, Check, ExternalLink, Share2, Briefcase, User, Send
+  X, Check, ExternalLink, Share2, Briefcase, User, Send, Lock
 } from "lucide-react";
 
 export default function CrmDashboard({
@@ -303,13 +303,15 @@ export default function CrmDashboard({
             })}
           </div>
 
-          <button 
-            onClick={() => setShowAddPartyModal(true)} 
-            className="btn btn-primary"
-            style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700, padding: "8px 16px" }}
-          >
-            <Plus size={16} /> Add Party
-          </button>
+          {isAdminOrOwner && (
+            <button 
+              onClick={() => setShowAddPartyModal(true)} 
+              className="btn btn-primary"
+              style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700, padding: "8px 16px" }}
+            >
+              <Plus size={16} /> Add Party
+            </button>
+          )}
         </div>
       </div>
 
@@ -500,13 +502,15 @@ export default function CrmDashboard({
                 <Download size={14} /> Export CSV
               </button>
 
-              <button 
-                onClick={() => setShowAddPartyModal(true)} 
-                className="btn btn-primary btn-sm"
-                style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
-              >
-                <Plus size={14} /> Add New Party
-              </button>
+              {isAdminOrOwner && (
+                <button 
+                  onClick={() => setShowAddPartyModal(true)} 
+                  className="btn btn-primary btn-sm"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
+                >
+                  <Plus size={14} /> Add New Party
+                </button>
+              )}
             </div>
           </div>
 
@@ -605,18 +609,20 @@ export default function CrmDashboard({
                               <Edit2 size={13} />
                             </button>
 
-                            <button
-                              onClick={() => {
-                                if (window.confirm(`Are you sure you want to delete party "${party.name}"?`)) {
-                                  onDeleteParty(party.id);
-                                }
-                              }}
-                              className="btn btn-danger btn-sm"
-                              title="Delete Party"
-                              style={{ padding: "4px 8px", fontSize: "0.78rem" }}
-                            >
-                              <Trash2 size={13} />
-                            </button>
+                            {isAdminOrOwner && (
+                              <button
+                                onClick={() => {
+                                  if (window.confirm(`Are you sure you want to delete party "${party.name}"?`)) {
+                                    onDeleteParty(party.id);
+                                  }
+                                }}
+                                className="btn btn-danger btn-sm"
+                                title="Delete Party"
+                                style={{ padding: "4px 8px", fontSize: "0.78rem" }}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1096,6 +1102,7 @@ export default function CrmDashboard({
           asmList={asmList}
           tsmList={tsmList}
           currentExecutive={activeExecutive || currentUser}
+          currentUser={currentUser}
           onSave={async (partyData) => {
             if (editingParty) {
               await onUpdateParty(partyData);
@@ -1178,7 +1185,8 @@ export default function CrmDashboard({
 }
 
 // ==================== SUB-COMPONENT: PARTY ADD/EDIT MODAL ====================
-function PartyModal({ party, crmExecutives, asmList, tsmList, currentExecutive, onSave, onClose }) {
+function PartyModal({ party, crmExecutives, asmList, tsmList, currentExecutive, currentUser, onSave, onClose }) {
+  const isCrmRole = currentUser?.role === "crm" || currentUser?.role === "asm" || currentUser?.role === "tsm";
   const [name, setName] = useState(party?.name || "");
   const [contactPerson, setContactPerson] = useState(party?.contactPerson || "");
   const [phone, setPhone] = useState(party?.phone || "");
@@ -1195,7 +1203,8 @@ function PartyModal({ party, crmExecutives, asmList, tsmList, currentExecutive, 
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    const finalPartyName = (isCrmRole && party) ? party.name : name.trim();
+    if (!finalPartyName) return;
 
     const crmObj = crmExecutives.find(c => c.id === assignedCrmId);
     const asmObj = asmList.find(a => a.id === assignedAsmId);
@@ -1203,7 +1212,7 @@ function PartyModal({ party, crmExecutives, asmList, tsmList, currentExecutive, 
 
     onSave({
       ...(party || {}),
-      name: name.trim(),
+      name: finalPartyName,
       contactPerson: contactPerson.trim(),
       phone: phone.trim(),
       email: email.trim(),
@@ -1234,8 +1243,32 @@ function PartyModal({ party, crmExecutives, asmList, tsmList, currentExecutive, 
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Party / Firm Name *</label>
-            <input type="text" required placeholder="e.g. Shree Ganesh Electronics" value={name} onChange={e => setName(e.target.value)} className="form-control" />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+              <label className="form-label" style={{ margin: 0 }}>Party / Firm Name *</label>
+              {isCrmRole && !!party && (
+                <span style={{ fontSize: "0.76rem", color: "#f59e0b", display: "flex", alignItems: "center", gap: "4px", fontWeight: 600 }}>
+                  <Lock size={12} /> Locked (CRM cannot change party name)
+                </span>
+              )}
+            </div>
+            <input 
+              type="text" 
+              required 
+              placeholder="e.g. Shree Ganesh Electronics" 
+              value={name} 
+              onChange={e => {
+                if (!isCrmRole || !party) setName(e.target.value);
+              }} 
+              readOnly={isCrmRole && !!party}
+              disabled={isCrmRole && !!party}
+              className="form-control" 
+              style={{
+                background: (isCrmRole && !!party) ? "rgba(255, 255, 255, 0.04)" : "",
+                cursor: (isCrmRole && !!party) ? "not-allowed" : "text",
+                color: (isCrmRole && !!party) ? "var(--text-muted)" : "var(--text-main)",
+                border: (isCrmRole && !!party) ? "1px solid rgba(245, 158, 11, 0.3)" : ""
+              }}
+            />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
