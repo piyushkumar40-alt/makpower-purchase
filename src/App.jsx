@@ -62,7 +62,12 @@ export default function App() {
     }
   }, []);
 
-  const [users, setUsers] = useState(() => cachedState?.users || []);
+  const [users, setUsers] = useState(() => {
+    if (cachedState?.users && Array.isArray(cachedState.users) && cachedState.users.length > 0) {
+      return cachedState.users;
+    }
+    return initialUsers;
+  });
   const [vendors, setVendors] = useState(() => cachedState?.vendors || []);
   const [requests, setRequests] = useState(() => cachedState?.requests || []);
   const [cargos, setCargos] = useState(() => cachedState?.cargos || []);
@@ -114,7 +119,15 @@ export default function App() {
 
     const pullPromise = (async () => {
       try {
-        if (moduleKey === TRACKABLE_MODULES.VENDORS) {
+        if (moduleKey === TRACKABLE_MODULES.USERS || moduleKey === "users") {
+          const res = await fetch("/api/users");
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setUsers(data.map(u => ({ ...u, name: sanitizeUserName(u.name) })));
+          } else {
+            setUsers(initialUsers);
+          }
+        } else if (moduleKey === TRACKABLE_MODULES.VENDORS) {
           const res = await fetch("/api/vendors");
           const data = await res.json();
           if (Array.isArray(data)) setVendors(data);

@@ -12,6 +12,7 @@
 const STORAGE_KEY = "makpower_user_intention_data";
 
 export const TRACKABLE_MODULES = {
+  USERS: "users",
   VENDORS: "vendors",
   CARGO_COMPANIES: "cargoCompanies",
   CARGOS: "cargos",
