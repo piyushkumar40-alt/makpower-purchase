@@ -21,7 +21,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({ limit: "200mb" }));
+app.use(express.urlencoded({ limit: "200mb", extended: true }));
 
 const PORT = process.env.PORT || 3001;
 
@@ -66,21 +67,25 @@ let pool = null;
 
 const connectionString = process.env.DATABASE_URL;
 
-if (connectionString) {
-  try {
-    pool = new pg.Pool({
-      connectionString,
-      ssl: connectionString.includes("localhost") ? false : { rejectUnauthorized: false }
-    });
-    // Test connection
-    await pool.query("SELECT NOW()");
-    isPg = true;
-    console.log("PostgreSQL database connected successfully.");
-  } catch (err) {
-    console.error("PostgreSQL connection failed. Falling back to local JSON file database. Error:", err.message);
+async function initDatabase() {
+  if (connectionString) {
+    try {
+      pool = new pg.Pool({
+        connectionString,
+        ssl: connectionString.includes("localhost") ? false : { rejectUnauthorized: false }
+      });
+      // Test connection
+      await pool.query("SELECT NOW()");
+      isPg = true;
+      console.log("PostgreSQL database connected successfully.");
+      await setupPgDatabase();
+    } catch (err) {
+      console.error("PostgreSQL connection failed. Falling back to local JSON file database. Error:", err.message);
+      isPg = false;
+    }
+  } else {
+    console.log("No DATABASE_URL found. Using local JSON database (db.json) for development.");
   }
-} else {
-  console.log("No DATABASE_URL found. Using local JSON database (db.json) for development.");
 }
 
 // Local File Database Helper (Fallback)
@@ -336,6 +341,11 @@ async function setupPgDatabase() {
       // Migration: Add location column to existing database if missing
       await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "location" TEXT;`);
 
+      // High Performance Database Indexes for 1.6L+ rows
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_date ON ims_transactions("date" DESC, "createdAt" DESC);`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_item_id ON ims_transactions("itemId");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_item_name ON ims_transactions("itemName");`);
+
       // Automatically purge legacy pre-seeded mock transactions from PG
       await pool.query(`DELETE FROM ims_transactions WHERE "id" IN ('ims-1001', 'ims-1002', 'ims-1003', 'ims-1004', 'ims-1005', 'ims-1006', 'ims-1007')`);
     } catch (crmSeedErr) {
@@ -570,8 +580,10 @@ async function setupPgDatabase() {
   }
 }
 
-// Run DB setup on start
-await setupPgDatabase();
+// Run DB setup in background asynchronously on startup
+const dbInitPromise = initDatabase().catch(err => {
+  console.error("Database initialization error:", err);
+});
 
 // Helper to parse cookies manually
 const getBypassCookie = (req) => {
@@ -2475,64 +2487,83 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
       let insertedCount = 0;
       let missingIdCount = 0;
 
-      for (const t of transactions) {
-        if (!t.itemName) continue;
-        const rawQty = parseInt(t.stockQty) || 0;
-        const movementType = t.movementType || (rawQty >= 0 ? "IN" : "OUT");
-        const finalStockQty = movementType === "OUT" ? -Math.abs(rawQty) : Math.abs(rawQty);
+      // High-performance chunked multi-row insertion (500 rows per query)
+      const CHUNK_SIZE = 500;
+      for (let i = 0; i < transactions.length; i += CHUNK_SIZE) {
+        const chunk = transactions.slice(i, i + CHUNK_SIZE);
+        const chunkObjects = [];
 
-        let itemId = String(t.itemId || "").trim();
-        let isMissingId = false;
+        for (const t of chunk) {
+          if (!t.itemName) continue;
+          const rawQty = parseInt(t.stockQty) || 0;
+          const movementType = t.movementType || (rawQty >= 0 ? "IN" : "OUT");
+          const finalStockQty = movementType === "OUT" ? -Math.abs(rawQty) : Math.abs(rawQty);
 
-        if (itemId && itemsMap.has(itemId.toLowerCase())) {
-          isMissingId = false;
-        } else if (namesMap.has(t.itemName.trim().toLowerCase())) {
-          itemId = namesMap.get(t.itemName.trim().toLowerCase()).id;
-          isMissingId = false;
-        } else {
-          isMissingId = true;
-          missingIdCount++;
+          let itemId = String(t.itemId || "").trim();
+          let isMissingId = false;
+
+          if (itemId && itemsMap.has(itemId.toLowerCase())) {
+            isMissingId = false;
+          } else if (namesMap.has(t.itemName.trim().toLowerCase())) {
+            itemId = namesMap.get(t.itemName.trim().toLowerCase()).id;
+            isMissingId = false;
+          } else {
+            isMissingId = true;
+            missingIdCount++;
+          }
+
+          chunkObjects.push({
+            id: t.id || `ims-${Date.now()}-${Math.random().toString(36).substr(2, 6)}-${insertedCount + chunkObjects.length}`,
+            date: t.date || new Date().toISOString().split("T")[0],
+            itemName: (t.itemName || "").trim(),
+            itemId,
+            stockQty: finalStockQty,
+            movementType,
+            partyName: (t.partyName || "").trim(),
+            remarks: (t.remarks || "").trim(),
+            location: (t.location || "Delhi").trim(),
+            source: t.source || "bulk_upload",
+            isMissingId,
+            createdAt: t.createdAt || new Date().toISOString()
+          });
         }
 
-        const txObj = {
-          id: t.id || `ims-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-          date: t.date || new Date().toISOString().split("T")[0],
-          itemName: (t.itemName || "").trim(),
-          itemId,
-          stockQty: finalStockQty,
-          movementType,
-          partyName: (t.partyName || "").trim(),
-          remarks: (t.remarks || "").trim(),
-          location: (t.location || "Delhi").trim(),
-          source: t.source || "bulk_upload",
-          isMissingId,
-          createdAt: t.createdAt || new Date().toISOString()
-        };
+        if (chunkObjects.length > 0) {
+          const valuePlaceholders = [];
+          const queryParams = [];
+          let pIdx = 1;
 
-        const query = `
-          INSERT INTO ims_transactions (
-            "id", "date", "itemName", "itemId", "stockQty", "movementType",
-            "partyName", "remarks", "location", "source", "isMissingId", "createdAt"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-          ON CONFLICT ("id") DO UPDATE SET
-            "date" = EXCLUDED."date",
-            "itemName" = EXCLUDED."itemName",
-            "itemId" = EXCLUDED."itemId",
-            "stockQty" = EXCLUDED."stockQty",
-            "movementType" = EXCLUDED."movementType",
-            "partyName" = EXCLUDED."partyName",
-            "remarks" = EXCLUDED."remarks",
-            "location" = EXCLUDED."location",
-            "source" = EXCLUDED."source",
-            "isMissingId" = EXCLUDED."isMissingId"
-        `;
-        const values = [
-          txObj.id, txObj.date, txObj.itemName, txObj.itemId, txObj.stockQty,
-          txObj.movementType, txObj.partyName, txObj.remarks, txObj.location, txObj.source,
-          txObj.isMissingId, txObj.createdAt
-        ];
-        await pool.query(query, values);
-        insertedCount++;
+          for (const tx of chunkObjects) {
+            valuePlaceholders.push(`($${pIdx}, $${pIdx+1}, $${pIdx+2}, $${pIdx+3}, $${pIdx+4}, $${pIdx+5}, $${pIdx+6}, $${pIdx+7}, $${pIdx+8}, $${pIdx+9}, $${pIdx+10}, $${pIdx+11})`);
+            queryParams.push(
+              tx.id, tx.date, tx.itemName, tx.itemId, tx.stockQty,
+              tx.movementType, tx.partyName, tx.remarks, tx.location,
+              tx.source, tx.isMissingId, tx.createdAt
+            );
+            pIdx += 12;
+          }
+
+          const bulkSql = `
+            INSERT INTO ims_transactions (
+              "id", "date", "itemName", "itemId", "stockQty", "movementType",
+              "partyName", "remarks", "location", "source", "isMissingId", "createdAt"
+            ) VALUES ${valuePlaceholders.join(", ")}
+            ON CONFLICT ("id") DO UPDATE SET
+              "date" = EXCLUDED."date",
+              "itemName" = EXCLUDED."itemName",
+              "itemId" = EXCLUDED."itemId",
+              "stockQty" = EXCLUDED."stockQty",
+              "movementType" = EXCLUDED."movementType",
+              "partyName" = EXCLUDED."partyName",
+              "remarks" = EXCLUDED."remarks",
+              "location" = EXCLUDED."location",
+              "source" = EXCLUDED."source",
+              "isMissingId" = EXCLUDED."isMissingId"
+          `;
+
+          await pool.query(bulkSql, queryParams);
+          insertedCount += chunkObjects.length;
+        }
       }
 
       res.json({ success: true, count: insertedCount, missingIdCount });
@@ -3467,7 +3498,8 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
-// Start Express Listener
-app.listen(PORT, () => {
-  console.log(`Server started on http://localhost:${PORT}`);
+// Start Express Listener immediately on 0.0.0.0 (required for Render / cloud container port binding)
+const HOST = "0.0.0.0";
+app.listen(PORT, HOST, () => {
+  console.log(`Server started and listening on http://${HOST}:${PORT} (PORT=${PORT})`);
 });
