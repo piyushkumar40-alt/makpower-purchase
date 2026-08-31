@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import Pagination, { SmartSelectionBar } from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
+import { initialImsTransactions } from "../mockData";
 import DateRangeFilter, { isDateInBetween, parseDateTimestamp } from "./DateRangeFilter";
 
 export default function ImsDashboard({
