@@ -62,20 +62,6 @@ export default function AuditLogsPanel({ auditLogs = [], users = [], requests = 
     });
   }, [auditLogs, selectedUser, selectedAction, startDate, endDate, searchQuery, users]);
 
-      // Search Query Filter
-      if (q) {
-        const matchUser = (log.userName || "").toLowerCase().includes(q);
-        const matchAction = (log.action || "").toLowerCase().includes(q);
-        const matchDetails = (log.details || "").toLowerCase().includes(q);
-        const matchEntity = (log.entityId || "").toLowerCase().includes(q);
-        const matchRole = (log.role || "").toLowerCase().includes(q);
-        if (!matchUser && !matchAction && !matchDetails && !matchEntity && !matchRole) return false;
-      }
-
-      return true;
-    });
-  }, [auditLogs, selectedUser, selectedAction, timeRange, searchQuery]);
-
   const { items: sortedLogs, RenderSortHeader } = useSortableData(filteredLogs);
 
   // Helper: Export to CSV
