@@ -56,15 +56,15 @@ export default function ImsDashboard({
   const [locationFilter, setLocationFilter] = useState("all"); // "all" | "Delhi" | "Mumbai"
   const [selectedItemFilter, setSelectedItemFilter] = useState("all");
 
-  // Pagination States (Default 100 rows per page)
+  // Pagination States (Default 50 rows per page)
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(100);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
 
   const [matrixPage, setMatrixPage] = useState(1);
-  const [matrixPerPage, setMatrixPerPage] = useState(100);
+  const [matrixPerPage, setMatrixPerPage] = useState(50);
 
   const [missingPage, setMissingPage] = useState(1);
-  const [missingPerPage, setMissingPerPage] = useState(100);
+  const [missingPerPage, setMissingPerPage] = useState(50);
 
   // Reset current page whenever filters change
   useEffect(() => {

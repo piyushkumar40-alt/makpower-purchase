@@ -18,7 +18,7 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
     const saved = localStorage.getItem("makpower_catalog_page");
     return saved ? Number(saved) : 1;
   });
-  const [itemsPerPage, setItemsPerPage] = useState(100);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
 
   useEffect(() => {
     localStorage.setItem("makpower_catalog_page", currentPage.toString());

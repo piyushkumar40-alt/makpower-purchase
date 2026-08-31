@@ -193,7 +193,7 @@ export default function CrmDashboard({
 
   // Parties Pagination State (Default 100 rows per page)
   const [partiesPage, setPartiesPage] = useState(1);
-  const [partiesPerPage, setPartiesPerPage] = useState(100);
+  const [partiesPerPage, setPartiesPerPage] = useState(50);
 
   useEffect(() => {
     setPartiesPage(1);

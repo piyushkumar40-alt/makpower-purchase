@@ -1,21 +1,34 @@
-import React from "react";
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CheckCircle2 } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CheckCircle2, ArrowRight } from "lucide-react";
 
 /**
  * Universal Pagination Component
- * Defaults to 100 rows per page with page navigation and per-page options
+ * Defaults to 50 rows per page with page navigation, custom rows per page input, and jump-to-page controls
  */
 export default function Pagination({
   currentPage = 1,
   totalItems = 0,
-  itemsPerPage = 100,
+  itemsPerPage = 50,
   onPageChange,
   onItemsPerPageChange,
-  perPageOptions = [50, 100, 200, 500]
+  perPageOptions = [25, 50, 100, 200, 500]
 }) {
   const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
   const startItem = totalItems === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
   const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+
+  // Jump to page input state
+  const [jumpPageInput, setJumpPageInput] = useState("");
+  // Custom rows per page input state
+  const [isCustomPerPage, setIsCustomPerPage] = useState(false);
+  const [customPerPageInput, setCustomPerPageInput] = useState(itemsPerPage);
+
+  useEffect(() => {
+    setCustomPerPageInput(itemsPerPage);
+    if (!perPageOptions.includes(itemsPerPage)) {
+      setIsCustomPerPage(true);
+    }
+  }, [itemsPerPage, perPageOptions]);
 
   if (totalItems <= itemsPerPage && currentPage === 1 && !onItemsPerPageChange) {
     return null; // No pagination needed if all items fit on 1 page
@@ -36,13 +49,31 @@ export default function Pagination({
     return pages;
   };
 
+  const handleJumpSubmit = (e) => {
+    e.preventDefault();
+    const p = parseInt(jumpPageInput, 10);
+    if (!isNaN(p) && p >= 1 && p <= totalPages) {
+      onPageChange(p);
+      setJumpPageInput("");
+    }
+  };
+
+  const handleCustomPerPageSubmit = (e) => {
+    e.preventDefault();
+    const n = parseInt(customPerPageInput, 10);
+    if (!isNaN(n) && n > 0) {
+      onItemsPerPageChange(n);
+      onPageChange(1);
+    }
+  };
+
   return (
     <div style={{ 
       display: "flex", 
       justifyContent: "space-between", 
       alignItems: "center", 
       flexWrap: "wrap", 
-      gap: "12px", 
+      gap: "14px", 
       marginTop: "16px", 
       padding: "12px 18px", 
       background: "rgba(15, 23, 42, 0.6)", 
@@ -52,17 +83,17 @@ export default function Pagination({
       
       {/* Items Range Display */}
       <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 500 }}>
-        Showing <strong>{startItem.toLocaleString()}–{endItem.toLocaleString()}</strong> of <strong>{totalItems.toLocaleString()}</strong> rows
+        Showing <strong>{startItem.toLocaleString()}–{endItem.toLocaleString()}</strong> of <strong>{totalItems.toLocaleString()}</strong> rows (Page {currentPage} of {totalPages})
       </div>
 
       {/* Navigation Controls */}
-      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
         <button 
           onClick={() => onPageChange(1)} 
           disabled={currentPage === 1}
           className="btn btn-sm btn-secondary"
           style={{ padding: "6px 8px", opacity: currentPage === 1 ? 0.4 : 1 }}
-          title="First Page"
+          title="First Page (Page 1)"
         >
           <ChevronsLeft size={14} />
         </button>
@@ -78,14 +109,14 @@ export default function Pagination({
         </button>
 
         {/* Numeric Page Buttons */}
-        <div style={{ display: "flex", gap: "3px", margin: "0 4px" }}>
+        <div style={{ display: "flex", gap: "3px", margin: "0 2px" }}>
           {getPageNumbers().map(pageNum => (
             <button
               key={pageNum}
               onClick={() => onPageChange(pageNum)}
               className={`btn btn-sm ${pageNum === currentPage ? "btn-primary" : "btn-secondary"}`}
               style={{
-                minWidth: "30px",
+                minWidth: "32px",
                 height: "30px",
                 padding: "0 6px",
                 fontSize: "0.82rem",
@@ -111,27 +142,76 @@ export default function Pagination({
           onClick={() => onPageChange(totalPages)} 
           disabled={currentPage >= totalPages}
           className="btn btn-sm btn-secondary"
-          style={{ padding: "6px 8px", opacity: currentPage >= totalPages ? 0.4 : 1 }}
-          title="Last Page"
+          style={{ padding: "6px 10px", display: "inline-flex", alignItems: "center", gap: "4px", opacity: currentPage >= totalPages ? 0.4 : 1 }}
+          title={`Last Page (Page ${totalPages})`}
         >
-          <ChevronsRight size={14} />
+          Last ({totalPages}) <ChevronsRight size={14} />
         </button>
+
+        {/* Jump To Page Box */}
+        {totalPages > 3 && (
+          <form onSubmit={handleJumpSubmit} style={{ display: "flex", alignItems: "center", gap: "4px", marginLeft: "6px" }}>
+            <input
+              type="number"
+              min={1}
+              max={totalPages}
+              placeholder="Go to"
+              value={jumpPageInput}
+              onChange={e => setJumpPageInput(e.target.value)}
+              className="form-control"
+              style={{ width: "64px", height: "30px", fontSize: "0.8rem", padding: "2px 6px", textAlign: "center" }}
+              title={`Enter page 1 to ${totalPages}`}
+            />
+            <button type="submit" className="btn btn-sm btn-secondary" style={{ height: "30px", padding: "0 8px", fontSize: "0.75rem" }}>
+              Go
+            </button>
+          </form>
+        )}
       </div>
 
       {/* Items Per Page Selector */}
       {onItemsPerPageChange && (
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
           <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Rows per page:</span>
+          
           <select 
-            value={itemsPerPage} 
-            onChange={e => onItemsPerPageChange(Number(e.target.value))}
+            value={isCustomPerPage ? "custom" : itemsPerPage} 
+            onChange={e => {
+              const val = e.target.value;
+              if (val === "custom") {
+                setIsCustomPerPage(true);
+              } else {
+                setIsCustomPerPage(false);
+                onItemsPerPageChange(Number(val));
+                onPageChange(1);
+              }
+            }}
             className="form-control"
             style={{ width: "auto", padding: "4px 8px", fontSize: "0.82rem", height: "32px", fontWeight: 600 }}
           >
             {perPageOptions.map(opt => (
               <option key={opt} value={opt}>{opt} rows</option>
             ))}
+            <option value="custom">Custom...</option>
           </select>
+
+          {isCustomPerPage && (
+            <form onSubmit={handleCustomPerPageSubmit} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+              <input
+                type="number"
+                min={1}
+                max={5000}
+                value={customPerPageInput}
+                onChange={e => setCustomPerPageInput(e.target.value)}
+                className="form-control"
+                style={{ width: "70px", height: "32px", fontSize: "0.82rem", padding: "2px 6px" }}
+                placeholder="Rows"
+              />
+              <button type="submit" className="btn btn-sm btn-primary" style={{ height: "32px", padding: "0 10px", fontSize: "0.78rem", fontWeight: 700 }}>
+                Set
+              </button>
+            </form>
+          )}
         </div>
       )}
 

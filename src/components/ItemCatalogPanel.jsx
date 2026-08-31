@@ -39,9 +39,9 @@ export default function ItemCatalogPanel({
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [copiedId, setCopiedId] = useState(null);
 
-  // Pagination states (Default 100 rows per page)
+  // Pagination states (Default 50 rows per page)
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(100);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
 
   // Reset page when filter changes
   useEffect(() => {
