@@ -501,15 +501,15 @@ export default function ImsDashboard({
       let rawStock = 0;
       let rawParty = "";
       let rawRemarks = "";
-      let rawLocation = "Delhi";
+      let rawLocation = "";
 
       if (hasHeader) {
-        if (headerMap.dateIdx !== -1 && cols[headerMap.dateIdx]) rawDate = cols[headerMap.dateIdx];
-        if (headerMap.itemIdx !== -1 && cols[headerMap.itemIdx]) rawItemName = cols[headerMap.itemIdx];
-        if (headerMap.itemIdIdx !== -1 && cols[headerMap.itemIdIdx]) rawItemId = cols[headerMap.itemIdIdx];
-        if (headerMap.partyIdx !== -1 && cols[headerMap.partyIdx]) rawParty = cols[headerMap.partyIdx];
-        if (headerMap.locationIdx !== -1 && cols[headerMap.locationIdx]) rawLocation = cols[headerMap.locationIdx];
-        if (headerMap.remarksIdx !== -1 && cols[headerMap.remarksIdx]) rawRemarks = cols[headerMap.remarksIdx];
+        if (headerMap.dateIdx !== -1 && cols[headerMap.dateIdx] !== undefined) rawDate = cols[headerMap.dateIdx].trim();
+        if (headerMap.itemIdx !== -1 && cols[headerMap.itemIdx] !== undefined) rawItemName = cols[headerMap.itemIdx].trim();
+        if (headerMap.itemIdIdx !== -1 && cols[headerMap.itemIdIdx] !== undefined) rawItemId = cols[headerMap.itemIdIdx].trim();
+        if (headerMap.partyIdx !== -1 && cols[headerMap.partyIdx] !== undefined) rawParty = cols[headerMap.partyIdx].trim();
+        if (headerMap.locationIdx !== -1 && cols[headerMap.locationIdx] !== undefined) rawLocation = cols[headerMap.locationIdx].trim();
+        if (headerMap.remarksIdx !== -1 && cols[headerMap.remarksIdx] !== undefined) rawRemarks = cols[headerMap.remarksIdx].trim();
 
         // Stock quantity determination
         if (headerMap.inQtyIdx !== -1 || headerMap.outQtyIdx !== -1) {
@@ -518,25 +518,40 @@ export default function ImsDashboard({
           if (inVal > 0) rawStock = inVal;
           else if (outVal > 0) rawStock = -outVal;
           else if (headerMap.stockQtyIdx !== -1) rawStock = parseQuantityValue(cols[headerMap.stockQtyIdx]);
-        } else if (headerMap.stockQtyIdx !== -1 && cols[headerMap.stockQtyIdx]) {
+        } else if (headerMap.stockQtyIdx !== -1 && cols[headerMap.stockQtyIdx] !== undefined) {
           rawStock = parseQuantityValue(cols[headerMap.stockQtyIdx]);
         }
+      } else {
+        // Standard positional layout:
+        // Col 0: Date
+        // Col 1: Item Name
+        // Col 2: Stock
+        // Col 3: Remarks
+        // Col 4: Party Name
+        // Col 5: Item ID
+        // Col 6: Location
+        if (cols[0] !== undefined) rawDate = cols[0].trim();
+        if (cols[1] !== undefined) rawItemName = cols[1].trim();
+        if (cols[2] !== undefined) rawStock = parseQuantityValue(cols[2]);
+        if (cols[3] !== undefined) rawRemarks = cols[3].trim();
+        if (cols[4] !== undefined) rawParty = cols[4].trim();
+        if (cols[5] !== undefined) rawItemId = cols[5].trim();
+        if (cols[6] !== undefined) rawLocation = cols[6].trim();
       }
 
-      // Heuristic Fallback for missing or unmapped columns
+      // Date Fallback
       if (!rawDate) {
-        // Look for date in cells
         for (const c of cols) {
           if (c && /(\d{1,4}[-\/\.]\d{1,2}[-\/\.]\d{1,4}|\d{1,2}-[a-zA-Z]{3}-\d{2,4})/.test(c)) {
-            rawDate = c;
+            rawDate = c.trim();
             break;
           }
         }
         if (!rawDate) rawDate = cols[0] || new Date().toISOString().split("T")[0];
       }
 
+      // Stock Fallback
       if (!rawStock && !hasHeader) {
-        // Find numeric cell for stock quantity
         for (let cIdx = 0; cIdx < cols.length; cIdx++) {
           const c = cols[cIdx];
           if (c && cIdx !== 0 && /^[+-]?\s*[\d,]+(\.\d+)?\s*(pcs|qty|\(out\))?$/i.test(c.trim())) {
@@ -546,18 +561,29 @@ export default function ImsDashboard({
         }
       }
 
-      // Smart location detection
-      for (const c of cols) {
-        if (c && (c.toLowerCase().includes("mumbai") || c.toLowerCase().includes("delhi"))) {
-          rawLocation = c.toLowerCase().includes("mumbai") ? "Mumbai" : "Delhi";
-          break;
+      // Location strictly from mapped location column (Default to Delhi)
+      if (!rawLocation) {
+        if (cols.length >= 7 && cols[6]) {
+          rawLocation = cols[6].trim();
+        } else {
+          rawLocation = "Delhi";
         }
+      }
+
+      // Capitalize/normalize explicit location (Delhi or Mumbai)
+      const locClean = rawLocation.trim().toLowerCase();
+      if (locClean === "mumbai" || locClean.startsWith("mum")) {
+        rawLocation = "Mumbai";
+      } else if (locClean === "delhi" || locClean.startsWith("del") || !rawLocation) {
+        rawLocation = "Delhi";
+      } else {
+        rawLocation = rawLocation.trim();
       }
 
       // Smart Item Name & Party Name extraction
       if (!rawItemName) {
-        if (cols[1] && !/^\d+$/.test(cols[1]) && !cols[1].toLowerCase().includes("delhi") && !cols[1].toLowerCase().includes("mumbai")) {
-          rawItemName = cols[1];
+        if (cols[1] && !/^\d+$/.test(cols[1])) {
+          rawItemName = cols[1].trim();
         } else if (detectedContextItemName) {
           rawItemName = detectedContextItemName;
         } else {
@@ -565,18 +591,17 @@ export default function ImsDashboard({
         }
       }
 
-      if (!rawParty && cols.length >= 4) {
-        // Try column 4 or 3
+      if (!rawParty && cols.length >= 5) {
         if (cols[4] && cols[4] !== rawItemName && cols[4] !== rawRemarks) {
-          rawParty = cols[4];
+          rawParty = cols[4].trim();
         } else if (cols[3] && cols[3] !== rawItemName && isNaN(parseInt(cols[3]))) {
-          rawParty = cols[3];
+          rawParty = cols[3].trim();
         }
       }
 
       if (!rawRemarks && cols.length >= 4) {
         if (cols[3] && cols[3] !== rawParty && cols[3] !== rawItemName) {
-          rawRemarks = cols[3];
+          rawRemarks = cols[3].trim();
         }
       }
 
