@@ -85,7 +85,8 @@ export default function App() {
     return [];
   });
   const [settings, setSettings] = useState(() => cachedState?.settings || { isHidden: false, redirectUrl: "https://www.instagram.com/makpowerofficial/" });
-  const [loading, setLoading] = useState(() => !cachedState);
+  const [loading, setLoading] = useState(true);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
 
   const handleHardCacheRefresh = async () => {
@@ -285,10 +286,13 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
 
-    // Safety timeout: never let loading screen hang for more than 2 seconds
+    // Safety timeout: never let loading screen hang for more than 4 seconds
     const safetyTimer = setTimeout(() => {
-      if (isMounted) setLoading(false);
-    }, 2000);
+      if (isMounted) {
+        setLoading(false);
+        setInitialLoadComplete(true);
+      }
+    }, 4000);
 
     async function loadData(isInterval = false) {
       try {
@@ -354,6 +358,7 @@ export default function App() {
       } finally {
         if (isMounted && !isInterval) {
           setLoading(false);
+          setInitialLoadComplete(true);
         }
       }
     }
@@ -1855,6 +1860,7 @@ export default function App() {
             crmParties={crmParties}
             vendors={vendors}
             loading={loading}
+            initialLoadComplete={initialLoadComplete}
             onAddTransaction={handleAddImsTransaction}
             onBatchUploadTransactions={handleBatchUploadIms}
             onDeleteTransaction={handleDeleteImsTransaction}

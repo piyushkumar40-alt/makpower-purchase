@@ -17,6 +17,7 @@ export default function ImsDashboard({
   crmParties = [],
   vendors = [],
   loading = false,
+  initialLoadComplete = false,
   onAddTransaction,
   onBatchUploadTransactions,
   onDeleteTransaction,
@@ -36,12 +37,12 @@ export default function ImsDashboard({
   const [hasReceivedData, setHasReceivedData] = useState(() => (Array.isArray(imsTransactions) && imsTransactions.length > 0));
 
   useEffect(() => {
-    if (Array.isArray(imsTransactions) && imsTransactions.length > 0) {
+    if (initialLoadComplete || (Array.isArray(imsTransactions) && imsTransactions.length > 0)) {
       setHasReceivedData(true);
     }
-  }, [imsTransactions]);
+  }, [initialLoadComplete, imsTransactions]);
 
-  const isDataLoading = loading || Boolean(loadingModules?.imsTransactions) || Boolean(loadingModules?.ims_transactions) || (!hasReceivedData && effectiveTransactions.length === 0 && loading !== false);
+  const isDataLoading = Boolean(loading) || !initialLoadComplete || Boolean(loadingModules?.imsTransactions) || Boolean(loadingModules?.ims_transactions) || (!hasReceivedData && effectiveTransactions.length === 0);
 
   useEffect(() => {
     if (onPullModuleData) {
