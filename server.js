@@ -97,7 +97,7 @@ function readLocalJson() {
       crmParties: initialCrmParties,
       crmSalesOrders: initialCrmSalesOrders,
       crmDispatches: initialCrmDispatches,
-      imsTransactions: initialImsTransactions,
+      imsTransactions: [],
       designations: initialDesignations,
       settings: {
         isHidden: false,
@@ -125,7 +125,7 @@ function readLocalJson() {
       data.crmDispatches = initialCrmDispatches;
     }
     if (!Array.isArray(data.imsTransactions)) {
-      data.imsTransactions = initialImsTransactions;
+      data.imsTransactions = [];
     }
     if (!Array.isArray(data.designations)) {
       data.designations = initialDesignations;
@@ -332,17 +332,8 @@ async function setupPgDatabase() {
         );
       `);
 
-      const imsCheck = await pool.query("SELECT COUNT(*) FROM ims_transactions");
-      if (parseInt(imsCheck.rows[0].count) === 0) {
-        for (const ims of initialImsTransactions) {
-          await pool.query(
-            `INSERT INTO ims_transactions ("id", "date", "itemName", "itemId", "stockQty", "movementType", "partyName", "remarks", "source", "isMissingId", "createdAt")
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-             ON CONFLICT ("id") DO NOTHING`,
-            [ims.id, ims.date, ims.itemName, ims.itemId, ims.stockQty, ims.movementType, ims.partyName, ims.remarks, ims.source, ims.isMissingId, ims.createdAt]
-          );
-        }
-      }
+      // Automatically purge legacy pre-seeded mock transactions from PG
+      await pool.query(`DELETE FROM ims_transactions WHERE "id" IN ('ims-1001', 'ims-1002', 'ims-1003', 'ims-1004', 'ims-1005', 'ims-1006', 'ims-1007')`);
     } catch (crmSeedErr) {
       console.warn("CRM / IMS table seeding notice:", crmSeedErr.message);
     }
@@ -2573,7 +2564,24 @@ app.delete("/api/ims/transactions/:id", async (req, res) => {
 
 // 4b. POST /api/ims/transactions/delete-range - Bulk Delete IMS Transactions by Date Range or ID list
 app.post("/api/ims/transactions/delete-range", async (req, res) => {
-  const { startDate, endDate, ids } = req.body;
+  const { startDate, endDate, ids, purgeAll } = req.body;
+
+  if (purgeAll === true) {
+    if (isPg) {
+      try {
+        await pool.query('DELETE FROM ims_transactions');
+        return res.json({ success: true, count: 0 });
+      } catch (err) {
+        console.error("PURGE IMS error:", err.message);
+        return res.status(500).json({ error: "Failed to purge IMS transactions." });
+      }
+    } else {
+      const data = readLocalJson();
+      data.imsTransactions = [];
+      writeLocalJson(data);
+      return res.json({ success: true, count: 0 });
+    }
+  }
 
   if (Array.isArray(ids) && ids.length > 0) {
     if (isPg) {

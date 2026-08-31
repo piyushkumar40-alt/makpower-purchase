@@ -57,7 +57,7 @@ export default function App() {
   const [crmParties, setCrmParties] = useState([]);
   const [crmSalesOrders, setCrmSalesOrders] = useState([]);
   const [crmDispatches, setCrmDispatches] = useState([]);
-  const [imsTransactions, setImsTransactions] = useState(initialImsTransactions);
+  const [imsTransactions, setImsTransactions] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [settings, setSettings] = useState({ isHidden: false, redirectUrl: "https://www.instagram.com/makpowerofficial/" });
   const [loading, setLoading] = useState(true);
