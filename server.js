@@ -366,8 +366,18 @@ async function setupPgDatabase() {
         );
       `);
 
-      // Migration: Add location column to existing database if missing
+      // Migration: Ensure all columns exist in ims_transactions
+      await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "date" TEXT;`);
+      await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "itemName" TEXT;`);
+      await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "itemId" TEXT;`);
+      await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "stockQty" INTEGER;`);
+      await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "movementType" TEXT;`);
+      await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "partyName" TEXT;`);
+      await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "remarks" TEXT;`);
+      await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "source" TEXT;`);
+      await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "isMissingId" BOOLEAN;`);
       await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "location" TEXT;`);
+      await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "createdAt" TEXT;`);
 
       // High Performance Database Indexes for 1.6L+ rows
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_date ON ims_transactions("date" DESC, "createdAt" DESC);`);
@@ -2808,8 +2818,8 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
       let insertedCount = 0;
       let missingIdCount = 0;
 
-      // High-performance chunked multi-row insertion (500 rows per query)
-      const CHUNK_SIZE = 500;
+      // High-performance chunked multi-row insertion (100 rows per query for optimal stability)
+      const CHUNK_SIZE = 100;
       for (let i = 0; i < transactions.length; i += CHUNK_SIZE) {
         const chunk = transactions.slice(i, i + CHUNK_SIZE);
         const chunkObjects = [];
@@ -2882,7 +2892,8 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
               "remarks" = EXCLUDED."remarks",
               "location" = EXCLUDED."location",
               "source" = EXCLUDED."source",
-              "isMissingId" = EXCLUDED."isMissingId"
+              "isMissingId" = EXCLUDED."isMissingId",
+              "createdAt" = EXCLUDED."createdAt"
           `;
 
           await pool.query(bulkSql, queryParams);
@@ -2890,10 +2901,12 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
         }
       }
 
+      res.setHeader("Content-Type", "application/json");
       res.json({ success: true, count: insertedCount, missingIdCount });
     } catch (err) {
       console.error("POST /api/ims/transactions/batch error:", err.message);
-      res.status(500).json({ error: "Failed to batch upload IMS transactions." });
+      res.setHeader("Content-Type", "application/json");
+      res.status(500).json({ success: false, error: "Failed to batch upload IMS transactions: " + err.message });
     }
   } else {
     const data = readLocalJson();

@@ -417,7 +417,14 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data)
       });
-      const json = await res.json();
+      const text = await res.text();
+      let json = null;
+      try {
+        json = text ? JSON.parse(text) : {};
+      } catch (pe) {
+        console.error(`Non-JSON response from ${url}:`, text);
+        json = { success: res.ok, error: `Server error (${res.status}): ${text.slice(0, 150)}` };
+      }
       if (window.__finishLoadingProgress) {
         window.__finishLoadingProgress();
       }
@@ -1022,13 +1029,14 @@ export default function App() {
     try {
       const res = await postData("/api/ims/transactions/batch", { transactions });
       if (res && res.success) {
-        // Fetch fresh state to ensure sync
-        const stateRes = await fetch("/api/state");
-        const sData = await stateRes.json();
-        if (Array.isArray(sData.imsTransactions)) {
-          setImsTransactions(sData.imsTransactions);
+        if (Array.isArray(transactions) && transactions.length > 0) {
+          setImsTransactions(prev => {
+            const uploadedMap = new Map(transactions.map(t => [t.id, t]));
+            const filteredPrev = prev.filter(t => !uploadedMap.has(t.id));
+            return [...transactions, ...filteredPrev];
+          });
         }
-        logSystemActivity("IMS_BATCH_UPLOAD", `Bulk imported ${res.count} historical stock records (${res.missingIdCount} unlinked IDs)`, "IMS", "batch");
+        logSystemActivity("IMS_BATCH_UPLOAD", `Bulk imported ${res.count || transactions.length} historical stock records (${res.missingIdCount || 0} unlinked IDs)`, "IMS", "batch");
       }
       return res;
     } catch (err) {
