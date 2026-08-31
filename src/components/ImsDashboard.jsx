@@ -29,10 +29,7 @@ export default function ImsDashboard({
   currentUserId
 }) {
   const effectiveTransactions = useMemo(() => {
-    if (imsTransactions && Array.isArray(imsTransactions) && imsTransactions.length > 0) {
-      return imsTransactions;
-    }
-    return initialImsTransactions;
+    return Array.isArray(imsTransactions) ? imsTransactions : [];
   }, [imsTransactions]);
 
   useEffect(() => {

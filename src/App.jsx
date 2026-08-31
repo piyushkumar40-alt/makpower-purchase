@@ -77,10 +77,10 @@ export default function App() {
   const [crmParties, setCrmParties] = useState(() => cachedState?.crmParties || []);
   const [crmSalesOrders, setCrmSalesOrders] = useState(() => cachedState?.crmSalesOrders || []);
   const [imsTransactions, setImsTransactions] = useState(() => {
-    if (cachedState?.imsTransactions && Array.isArray(cachedState.imsTransactions) && cachedState.imsTransactions.length > 0) {
+    if (cachedState?.imsTransactions && Array.isArray(cachedState.imsTransactions)) {
       return cachedState.imsTransactions;
     }
-    return initialImsTransactions;
+    return [];
   });
   const [settings, setSettings] = useState(() => cachedState?.settings || { isHidden: false, redirectUrl: "https://www.instagram.com/makpowerofficial/" });
   const [loading, setLoading] = useState(() => !cachedState);
@@ -166,11 +166,7 @@ export default function App() {
           const res = await fetch("/api/ims/transactions");
           const data = await res.json();
           const list = Array.isArray(data) ? data : (data.transactions || []);
-          if (list.length > 0) {
-            setImsTransactions(list);
-          } else {
-            setImsTransactions(initialImsTransactions);
-          }
+          setImsTransactions(list);
         } else if (moduleKey === TRACKABLE_MODULES.AUDIT_LOGS) {
           const res = await fetch("/api/audit-logs");
           const data = await res.json();
@@ -308,10 +304,8 @@ export default function App() {
         if (Array.isArray(data.crmParties)) setCrmParties(data.crmParties);
         if (Array.isArray(data.crmSalesOrders)) setCrmSalesOrders(data.crmSalesOrders);
         if (Array.isArray(data.crmDispatches)) setCrmDispatches(data.crmDispatches);
-        if (Array.isArray(data.imsTransactions) && data.imsTransactions.length > 0) {
+        if (Array.isArray(data.imsTransactions)) {
           setImsTransactions(data.imsTransactions);
-        } else {
-          setImsTransactions(initialImsTransactions);
         }
         
         if (data.settings) {
