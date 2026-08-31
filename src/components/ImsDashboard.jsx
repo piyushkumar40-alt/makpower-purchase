@@ -336,7 +336,72 @@ export default function ImsDashboard({
     return distinctMissingItems.slice(start, start + missingPerPage);
   }, [distinctMissingItems, missingPage, missingPerPage]);
 
-  // ==================== BULK UPLOAD PARSER ====================
+  // ==================== ADVANCED BULK UPLOAD PARSER ====================
+  // Helper to parse standard and complex CSV / TSV text with quotes & multi-column inference
+  function tokenizeDelimitedText(text) {
+    if (!text || !text.trim()) return [];
+    const rows = [];
+    let currentRow = [];
+    let currentVal = "";
+    let insideQuotes = false;
+
+    // Detect primary delimiter: Tab (\t) vs Comma (,) vs Semicolon (;)
+    const firstLine = text.split(/\r?\n/)[0] || "";
+    let delimiter = ",";
+    if (firstLine.includes("\t")) {
+      delimiter = "\t";
+    } else if (firstLine.includes(";") && !firstLine.includes(",")) {
+      delimiter = ";";
+    }
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+
+      if (char === '"') {
+        if (insideQuotes && nextChar === '"') {
+          currentVal += '"';
+          i++; // Skip escaped double quote
+        } else {
+          insideQuotes = !insideQuotes;
+        }
+      } else if (char === delimiter && !insideQuotes) {
+        currentRow.push(currentVal.trim());
+        currentVal = "";
+      } else if ((char === '\r' || char === '\n') && !insideQuotes) {
+        if (char === '\r' && nextChar === '\n') i++; // Skip \n in CRLF
+        currentRow.push(currentVal.trim());
+        currentVal = "";
+        if (currentRow.some(c => c && c.length > 0)) {
+          rows.push(currentRow);
+        }
+        currentRow = [];
+      } else {
+        currentVal += char;
+      }
+    }
+
+    if (currentVal.length > 0 || currentRow.length > 0) {
+      currentRow.push(currentVal.trim());
+      if (currentRow.some(c => c && c.length > 0)) {
+        rows.push(currentRow);
+      }
+    }
+
+    return rows;
+  }
+
+  function parseQuantityValue(val) {
+    if (val === undefined || val === null) return 0;
+    const str = String(val).trim();
+    if (!str) return 0;
+    const isNeg = str.includes("-") || str.toLowerCase().includes("out") || /^\(.*\)$/.test(str);
+    const cleanNum = str.replace(/,/g, "").replace(/[^\d.]/g, "");
+    const num = parseInt(cleanNum, 10);
+    if (isNaN(num)) return 0;
+    return isNeg ? -Math.abs(num) : Math.abs(num);
+  }
+
   const handleParseBulkText = (text) => {
     setBulkRawText(text);
     if (!text.trim()) {
@@ -344,70 +409,185 @@ export default function ImsDashboard({
       return;
     }
 
-    const lines = text.trim().split(/\r?\n/);
+    const rawRows = tokenizeDelimitedText(text);
+    if (rawRows.length === 0) {
+      setBulkParsedRows([]);
+      return;
+    }
+
     const parsed = [];
 
     // Create item maps for fast matching
     const itemsMapById = new Map(items.map(i => [String(i.id).trim().toLowerCase(), i]));
     const itemsMapByName = new Map(items.map(i => [String(i.name).trim().toLowerCase(), i]));
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
+    // Check if first row is a header row
+    const firstRowLower = rawRows[0].map(c => (c || "").toLowerCase().trim());
+    let hasHeader = false;
+    let headerMap = {
+      dateIdx: -1,
+      itemIdx: -1,
+      itemIdIdx: -1,
+      stockQtyIdx: -1,
+      inQtyIdx: -1,
+      outQtyIdx: -1,
+      partyIdx: -1,
+      locationIdx: -1,
+      remarksIdx: -1
+    };
 
-      // Handle TSV (Excel copy-paste) or CSV
-      let cols = [];
-      if (line.includes("\t")) {
-        cols = line.split("\t").map(c => c.trim().replace(/^["']|["']$/g, ""));
-      } else {
-        // Simple CSV splitter
-        cols = line.split(",").map(c => c.trim().replace(/^["']|["']$/g, ""));
+    firstRowLower.forEach((col, idx) => {
+      if (col.includes("date") || col === "dt" || col.includes("vch")) {
+        headerMap.dateIdx = idx;
+        hasHeader = true;
+      } else if (col.includes("item id") || col.includes("item_id") || col === "id" || col.includes("code")) {
+        headerMap.itemIdIdx = idx;
+        hasHeader = true;
+      } else if (col.includes("item") || col.includes("model") || col.includes("product") || col.includes("description") || col.includes("sku") || col.includes("particular")) {
+        headerMap.itemIdx = idx;
+        hasHeader = true;
+      } else if (col === "in" || col.includes("inward") || col.includes("receipt") || col.includes("dr") || col.includes("stock in") || col.includes("in qty")) {
+        headerMap.inQtyIdx = idx;
+        hasHeader = true;
+      } else if (col === "out" || col.includes("outward") || col.includes("issue") || col.includes("cr") || col.includes("stock out") || col.includes("out qty") || col.includes("dispatch")) {
+        headerMap.outQtyIdx = idx;
+        hasHeader = true;
+      } else if (col === "qty" || col.includes("quantity") || col.includes("stock") || col.includes("units") || col.includes("movement") || col === "pcs") {
+        headerMap.stockQtyIdx = idx;
+        hasHeader = true;
+      } else if (col.includes("party") || col.includes("customer") || col.includes("dealer") || col.includes("vendor") || col.includes("client") || col.includes("account")) {
+        headerMap.partyIdx = idx;
+        hasHeader = true;
+      } else if (col.includes("location") || col.includes("godown") || col.includes("warehouse") || col.includes("depot") || col.includes("branch") || col.includes("city")) {
+        headerMap.locationIdx = idx;
+        hasHeader = true;
+      } else if (col.includes("remark") || col.includes("narration") || col.includes("note") || col.includes("details") || col.includes("vch no") || col.includes("invoice") || col.includes("bill")) {
+        headerMap.remarksIdx = idx;
+        hasHeader = true;
       }
+    });
 
-      // Skip header row if detected
-      if (i === 0 && (cols[0].toLowerCase().includes("date") || cols[1]?.toLowerCase().includes("item"))) {
-        continue;
-      }
+    const startIdx = hasHeader ? 1 : 0;
 
-      // Expected columns: [0: Date, 1: Item Name, 2: Stock, 3: Remarks, 4: Party Name, 5: Item ID, 6: Location]
-      const rawDate = cols[0] || new Date().toISOString().split("T")[0];
-      const rawItemName = cols[1] || "";
-      const rawStock = parseInt(cols[2]) || 0;
-      const rawRemarks = cols[3] || "";
-      const rawParty = cols[4] || "";
-      let rawItemId = cols[5] || "";
-      let rawLocation = cols[6] || "";
+    // Detect overall fallback item name from text context if BT315 or single item
+    let detectedContextItemName = "";
+    const lowerFullText = text.toLowerCase();
+    if (lowerFullText.includes("bt315") || lowerFullText.includes("bt-315") || lowerFullText.includes("bt 315")) {
+      detectedContextItemName = "BT315";
+    }
 
-      // Smart location detection if passed in other column positions
-      if (!rawLocation) {
-        if (cols[5] && (cols[5].toLowerCase() === "delhi" || cols[5].toLowerCase() === "mumbai")) {
-          rawLocation = cols[5];
-          rawItemId = "";
-        } else if (cols[3] && (cols[3].toLowerCase() === "delhi" || cols[3].toLowerCase() === "mumbai")) {
-          rawLocation = cols[3];
-        } else {
-          rawLocation = "Delhi";
+    for (let i = startIdx; i < rawRows.length; i++) {
+      const cols = rawRows[i];
+      if (!cols || cols.every(c => !c || c.trim() === "")) continue;
+
+      // Skip repeated header rows (e.g. from copy-pasting multiple pages)
+      const isRepeatedHeader = cols.some(c => (c || "").toLowerCase().includes("date") && cols.some(c2 => (c2 || "").toLowerCase().includes("stock") || (c2 || "").toLowerCase().includes("qty")));
+      if (isRepeatedHeader && i !== 0) continue;
+
+      let rawDate = "";
+      let rawItemName = "";
+      let rawItemId = "";
+      let rawStock = 0;
+      let rawParty = "";
+      let rawRemarks = "";
+      let rawLocation = "Delhi";
+
+      if (hasHeader) {
+        if (headerMap.dateIdx !== -1 && cols[headerMap.dateIdx]) rawDate = cols[headerMap.dateIdx];
+        if (headerMap.itemIdx !== -1 && cols[headerMap.itemIdx]) rawItemName = cols[headerMap.itemIdx];
+        if (headerMap.itemIdIdx !== -1 && cols[headerMap.itemIdIdx]) rawItemId = cols[headerMap.itemIdIdx];
+        if (headerMap.partyIdx !== -1 && cols[headerMap.partyIdx]) rawParty = cols[headerMap.partyIdx];
+        if (headerMap.locationIdx !== -1 && cols[headerMap.locationIdx]) rawLocation = cols[headerMap.locationIdx];
+        if (headerMap.remarksIdx !== -1 && cols[headerMap.remarksIdx]) rawRemarks = cols[headerMap.remarksIdx];
+
+        // Stock quantity determination
+        if (headerMap.inQtyIdx !== -1 || headerMap.outQtyIdx !== -1) {
+          const inVal = headerMap.inQtyIdx !== -1 ? parseQuantityValue(cols[headerMap.inQtyIdx]) : 0;
+          const outVal = headerMap.outQtyIdx !== -1 ? parseQuantityValue(cols[headerMap.outQtyIdx]) : 0;
+          if (inVal > 0) rawStock = inVal;
+          else if (outVal > 0) rawStock = -outVal;
+          else if (headerMap.stockQtyIdx !== -1) rawStock = parseQuantityValue(cols[headerMap.stockQtyIdx]);
+        } else if (headerMap.stockQtyIdx !== -1 && cols[headerMap.stockQtyIdx]) {
+          rawStock = parseQuantityValue(cols[headerMap.stockQtyIdx]);
         }
       }
 
-      // Format location nicely (e.g. "delhi" -> "Delhi", "mumbai" -> "Mumbai")
-      rawLocation = rawLocation.toLowerCase().includes("mumbai") ? "Mumbai" : "Delhi";
+      // Heuristic Fallback for missing or unmapped columns
+      if (!rawDate) {
+        // Look for date in cells
+        for (const c of cols) {
+          if (c && /(\d{1,4}[-\/\.]\d{1,2}[-\/\.]\d{1,4}|\d{1,2}-[a-zA-Z]{3}-\d{2,4})/.test(c)) {
+            rawDate = c;
+            break;
+          }
+        }
+        if (!rawDate) rawDate = cols[0] || new Date().toISOString().split("T")[0];
+      }
 
-      if (!rawItemName && !rawItemId) continue;
+      if (!rawStock && !hasHeader) {
+        // Find numeric cell for stock quantity
+        for (let cIdx = 0; cIdx < cols.length; cIdx++) {
+          const c = cols[cIdx];
+          if (c && cIdx !== 0 && /^[+-]?\s*[\d,]+(\.\d+)?\s*(pcs|qty|\(out\))?$/i.test(c.trim())) {
+            rawStock = parseQuantityValue(c);
+            break;
+          }
+        }
+      }
 
-      // Auto-match Item ID if missing
+      // Smart location detection
+      for (const c of cols) {
+        if (c && (c.toLowerCase().includes("mumbai") || c.toLowerCase().includes("delhi"))) {
+          rawLocation = c.toLowerCase().includes("mumbai") ? "Mumbai" : "Delhi";
+          break;
+        }
+      }
+
+      // Smart Item Name & Party Name extraction
+      if (!rawItemName) {
+        if (cols[1] && !/^\d+$/.test(cols[1]) && !cols[1].toLowerCase().includes("delhi") && !cols[1].toLowerCase().includes("mumbai")) {
+          rawItemName = cols[1];
+        } else if (detectedContextItemName) {
+          rawItemName = detectedContextItemName;
+        } else {
+          rawItemName = "BT315";
+        }
+      }
+
+      if (!rawParty && cols.length >= 4) {
+        // Try column 4 or 3
+        if (cols[4] && cols[4] !== rawItemName && cols[4] !== rawRemarks) {
+          rawParty = cols[4];
+        } else if (cols[3] && cols[3] !== rawItemName && isNaN(parseInt(cols[3]))) {
+          rawParty = cols[3];
+        }
+      }
+
+      if (!rawRemarks && cols.length >= 4) {
+        if (cols[3] && cols[3] !== rawParty && cols[3] !== rawItemName) {
+          rawRemarks = cols[3];
+        }
+      }
+
+      // Auto-match Item ID if found in catalog
       let isMatched = false;
       if (rawItemId && itemsMapById.has(rawItemId.toLowerCase())) {
         isMatched = true;
+        if (!rawItemName || rawItemName === "BT315") {
+          rawItemName = itemsMapById.get(rawItemId.toLowerCase()).name;
+        }
       } else if (rawItemName && itemsMapByName.has(rawItemName.toLowerCase())) {
         rawItemId = itemsMapByName.get(rawItemName.toLowerCase()).id;
+        isMatched = true;
+      } else if (detectedContextItemName && itemsMapByName.has(detectedContextItemName.toLowerCase())) {
+        rawItemId = itemsMapByName.get(detectedContextItemName.toLowerCase()).id;
         isMatched = true;
       }
 
       parsed.push({
-        id: `ims-upload-${Date.now()}-${i}`,
+        id: `ims-upload-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
         date: formatDateForInput(rawDate),
-        itemName: rawItemName || (itemsMapById.get(rawItemId.toLowerCase())?.name || "Unknown Item"),
+        itemName: rawItemName || detectedContextItemName || "BT315",
         stockQty: rawStock,
         movementType: rawStock >= 0 ? "IN" : "OUT",
         remarks: rawRemarks,
@@ -454,14 +634,43 @@ export default function ImsDashboard({
   function formatDateForInput(dStr) {
     if (!dStr) return new Date().toISOString().split("T")[0];
     const clean = dStr.trim();
-    // Check if DD/MM/YYYY or DD-MM-YYYY
-    const dmyMatch = clean.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+
+    // Months map
+    const monthMap = {
+      jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+      jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12"
+    };
+
+    // Check if DD-MMM-YYYY or DD-MMM-YY (e.g. 15-May-2026 or 15-May-26)
+    const mmmMatch = clean.match(/^(\d{1,2})[-\/\s]([a-zA-Z]{3})[-\/\s](\d{2,4})/);
+    if (mmmMatch) {
+      const day = mmmMatch[1].padStart(2, "0");
+      const mStr = mmmMatch[2].toLowerCase();
+      const month = monthMap[mStr] || "01";
+      let year = mmmMatch[3];
+      if (year.length === 2) year = `20${year}`;
+      return `${year}-${month}-${day}`;
+    }
+
+    // Check if DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY or DD/MM/YY
+    const dmyMatch = clean.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
     if (dmyMatch) {
       const day = dmyMatch[1].padStart(2, "0");
       const month = dmyMatch[2].padStart(2, "0");
-      const year = dmyMatch[3];
+      let year = dmyMatch[3];
+      if (year.length === 2) year = `20${year}`;
       return `${year}-${month}-${day}`;
     }
+
+    // Check if YYYY-MM-DD
+    const ymdMatch = clean.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+    if (ymdMatch) {
+      const year = ymdMatch[1];
+      const month = ymdMatch[2].padStart(2, "0");
+      const day = ymdMatch[3].padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
     return clean;
   }
 

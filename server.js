@@ -2789,20 +2789,23 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
         const chunkObjects = [];
 
         for (const t of chunk) {
-          if (!t.itemName) continue;
           const rawQty = parseInt(t.stockQty) || 0;
           const movementType = t.movementType || (rawQty >= 0 ? "IN" : "OUT");
           const finalStockQty = movementType === "OUT" ? -Math.abs(rawQty) : Math.abs(rawQty);
 
           let itemId = String(t.itemId || "").trim();
+          const rawItemName = (t.itemName || "").trim();
+          let itemName = rawItemName;
           let isMissingId = false;
 
           if (itemId && itemsMap.has(itemId.toLowerCase())) {
             isMissingId = false;
-          } else if (namesMap.has(t.itemName.trim().toLowerCase())) {
-            itemId = namesMap.get(t.itemName.trim().toLowerCase()).id;
+            if (!itemName) itemName = itemsMap.get(itemId.toLowerCase()).name;
+          } else if (rawItemName && namesMap.has(rawItemName.toLowerCase())) {
+            itemId = namesMap.get(rawItemName.toLowerCase()).id;
             isMissingId = false;
           } else {
+            if (!itemName) itemName = "BT315";
             isMissingId = true;
             missingIdCount++;
           }
@@ -2810,7 +2813,7 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
           chunkObjects.push({
             id: t.id || `ims-${Date.now()}-${Math.random().toString(36).substr(2, 6)}-${insertedCount + chunkObjects.length}`,
             date: t.date || new Date().toISOString().split("T")[0],
-            itemName: (t.itemName || "").trim(),
+            itemName,
             itemId,
             stockQty: finalStockQty,
             movementType,
@@ -2874,23 +2877,26 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
     let missingIdCount = 0;
 
     for (const t of transactions) {
-      if (!t.itemName) continue;
       const rawQty = parseInt(t.stockQty) || 0;
       const movementType = t.movementType || (rawQty >= 0 ? "IN" : "OUT");
       const finalStockQty = movementType === "OUT" ? -Math.abs(rawQty) : Math.abs(rawQty);
 
       let itemId = String(t.itemId || "").trim();
+      const rawItemName = (t.itemName || "").trim();
+      let itemName = rawItemName;
       let isMissingId = false;
 
       const matchId = items.find(i => i.id.toLowerCase() === itemId.toLowerCase());
-      const matchName = items.find(i => i.name.trim().toLowerCase() === t.itemName.trim().toLowerCase());
+      const matchName = items.find(i => i.name.trim().toLowerCase() === rawItemName.toLowerCase());
 
       if (itemId && matchId) {
         isMissingId = false;
-      } else if (matchName) {
+        if (!itemName) itemName = matchId.name;
+      } else if (rawItemName && matchName) {
         itemId = matchName.id;
         isMissingId = false;
       } else {
+        if (!itemName) itemName = "BT315";
         isMissingId = true;
         missingIdCount++;
       }
@@ -2898,7 +2904,7 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
       const txObj = {
         id: t.id || `ims-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
         date: t.date || new Date().toISOString().split("T")[0],
-        itemName: (t.itemName || "").trim(),
+        itemName,
         itemId,
         stockQty: finalStockQty,
         movementType,
