@@ -3,6 +3,7 @@ import { Layers, Plus, Upload, Trash2, Search, CheckSquare, Square, FileSpreadsh
 import ItemDetailModal from "./ItemDetailModal";
 import { useSortableData } from "../utils/useSortableData";
 import Pagination, { SmartSelectionBar } from "./Pagination";
+import { useLoading } from "../context/LoadingContext";
 
 // Normalize item names for fuzzy duplicate detection (e.g. DC02, DC 02, DC2, DC-2, DC-02 -> DC2)
 export function normalizeItemKey(str) {
@@ -30,6 +31,8 @@ export default function ItemCatalogPanel({
   onViewItemDetail
 }) {
   const isSuperAdmin = currentUser && currentUser.role === "superadmin";
+
+  const { startLoading, finishLoading } = useLoading();
 
   const [selectedItemDetail, setSelectedItemDetail] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -367,8 +370,16 @@ export default function ItemCatalogPanel({
     if (!isSuperAdmin) return;
     if (selectedIds.length === 0) return;
     if (!window.confirm(`⚠️ ARE YOU SURE? This will permanently delete ${selectedIds.length} selected item(s) from the catalog.`)) return;
-    await onDeleteItems(selectedIds);
-    setSelectedIds([]);
+    
+    startLoading("Deleting Catalog Items...", `Deleting ${selectedIds.length} items from catalog...`, 15);
+    try {
+      await onDeleteItems(selectedIds);
+      setSelectedIds([]);
+      finishLoading(`Deleted ${selectedIds.length} items!`);
+    } catch (err) {
+      finishLoading();
+      alert("Failed to delete items: " + err.message);
+    }
   };
 
   // Open Edit Item modal (Super Admin only)
@@ -641,16 +652,20 @@ export default function ItemCatalogPanel({
     }
 
     setUploadingBulk(true);
+    startLoading("Importing Master Items...", `Uploading and processing ${validItems.length} catalog items...`, 15);
     try {
       const res = await onBulkAddItems(validItems);
       if (res && res.success) {
+        finishLoading(`Processed ${res.count || validItems.length} items!`);
         alert(`Bulk action completed successfully! Total processed: ${res.count || validItems.length} (Inserted: ${res.insertedCount || 0}, Updated: ${res.updatedCount || 0}, Deleted: ${res.deletedCount || 0}, Skipped: ${res.skippedCount || 0})`);
         setShowBulkModal(false);
         setBulkParsedItems([]);
       } else {
+        finishLoading();
         setBulkError(`Bulk import failed: ${res?.error || "Server error"}`);
       }
     } catch (err) {
+      finishLoading();
       setBulkError(`Bulk import error: ${err.message}`);
     } finally {
       setUploadingBulk(false);

@@ -252,14 +252,25 @@ export default function App() {
 
   // DB post helper
   const postData = async (url, data) => {
+    const isHeavy = url.includes("batch") || url.includes("bulk") || url.includes("purge") || url.includes("backup") || url.includes("upload") || (Array.isArray(data) && data.length > 5);
+    if (window.__startLoadingProgress) {
+      window.__startLoadingProgress(isHeavy ? "Saving Bulk Changes..." : "Syncing with Server...", "Saving data to PostgreSQL database...", 15);
+    }
     try {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data)
       });
-      return await res.json();
+      const json = await res.json();
+      if (window.__finishLoadingProgress) {
+        window.__finishLoadingProgress();
+      }
+      return json;
     } catch (err) {
+      if (window.__finishLoadingProgress) {
+        window.__finishLoadingProgress();
+      }
       console.error(`Error posting to ${url}:`, err);
       return { success: false, error: err.message };
     }
@@ -267,10 +278,20 @@ export default function App() {
 
   // DB delete helper
   const deleteData = async (url) => {
+    if (window.__startLoadingProgress) {
+      window.__startLoadingProgress("Deleting Record...", "Updating records on server database...", 20);
+    }
     try {
       const res = await fetch(url, { method: "DELETE" });
-      return await res.json();
+      const json = await res.json();
+      if (window.__finishLoadingProgress) {
+        window.__finishLoadingProgress();
+      }
+      return json;
     } catch (err) {
+      if (window.__finishLoadingProgress) {
+        window.__finishLoadingProgress();
+      }
       console.error(`Error deleting ${url}:`, err);
       return { success: false, error: err.message };
     }

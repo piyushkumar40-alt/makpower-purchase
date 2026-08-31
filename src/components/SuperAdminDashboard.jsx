@@ -12,6 +12,7 @@ import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import { QuickCreateDesignationModal, QuickCreateVendorModal, QuickCreateCargoCompanyModal, QuickCreateItemModal, QuickCreateUserModal } from "./QuickCreateModals";
+import { useLoading } from "../context/LoadingContext";
 
 export default function SuperAdminDashboard({
   users,
@@ -56,6 +57,8 @@ export default function SuperAdminDashboard({
 
   // CRM Parties Studio State
   const [crmPartySearch, setCrmPartySearch] = useState("");
+  const { startLoading, finishLoading } = useLoading();
+
   const [crmPartyFilter, setCrmPartyFilter] = useState("all");
   const [showPartyModal, setShowPartyModal] = useState(false);
   const [editingParty, setEditingParty] = useState(null);
@@ -248,20 +251,24 @@ export default function SuperAdminDashboard({
     if (bulkParsedParties.length === 0) return;
     setIsUploadingParties(true);
     setBulkPartyUploadMsg("");
+    startLoading("Importing CRM Parties...", `Uploading and matching ${bulkParsedParties.length} party records...`, 15);
 
     try {
       if (onBatchUploadParties) {
         const res = await onBatchUploadParties(bulkParsedParties);
         if (res && res.success) {
+          finishLoading(`Imported ${res.count || bulkParsedParties.length} parties!`);
           setBulkPartyUploadMsg(`✅ Successfully imported ${res.count || bulkParsedParties.length} parties into CRM database!`);
           setBulkParsedParties([]);
           setBulkPartyRawText("");
           setTimeout(() => setPartyStudioMode("directory"), 1800);
         } else {
+          finishLoading();
           setBulkPartyUploadMsg(`❌ Upload failed: ${res?.error || "Unknown server error"}`);
         }
       }
     } catch (err) {
+      finishLoading();
       setBulkPartyUploadMsg(`❌ Upload Error: ${err.message}`);
     } finally {
       setIsUploadingParties(false);

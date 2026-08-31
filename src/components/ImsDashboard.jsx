@@ -6,6 +6,7 @@ import {
   ChevronRight, Database, Check, Eye
 } from "lucide-react";
 import Pagination, { SmartSelectionBar } from "./Pagination";
+import { useLoading } from "../context/LoadingContext";
 
 export default function ImsDashboard({
   currentUser,
@@ -357,10 +358,13 @@ export default function ImsDashboard({
     setBulkParsedRows(parsed);
   };
 
+  const { startLoading, finishLoading } = useLoading();
+
   const handleExecuteBulkUpload = async () => {
     if (bulkParsedRows.length === 0) return;
     setIsUploading(true);
     setBulkUploadMsg("");
+    startLoading("Uploading Inventory Batch...", `Uploading ${bulkParsedRows.length} transactions to server...`, 15);
 
     try {
       const res = await onBatchUploadTransactions(bulkParsedRows);
@@ -368,11 +372,14 @@ export default function ImsDashboard({
         setBulkUploadMsg(`✅ Successfully uploaded ${res.count || bulkParsedRows.length} transactions into IMS! (${res.missingIdCount || 0} missing item IDs flagged for review)`);
         setBulkParsedRows([]);
         setBulkRawText("");
+        finishLoading(`Uploaded ${res.count || bulkParsedRows.length} inventory records!`);
         setTimeout(() => setActiveTab("ledger"), 2000);
       } else {
+        finishLoading();
         setBulkUploadMsg(`❌ Upload failed: ${res?.error || "Unknown server error"}`);
       }
     } catch (err) {
+      finishLoading();
       setBulkUploadMsg(`❌ Upload Error: ${err.message}`);
     } finally {
       setIsUploading(false);
@@ -468,6 +475,7 @@ export default function ImsDashboard({
     if (!window.confirm(confirmMsg)) return;
 
     setIsDeletingRange(true);
+    startLoading("Purging Date Range...", `Deleting ${rangeMatchedTransactions.length} transactions between ${delRangeStart} and ${delRangeEnd}...`, 15);
     try {
       if (onDeleteRange) {
         await onDeleteRange(delRangeStart, delRangeEnd);
@@ -476,7 +484,9 @@ export default function ImsDashboard({
       setShowDeleteRangeModal(false);
       setDelRangeStart("");
       setDelRangeEnd("");
+      finishLoading("Transactions deleted successfully!");
     } catch (err) {
+      finishLoading();
       alert("Failed to delete range: " + err.message);
     } finally {
       setIsDeletingRange(false);
@@ -489,6 +499,7 @@ export default function ImsDashboard({
     const confirmMsg = `⚠️ Are you sure you want to permanently delete the ${selectedTxIds.length} selected transaction(s)?\n\nThis action cannot be undone.`;
     if (!window.confirm(confirmMsg)) return;
 
+    startLoading("Deleting Selected Records...", `Deleting ${selectedTxIds.length} inventory transactions...`, 15);
     try {
       if (onDeleteRange) {
         await onDeleteRange(null, null, selectedTxIds);
@@ -498,7 +509,9 @@ export default function ImsDashboard({
         }
       }
       setSelectedTxIds([]);
+      finishLoading(`Deleted ${selectedTxIds.length} transactions!`);
     } catch (err) {
+      finishLoading();
       alert("Failed to delete selected rows: " + err.message);
     }
   };
