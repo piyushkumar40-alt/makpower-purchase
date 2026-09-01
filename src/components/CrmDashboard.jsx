@@ -73,6 +73,8 @@ export default function CrmDashboard({
     return crmExecutives.find(c => c.id === selectedExecutiveId) || users.find(u => u.id === selectedExecutiveId) || currentUser;
   }, [selectedExecutiveId, crmExecutives, users, currentUser]);
 
+  const canViewFinancials = currentUser?.role === "superadmin" || currentUser?.role === "owner";
+
   // Navigation Tabs: "parties" | "team" | "salesreport" | "dispatchreport" | "orders"
   const [activeTab, setActiveTab] = useState("parties");
 
@@ -528,21 +530,38 @@ export default function CrmDashboard({
           </div>
         </div>
 
-        {/* Card 2: Total Sales Revenue */}
-        <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px", borderRadius: "14px" }}>
-          <div style={{ padding: "14px", borderRadius: "12px", background: "rgba(16, 185, 129, 0.12)", color: "var(--success)" }}>
-            <TrendingUp size={26} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Sales Value</div>
-            <div style={{ fontSize: "1.65rem", fontWeight: 800, color: "var(--success)" }}>
-              {formatInr(totalSalesRevenue)}
+        {/* Card 2: Sales Revenue (Admin/Owner only) or Total Orders (CRM) */}
+        {canViewFinancials ? (
+          <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px", borderRadius: "14px" }}>
+            <div style={{ padding: "14px", borderRadius: "12px", background: "rgba(16, 185, 129, 0.12)", color: "var(--success)" }}>
+              <TrendingUp size={26} />
             </div>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "2px" }}>
-              Across {currentSalesOrders.length} logged sales orders
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Sales Value</div>
+              <div style={{ fontSize: "1.65rem", fontWeight: 800, color: "var(--success)" }}>
+                {formatInr(totalSalesRevenue)}
+              </div>
+              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                Across {currentSalesOrders.length} logged orders
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px", borderRadius: "14px" }}>
+            <div style={{ padding: "14px", borderRadius: "12px", background: "rgba(16, 185, 129, 0.12)", color: "var(--success)" }}>
+              <FileText size={26} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Orders Booked</div>
+              <div style={{ fontSize: "1.65rem", fontWeight: 800, color: "var(--success)" }}>
+                {currentSalesOrders.length} <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Orders</span>
+              </div>
+              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                {totalOrderedUnits.toLocaleString()} Pcs total ordered
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Card 3: Dispatched Qty & Fulfillment */}
         <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px", borderRadius: "14px" }}>
@@ -607,13 +626,15 @@ export default function CrmDashboard({
           <MessageSquare size={16} /> <span>Monthly Category & Remarks ({crmPartyRemarks.length})</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab("salesreport")}
-          className={`nav-tab-item ${activeTab === "salesreport" ? "active" : ""}`}
-          style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 18px", borderRadius: "10px", fontSize: "0.92rem", fontWeight: 600 }}
-        >
-          <BarChart2 size={16} /> <span>Item-Wise Sales Report</span>
-        </button>
+        {canViewFinancials && (
+          <button
+            onClick={() => setActiveTab("salesreport")}
+            className={`nav-tab-item ${activeTab === "salesreport" ? "active" : ""}`}
+            style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 18px", borderRadius: "10px", fontSize: "0.92rem", fontWeight: 600 }}
+          >
+            <BarChart2 size={16} /> <span>Item-Wise Sales Report</span>
+          </button>
+        )}
 
         <button
           onClick={() => setActiveTab("dispatchreport")}
@@ -628,7 +649,7 @@ export default function CrmDashboard({
           className={`nav-tab-item ${activeTab === "orders" ? "active" : ""}`}
           style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 18px", borderRadius: "10px", fontSize: "0.92rem", fontWeight: 600 }}
         >
-          <FileText size={16} /> <span>Sales Bookings ({currentSalesOrders.length})</span>
+          <FileText size={16} /> <span>Orders & Bookings ({currentSalesOrders.length})</span>
         </button>
       </div>
 
@@ -924,10 +945,17 @@ export default function CrmDashboard({
                       <span style={{ color: "var(--text-muted)" }}>Assigned Parties:</span>
                       <div style={{ fontWeight: 700, color: "#38bdf8" }}>{assignedParties.length} Parties</div>
                     </div>
-                    <div>
-                      <span style={{ color: "var(--text-muted)" }}>Total Sales:</span>
-                      <div style={{ fontWeight: 700, color: "var(--success)" }}>{formatInr(memberRevenue)}</div>
-                    </div>
+                    {canViewFinancials ? (
+                      <div>
+                        <span style={{ color: "var(--text-muted)" }}>Total Sales:</span>
+                        <div style={{ fontWeight: 700, color: "var(--success)" }}>{formatInr(memberRevenue)}</div>
+                      </div>
+                    ) : (
+                      <div>
+                        <span style={{ color: "var(--text-muted)" }}>Total Orders:</span>
+                        <div style={{ fontWeight: 700, color: "var(--success)" }}>{memberOrders.length} Orders</div>
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "auto" }}>
@@ -944,7 +972,11 @@ export default function CrmDashboard({
                       className="btn btn-primary btn-sm"
                       style={{ justifyContent: "center", fontSize: "0.8rem", fontWeight: 700 }}
                     >
-                      <TrendingUp size={13} /> Track Sales ({formatInr(memberRevenue)})
+                      {canViewFinancials ? (
+                        <><TrendingUp size={13} /> Track Sales ({formatInr(memberRevenue)})</>
+                      ) : (
+                        <><Truck size={13} /> View Dispatches & Performance</>
+                      )}
                     </button>
 
                     <button
@@ -1090,12 +1122,12 @@ export default function CrmDashboard({
               <table className="table" style={{ width: "100%", minWidth: "1050px" }}>
                 <thead>
                   <tr>
-                    <th style={{ width: "24%" }}>Party Name & City</th>
-                    <th style={{ width: "14%" }}>Category</th>
-                    <th style={{ width: "10%" }}>Month</th>
-                    <th style={{ width: "12%", textAlign: "right" }}>Order Qty</th>
-                    <th style={{ width: "14%", textAlign: "right" }}>Total Amount (₹)</th>
-                    <th style={{ width: "26%" }}>ASM / TSM Remarks & Notes</th>
+                    <th style={{ width: "26%" }}>Party Name & City</th>
+                    <th style={{ width: "16%" }}>Category</th>
+                    <th style={{ width: "12%" }}>Month</th>
+                    <th style={{ width: "14%", textAlign: "right" }}>Order Qty</th>
+                    {canViewFinancials && <th style={{ width: "14%", textAlign: "right" }}>Total Amount (₹)</th>}
+                    <th style={{ width: canViewFinancials ? "18%" : "32%" }}>ASM / TSM Remarks & Notes</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1137,11 +1169,13 @@ export default function CrmDashboard({
                           )}
                         </td>
 
-                        <td style={{ textAlign: "right" }}>
-                          <div style={{ fontWeight: 800, color: "var(--success)", fontSize: "0.95rem" }}>
-                            {formatInr(row.totalRevenue)}
-                          </div>
-                        </td>
+                        {canViewFinancials && (
+                          <td style={{ textAlign: "right" }}>
+                            <div style={{ fontWeight: 800, color: "var(--success)", fontSize: "0.95rem" }}>
+                              {formatInr(row.totalRevenue)}
+                            </div>
+                          </td>
+                        )}
 
                         <td>
                           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -1508,7 +1542,7 @@ export default function CrmDashboard({
                     <th>Party Name</th>
                     <th>Item Model & Category</th>
                     <th style={{ textAlign: "right" }}>Ordered Qty</th>
-                    <th style={{ textAlign: "right" }}>Unit Price & Total</th>
+                    {canViewFinancials && <th style={{ textAlign: "right" }}>Unit Price & Total</th>}
                     <th style={{ textAlign: "right" }}>Dispatched / Pending</th>
                     <th>Status</th>
                     <th style={{ textAlign: "center" }}>Action</th>
@@ -1546,12 +1580,14 @@ export default function CrmDashboard({
                         {order.orderQty?.toLocaleString()} Pcs
                       </td>
 
-                      <td style={{ textAlign: "right" }}>
-                        <div style={{ display: "flex", flexDirection: "column" }}>
-                          <span style={{ fontWeight: 800, color: "var(--success)" }}>{formatInr(order.totalInr)}</span>
-                          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>@ ₹{order.unitPriceInr}/unit</span>
-                        </div>
-                      </td>
+                      {canViewFinancials && (
+                        <td style={{ textAlign: "right" }}>
+                          <div style={{ display: "flex", flexDirection: "column" }}>
+                            <span style={{ fontWeight: 800, color: "var(--success)" }}>{formatInr(order.totalInr)}</span>
+                            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>@ ₹{order.unitPriceInr}/unit</span>
+                          </div>
+                        </td>
+                      )}
 
                       <td style={{ textAlign: "right", fontSize: "0.85rem" }}>
                         <span style={{ color: "var(--success)", fontWeight: 700 }}>{order.dispatchedQty || 0}</span> / <span style={{ color: (order.pendingQty || 0) > 0 ? "var(--danger)" : "var(--text-muted)", fontWeight: 700 }}>{order.pendingQty || 0}</span>
@@ -1637,8 +1673,9 @@ export default function CrmDashboard({
       {selectedPartyFor360 && (
         <Party360Modal
           party={selectedPartyFor360}
-          salesOrders={currentSalesOrders.filter(o => o.partyId === selectedPartyFor360.id)}
-          dispatches={currentDispatches.filter(d => d.partyId === selectedPartyFor360.id)}
+          salesOrders={currentSalesOrders.filter(o => o.partyId === selectedPartyFor360.id || (o.partyName && o.partyName.trim().toLowerCase() === selectedPartyFor360.name.trim().toLowerCase()))}
+          dispatches={currentDispatches.filter(d => d.partyId === selectedPartyFor360.id || (d.partyName && d.partyName.trim().toLowerCase() === selectedPartyFor360.name.trim().toLowerCase()))}
+          canViewFinancials={canViewFinancials}
           onClose={() => setSelectedPartyFor360(null)}
         />
       )}
@@ -1705,6 +1742,7 @@ export default function CrmDashboard({
           crmPartyRemarks={crmPartyRemarks}
           items={items}
           currentUser={currentUser}
+          canViewFinancials={canViewFinancials}
           onSavePartyRemark={onSavePartyRemark}
           onDeletePartyRemark={onDeletePartyRemark}
           formatInr={formatInr}
@@ -1946,7 +1984,7 @@ function PartyModal({ party, crmExecutives, asmList, tsmList, currentExecutive, 
 }
 
 // ==================== SUB-COMPONENT: PARTY 360° PROFILE MODAL ====================
-function Party360Modal({ party, salesOrders, dispatches, onClose }) {
+function Party360Modal({ party, salesOrders, dispatches, canViewFinancials = false, onClose }) {
   const totalSpend = salesOrders.reduce((a, b) => a + (parseFloat(b.totalInr) || 0), 0);
   const totalUnits = salesOrders.reduce((a, b) => a + (parseInt(b.orderQty) || 0), 0);
   const totalDelivered = dispatches.reduce((a, b) => a + (parseInt(b.dispatchedQty) || 0), 0);
@@ -1967,10 +2005,12 @@ function Party360Modal({ party, salesOrders, dispatches, onClose }) {
 
         {/* Overview Stats */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "12px", marginBottom: "20px" }}>
-          <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total Business</div>
-            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "var(--success)" }}>₹{totalSpend.toLocaleString()}</div>
-          </div>
+          {canViewFinancials && (
+            <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
+              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total Business</div>
+              <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "var(--success)" }}>₹{totalSpend.toLocaleString()}</div>
+            </div>
+          )}
           <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total Ordered</div>
             <div style={{ fontSize: "1.2rem", fontWeight: 800 }}>{totalUnits.toLocaleString()} Pcs</div>
@@ -1991,7 +2031,7 @@ function Party360Modal({ party, salesOrders, dispatches, onClose }) {
                 <th>Order No</th>
                 <th>Item Model</th>
                 <th>Qty</th>
-                <th>Total (₹)</th>
+                {canViewFinancials && <th>Total (₹)</th>}
                 <th>Status</th>
               </tr>
             </thead>
@@ -2002,7 +2042,7 @@ function Party360Modal({ party, salesOrders, dispatches, onClose }) {
                   <td><code>{o.orderNo}</code></td>
                   <td style={{ fontWeight: 600 }}>{o.itemModel}</td>
                   <td>{o.orderQty}</td>
-                  <td style={{ fontWeight: 700, color: "var(--success)" }}>₹{(o.totalInr || 0).toLocaleString()}</td>
+                  {canViewFinancials && <td style={{ fontWeight: 700, color: "var(--success)" }}>₹{(o.totalInr || 0).toLocaleString()}</td>}
                   <td><span className={`badge ${o.status === "Dispatched" ? "badge-success" : "badge-secondary"}`}>{o.status}</span></td>
                 </tr>
               ))}
@@ -2498,6 +2538,7 @@ function AsmSalesDetailModal({
   crmPartyRemarks = [],
   items = [],
   currentUser,
+  canViewFinancials = false,
   onSavePartyRemark,
   onDeletePartyRemark,
   formatInr, 
@@ -2605,27 +2646,12 @@ function AsmSalesDetailModal({
       cur.orderCount += 1;
     });
 
-    // Also include assigned parties with remarks
-    (crmPartyRemarks || []).forEach(r => {
-      if (assignedPartyIdSet.has(r.partyId) || assignedPartyNameSet.has((r.partyName || "").trim().toLowerCase())) {
-        const key = `${r.partyId}___${r.category}___${r.month}`;
-        if (!map.has(key)) {
-          map.set(key, {
-            key,
-            partyId: r.partyId,
-            partyName: r.partyName,
-            category: r.category,
-            month: r.month,
-            totalOrderQty: 0,
-            totalRevenue: 0,
-            orderCount: 0
-          });
-        }
-      }
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.partyName !== b.partyName) return a.partyName.localeCompare(b.partyName);
+      if (a.category !== b.category) return a.category.localeCompare(b.category);
+      return b.month.localeCompare(a.month);
     });
-
-    return Array.from(map.values()).sort((a, b) => b.month.localeCompare(a.month) || a.partyName.localeCompare(b.partyName));
-  }, [memberOrders, assignedPartyIdSet, assignedPartyNameSet, crmPartyRemarks, items]);
+  }, [memberOrders, items]);
 
   // Summary KPIs
   const totalRevenue = useMemo(() => {
@@ -2655,7 +2681,7 @@ function AsmSalesDetailModal({
       cur.totalRevenue += parseFloat(o.totalInr) || 0;
       cur.orderCount += 1;
     });
-    return Array.from(map.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
+    return Array.from(map.values()).sort((a, b) => b.totalQty - a.totalQty);
   }, [memberOrders]);
 
   return (
@@ -2671,7 +2697,7 @@ function AsmSalesDetailModal({
               </div>
               <div>
                 <h3 style={{ fontSize: "1.3rem", fontWeight: 800, color: "var(--text-main)", margin: 0 }}>
-                  {member.name} — Sales & Performance Studio
+                  {member.name} — Performance Studio
                 </h3>
                 <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
                   {isAsm ? "Area Sales Manager (ASM)" : "Territory Sales Manager (TSM)"} | Territory: {member.territory || "General"} | Phone: {member.phone || "—"}
@@ -2682,15 +2708,17 @@ function AsmSalesDetailModal({
           <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={20} /></button>
         </div>
 
-        {/* 4 Summary KPI Cards */}
+        {/* Summary KPI Cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", marginBottom: "16px" }}>
-          <div style={{ background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.25)", padding: "12px", borderRadius: "10px" }}>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Sales Revenue</div>
-            <div style={{ fontSize: "1.3rem", fontWeight: 800, color: "var(--success)" }}>{formatInr(totalRevenue)}</div>
-          </div>
+          {canViewFinancials && (
+            <div style={{ background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.25)", padding: "12px", borderRadius: "10px" }}>
+              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Sales Revenue</div>
+              <div style={{ fontSize: "1.3rem", fontWeight: 800, color: "var(--success)" }}>{formatInr(totalRevenue)}</div>
+            </div>
+          )}
 
           <div style={{ background: "rgba(56, 189, 248, 0.1)", border: "1px solid rgba(56, 189, 248, 0.25)", padding: "12px", borderRadius: "10px" }}>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Units Sold</div>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Units Ordered</div>
             <div style={{ fontSize: "1.3rem", fontWeight: 800, color: "var(--primary)" }}>{totalOrderedUnits.toLocaleString()} Pcs</div>
           </div>
 
@@ -2775,15 +2803,15 @@ function AsmSalesDetailModal({
                   <th>Party Name</th>
                   <th>Item Model</th>
                   <th style={{ textAlign: "right" }}>Qty</th>
-                  <th style={{ textAlign: "right" }}>Unit Price</th>
-                  <th style={{ textAlign: "right" }}>Total (₹)</th>
+                  {canViewFinancials && <th style={{ textAlign: "right" }}>Unit Price</th>}
+                  {canViewFinancials && <th style={{ textAlign: "right" }}>Total (₹)</th>}
                   <th style={{ textAlign: "center" }}>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {memberOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                    <td colSpan={canViewFinancials ? 7 : 5} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
                       No purchase orders recorded from assigned parties.
                     </td>
                   </tr>
@@ -2800,8 +2828,8 @@ function AsmSalesDetailModal({
                         {order.category && <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginLeft: "6px" }}>({order.category})</span>}
                       </td>
                       <td style={{ textAlign: "right", fontWeight: 700 }}>{order.orderQty?.toLocaleString()} Pcs</td>
-                      <td style={{ textAlign: "right" }}>₹{order.unitPriceInr}</td>
-                      <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)" }}>{formatInr(order.totalInr)}</td>
+                      {canViewFinancials && <td style={{ textAlign: "right" }}>₹{order.unitPriceInr}</td>}
+                      {canViewFinancials && <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)" }}>{formatInr(order.totalInr)}</td>}
                       <td style={{ textAlign: "center" }}>
                         <span className={`badge ${order.status === "Dispatched" ? "badge-success" : order.status === "Partially Dispatched" ? "badge-primary" : "badge-secondary"}`} style={{ fontSize: "0.7rem" }}>
                           {order.status || "Pending"}
@@ -2870,14 +2898,14 @@ function AsmSalesDetailModal({
                   <th style={{ width: "16%" }}>Category</th>
                   <th style={{ width: "12%" }}>Month</th>
                   <th style={{ width: "14%", textAlign: "right" }}>Order Qty</th>
-                  <th style={{ width: "14%", textAlign: "right" }}>Total (₹)</th>
-                  <th style={{ width: "18%", textAlign: "center" }}>Remarks</th>
+                  {canViewFinancials && <th style={{ width: "14%", textAlign: "right" }}>Total (₹)</th>}
+                  <th style={{ width: canViewFinancials ? "18%" : "32%", textAlign: "center" }}>Remarks</th>
                 </tr>
               </thead>
               <tbody>
                 {memberMonthCategoryMatrix.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                    <td colSpan={canViewFinancials ? 6 : 5} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
                       No month-wise category orders recorded yet.
                     </td>
                   </tr>
@@ -2898,9 +2926,11 @@ function AsmSalesDetailModal({
                         <td style={{ textAlign: "right", fontWeight: 800, color: row.totalOrderQty > 0 ? "var(--primary)" : "var(--text-muted)" }}>
                           {row.totalOrderQty.toLocaleString()} Pcs
                         </td>
-                        <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)" }}>
-                          {formatInr(row.totalRevenue)}
-                        </td>
+                        {canViewFinancials && (
+                          <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)" }}>
+                            {formatInr(row.totalRevenue)}
+                          </td>
+                        )}
                         <td style={{ textAlign: "center" }}>
                           <button
                             onClick={() => setActiveRemarkModalTarget({
@@ -2933,14 +2963,14 @@ function AsmSalesDetailModal({
                   <th>Location / State</th>
                   <th>Contact Person & Phone</th>
                   <th style={{ textAlign: "right" }}>Total Orders</th>
-                  <th style={{ textAlign: "right" }}>Total Revenue</th>
+                  {canViewFinancials && <th style={{ textAlign: "right" }}>Total Revenue</th>}
                   <th style={{ textAlign: "center" }}>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {assignedParties.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                    <td colSpan={canViewFinancials ? 6 : 5} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
                       No parties assigned to this sales manager yet. Click "Assign Parties" on the team card to link accounts.
                     </td>
                   </tr>
@@ -2955,7 +2985,7 @@ function AsmSalesDetailModal({
                         <td>{p.city || "—"} {p.state ? `(${p.state})` : ""}</td>
                         <td>{p.contactPerson || "—"} • {p.phone || "—"}</td>
                         <td style={{ textAlign: "right", fontWeight: 700 }}>{pOrders.length} Orders</td>
-                        <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)" }}>{formatInr(pRevenue)}</td>
+                        {canViewFinancials && <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)" }}>{formatInr(pRevenue)}</td>}
                         <td style={{ textAlign: "center" }}>
                           <span className={`badge ${p.status === "Active" ? "badge-success" : "badge-secondary"}`}>
                             {p.status || "Active"}
@@ -2975,16 +3005,16 @@ function AsmSalesDetailModal({
                 <tr>
                   <th>Rank</th>
                   <th>Item Model</th>
-                  <th style={{ textAlign: "right" }}>Total Units Sold</th>
+                  <th style={{ textAlign: "right" }}>Total Units Ordered</th>
                   <th style={{ textAlign: "right" }}>Orders Count</th>
-                  <th style={{ textAlign: "right" }}>Total Revenue (₹)</th>
+                  {canViewFinancials && <th style={{ textAlign: "right" }}>Total Revenue (₹)</th>}
                 </tr>
               </thead>
               <tbody>
                 {topItems.length === 0 ? (
                   <tr>
-                    <td colSpan={5} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
-                      No sales recorded for this sales manager yet.
+                    <td colSpan={canViewFinancials ? 5 : 4} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                      No orders recorded for this sales manager yet.
                     </td>
                   </tr>
                 ) : (
@@ -2996,7 +3026,7 @@ function AsmSalesDetailModal({
                       <td><strong style={{ color: "var(--primary)" }}>{item.itemModel}</strong></td>
                       <td style={{ textAlign: "right", fontWeight: 700 }}>{item.totalQty.toLocaleString()} Pcs</td>
                       <td style={{ textAlign: "right" }}>{item.orderCount}</td>
-                      <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)" }}>{formatInr(item.totalRevenue)}</td>
+                      {canViewFinancials && <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)" }}>{formatInr(item.totalRevenue)}</td>}
                     </tr>
                   ))
                 )}

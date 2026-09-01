@@ -2129,7 +2129,7 @@ export default function App() {
           />
         )}
 
-        {activeView === "crm" && currentUser && (
+        {activeView === "crm" && currentUser && currentUser.role !== "purchaser" && (
           <CrmDashboard 
             currentUser={currentUser}
             users={users}
