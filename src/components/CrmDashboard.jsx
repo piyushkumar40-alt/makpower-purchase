@@ -154,7 +154,17 @@ export default function CrmDashboard({
 
   // Filtered Parties based on selected executive
   const currentParties = useMemo(() => {
-    if (isAsmOrTsm) return crmParties;
+    if (isAsmOrTsm) {
+      const myName = (currentUser?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+      const myId = currentUser?.id || "";
+      return crmParties.filter(p => {
+        const matchId = myId && (p.assignedAsmId === myId || p.assignedTsmId === myId);
+        const pAsm = (p.assignedAsmName || "").trim().toLowerCase();
+        const pTsm = (p.assignedTsmName || "").trim().toLowerCase();
+        const matchName = myName && (pAsm.includes(myName) || pTsm.includes(myName) || myName.includes(pAsm) || myName.includes(pTsm));
+        return matchId || matchName;
+      });
+    }
     if (isCrmUser) {
       const myName = (currentUser?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       const myId = currentUser?.id || "";
@@ -180,11 +190,11 @@ export default function CrmDashboard({
   // Filtered Sales Orders (matched by executive ID or party name/ID, and global dates)
   const currentSalesOrders = useMemo(() => {
     let list = allUnifiedSalesOrders;
-    if (isCrmUser) {
+    if (isCrmUser || isAsmOrTsm) {
       const partyIdSet = new Set(currentParties.map(p => p.id));
       const partyNameSet = new Set(currentParties.map(p => (p.name || "").trim().toLowerCase()));
       list = list.filter(so => partyIdSet.has(so.partyId) || partyNameSet.has((so.partyName || "").trim().toLowerCase()));
-    } else if (!isAsmOrTsm && selectedExecutiveId !== "all") {
+    } else if (selectedExecutiveId !== "all") {
       const execName = (activeExecutive?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       list = list.filter(so => {
         if (so.assignedCrmId === selectedExecutiveId || so.assignedAsmId === selectedExecutiveId || so.assignedTsmId === selectedExecutiveId) return true;
@@ -204,11 +214,11 @@ export default function CrmDashboard({
   // Filtered Dispatches (matched by executive ID or party name/ID, and global dates)
   const currentDispatches = useMemo(() => {
     let list = allUnifiedDispatches;
-    if (isCrmUser) {
+    if (isCrmUser || isAsmOrTsm) {
       const partyIdSet = new Set(currentParties.map(p => p.id));
       const partyNameSet = new Set(currentParties.map(p => (p.name || "").trim().toLowerCase()));
       list = list.filter(d => partyIdSet.has(d.partyId) || partyNameSet.has((d.partyName || "").trim().toLowerCase()));
-    } else if (!isAsmOrTsm && selectedExecutiveId !== "all") {
+    } else if (selectedExecutiveId !== "all") {
       const execName = (activeExecutive?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       list = list.filter(d => {
         if (d.assignedCrmId === selectedExecutiveId || d.assignedAsmId === selectedExecutiveId || d.assignedTsmId === selectedExecutiveId) return true;
