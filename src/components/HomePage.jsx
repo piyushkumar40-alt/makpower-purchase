@@ -117,7 +117,9 @@ export default function HomePage({
             </h1>
           </div>
           <p style={{ color: "var(--text-muted)", fontSize: "0.92rem", margin: 0 }}>
-            Mak Power Purchase Ledger & Operations Command Center • Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{currentUser?.role || "Staff"}</strong>
+            {["crm", "asm", "tsm"].includes(currentUser?.role)
+              ? "Mak Power CRM & Field Sales Command Center"
+              : "Mak Power Purchase Ledger & Operations Command Center"} • Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{currentUser?.role || "Staff"}</strong>
           </p>
         </div>
 
@@ -358,230 +360,70 @@ export default function HomePage({
             <div className="table-container">
               <table className="custom-table">
                 <thead>
-      <p style={{ color: "var(--text-muted)", fontSize: "0.92rem", margin: 0 }}>
-        {["crm", "asm", "tsm"].includes(currentUser?.role)
-          ? "Mak Power CRM & Field Sales Command Center"
-          : "Mak Power Purchase Ledger & Operations Command Center"} • Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{currentUser?.role || "Staff"}</strong>
-      </p>
-    </div>
-
-    <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-      <button onClick={fetchMetrics} className="btn btn-secondary btn-sm" title="Refresh Dashboard Data">
-        <RefreshCw size={14} className={loadingMetrics ? "spin" : ""} /> Refresh Status
-      </button>
-      {currentUser?.role === "superadmin" && (
-        <button onClick={() => onNavigateView("admin")} className="btn btn-primary btn-sm">
-          <ShieldCheck size={14} /> Open Admin Panel
-        </button>
-      )}
-      {(currentUser?.role === "crm" || currentUser?.role === "asm" || currentUser?.role === "tsm" || currentUser?.role === "superadmin" || currentUser?.role === "owner") && (
-        <button onClick={() => onNavigateView("crm")} className="btn btn-primary btn-sm" style={{ background: "linear-gradient(135deg, #0284c7, #6366f1)" }}>
-          <Activity size={14} /> Dashboard
-        </button>
-      )}
-    </div>
-  </div>
-
-  {/* ==================== ROLE VIEW 1: PURCHASER / BUYER PERSONAL DESK ==================== */}
-  {currentUser?.role === "purchaser" && (
-    <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      
-      {/* Quick Metrics Bar for Purchaser */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "18px" }}>
-        <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
-          <div style={{ padding: "12px", borderRadius: "12px", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8" }}>
-            <FileText size={24} />
-          </div>
-          <div>
-            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>My Assigned Requisitions</div>
-            <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--text-main)" }}>{myRequests.length}</div>
-          </div>
-        </div>
-
-        <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
-          <div style={{ padding: "12px", borderRadius: "12px", background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" }}>
-            <Clock size={24} />
-          </div>
-          <div>
-            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Pending Execution</div>
-            <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "#f59e0b" }}>
-              {myRequests.filter(r => r.isMaterialRec !== "Yes").length}
-            </div>
-          </div>
-        </div>
-
-        <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
-          <div style={{ padding: "12px", borderRadius: "12px", background: "rgba(239, 68, 68, 0.15)", color: "#ef4444" }}>
-            <AlertTriangle size={24} />
-          </div>
-          <div>
-            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Delayed Requisitions</div>
-            <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "#ef4444" }}>{purchaserDelayedCount}</div>
-          </div>
-        </div>
-
-        <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
-          <div style={{ padding: "12px", borderRadius: "12px", background: "rgba(16, 185, 129, 0.15)", color: "#10b981" }}>
-            <CheckCircle2 size={24} />
-          </div>
-          <div>
-            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Fulfilled & Received</div>
-            <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "#10b981" }}>
-              {myRequests.filter(r => r.isMaterialRec === "Yes").length}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Upcoming Requisition Tasks Table */}
-      <div className="glass-panel" style={{ padding: "24px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
-          <div>
-            <h3 style={{ fontSize: "1.2rem", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
-              <Calendar size={18} /> Urgent & Upcoming Procurement Tasks
-            </h3>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: "4px 0 0 0" }}>
-              Requisitions due within 14 days or requiring price/supplier action.
-            </p>
-          </div>
-          <button 
-            onClick={() => onNavigateView("dashboard")} 
-            className="btn btn-primary btn-sm"
-          >
-            Open Full Workboard <ArrowRight size={14} />
-          </button>
-        </div>
-
-        <div className="table-container">
-          {upcomingTasks.length === 0 ? (
-            <div style={{ padding: "30px", textAlign: "center", color: "var(--text-muted)" }}>
-              <CheckCircle2 size={32} style={{ color: "var(--success)", marginBottom: "8px" }} />
-              <div>All your assigned requisitions are up to date!</div>
-            </div>
-          ) : (
-            <table className="custom-table">
-              <thead>
-                <tr>
-                  <th>Req ID</th>
-                  <th>Item Description</th>
-                  <th>Qty</th>
-                  <th>Required By</th>
-                  <th>Vendor EDD</th>
-                  <th>Price (RMB)</th>
-                  <th>Cargo Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {upcomingTasks.slice(0, 10).map(r => {
-                  const isDelayed = r.vendorEdd && new Date(r.vendorEdd) < today;
-                  return (
-                    <tr key={r.id}>
-                      <td><code>{r.id}</code></td>
-                      <td style={{ fontWeight: 600 }}>{r.itemDesc}</td>
-                      <td>{r.orderQty || "—"}</td>
-                      <td>{r.requiredByDate || "—"}</td>
-                      <td>
-                        {r.vendorEdd ? (
-                          <span style={{ color: isDelayed ? "var(--danger)" : "var(--text-main)", fontWeight: isDelayed ? 700 : 400 }}>
-                            {r.vendorEdd} {isDelayed && "⚠️"}
-                          </span>
-                        ) : "Not Set"}
-                      </td>
-                      <td>{r.priceRmb ? `¥${r.priceRmb}` : <span style={{ color: "var(--warning)" }}>Pending</span>}</td>
-                      <td>
-                        <span className={`badge ${r.cargoId ? "badge-cargo" : "badge-secondary"}`}>
-                          {r.cargoId ? "Assigned" : "No Cargo"}
-                        </span>
-                      </td>
-                      <td>
-                        <button 
-                          onClick={() => onNavigateView("dashboard")}
-                          className="btn btn-secondary btn-sm"
-                          style={{ padding: "4px 8px", fontSize: "0.75rem" }}
-                        >
-                          Open
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-
-    </div>
-  )}
-
-  {/* ==================== ROLE VIEW 2: NITIN / RAHUL / COORDINATOR OVERVIEW ==================== */}
-  {(currentUser?.role === "nitin" || currentUser?.role === "rahul" || currentUser?.role === "coordinator") && (
-    <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      
-      {/* Purchaser Performance & Delayed Task Table */}
-      <div className="glass-panel" style={{ padding: "24px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
-          <div>
-            <h3 style={{ fontSize: "1.2rem", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
-              <Users size={18} /> Procurement Team Fulfillment & Delay Monitor
-            </h3>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: "4px 0 0 0" }}>
-              Live tracking of each purchaser's assigned requisitions and delay bottlenecks.
-            </p>
-          </div>
-          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-            <span className="badge badge-danger" style={{ fontSize: "0.85rem", padding: "6px 12px" }}>
-              Total Delayed: {totalDelayedAllPersons}
-            </span>
-            <button 
-              onClick={() => onNavigateView(currentUser?.role === "coordinator" ? "coordinator" : "dashboard")}
-              className="btn btn-primary btn-sm"
-            >
-              Manage Workflow <ArrowRight size={14} />
-            </button>
-          </div>
-        </div>
-
-        <div className="table-container">
-          <table className="custom-table">
-            <thead>
-              <tr>
-                <th>Purchaser Name</th>
-                <th>Assigned Items</th>
-                <th>Pending</th>
-                <th>In-Transit</th>
-                <th>Delayed Items</th>
-                <th>On-Time Fulfillment</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {personWiseTaskStats.map(stat => {
-                const onTimeRate = stat.total > 0 ? Math.round((stat.onTime / stat.total) * 100) : 100;
-                return (
-                  <tr key={stat.purchaser.id}>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600 }}>
-                        <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: stat.delayed > 0 ? "var(--danger)" : "var(--success)" }}></div>
-                        {stat.purchaser.name} ({stat.purchaser.email})
-                      </div>
-                    </td>
-                    <td style={{ fontWeight: 600 }}>{stat.total} items</td>
-                    <td>{stat.pending}</td>
-                    <td>{stat.inTransit}</td>
-                    <td>{stat.delayed}</td>
-                    <td>{onTimeRate}%</td>
-                    <td><button onClick={() => onNavigateView("dashboard")} className="btn btn-secondary btn-sm">View</button></td>
+                  <tr>
+                    <th>Person / Purchaser Name</th>
+                    <th>Total Assigned</th>
+                    <th>Pending Orders</th>
+                    <th>In-Transit Cargo</th>
+                    <th>Delayed Tasks (Target Missed)</th>
+                    <th>On-Time Rate %</th>
+                    <th>Action</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {personWiseTaskStats.map(stat => {
+                    const delayedRate = stat.pending > 0 ? ((stat.delayed / stat.pending) * 100).toFixed(0) : 0;
+                    const onTimeRate = 100 - Number(delayedRate);
+
+                    return (
+                      <tr key={stat.purchaser.id}>
+                        <td style={{ fontWeight: 600, fontSize: "0.95rem" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: stat.delayed > 0 ? "var(--danger)" : "var(--success)" }}></div>
+                            {stat.purchaser.name} ({stat.purchaser.email})
+                          </div>
+                        </td>
+                        <td style={{ fontWeight: 600 }}>{stat.total} items</td>
+                        <td>{stat.pending} pending</td>
+                        <td><span className="badge badge-cargo">{stat.inTransit} shipments</span></td>
+                        <td>
+                          <span style={{ 
+                            padding: "4px 10px", 
+                            borderRadius: "6px", 
+                            fontWeight: 700, 
+                            background: stat.delayed > 0 ? "rgba(239, 68, 68, 0.2)" : "rgba(16, 185, 129, 0.15)",
+                            color: stat.delayed > 0 ? "#fca5a5" : "#a7f3d0"
+                          }}>
+                            {stat.delayed} Delayed
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <div style={{ flex: 1, height: "8px", borderRadius: "99px", background: "rgba(255,255,255,0.1)", overflow: "hidden" }}>
+                              <div style={{ width: `${onTimeRate}%`, height: "100%", background: onTimeRate < 60 ? "var(--danger)" : onTimeRate < 85 ? "#f59e0b" : "var(--success)", borderRadius: "99px" }}></div>
+                            </div>
+                            <span style={{ fontSize: "0.8rem", fontWeight: 600 }}>{onTimeRate}%</span>
+                          </div>
+                        </td>
+                        <td>
+                          <button 
+                            onClick={() => onNavigateView(currentUser?.role === "coordinator" ? "coordinator" : "dashboard")}
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: "4px 10px", fontSize: "0.78rem" }}
+                          >
+                            View Person Tasks
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
         </div>
-      </div>
-    </div>
-  )}
+      )}
 
   {/* ==================== ROLE VIEW 3: SUPER ADMIN ==================== */}
   {currentUser?.role === "superadmin" && (
