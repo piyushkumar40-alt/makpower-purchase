@@ -415,26 +415,27 @@ export default function App() {
           }
         }
 
-        try {
-          localStorage.setItem("makpower_app_state_cache", JSON.stringify({
-            users: data.users || [],
-            vendors: data.vendors || [],
-            requests: data.requests || [],
-            cargos: data.cargos || [],
-            cargoCompanies: data.cargoCompanies || [],
-            items: data.items || [],
-            designations: data.designations || [],
-            crmParties: data.crmParties || [],
-            crmSalesOrders: data.crmSalesOrders || [],
-            crmDispatches: data.crmDispatches || [],
-            imsTransactions: data.imsTransactions || [],
-            itemPrices: data.itemPrices || [],
-            crmPartyRemarks: data.crmPartyRemarks || [],
-            settings: data.settings || {}
-          }));
-        } catch (storageErr) {
-          // Ignore localStorage quota errors
-        }
+        setTimeout(() => {
+          try {
+            localStorage.setItem("makpower_app_state_cache", JSON.stringify({
+              users: data.users || [],
+              vendors: data.vendors || [],
+              requests: data.requests || [],
+              cargos: data.cargos || [],
+              cargoCompanies: data.cargoCompanies || [],
+              items: data.items || [],
+              designations: data.designations || [],
+              crmParties: data.crmParties || [],
+              crmSalesOrders: data.crmSalesOrders || [],
+              crmDispatches: data.crmDispatches || [],
+              itemPrices: data.itemPrices || [],
+              crmPartyRemarks: data.crmPartyRemarks || [],
+              settings: data.settings || {}
+            }));
+          } catch (storageErr) {
+            // Ignore localStorage quota errors
+          }
+        }, 50);
 
         if (!isInterval) {
           fetch("/api/audit-logs")
@@ -454,12 +455,12 @@ export default function App() {
     
     loadData();
 
-    // Smart background sync: every 15s when active/visible
+    // Smart background sync: every 30s when active/visible
     const intervalId = setInterval(() => {
       if (document.visibilityState === "visible") {
         loadData(true);
       }
-    }, 15000);
+    }, 30000);
 
     return () => {
       isMounted = false;

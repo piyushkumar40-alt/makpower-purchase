@@ -125,59 +125,9 @@ export default function CrmDashboard({
     return n1 === n2 || n1.includes(n2) || n2.includes(n1);
   };
 
-  // Unified Dispatches combining crmDispatches + IMS stock out records to parties
-  const allUnifiedDispatches = useMemo(() => {
-    const list = [...crmDispatches];
-    const existingIds = new Set(crmDispatches.map(d => d.id));
-    (imsTransactions || []).forEach(tx => {
-      if (tx.partyName && tx.partyName.trim() && (tx.movementType === "OUT" || !tx.movementType)) {
-        if (!existingIds.has(tx.id)) {
-          list.push({
-            id: tx.id,
-            dispatchDate: tx.date || "",
-            partyId: tx.partyId || "",
-            partyName: tx.partyName.trim(),
-            itemModel: tx.itemName || "Item",
-            dispatchedQty: Math.abs(parseInt(tx.stockQty) || 0),
-            transporterName: tx.location || tx.source || "Warehouse Dispatch",
-            docketNo: tx.remarks || "",
-            invoiceNo: `IMS-${tx.id.slice(0, 8)}`,
-            status: "Delivered"
-          });
-        }
-      }
-    });
-    return list;
-  }, [crmDispatches, imsTransactions]);
-
-  // Unified Orders combining crmSalesOrders + IMS stock out records to parties
-  const allUnifiedSalesOrders = useMemo(() => {
-    const list = [...crmSalesOrders];
-    const existingIds = new Set(crmSalesOrders.map(o => o.id));
-    (imsTransactions || []).forEach(tx => {
-      if (tx.partyName && tx.partyName.trim() && (tx.movementType === "OUT" || !tx.movementType)) {
-        const orderSyntheticId = `ord-${tx.id}`;
-        if (!existingIds.has(tx.id) && !existingIds.has(orderSyntheticId)) {
-          list.push({
-            id: orderSyntheticId,
-            orderNo: `PO-${tx.id.slice(0, 8)}`,
-            orderDate: tx.date || "",
-            partyId: tx.partyId || "",
-            partyName: tx.partyName.trim(),
-            itemModel: tx.itemName || "Item",
-            category: "General",
-            orderQty: Math.abs(parseInt(tx.stockQty) || 0),
-            unitPriceInr: 0,
-            totalInr: 0,
-            dispatchedQty: Math.abs(parseInt(tx.stockQty) || 0),
-            pendingQty: 0,
-            status: "Dispatched"
-          });
-        }
-      }
-    });
-    return list;
-  }, [crmSalesOrders, imsTransactions]);
+  // Direct, high-performance orders and dispatches arrays
+  const allUnifiedDispatches = crmDispatches;
+  const allUnifiedSalesOrders = crmSalesOrders;
 
   // Filtered Parties based on selected executive
   const currentParties = useMemo(() => {

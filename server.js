@@ -1569,6 +1569,10 @@ app.get("/api/state", async (req, res) => {
         crmPartiesParams = [userId || "", cleanName];
       }
 
+      const imsQuery = isRestrictedRole 
+        ? Promise.resolve({ rows: [] }) 
+        : pool.query('SELECT * FROM ims_transactions ORDER BY "date" DESC, "createdAt" DESC LIMIT 100');
+
       const [
         usersRes,
         vendorsRes,
@@ -1590,7 +1594,7 @@ app.get("/api/state", async (req, res) => {
         pool.query("SELECT * FROM settings"),
         pool.query("SELECT * FROM items ORDER BY CAST(NULLIF(regexp_replace(\"id\", '\\D', '', 'g'), '') AS INTEGER) ASC, \"id\" ASC"),
         pool.query(crmPartiesQuery, crmPartiesParams),
-        pool.query("SELECT * FROM ims_transactions ORDER BY \"date\" DESC, \"createdAt\" DESC"),
+        imsQuery,
         pool.query("SELECT * FROM designations"),
         pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC")
       ]);
