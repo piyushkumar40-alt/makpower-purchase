@@ -77,7 +77,9 @@ export default function CrmDashboard({
   }, [selectedExecutiveId, crmExecutives, users, currentUser]);
 
   const canViewFinancials = currentUser?.role === "superadmin" || currentUser?.role === "owner";
-  const isAsmOrTsm = currentUser?.role === "asm" || currentUser?.role === "tsm";
+  const isAsmUser = currentUser?.role === "asm";
+  const isTsmUser = currentUser?.role === "tsm";
+  const isAsmOrTsm = isAsmUser || isTsmUser;
   const isCrmUser = currentUser?.role === "crm";
 
   // Navigation Tabs: "parties" | "team" | "salesreport" | "dispatchreport" | "orders"
@@ -154,17 +156,23 @@ export default function CrmDashboard({
 
   // Filtered Parties based on selected executive
   const currentParties = useMemo(() => {
-    if (isAsmOrTsm) {
+    if (isAsmUser) {
       const myName = (currentUser?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       const myId = currentUser?.id || "";
       return crmParties.filter(p => {
-        const matchId = myId && (p.assignedAsmId === myId || p.assignedTsmId === myId);
+        const matchId = myId && (p.assignedAsmId === myId);
         const pAsm = (p.assignedAsmName || "").trim().toLowerCase();
+        const matchName = myName && pAsm && (pAsm.includes(myName) || myName.includes(pAsm));
+        return matchId || matchName;
+      });
+    }
+    if (isTsmUser) {
+      const myName = (currentUser?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+      const myId = currentUser?.id || "";
+      return crmParties.filter(p => {
+        const matchId = myId && (p.assignedTsmId === myId);
         const pTsm = (p.assignedTsmName || "").trim().toLowerCase();
-        const matchName = myName && (
-          (pAsm && (pAsm.includes(myName) || myName.includes(pAsm))) ||
-          (pTsm && (pTsm.includes(myName) || myName.includes(pTsm)))
-        );
+        const matchName = myName && pTsm && (pTsm.includes(myName) || myName.includes(pTsm));
         return matchId || matchName;
       });
     }

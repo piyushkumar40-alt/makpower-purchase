@@ -1522,7 +1522,9 @@ app.post("/api/storage/delete-all-cloudinary", async (req, res) => {
 app.get("/api/state", async (req, res) => {
   const { userId, userRole, userName } = req.query;
   const isCrmRole = userRole === "crm";
-  const isAsmTsmRole = userRole === "asm" || userRole === "tsm";
+  const isAsmRole = userRole === "asm";
+  const isTsmRole = userRole === "tsm";
+  const isAsmTsmRole = isAsmRole || isTsmRole;
   const isRestrictedRole = isCrmRole || isAsmTsmRole;
 
   const now = Date.now();
@@ -1552,14 +1554,20 @@ app.get("/api/state", async (req, res) => {
                ))
             ORDER BY "name" ASC
           `;
-        } else {
+        } else if (isAsmRole) {
           crmPartiesQuery = `
             SELECT * FROM crm_parties 
-            WHERE ($1 <> '' AND ("assignedAsmId" = $1 OR "assignedTsmId" = $1))
+            WHERE ($1 <> '' AND "assignedAsmId" = $1)
                OR ($2 <> '' AND TRIM(COALESCE("assignedAsmName", '')) <> '' AND (
                      LOWER(TRIM("assignedAsmName")) LIKE '%' || $2 || '%' 
                   OR $2 LIKE '%' || LOWER(TRIM("assignedAsmName")) || '%'
                ))
+            ORDER BY "name" ASC
+          `;
+        } else if (isTsmRole) {
+          crmPartiesQuery = `
+            SELECT * FROM crm_parties 
+            WHERE ($1 <> '' AND "assignedTsmId" = $1)
                OR ($2 <> '' AND TRIM(COALESCE("assignedTsmName", '')) <> '' AND (
                      LOWER(TRIM("assignedTsmName")) LIKE '%' || $2 || '%' 
                   OR $2 LIKE '%' || LOWER(TRIM("assignedTsmName")) || '%'
@@ -1739,16 +1747,18 @@ app.get("/api/state", async (req, res) => {
           const pCrm = (p.assignedCrmName || "").trim().toLowerCase();
           const matchName = cleanName && pCrm && (pCrm.includes(cleanName) || cleanName.includes(pCrm));
           return matchId || matchName;
-        } else {
-          const matchId = effectiveId && (p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId);
+        } else if (isAsmRole) {
+          const matchId = effectiveId && (p.assignedAsmId === effectiveId);
           const pAsm = (p.assignedAsmName || "").trim().toLowerCase();
+          const matchName = cleanName && pAsm && (pAsm.includes(cleanName) || cleanName.includes(pAsm));
+          return matchId || matchName;
+        } else if (isTsmRole) {
+          const matchId = effectiveId && (p.assignedTsmId === effectiveId);
           const pTsm = (p.assignedTsmName || "").trim().toLowerCase();
-          const matchName = cleanName && (
-            (pAsm && (pAsm.includes(cleanName) || cleanName.includes(pAsm))) ||
-            (pTsm && (pTsm.includes(cleanName) || cleanName.includes(pTsm)))
-          );
+          const matchName = cleanName && pTsm && (pTsm.includes(cleanName) || cleanName.includes(pTsm));
           return matchId || matchName;
         }
+        return false;
       });
       const partyIdSet = new Set(myParties.map(p => p.id));
       const partyNameSet = new Set(myParties.map(p => (p.name || "").trim().toLowerCase()));
