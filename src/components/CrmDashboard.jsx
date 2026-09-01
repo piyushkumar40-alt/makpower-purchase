@@ -573,127 +573,115 @@ export default function CrmDashboard({
   return (
     <div className="crm-portal-container" style={{ flex: 1, padding: "24px", maxWidth: "1600px", margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", gap: "24px" }}>
       
-      {/* ==================== HEADER & EXECUTIVE SELECTOR ==================== */}
-      <div className="glass-panel" style={{ padding: "24px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "20px", background: "linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(30, 41, 59, 0.85) 100%)", borderRadius: "16px", border: "1px solid var(--border-glass)" }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "6px" }}>
-            <div style={{ padding: "10px", borderRadius: "12px", background: "linear-gradient(135deg, #0284c7, #6366f1)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Briefcase size={24} />
+      {/* ==================== TOP CONTROLS & DATE FILTER ==================== */}
+      <div style={{ display: "flex", justifyContent: isElevated ? "space-between" : "flex-end", alignItems: "center", flexWrap: "wrap", gap: "14px" }}>
+        {/* Executive Switcher Bar - Only Visible to Superadmin / Owner */}
+        {isElevated && (
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", background: "rgba(0,0,0,0.3)", padding: "4px", borderRadius: "12px", border: "1px solid var(--border-glass)" }}>
+              <button
+                onClick={() => setSelectedExecutiveId("all")}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: selectedExecutiveId === "all" ? "linear-gradient(135deg, #0284c7, #38bdf8)" : "transparent",
+                  color: selectedExecutiveId === "all" ? "#fff" : "var(--text-muted)",
+                  fontWeight: selectedExecutiveId === "all" ? 700 : 500,
+                  fontSize: "0.82rem",
+                  cursor: "pointer",
+                  transition: "all 0.2s ease"
+                }}
+              >
+                🌐 All CRM (Company Overview)
+              </button>
             </div>
-            <div>
-              <h1 style={{ fontSize: "1.8rem", fontWeight: 800, color: "var(--text-main)", margin: 0, display: "flex", alignItems: "center", gap: "10px" }}>
-                CRM Command Center
-                <span className="badge badge-primary" style={{ fontSize: "0.78rem", padding: "4px 10px", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)" }}>
-                  {activeExecutive ? `${activeExecutive.name}'s Dashboard` : "All Executives View"}
-                </span>
-              </h1>
-              <p style={{ color: "var(--text-muted)", fontSize: "0.88rem", margin: "4px 0 0 0" }}>
-                Customer Relationship Management, Party Portfolios, Sales Execution & Logistics Dispatch Reports
-              </p>
+
+            <div style={{ display: "flex", gap: "6px", background: "rgba(0,0,0,0.3)", padding: "4px", borderRadius: "12px", border: "1px solid var(--border-glass)", flexWrap: "wrap" }}>
+              {crmExecutives.map(exec => {
+                const isSelected = selectedExecutiveId === exec.id;
+                return (
+                  <button
+                    key={exec.id}
+                    onClick={() => setSelectedExecutiveId(exec.id)}
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: "8px",
+                      border: "none",
+                      background: isSelected ? "linear-gradient(135deg, #6366f1, #8b5cf6)" : "transparent",
+                      color: isSelected ? "#fff" : "var(--text-muted)",
+                      fontWeight: isSelected ? 700 : 500,
+                      fontSize: "0.82rem",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      boxShadow: isSelected ? "0 2px 10px rgba(99, 102, 241, 0.4)" : "none",
+                      transition: "all 0.2s ease"
+                    }}
+                  >
+                    <User size={13} />
+                    <span>{exec.name}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Executive Switcher Bar - Only Visible to Superadmin / Owner */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-          {isElevated ? (
-            <>
-              <div style={{ display: "flex", background: "rgba(0,0,0,0.3)", padding: "4px", borderRadius: "12px", border: "1px solid var(--border-glass)" }}>
-                <button
-                  onClick={() => setSelectedExecutiveId("all")}
-                  style={{
-                    padding: "6px 14px",
-                    borderRadius: "8px",
-                    border: "none",
-                    background: selectedExecutiveId === "all" ? "linear-gradient(135deg, #0284c7, #38bdf8)" : "transparent",
-                    color: selectedExecutiveId === "all" ? "#fff" : "var(--text-muted)",
-                    fontWeight: selectedExecutiveId === "all" ? 700 : 500,
-                    fontSize: "0.82rem",
-                    cursor: "pointer",
-                    transition: "all 0.2s ease"
-                  }}
-                >
-                  🌐 All CRM (Company Overview)
-                </button>
-              </div>
-
-              <div style={{ display: "flex", gap: "6px", background: "rgba(0,0,0,0.3)", padding: "4px", borderRadius: "12px", border: "1px solid var(--border-glass)", flexWrap: "wrap" }}>
-                {crmExecutives.map(exec => {
-                  const isSelected = selectedExecutiveId === exec.id;
-                  return (
-                    <button
-                      key={exec.id}
-                      onClick={() => setSelectedExecutiveId(exec.id)}
-                      style={{
-                        padding: "6px 14px",
-                        borderRadius: "8px",
-                        border: "none",
-                        background: isSelected ? "linear-gradient(135deg, #6366f1, #8b5cf6)" : "transparent",
-                        color: isSelected ? "#fff" : "var(--text-muted)",
-                        fontWeight: isSelected ? 700 : 500,
-                        fontSize: "0.82rem",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        boxShadow: isSelected ? "0 2px 10px rgba(99, 102, 241, 0.4)" : "none",
-                        transition: "all 0.2s ease"
-                      }}
-                    >
-                      <User size={13} />
-                      <span>{exec.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(99, 102, 241, 0.15)", border: "1px solid rgba(99, 102, 241, 0.3)", padding: "6px 14px", borderRadius: "10px", color: "#a5b4fc", fontWeight: 700, fontSize: "0.85rem" }}>
-              <User size={15} /> <span>{currentUser?.name || "My CRM Workspace"} (Assigned Accounts)</span>
-            </div>
-          )}
-
-          {/* Global CRM Date Filter */}
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginLeft: "auto" }}>
-            <DateRangeFilter
-              startDate={globalStartDate}
-              endDate={globalEndDate}
-              onStartDateChange={setGlobalStartDate}
-              onEndDateChange={setGlobalEndDate}
-              onClear={() => {
-                setGlobalStartDate("");
-                setGlobalEndDate("");
+        {/* Global Date Filter */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginLeft: isElevated ? "0" : "auto" }}>
+          <DateRangeFilter
+            startDate={globalStartDate}
+            endDate={globalEndDate}
+            onStartDateChange={setGlobalStartDate}
+            onEndDateChange={setGlobalEndDate}
+            onClear={() => {
+              setGlobalStartDate("");
+              setGlobalEndDate("");
+            }}
+            placeholder="Filter by Date"
+            align="right"
+          />
+          <div style={{ display: "flex", gap: "4px" }}>
+            <button
+              onClick={() => {
+                const now = new Date();
+                const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+                const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+                setGlobalStartDate(firstDay);
+                setGlobalEndDate(lastDay);
               }}
-              placeholder="Filter by Date"
-              align="right"
-            />
-            <div style={{ display: "flex", gap: "4px" }}>
+              className="btn btn-secondary btn-sm"
+              style={{ fontSize: "0.75rem", padding: "5px 10px" }}
+            >
+              This Month
+            </button>
+            <button
+              onClick={() => {
+                const now = new Date();
+                const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10);
+                const lastDay = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0, 10);
+                setGlobalStartDate(firstDay);
+                setGlobalEndDate(lastDay);
+              }}
+              className="btn btn-secondary btn-sm"
+              style={{ fontSize: "0.75rem", padding: "5px 10px" }}
+            >
+              Last Month
+            </button>
+            {(globalStartDate || globalEndDate) && (
               <button
                 onClick={() => {
-                  const now = new Date();
-                  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-                  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
-                  setGlobalStartDate(firstDay);
-                  setGlobalEndDate(lastDay);
+                  setGlobalStartDate("");
+                  setGlobalEndDate("");
                 }}
                 className="btn btn-secondary btn-sm"
                 style={{ fontSize: "0.75rem", padding: "5px 10px" }}
               >
-                This Month
+                Clear Date
               </button>
-              {(globalStartDate || globalEndDate) && (
-                <button
-                  onClick={() => {
-                    setGlobalStartDate("");
-                    setGlobalEndDate("");
-                  }}
-                  className="btn btn-secondary btn-sm"
-                  style={{ fontSize: "0.75rem", padding: "5px 10px" }}
-                >
-                  Clear Date
-                </button>
-              )}
-            </div>
+            )}
           </div>
         </div>
       </div>
@@ -956,9 +944,16 @@ export default function CrmDashboard({
                             <span style={{ fontWeight: 700, color: "var(--primary)", fontSize: "0.95rem" }}>
                               {party.name}
                             </span>
-                            <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
-                              <MapPin size={12} /> {party.city}, {party.state} • {party.gstin ? `GST: ${party.gstin}` : "No GSTIN"}
-                            </span>
+                            {([party.city, party.state].filter(Boolean).length > 0 || party.gstin) && (
+                              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
+                                {[party.city, party.state].filter(Boolean).length > 0 && (
+                                  <>
+                                    <MapPin size={12} /> {[party.city, party.state].filter(Boolean).join(", ")}
+                                  </>
+                                )}
+                                {party.gstin && ` • GST: ${party.gstin}`}
+                              </span>
+                            )}
                           </div>
                         </td>
 
@@ -1345,9 +1340,11 @@ export default function CrmDashboard({
                               <span style={{ fontWeight: 700, color: "var(--primary)", fontSize: "0.95rem" }}>
                                 {party.name}
                               </span>
-                              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
-                                <MapPin size={12} /> {party.city}, {party.state}
-                              </span>
+                              {[party.city, party.state].filter(Boolean).length > 0 && (
+                                <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
+                                  <MapPin size={12} /> {[party.city, party.state].filter(Boolean).join(", ")}
+                                </span>
+                              )}
                             </div>
                           </td>
 
@@ -2306,17 +2303,24 @@ function Party360Modal({
   }, [salesOrders, dispatches, crmPartyRemarks, items, party, last3Months]);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "880px", padding: "26px", maxHeight: "90vh", overflowY: "auto" }}>
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1050, position: "fixed", top: 0, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(5px)" }}>
+      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "880px", width: "100%", padding: "26px", maxHeight: "90vh", overflowY: "auto", margin: "auto" }}>
         
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px" }}>
           <div>
             <span className="badge badge-primary" style={{ marginBottom: "6px" }}>Party Performance & Remarks Studio</span>
             <h2 style={{ fontSize: "1.45rem", fontWeight: 800, color: "var(--primary)", margin: 0 }}>{party.name}</h2>
-            <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px" }}>
-              {party.city || "City"}, {party.state || "State"} • Contact: {party.contactPerson || "Contact"} ({party.phone || "Phone"})
-            </div>
+            {([party.city, party.state].filter(Boolean).length > 0 || party.contactPerson || party.phone) && (
+              <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px" }}>
+                {[party.city, party.state].filter(Boolean).length > 0 && (
+                  <span><MapPin size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: "4px" }} />{[party.city, party.state].filter(Boolean).join(", ")}</span>
+                )}
+                {(party.contactPerson || party.phone) && (
+                  <span>{[party.city, party.state].filter(Boolean).length > 0 ? " • " : ""}Contact: {[party.contactPerson, party.phone ? `(${party.phone})` : ""].filter(Boolean).join(" ")}</span>
+                )}
+              </div>
+            )}
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={22} /></button>
         </div>
@@ -2643,8 +2647,8 @@ function PartyMonthlyCategoryStudioModal({
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1050 }}>
-      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "1150px", padding: "26px", maxHeight: "92vh", overflowY: "auto" }}>
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1050, position: "fixed", top: 0, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(5px)" }}>
+      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "1150px", width: "100%", padding: "26px", maxHeight: "90vh", overflowY: "auto", margin: "auto" }}>
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px" }}>
           <div>
@@ -2652,9 +2656,11 @@ function PartyMonthlyCategoryStudioModal({
               <span className="badge badge-primary" style={{ fontWeight: 800 }}>
                 4-Month Category & Remarks Studio
               </span>
-              <span className="badge badge-secondary">
-                {party.city}, {party.state}
-              </span>
+              {[party.city, party.state].filter(Boolean).length > 0 && (
+                <span className="badge badge-secondary">
+                  {[party.city, party.state].filter(Boolean).join(", ")}
+                </span>
+              )}
             </div>
             <h2 style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--primary)", margin: 0 }}>
               {party.name}
@@ -2768,8 +2774,8 @@ function PartyMonthlyCategoryStudioModal({
 function CategoryRemarksHistoryModal({ target, currentUser, onDelete, onClose }) {
   const { showSuccessToast, showErrorToast } = useLoading();
   return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1100 }}>
-      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "600px", padding: "24px", maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1100, position: "fixed", top: 0, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(5px)" }}>
+      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "600px", width: "100%", padding: "24px", maxHeight: "85vh", display: "flex", flexDirection: "column", margin: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "2px" }}>
@@ -3490,8 +3496,8 @@ function AsmSalesDetailModal({
   }, [memberOrders]);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "1050px", padding: "26px", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1050, position: "fixed", top: 0, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(5px)" }}>
+      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "1050px", width: "100%", padding: "26px", maxHeight: "90vh", display: "flex", flexDirection: "column", margin: "auto" }}>
         
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px" }}>
@@ -3896,8 +3902,8 @@ function PartyCategoryRemarkModal({ target, remarks = [], currentUser, formatInr
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1100 }}>
-      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "650px", padding: "26px", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1100, position: "fixed", top: 0, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(5px)" }}>
+      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "650px", width: "100%", padding: "26px", maxHeight: "90vh", display: "flex", flexDirection: "column", margin: "auto" }}>
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px" }}>
           <div>

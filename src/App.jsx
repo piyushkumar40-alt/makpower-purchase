@@ -292,6 +292,48 @@ export default function App() {
 
   const lastRefreshTsRef = React.useRef(null);
 
+  const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
+  const [readNotificationIds, setReadNotificationIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("makpower_read_notifications") || "[]");
+    } catch (e) {
+      return [];
+    }
+  });
+
+  // Calculate real-time notifications for the active user (remarks, allocations)
+  const userNotifications = useMemo(() => {
+    if (!currentUser) return [];
+    const list = [];
+    const readSet = new Set(readNotificationIds);
+
+    if (["crm", "asm", "tsm", "superadmin", "owner"].includes(currentUser.role)) {
+      (crmPartyRemarks || []).forEach(r => {
+        const isOwnParty = (crmParties || []).some(p => 
+          (p.id === r.partyId || (p.name && r.partyName && p.name.trim().toLowerCase() === r.partyName.trim().toLowerCase())) &&
+          (currentUser.role === "superadmin" || currentUser.role === "owner" || p.assignedCrmId === currentUser.id || p.assignedAsmId === currentUser.id || p.assignedTsmId === currentUser.id)
+        );
+        const isNotAuthor = r.authorId !== currentUser.id && r.authorName !== currentUser.name;
+
+        if (isOwnParty && isNotAuthor) {
+          list.push({
+            id: `rem-${r.id}`,
+            title: `Remark on ${r.partyName}`,
+            description: `${r.authorName} (${r.authorRole?.toUpperCase()}): "${r.remark}" [${r.category}]`,
+            time: r.createdAt ? new Date(r.createdAt).toLocaleDateString("en-IN") : "Recent",
+            read: readSet.has(`rem-${r.id}`),
+            type: "remark",
+            data: r
+          });
+        }
+      });
+    }
+
+    return list.sort((a, b) => (b.data?.createdAt || "").localeCompare(a.data?.createdAt || ""));
+  }, [currentUser, crmPartyRemarks, crmParties, readNotificationIds]);
+
+  const unreadNotificationsCount = userNotifications.filter(n => !n.read).length;
+
   const sanitizeUserName = (name) => {
     if (!name) return "";
     let clean = String(name).trim();
@@ -1771,9 +1813,99 @@ export default function App() {
             </div>
 
             {/* Notification Bell with Badge */}
-            <div style={{ position: "relative", cursor: "pointer", color: "var(--text-main)", display: "flex", alignItems: "center" }}>
-              <Bell size={17} />
-              <span style={{ position: "absolute", top: "-2px", right: "-2px", width: "6px", height: "6px", borderRadius: "50%", background: "#ef4444" }}></span>
+            <div style={{ position: "relative" }}>
+              <div 
+                onClick={() => setShowNotificationDropdown(prev => !prev)}
+                style={{ position: "relative", cursor: "pointer", color: "var(--text-main)", display: "flex", alignItems: "center", padding: "4px" }}
+                title="Notifications"
+              >
+                <Bell size={18} />
+                {unreadNotificationsCount > 0 && (
+                  <span style={{ position: "absolute", top: "2px", right: "2px", width: "7px", height: "7px", borderRadius: "50%", background: "#ef4444", boxShadow: "0 0 4px #ef4444" }}></span>
+                )}
+              </div>
+
+              {showNotificationDropdown && (
+                <div 
+                  className="glass-panel card-fade-in"
+                  style={{
+                    position: "absolute",
+                    top: "32px",
+                    right: "-10px",
+                    width: "320px",
+                    maxHeight: "380px",
+                    overflowY: "auto",
+                    zIndex: 1200,
+                    padding: "14px",
+                    background: "var(--bg-card, #1e293b)",
+                    border: "1px solid var(--border-glass)",
+                    borderRadius: "14px",
+                    boxShadow: "0 10px 30px rgba(0,0,0,0.5)"
+                  }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ fontWeight: 800, fontSize: "0.85rem", color: "var(--text-main)" }}>Notifications</span>
+                      {unreadNotificationsCount > 0 && (
+                        <span className="badge badge-primary" style={{ fontSize: "0.7rem", padding: "1px 6px" }}>{unreadNotificationsCount} new</span>
+                      )}
+                    </div>
+                    {unreadNotificationsCount > 0 && (
+                      <button
+                        onClick={() => {
+                          const allIds = userNotifications.map(n => n.id);
+                          setReadNotificationIds(allIds);
+                          try { localStorage.setItem("makpower_read_notifications", JSON.stringify(allIds)); } catch(e) {}
+                        }}
+                        style={{ background: "none", border: "none", color: "#38bdf8", fontSize: "0.74rem", cursor: "pointer", fontWeight: 600 }}
+                      >
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+
+                  {userNotifications.length === 0 ? (
+                    <div style={{ padding: "24px 10px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
+                      <Bell size={24} style={{ marginBottom: "6px", opacity: 0.4 }} />
+                      <div>No new notifications</div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {userNotifications.map(n => (
+                        <div 
+                          key={n.id}
+                          onClick={() => {
+                            if (!n.read) {
+                              const next = [...readNotificationIds, n.id];
+                              setReadNotificationIds(next);
+                              try { localStorage.setItem("makpower_read_notifications", JSON.stringify(next)); } catch(e) {}
+                            }
+                            setActiveView("crm");
+                            setShowNotificationDropdown(false);
+                          }}
+                          style={{
+                            padding: "8px 10px",
+                            borderRadius: "8px",
+                            background: n.read ? "transparent" : "rgba(56, 189, 248, 0.08)",
+                            border: n.read ? "1px solid rgba(255,255,255,0.05)" : "1px solid rgba(56, 189, 248, 0.25)",
+                            cursor: "pointer",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "3px"
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--primary)" }}>{n.title}</span>
+                            <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>{n.time}</span>
+                          </div>
+                          <div style={{ fontSize: "0.75rem", color: "var(--text-main)", lineHeight: 1.3 }}>{n.description}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* User Avatar Badge matching mockup */}
@@ -1959,13 +2091,6 @@ export default function App() {
               <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#38bdf8", display: "inline-block" }}></span>
               <span>Secure Cloud Syncing...</span>
             </div>
-            <button
-              onClick={() => setLoading(false)}
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: "0.78rem", padding: "6px 16px", marginTop: "6px", opacity: 0.8 }}
-            >
-              Continue with Cached Data →
-            </button>
           </div>
           <style>{`
             @keyframes spin {
