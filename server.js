@@ -1539,15 +1539,20 @@ app.get("/api/state", async (req, res) => {
       let crmPartiesParams = [];
 
       if (isRestrictedRole && (userId || userName)) {
+        const cleanName = (userName || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
         crmPartiesQuery = `
           SELECT * FROM crm_parties 
           WHERE "assignedAsmId" = $1 
              OR "assignedTsmId" = $1 
-             OR ($2 <> '' AND LOWER(TRIM("assignedAsmName")) = LOWER(TRIM($2))) 
-             OR ($2 <> '' AND LOWER(TRIM("assignedTsmName")) = LOWER(TRIM($2)))
+             OR ($2 <> '' AND (
+                   LOWER(TRIM("assignedAsmName")) LIKE '%' || $2 || '%' 
+                OR LOWER(TRIM("assignedTsmName")) LIKE '%' || $2 || '%'
+                OR $2 LIKE '%' || LOWER(TRIM("assignedAsmName")) || '%'
+                OR $2 LIKE '%' || LOWER(TRIM("assignedTsmName")) || '%'
+             ))
           ORDER BY "name" ASC
         `;
-        crmPartiesParams = [userId || "", (userName || "").trim()];
+        crmPartiesParams = [userId || "", cleanName];
       }
 
       const [
@@ -1704,11 +1709,14 @@ app.get("/api/state", async (req, res) => {
     const data = readLocalJson();
     if (isRestrictedRole && (userId || userName)) {
       const effectiveId = userId || "";
-      const effectiveName = (userName || "").trim().toLowerCase();
-      const myParties = (data.crmParties || []).filter(p => 
-        p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId ||
-        (effectiveName && (p.assignedAsmName?.trim().toLowerCase() === effectiveName || p.assignedTsmName?.trim().toLowerCase() === effectiveName))
-      );
+      const cleanName = (userName || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+      const myParties = (data.crmParties || []).filter(p => {
+        const matchId = effectiveId && (p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId);
+        const pAsm = (p.assignedAsmName || "").trim().toLowerCase();
+        const pTsm = (p.assignedTsmName || "").trim().toLowerCase();
+        const matchName = cleanName && (pAsm.includes(cleanName) || pTsm.includes(cleanName) || cleanName.includes(pAsm) || cleanName.includes(pTsm));
+        return matchId || matchName;
+      });
       const partyIdSet = new Set(myParties.map(p => p.id));
       const partyNameSet = new Set(myParties.map(p => (p.name || "").trim().toLowerCase()));
 
@@ -2400,9 +2408,9 @@ app.get("/api/crm/parties", async (req, res) => {
       }
       if (isRestrictedRole) {
         const effectiveId = asmId || tsmId || userId || "";
-        const effectiveName = (userName || "").trim().toLowerCase();
-        conditions.push(`("assignedAsmId" = $${idx} OR "assignedTsmId" = $${idx} OR ($${idx + 1} <> '' AND LOWER(TRIM("assignedAsmName")) = $${idx + 1}) OR ($${idx + 1} <> '' AND LOWER(TRIM("assignedTsmName")) = $${idx + 1}))`);
-        values.push(effectiveId, effectiveName);
+        const cleanName = (userName || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+        conditions.push(`("assignedAsmId" = $${idx} OR "assignedTsmId" = $${idx} OR ($${idx + 1} <> '' AND (LOWER(TRIM("assignedAsmName")) LIKE '%' || $${idx + 1} || '%' OR LOWER(TRIM("assignedTsmName")) LIKE '%' || $${idx + 1} || '%' OR $${idx + 1} LIKE '%' || LOWER(TRIM("assignedAsmName")) || '%' OR $${idx + 1} LIKE '%' || LOWER(TRIM("assignedTsmName")) || '%')))`);
+        values.push(effectiveId, cleanName);
         idx += 2;
       }
 
@@ -2422,12 +2430,15 @@ app.get("/api/crm/parties", async (req, res) => {
     let list = data.crmParties || [];
     if (crmId) list = list.filter(p => p.assignedCrmId === crmId);
     if (isRestrictedRole) {
-      const effectiveId = asmId || tsmId || userId;
-      const effectiveName = (userName || "").trim().toLowerCase();
-      list = list.filter(p => 
-        p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId || 
-        (effectiveName && (p.assignedAsmName?.trim().toLowerCase() === effectiveName || p.assignedTsmName?.trim().toLowerCase() === effectiveName))
-      );
+      const effectiveId = asmId || tsmId || userId || "";
+      const cleanName = (userName || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+      list = list.filter(p => {
+        const matchId = effectiveId && (p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId);
+        const pAsm = (p.assignedAsmName || "").trim().toLowerCase();
+        const pTsm = (p.assignedTsmName || "").trim().toLowerCase();
+        const matchName = cleanName && (pAsm.includes(cleanName) || pTsm.includes(cleanName) || cleanName.includes(pAsm) || cleanName.includes(pTsm));
+        return matchId || matchName;
+      });
     }
     res.json({ success: true, parties: list });
   }

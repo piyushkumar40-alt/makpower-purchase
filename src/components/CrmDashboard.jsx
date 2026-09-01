@@ -180,21 +180,30 @@ export default function CrmDashboard({
 
   // Filtered Parties based on selected executive
   const currentParties = useMemo(() => {
+    if (isAsmOrTsm) return crmParties;
     if (selectedExecutiveId === "all") return crmParties;
+    const execName = (activeExecutive?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
     return crmParties.filter(p => {
       const matchId = p.assignedCrmId === selectedExecutiveId || p.assignedAsmId === selectedExecutiveId || p.assignedTsmId === selectedExecutiveId;
-      const matchName = p.assignedCrmName && activeExecutive && p.assignedCrmName.trim().toLowerCase() === (activeExecutive.name || "").trim().toLowerCase();
+      const pCrm = (p.assignedCrmName || "").trim().toLowerCase();
+      const pAsm = (p.assignedAsmName || "").trim().toLowerCase();
+      const pTsm = (p.assignedTsmName || "").trim().toLowerCase();
+      const matchName = execName && (pCrm.includes(execName) || pAsm.includes(execName) || pTsm.includes(execName) || execName.includes(pCrm) || execName.includes(pAsm) || execName.includes(pTsm));
       return matchId || matchName;
     });
-  }, [crmParties, selectedExecutiveId, activeExecutive]);
+  }, [crmParties, selectedExecutiveId, activeExecutive, isAsmOrTsm]);
 
   // Filtered Sales Orders (matched by executive ID or party name/ID, and global dates)
   const currentSalesOrders = useMemo(() => {
     let list = allUnifiedSalesOrders;
-    if (selectedExecutiveId !== "all") {
+    if (!isAsmOrTsm && selectedExecutiveId !== "all") {
+      const execName = (activeExecutive?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       list = list.filter(so => {
         if (so.assignedCrmId === selectedExecutiveId || so.assignedAsmId === selectedExecutiveId || so.assignedTsmId === selectedExecutiveId) return true;
         if (currentParties.some(p => matchParty(p.name, so.partyName, p.id, so.partyId))) return true;
+        const soAsm = (so.assignedAsmName || "").trim().toLowerCase();
+        const soTsm = (so.assignedTsmName || "").trim().toLowerCase();
+        if (execName && (soAsm.includes(execName) || soTsm.includes(execName))) return true;
         return false;
       });
     }
@@ -202,15 +211,19 @@ export default function CrmDashboard({
       list = list.filter(so => isDateInBetween(so.orderDate, globalStartDate, globalEndDate));
     }
     return list;
-  }, [allUnifiedSalesOrders, selectedExecutiveId, currentParties, globalStartDate, globalEndDate]);
+  }, [allUnifiedSalesOrders, selectedExecutiveId, currentParties, globalStartDate, globalEndDate, isAsmOrTsm, activeExecutive]);
 
   // Filtered Dispatches (matched by executive ID or party name/ID, and global dates)
   const currentDispatches = useMemo(() => {
     let list = allUnifiedDispatches;
-    if (selectedExecutiveId !== "all") {
+    if (!isAsmOrTsm && selectedExecutiveId !== "all") {
+      const execName = (activeExecutive?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       list = list.filter(d => {
         if (d.assignedCrmId === selectedExecutiveId || d.assignedAsmId === selectedExecutiveId || d.assignedTsmId === selectedExecutiveId) return true;
         if (currentParties.some(p => matchParty(p.name, d.partyName, p.id, d.partyId))) return true;
+        const dAsm = (d.assignedAsmName || "").trim().toLowerCase();
+        const dTsm = (d.assignedTsmName || "").trim().toLowerCase();
+        if (execName && (dAsm.includes(execName) || dTsm.includes(execName))) return true;
         return false;
       });
     }
@@ -218,7 +231,7 @@ export default function CrmDashboard({
       list = list.filter(d => isDateInBetween(d.dispatchDate, globalStartDate, globalEndDate));
     }
     return list;
-  }, [allUnifiedDispatches, selectedExecutiveId, currentParties, globalStartDate, globalEndDate]);
+  }, [allUnifiedDispatches, selectedExecutiveId, currentParties, globalStartDate, globalEndDate, isAsmOrTsm, activeExecutive]);
 
   // ASMs and TSMs under this executive or all
   const teamMembers = useMemo(() => {
@@ -292,12 +305,12 @@ export default function CrmDashboard({
         p.gstin?.toLowerCase().includes(partySearch.toLowerCase());
 
       const matchState = partyStateFilter === "all" || p.state === partyStateFilter;
-      const matchAsm = partyAsmFilter === "all" || p.assignedAsmId === partyAsmFilter;
-      const matchTsm = partyTsmFilter === "all" || p.assignedTsmId === partyTsmFilter;
+      const matchAsm = isAsmOrTsm || partyAsmFilter === "all" || p.assignedAsmId === partyAsmFilter;
+      const matchTsm = isAsmOrTsm || partyTsmFilter === "all" || p.assignedTsmId === partyTsmFilter;
 
       return matchSearch && matchState && matchAsm && matchTsm;
     });
-  }, [currentParties, partySearch, partyStateFilter, partyAsmFilter, partyTsmFilter]);
+  }, [currentParties, partySearch, partyStateFilter, partyAsmFilter, partyTsmFilter, isAsmOrTsm]);
 
   // Parties Pagination State (Default 100 rows per page)
   const [partiesPage, setPartiesPage] = useState(1);
