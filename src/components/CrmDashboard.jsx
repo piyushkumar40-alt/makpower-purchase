@@ -75,6 +75,7 @@ export default function CrmDashboard({
   }, [selectedExecutiveId, crmExecutives, users, currentUser]);
 
   const canViewFinancials = currentUser?.role === "superadmin" || currentUser?.role === "owner";
+  const isAsmOrTsm = currentUser?.role === "asm" || currentUser?.role === "tsm";
 
   // Navigation Tabs: "parties" | "team" | "salesreport" | "dispatchreport" | "orders"
   const [activeTab, setActiveTab] = useState("parties");
@@ -694,21 +695,23 @@ export default function CrmDashboard({
           </div>
         </div>
 
-        {/* Card 4: Sales Team Strength */}
-        <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px", borderRadius: "14px" }}>
-          <div style={{ padding: "14px", borderRadius: "12px", background: "rgba(139, 92, 246, 0.12)", color: "#a855f7" }}>
-            <Users size={26} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Field Sales Team</div>
-            <div style={{ fontSize: "1.65rem", fontWeight: 800, color: "var(--text-main)" }}>
-              {teamMembers.length} <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Members</span>
+        {/* Card 4: Sales Team Strength (Hidden for ASM / TSM) */}
+        {!isAsmOrTsm && (
+          <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px", borderRadius: "14px" }}>
+            <div style={{ padding: "14px", borderRadius: "12px", background: "rgba(139, 92, 246, 0.12)", color: "#a855f7" }}>
+              <Users size={26} />
             </div>
-            <div style={{ fontSize: "0.75rem", color: "#a855f7", marginTop: "2px" }}>
-              {teamMembers.filter(t => t.role === "asm").length} ASMs • {teamMembers.filter(t => t.role === "tsm").length} TSMs
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Field Sales Team</div>
+              <div style={{ fontSize: "1.65rem", fontWeight: 800, color: "var(--text-main)" }}>
+                {teamMembers.length} <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Members</span>
+              </div>
+              <div style={{ fontSize: "0.75rem", color: "#a855f7", marginTop: "2px" }}>
+                {teamMembers.filter(t => t.role === "asm").length} ASMs • {teamMembers.filter(t => t.role === "tsm").length} TSMs
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
       </div>
 
@@ -722,13 +725,15 @@ export default function CrmDashboard({
           <Building2 size={16} /> <span>My Parties ({filteredParties.length})</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab("team")}
-          className={`nav-tab-item ${activeTab === "team" ? "active" : ""}`}
-          style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 18px", borderRadius: "10px", fontSize: "0.92rem", fontWeight: 600 }}
-        >
-          <Users size={16} /> <span>Sales Team (ASM / TSM) ({teamMembers.length})</span>
-        </button>
+        {!isAsmOrTsm && (
+          <button
+            onClick={() => setActiveTab("team")}
+            className={`nav-tab-item ${activeTab === "team" ? "active" : ""}`}
+            style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 18px", borderRadius: "10px", fontSize: "0.92rem", fontWeight: 600 }}
+          >
+            <Users size={16} /> <span>Sales Team (ASM / TSM) ({teamMembers.length})</span>
+          </button>
+        )}
 
         <button
           onClick={() => setActiveTab("monthly_category")}
@@ -921,20 +926,22 @@ export default function CrmDashboard({
                             <button
                               onClick={() => setSelectedPartyFor360(party)}
                               className="btn btn-secondary btn-sm"
-                              title="View Party 360 Profile"
-                              style={{ padding: "4px 8px", fontSize: "0.78rem" }}
+                              title="View 3-Month Sales & Category Remarks"
+                              style={{ padding: "4px 10px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 600 }}
                             >
-                              <Eye size={13} /> 360°
+                              <Eye size={13} /> {isAsmOrTsm ? "View Sales & Remarks" : "360° Profile"}
                             </button>
 
-                            <button
-                              onClick={() => setEditingParty(party)}
-                              className="btn btn-secondary btn-sm"
-                              title="Edit Party Details"
-                              style={{ padding: "4px 8px", fontSize: "0.78rem" }}
-                            >
-                              <Edit2 size={13} />
-                            </button>
+                            {!isAsmOrTsm && (
+                              <button
+                                onClick={() => setEditingParty(party)}
+                                className="btn btn-secondary btn-sm"
+                                title="Edit Party Details"
+                                style={{ padding: "4px 8px", fontSize: "0.78rem" }}
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                            )}
 
                             {isAdminOrOwner && (
                               <button
@@ -1787,6 +1794,11 @@ export default function CrmDashboard({
           party={selectedPartyFor360}
           salesOrders={allUnifiedSalesOrders.filter(o => matchParty(o.partyName, selectedPartyFor360.name, o.partyId, selectedPartyFor360.id))}
           dispatches={allUnifiedDispatches.filter(d => matchParty(d.partyName, selectedPartyFor360.name, d.partyId, selectedPartyFor360.id))}
+          crmPartyRemarks={crmPartyRemarks}
+          items={items}
+          currentUser={currentUser}
+          onSavePartyRemark={onSavePartyRemark}
+          onDeletePartyRemark={onDeletePartyRemark}
           canViewFinancials={canViewFinancials}
           onClose={() => setSelectedPartyFor360(null)}
         />
@@ -2096,27 +2108,127 @@ function PartyModal({ party, crmExecutives, asmList, tsmList, currentExecutive, 
 }
 
 // ==================== SUB-COMPONENT: PARTY 360° PROFILE MODAL ====================
-function Party360Modal({ party, salesOrders, dispatches, canViewFinancials = false, onClose }) {
+function Party360Modal({ 
+  party, 
+  salesOrders = [], 
+  dispatches = [], 
+  crmPartyRemarks = [],
+  items = [],
+  currentUser,
+  onSavePartyRemark,
+  onDeletePartyRemark,
+  canViewFinancials = false, 
+  onClose 
+}) {
+  const [modalTab, setModalTab] = useState("category_matrix"); // "category_matrix" | "orders"
+  const [activeRemarkModalTarget, setActiveRemarkModalTarget] = useState(null);
+
   const totalSpend = salesOrders.reduce((a, b) => a + (parseFloat(b.totalInr) || 0), 0);
   const totalUnits = salesOrders.reduce((a, b) => a + (parseInt(b.orderQty) || 0), 0);
   const totalDelivered = dispatches.reduce((a, b) => a + (parseInt(b.dispatchedQty) || 0), 0);
 
+  // Dynamic Last 3 Months
+  const last3Months = useMemo(() => {
+    const months = [];
+    const now = new Date();
+    for (let i = 2; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const yr = d.getFullYear();
+      const mo = String(d.getMonth() + 1).padStart(2, "0");
+      const key = `${yr}-${mo}`;
+      const label = d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+      months.push({ key, label, fullMonth: key });
+    }
+    return months;
+  }, []);
+
+  // 3-Month Category-Wise aggregation for this party
+  const partyCategoryRows = useMemo(() => {
+    const map = new Map();
+
+    salesOrders.forEach(o => {
+      let cat = o.category;
+      if (!cat || cat === "General" || cat === "Unspecified") {
+        const found = items.find(it => it.name === o.itemModel || it.id === o.itemId);
+        cat = found?.category || "General";
+      }
+      const oMonth = (o.orderDate || "").slice(0, 7) || last3Months[2].key;
+      if (!map.has(cat)) {
+        map.set(cat, {
+          category: cat,
+          m1: 0,
+          m2: 0,
+          m3: 0,
+          totalQty: 0,
+          totalRevenue: 0
+        });
+      }
+      const row = map.get(cat);
+      const qty = parseInt(o.orderQty) || 0;
+      if (oMonth === last3Months[0].key) row.m1 += qty;
+      else if (oMonth === last3Months[1].key) row.m2 += qty;
+      else if (oMonth === last3Months[2].key) row.m3 += qty;
+      row.totalQty += qty;
+      row.totalRevenue += parseFloat(o.totalInr) || 0;
+    });
+
+    // Also include dispatches
+    dispatches.forEach(d => {
+      const found = items.find(it => it.name === d.itemModel || it.id === d.itemId);
+      const cat = found?.category || "General";
+      const dMonth = (d.dispatchDate || "").slice(0, 7) || last3Months[2].key;
+      if (!map.has(cat)) {
+        map.set(cat, { category: cat, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
+      }
+      const row = map.get(cat);
+      const qty = parseInt(d.dispatchedQty) || 0;
+      if (salesOrders.length === 0) {
+        if (dMonth === last3Months[0].key) row.m1 += qty;
+        else if (dMonth === last3Months[1].key) row.m2 += qty;
+        else if (dMonth === last3Months[2].key) row.m3 += qty;
+        row.totalQty += qty;
+      }
+    });
+
+    // Also include categories from existing remarks
+    (crmPartyRemarks || []).forEach(r => {
+      const matchP = r.partyId === party.id || (r.partyName && r.partyName.trim().toLowerCase() === (party.name || "").trim().toLowerCase());
+      if (matchP && r.category) {
+        if (!map.has(r.category)) {
+          map.set(r.category, { category: r.category, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
+        }
+      }
+    });
+
+    // Default categories if nothing logged yet
+    if (map.size === 0) {
+      const standardCats = ["Fast Charger", "Data Cable", "Neckband", "TWS Earbuds", "Power Bank", "Earphones", "Batteries"];
+      standardCats.forEach(cat => {
+        map.set(cat, { category: cat, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
+      });
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.totalQty - a.totalQty || a.category.localeCompare(b.category));
+  }, [salesOrders, dispatches, crmPartyRemarks, items, party, last3Months]);
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "750px", padding: "28px", maxHeight: "90vh", overflowY: "auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px" }}>
+      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "880px", padding: "26px", maxHeight: "90vh", overflowY: "auto" }}>
+        
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px" }}>
           <div>
-            <span className="badge badge-primary" style={{ marginBottom: "6px" }}>Party 360° Profile</span>
-            <h2 style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--primary)", margin: 0 }}>{party.name}</h2>
+            <span className="badge badge-primary" style={{ marginBottom: "6px" }}>Party Performance & Remarks Studio</span>
+            <h2 style={{ fontSize: "1.45rem", fontWeight: 800, color: "var(--primary)", margin: 0 }}>{party.name}</h2>
             <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px" }}>
-              {party.city}, {party.state} • Contact: {party.contactPerson} ({party.phone})
+              {party.city || "City"}, {party.state || "State"} • Contact: {party.contactPerson || "Contact"} ({party.phone || "Phone"})
             </div>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={22} /></button>
         </div>
 
         {/* Overview Stats */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "12px", marginBottom: "20px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "12px", marginBottom: "18px" }}>
           {canViewFinancials && (
             <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
               <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total Business</div>
@@ -2125,42 +2237,165 @@ function Party360Modal({ party, salesOrders, dispatches, canViewFinancials = fal
           )}
           <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total Ordered</div>
-            <div style={{ fontSize: "1.2rem", fontWeight: 800 }}>{totalUnits.toLocaleString()} Pcs</div>
+            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "var(--primary)" }}>{totalUnits.toLocaleString()} Pcs</div>
           </div>
           <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Dispatched</div>
             <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#f59e0b" }}>{totalDelivered.toLocaleString()} Pcs</div>
           </div>
+          <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Categories Active</div>
+            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#a855f7" }}>{partyCategoryRows.filter(r => r.totalQty > 0).length} Categories</div>
+          </div>
         </div>
 
-        {/* Order History Table */}
-        <h4 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "10px", color: "var(--text-main)" }}>Order History & Dispatches</h4>
-        <div style={{ overflowX: "auto" }}>
-          <table className="table" style={{ width: "100%", fontSize: "0.85rem" }}>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Order No</th>
-                <th>Item Model</th>
-                <th>Qty</th>
-                {canViewFinancials && <th>Total (₹)</th>}
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {salesOrders.map(o => (
-                <tr key={o.id}>
-                  <td>{o.orderDate}</td>
-                  <td><code>{o.orderNo}</code></td>
-                  <td style={{ fontWeight: 600 }}>{o.itemModel}</td>
-                  <td>{o.orderQty}</td>
-                  {canViewFinancials && <td style={{ fontWeight: 700, color: "var(--success)" }}>₹{(o.totalInr || 0).toLocaleString()}</td>}
-                  <td><span className={`badge ${o.status === "Dispatched" ? "badge-success" : "badge-secondary"}`}>{o.status}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* Tab Switcher inside Party Modal */}
+        <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "10px", marginBottom: "16px" }}>
+          <button
+            onClick={() => setModalTab("category_matrix")}
+            className={`tab-btn ${modalTab === "category_matrix" ? "active" : ""}`}
+            style={{ fontSize: "0.85rem", padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
+          >
+            <MessageSquare size={14} /> 3-Month Category Sales & Remarks
+          </button>
+          <button
+            onClick={() => setModalTab("orders")}
+            className={`tab-btn ${modalTab === "orders" ? "active" : ""}`}
+            style={{ fontSize: "0.85rem", padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: "6px" }}
+          >
+            <FileText size={14} /> Order History & Dispatches ({salesOrders.length})
+          </button>
         </div>
+
+        {/* TAB 1: 3-Month Category-Wise Sales & Remarks Matrix */}
+        {modalTab === "category_matrix" && (
+          <div style={{ overflowX: "auto" }}>
+            <div style={{ marginBottom: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                Track order volumes across the last 3 months and record field remarks category-wise.
+              </span>
+            </div>
+
+            <table className="table" style={{ width: "100%", fontSize: "0.84rem" }}>
+              <thead>
+                <tr>
+                  <th style={{ width: "22%" }}>Category</th>
+                  <th style={{ width: "14%", textAlign: "right" }}>{last3Months[0].label}</th>
+                  <th style={{ width: "14%", textAlign: "right" }}>{last3Months[1].label}</th>
+                  <th style={{ width: "14%", textAlign: "right" }}>{last3Months[2].label}</th>
+                  <th style={{ width: "14%", textAlign: "right" }}>3-Mo Total</th>
+                  <th style={{ width: "22%", textAlign: "center" }}>Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {partyCategoryRows.map(row => {
+                  const categoryRemarks = (crmPartyRemarks || []).filter(r => 
+                    (r.partyId === party.id || (r.partyName && r.partyName.trim().toLowerCase() === (party.name || "").trim().toLowerCase())) && 
+                    r.category === row.category
+                  );
+                  const latest = categoryRemarks[0];
+
+                  return (
+                    <tr key={row.category}>
+                      <td>
+                        <strong style={{ color: "var(--text-main)" }}>{row.category}</strong>
+                      </td>
+                      <td style={{ textAlign: "right", color: row.m1 > 0 ? "var(--text-main)" : "var(--text-muted)" }}>
+                        {row.m1 > 0 ? `${row.m1.toLocaleString()} Pcs` : "—"}
+                      </td>
+                      <td style={{ textAlign: "right", color: row.m2 > 0 ? "var(--text-main)" : "var(--text-muted)" }}>
+                        {row.m2 > 0 ? `${row.m2.toLocaleString()} Pcs` : "—"}
+                      </td>
+                      <td style={{ textAlign: "right", color: row.m3 > 0 ? "var(--text-main)" : "var(--text-muted)" }}>
+                        {row.m3 > 0 ? `${row.m3.toLocaleString()} Pcs` : "—"}
+                      </td>
+                      <td style={{ textAlign: "right", fontWeight: 800, color: row.totalQty > 0 ? "var(--primary)" : "var(--text-muted)" }}>
+                        {row.totalQty > 0 ? `${row.totalQty.toLocaleString()} Pcs` : "0 Pcs"}
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "center" }}>
+                          {latest && (
+                            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontStyle: "italic", maxWidth: "160px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              "{latest.remark}"
+                            </div>
+                          )}
+                          <button
+                            onClick={() => setActiveRemarkModalTarget({
+                              partyId: party.id,
+                              partyName: party.name,
+                              category: row.category,
+                              month: last3Months[2].key,
+                              totalOrderQty: row.totalQty,
+                              totalRevenue: row.totalRevenue
+                            })}
+                            className="btn btn-secondary btn-sm"
+                            style={{ fontSize: "0.74rem", padding: "3px 8px", display: "inline-flex", alignItems: "center", gap: "4px", color: categoryRemarks.length > 0 ? "#38bdf8" : undefined }}
+                          >
+                            <MessageSquare size={12} /> {categoryRemarks.length > 0 ? `Remarks (${categoryRemarks.length})` : "+ Add Remark"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* TAB 2: Order History & Dispatches */}
+        {modalTab === "orders" && (
+          <div style={{ overflowX: "auto" }}>
+            <table className="table" style={{ width: "100%", fontSize: "0.84rem" }}>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Order / Ref No</th>
+                  <th>Item Model</th>
+                  <th style={{ textAlign: "right" }}>Qty</th>
+                  {canViewFinancials && <th>Total (₹)</th>}
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {salesOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={canViewFinancials ? 6 : 5} style={{ textAlign: "center", padding: "26px", color: "var(--text-muted)" }}>
+                      No orders logged for this party yet.
+                    </td>
+                  </tr>
+                ) : (
+                  salesOrders.map(o => (
+                    <tr key={o.id}>
+                      <td>{o.orderDate}</td>
+                      <td><code>{o.orderNo}</code></td>
+                      <td style={{ fontWeight: 600, color: "var(--primary)" }}>{o.itemModel}</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>{o.orderQty?.toLocaleString()} Pcs</td>
+                      {canViewFinancials && <td style={{ fontWeight: 700, color: "var(--success)" }}>₹{(o.totalInr || 0).toLocaleString()}</td>}
+                      <td><span className={`badge ${o.status === "Dispatched" ? "badge-success" : "badge-secondary"}`}>{o.status}</span></td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Sub-modal for Remark creation inside Party 360 */}
+        {activeRemarkModalTarget && (
+          <PartyCategoryRemarkModal
+            target={activeRemarkModalTarget}
+            remarks={(crmPartyRemarks || []).filter(r => 
+              (r.partyId === activeRemarkModalTarget.partyId || (r.partyName && r.partyName.trim().toLowerCase() === (activeRemarkModalTarget.partyName || "").trim().toLowerCase())) && 
+              r.category === activeRemarkModalTarget.category
+            )}
+            currentUser={currentUser}
+            onSave={onSavePartyRemark}
+            onDelete={onDeletePartyRemark}
+            onClose={() => setActiveRemarkModalTarget(null)}
+          />
+        )}
+
       </div>
     </div>
   );
