@@ -1674,6 +1674,8 @@ export default function CrmDashboard({
                 <Download size={14} /> Export Dispatches (CSV)
               </button>
             </div>
+          </div>
+
           {/* Multi-Search Criteria Filter Panel */}
           <div className="glass-panel" style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "12px", border: "1px solid rgba(56, 189, 248, 0.2)", background: "rgba(15, 23, 42, 0.55)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
