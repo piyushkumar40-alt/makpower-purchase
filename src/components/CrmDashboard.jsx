@@ -359,6 +359,44 @@ export default function CrmDashboard({
     return Array.from(new Set(currentSalesOrders.map(o => o.category).filter(Boolean)));
   }, [currentSalesOrders]);
 
+  // Finished Goods (FG) Category filter logic
+  const fgCategoryList = useMemo(() => {
+    const set = new Set();
+    items.forEach(it => {
+      const type = (it.itemType || "").trim().toUpperCase();
+      if (type === "FG" || (!type && it.category)) {
+        if (it.category && it.category.trim()) {
+          set.add(it.category.trim());
+        }
+      }
+    });
+
+    // Standard Makpower Finished Goods (FG) categories
+    const standardFg = [
+      "Fast Charger", "Data Cable", "Neckband", "TWS Earbuds", 
+      "Power Bank", "Earphones", "Batteries", "Speaker", 
+      "Smart Watch", "Car Charger", "Mobile Accessories"
+    ];
+    standardFg.forEach(c => set.add(c));
+    return set;
+  }, [items]);
+
+  const isFgCategory = (cat) => {
+    if (!cat) return false;
+    const clean = cat.trim();
+    if (clean === "General" || clean === "Unspecified") return false;
+    const lower = clean.toLowerCase();
+    // Exclude RM / non-FG indicators
+    if (lower.includes("raw") || lower.includes("material") || lower.includes("pcb") || lower.includes("ic ") || lower.includes("packing") || lower.includes("box") || lower.includes("carton") || lower.includes("wire") || lower.includes("hardware")) {
+      return false;
+    }
+    // Check in FG set or allow standard sales category
+    for (const fg of fgCategoryList) {
+      if (fg.toLowerCase() === lower) return true;
+    }
+    return true;
+  };
+
   // ==================== MONTH & CATEGORY MATRIX DATA + REMARKS ====================
   const [activeRemarkPartyCategory, setActiveRemarkPartyCategory] = useState(null);
   const [matrixMonthFilter, setMatrixMonthFilter] = useState("all");
@@ -375,8 +413,11 @@ export default function CrmDashboard({
       let cat = o.category;
       if (!cat || cat === "General" || cat === "Unspecified") {
         const foundItem = items.find(it => it.name === o.itemModel || it.id === o.itemId);
-        cat = foundItem?.category || "General";
+        cat = foundItem?.category || "";
       }
+
+      // Restrict strictly to FG categories
+      if (!cat || !isFgCategory(cat)) return;
 
       const pId = o.partyId || "unknown";
       const pName = o.partyName || "Unknown Party";
@@ -402,8 +443,10 @@ export default function CrmDashboard({
       cur.orderCount += 1;
     });
 
-    // Also ensure parties with remarks in a category/month are represented
+    // Also ensure parties with remarks in an FG category/month are represented
     (crmPartyRemarks || []).forEach(r => {
+      if (!r.category || !isFgCategory(r.category)) return;
+
       const key = `${r.partyId}___${r.category}___${r.month}`;
       if (!map.has(key)) {
         map.set(key, {
@@ -422,7 +465,7 @@ export default function CrmDashboard({
     });
 
     return Array.from(map.values()).sort((a, b) => b.month.localeCompare(a.month) || a.partyName.localeCompare(b.partyName));
-  }, [currentSalesOrders, items, crmPartyRemarks]);
+  }, [currentSalesOrders, items, crmPartyRemarks, fgCategoryList]);
 
   const availableMatrixMonths = useMemo(() => {
     const set = new Set();
@@ -432,10 +475,10 @@ export default function CrmDashboard({
 
   const availableMatrixCategories = useMemo(() => {
     const set = new Set();
-    monthCategoryMatrixData.forEach(r => { if (r.category) set.add(r.category); });
-    items.forEach(i => { if (i.category) set.add(i.category); });
+    monthCategoryMatrixData.forEach(r => { if (r.category && isFgCategory(r.category)) set.add(r.category); });
+    fgCategoryList.forEach(c => { if (isFgCategory(c)) set.add(c); });
     return Array.from(set).sort();
-  }, [monthCategoryMatrixData, items]);
+  }, [monthCategoryMatrixData, fgCategoryList]);
 
   const filteredMonthCategoryMatrix = useMemo(() => {
     return monthCategoryMatrixData.filter(row => {
@@ -594,6 +637,7 @@ export default function CrmDashboard({
                 setGlobalEndDate("");
               }}
               placeholder="Filter by Date"
+              align="right"
             />
             <div style={{ display: "flex", gap: "4px" }}>
               <button
@@ -2142,7 +2186,18 @@ function Party360Modal({
     return months;
   }, []);
 
-  // 3-Month Category-Wise aggregation for this party
+  const isFg = (cat) => {
+    if (!cat) return false;
+    const clean = cat.trim();
+    if (clean === "General" || clean === "Unspecified") return false;
+    const lower = clean.toLowerCase();
+    if (lower.includes("raw") || lower.includes("material") || lower.includes("pcb") || lower.includes("ic ") || lower.includes("packing") || lower.includes("box") || lower.includes("carton") || lower.includes("wire") || lower.includes("hardware")) {
+      return false;
+    }
+    return true;
+  };
+
+  // 3-Month Category-Wise aggregation for this party (FG only)
   const partyCategoryRows = useMemo(() => {
     const map = new Map();
 
@@ -2150,8 +2205,10 @@ function Party360Modal({
       let cat = o.category;
       if (!cat || cat === "General" || cat === "Unspecified") {
         const found = items.find(it => it.name === o.itemModel || it.id === o.itemId);
-        cat = found?.category || "General";
+        cat = found?.category || "";
       }
+      if (!cat || !isFg(cat)) return;
+
       const oMonth = (o.orderDate || "").slice(0, 7) || last3Months[2].key;
       if (!map.has(cat)) {
         map.set(cat, {
@@ -2175,7 +2232,9 @@ function Party360Modal({
     // Also include dispatches
     dispatches.forEach(d => {
       const found = items.find(it => it.name === d.itemModel || it.id === d.itemId);
-      const cat = found?.category || "General";
+      const cat = found?.category || "";
+      if (!cat || !isFg(cat)) return;
+
       const dMonth = (d.dispatchDate || "").slice(0, 7) || last3Months[2].key;
       if (!map.has(cat)) {
         map.set(cat, { category: cat, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
@@ -2193,16 +2252,16 @@ function Party360Modal({
     // Also include categories from existing remarks
     (crmPartyRemarks || []).forEach(r => {
       const matchP = r.partyId === party.id || (r.partyName && r.partyName.trim().toLowerCase() === (party.name || "").trim().toLowerCase());
-      if (matchP && r.category) {
+      if (matchP && r.category && isFg(r.category)) {
         if (!map.has(r.category)) {
           map.set(r.category, { category: r.category, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
         }
       }
     });
 
-    // Default categories if nothing logged yet
+    // Default standard FG categories if empty so remarks can always be logged
     if (map.size === 0) {
-      const standardCats = ["Fast Charger", "Data Cable", "Neckband", "TWS Earbuds", "Power Bank", "Earphones", "Batteries"];
+      const standardCats = ["Fast Charger", "Data Cable", "Neckband", "TWS Earbuds", "Power Bank", "Earphones", "Batteries", "Speaker", "Smart Watch", "Car Charger", "Mobile Accessories"];
       standardCats.forEach(cat => {
         map.set(cat, { category: cat, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
       });
@@ -2968,7 +3027,12 @@ function AsmSalesDetailModal({
       let cat = o.category;
       if (!cat || cat === "General" || cat === "Unspecified") {
         const foundItem = items.find(it => it.name === o.itemModel || it.id === o.itemId);
-        cat = foundItem?.category || "General";
+        cat = foundItem?.category || "";
+      }
+      if (!cat) return;
+      const lower = cat.toLowerCase();
+      if (lower.includes("raw") || lower.includes("material") || lower.includes("pcb") || lower.includes("ic ") || lower.includes("packing") || lower.includes("box") || lower.includes("carton") || lower.includes("wire") || lower.includes("hardware")) {
+        return;
       }
 
       const pId = o.partyId || "unknown";

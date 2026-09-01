@@ -449,7 +449,8 @@ export default function DateRangeFilter({
           style={{
             position: "absolute",
             top: "calc(100% + 8px)",
-            [align === "right" ? "right" : "left"]: 0,
+            right: align === "right" ? 0 : undefined,
+            left: align === "right" ? "auto" : 0,
             zIndex: 9999,
             background: "var(--bg-panel, #111827)",
             color: "var(--text, #f3f4f6)",
@@ -457,9 +458,11 @@ export default function DateRangeFilter({
             borderRadius: "14px",
             boxShadow: "0 20px 50px rgba(0, 0, 0, 0.6), 0 0 1px rgba(255, 255, 255, 0.2)",
             padding: "20px",
-            minWidth: "620px",
+            maxWidth: "calc(100vw - 24px)",
+            width: "max-content",
             backdropFilter: "blur(20px)",
-            WebkitBackdropFilter: "blur(20px)"
+            WebkitBackdropFilter: "blur(20px)",
+            overflowX: "auto"
           }}
         >
           {/* Top Auto Date Range Preset Selector Bar */}
