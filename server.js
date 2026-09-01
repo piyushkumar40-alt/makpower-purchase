@@ -1640,7 +1640,7 @@ app.get("/api/state", async (req, res) => {
           pool.query('SELECT * FROM crm_sales_orders ORDER BY "orderDate" DESC'),
           pool.query('SELECT * FROM crm_dispatches ORDER BY "dispatchDate" DESC'),
           pool.query('SELECT * FROM crm_party_remarks ORDER BY "createdAt" DESC'),
-          pool.query('SELECT * FROM ims_transactions WHERE ("partyName" IS NOT NULL AND "partyName" <> '') ORDER BY "date" DESC LIMIT 1000')
+          pool.query(`SELECT * FROM ims_transactions WHERE ("partyName" IS NOT NULL AND "partyName" <> '') ORDER BY "date" DESC LIMIT 1000`)
         ]);
         crmSalesOrdersRes = ordersRes;
         crmDispatchesRes = dispatchesRes;
