@@ -939,12 +939,42 @@ export default function App() {
   };
 
   const handleDeleteParty = async (id) => {
+    setCrmParties(prev => {
+      const next = prev.filter(p => p.id !== id);
+      try {
+        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+        cached.crmParties = next;
+        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+      } catch (e) {}
+      return next;
+    });
     try {
       await fetch(`/api/crm/parties/${id}`, { method: "DELETE" });
-      setCrmParties(prev => prev.filter(p => p.id !== id));
       logSystemActivity("CRM_PARTY_DELETED", `Deleted CRM party ID: ${id}`, "CRM Party", id);
     } catch (err) {
       console.error("Delete party error:", err);
+    }
+  };
+
+  const handleBulkDeleteParties = async (ids, purgeAll = false) => {
+    setCrmParties(prev => {
+      let next = purgeAll ? [] : prev.filter(p => !ids.includes(p.id));
+      try {
+        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+        cached.crmParties = next;
+        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+      } catch (e) {}
+      return next;
+    });
+    try {
+      const res = await postData("/api/crm/parties/delete", { ids, purgeAll });
+      if (res && res.success) {
+        logSystemActivity("CRM_PARTIES_BULK_DELETE", `Bulk deleted ${res.count || ids.length} party accounts`, "CRM Party", "bulk_delete");
+      }
+      return res;
+    } catch (err) {
+      console.error("Failed to bulk delete parties:", err);
+      return { success: false, error: err.message };
     }
   };
 
@@ -1991,6 +2021,7 @@ export default function App() {
             onAddParty={handleAddParty}
             onUpdateParty={handleUpdateParty}
             onDeleteParty={handleDeleteParty}
+            onBulkDeleteParties={handleBulkDeleteParties}
             onBatchUploadParties={handleBatchUploadParties}
             onBatchAssignParties={handleBatchAssignParties}
             itemPrices={itemPrices}
@@ -2041,6 +2072,7 @@ export default function App() {
             onAddParty={handleAddParty}
             onUpdateParty={handleUpdateParty}
             onDeleteParty={handleDeleteParty}
+            onBulkDeleteParties={handleBulkDeleteParties}
             onBatchUploadParties={handleBatchUploadParties}
             onBatchAssignParties={handleBatchAssignParties}
             onAddSalesOrder={handleAddSalesOrder}

@@ -51,6 +51,7 @@ export default function SuperAdminDashboard({
   onAddParty,
   onUpdateParty,
   onDeleteParty,
+  onBulkDeleteParties,
   onBatchUploadParties,
   onBatchAssignParties,
   itemPrices = [],
@@ -128,6 +129,7 @@ export default function SuperAdminDashboard({
   const [partyStudioMode, setPartyStudioMode] = useState("directory"); // "directory" | "bulk"
   const [partyParseMode, setPartyParseMode] = useState("auto"); // "auto" | "city_first" | "name_first" | "sr_city_name" | "crm_first"
   const [bulkDefaultCrmId, setBulkDefaultCrmId] = useState("");
+  const [selectedPartyIds, setSelectedPartyIds] = useState([]);
 
   // Missing Item IDs state for IMS
   const [resolvingAdminItemName, setResolvingAdminItemName] = useState(null);
@@ -989,7 +991,7 @@ export default function SuperAdminDashboard({
           style={{ color: "#818cf8", fontWeight: 700, display: "flex", justifyContent: "space-between", alignItems: "center" }}
         >
           <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <Building size={16} /> CRM Parties & Bulk Upload
+            <Building size={16} /> Parties
           </span>
           {crmParties.length > 0 && (
             <span className="badge badge-secondary" style={{ fontSize: "0.68rem", padding: "2px 6px" }}>
@@ -3015,10 +3017,10 @@ export default function SuperAdminDashboard({
           </div>
         )}
 
-        {/* ==================== CRM PARTIES & BULK UPLOAD TAB ==================== */}
+        {/* ==================== PARTIES DIRECTORY & BULK UPLOAD TAB ==================== */}
         {subTab === "crmparties" && (
           loadingModules.crmParties && crmParties.length === 0 ? (
-            renderModuleLoader("CRM Parties & Bulk Upload Studio")
+            renderModuleLoader("Parties Directory & Bulk Upload Studio")
           ) : (
             <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
             
@@ -3026,7 +3028,7 @@ export default function SuperAdminDashboard({
             <div className="glass-panel" style={{ padding: "22px 26px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
               <div>
                 <h2 style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--primary)", display: "flex", alignItems: "center", gap: "10px", margin: 0 }}>
-                  <Building size={26} /> CRM Party Accounts & Bulk Ingestion Studio
+                  <Building size={26} /> Parties Directory & Bulk Upload Studio
                 </h2>
                 <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px", margin: 0 }}>
                   Bulk import party accounts from Excel/CSV (CRM Email ID, Party Name) with auto CRM matching, or manage individual customer accounts.
@@ -3081,7 +3083,7 @@ export default function SuperAdminDashboard({
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
                     <div>
                       <h3 style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
-                        <Upload size={20} /> Bulk Upload CRM Parties from Excel / CSV
+                        <Upload size={20} /> Bulk Upload Parties from Excel / CSV
                       </h3>
                       <p style={{ color: "var(--text-muted)", fontSize: "0.84rem", marginTop: "4px", margin: 0 }}>
                         Paste rows directly from Excel or upload a file. Auto-detects Station/City, Party Name, Contact, and CRM Email.
@@ -3290,7 +3292,7 @@ export default function SuperAdminDashboard({
                     {/* Bottom Action Toolbar */}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "18px", paddingTop: "14px", borderTop: "1px solid var(--border-glass)", flexWrap: "wrap", gap: "12px" }}>
                       <div style={{ fontSize: "0.86rem", color: "var(--text-muted)" }}>
-                        Ready to import <strong style={{ color: "var(--primary)" }}>{bulkParsedParties.length}</strong> CRM party records.
+                        Ready to import <strong style={{ color: "var(--primary)" }}>{bulkParsedParties.length}</strong> party records.
                       </div>
 
                       <button
@@ -3316,7 +3318,7 @@ export default function SuperAdminDashboard({
                 
                 {/* Search & Filter Bar */}
                 <div className="glass-panel" style={{ padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
-                  <div style={{ display: "flex", gap: "10px", flex: 1, minWidth: "280px", flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: "10px", flex: 1, minWidth: "280px", flexWrap: "wrap", alignItems: "center" }}>
                     <div style={{ position: "relative", flex: 1, minWidth: "200px" }}>
                       <Search size={15} style={{ position: "absolute", left: "10px", top: "11px", color: "var(--text-muted)" }} />
                       <input 
@@ -3353,10 +3355,39 @@ export default function SuperAdminDashboard({
                         Reset
                       </button>
                     )}
+
+                    {/* Multi-Delete Button */}
+                    {selectedPartyIds.length > 0 && (
+                      <button
+                        onClick={async () => {
+                          if (!window.confirm(`⚠️ Are you sure you want to delete ${selectedPartyIds.length} selected party accounts?`)) return;
+                          if (onBulkDeleteParties) {
+                            await onBulkDeleteParties(selectedPartyIds);
+                            showSuccessToast(`✅ Deleted ${selectedPartyIds.length} parties successfully!`);
+                          }
+                          setSelectedPartyIds([]);
+                        }}
+                        className="btn btn-danger btn-sm"
+                        style={{ display: "inline-flex", alignItems: "center", gap: "6px", height: "36px", fontWeight: 700, padding: "0 14px", animation: "pulse 2s infinite" }}
+                      >
+                        <Trash2 size={14} /> Delete Selected ({selectedPartyIds.length})
+                      </button>
+                    )}
                   </div>
 
-                  <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 600 }}>
-                    Showing <strong>{filteredCrmParties.length}</strong> of <strong>{crmParties.length}</strong> registered parties
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    {selectedPartyIds.length > 0 && (
+                      <button
+                        onClick={() => setSelectedPartyIds([])}
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}
+                      >
+                        Clear Selection
+                      </button>
+                    )}
+                    <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 600 }}>
+                      Showing <strong>{filteredCrmParties.length}</strong> of <strong>{crmParties.length}</strong> registered parties
+                    </div>
                   </div>
                 </div>
 
@@ -3365,15 +3396,30 @@ export default function SuperAdminDashboard({
                   {filteredCrmParties.length === 0 ? (
                     <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
                       <Building size={36} style={{ marginBottom: "12px", opacity: 0.4 }} />
-                      <h4>No CRM parties found</h4>
+                      <h4>No parties found</h4>
                       <p style={{ fontSize: "0.85rem" }}>Click "Bulk Upload" to import parties from Excel or "+ Add Party" to create one.</p>
                     </div>
                   ) : (
                     <table className="table" style={{ width: "100%", minWidth: "950px" }}>
                       <thead>
                         <tr>
+                          <th style={{ width: "40px", textAlign: "center" }}>
+                            <input 
+                              type="checkbox"
+                              className="checkbox-input"
+                              checked={filteredCrmParties.length > 0 && filteredCrmParties.every(p => selectedPartyIds.includes(p.id))}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedPartyIds(Array.from(new Set([...selectedPartyIds, ...filteredCrmParties.map(p => p.id)])));
+                                } else {
+                                  setSelectedPartyIds(prev => prev.filter(id => !filteredCrmParties.some(p => p.id === id)));
+                                }
+                              }}
+                              title="Select all on this view"
+                            />
+                          </th>
                           <th style={{ width: "26%" }}>Party / Firm Name</th>
-                          <th style={{ width: "24%" }}>Assigned CRM Executive (Reassign)</th>
+                          <th style={{ width: "22%" }}>Assigned CRM Executive (Reassign)</th>
                           <th style={{ width: "18%" }}>Contact Person & Phone</th>
                           <th style={{ width: "14%" }}>City / State</th>
                           <th style={{ width: "10%" }}>GSTIN</th>
@@ -3381,84 +3427,99 @@ export default function SuperAdminDashboard({
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredCrmParties.map(party => (
-                          <tr key={party.id}>
-                            <td>
-                              <div style={{ fontWeight: 700, color: "var(--text-main)", fontSize: "0.92rem" }}>
-                                {party.name}
-                              </div>
-                              {party.status && (
-                                <span className={`badge ${party.status === "Active" ? "badge-success" : "badge-secondary"}`} style={{ fontSize: "0.66rem", marginTop: "2px" }}>
-                                  {party.status}
-                                </span>
-                              )}
-                            </td>
-                            <td>
-                              {/* Direct CRM Reassignment Dropdown */}
-                              <select
-                                value={party.assignedCrmId || ""}
-                                onChange={async (e) => {
-                                  const targetId = e.target.value;
-                                  const targetUser = users.find(u => u.id === targetId);
-                                  const updated = {
-                                    ...party,
-                                    assignedCrmId: targetId,
-                                    assignedCrmName: targetUser ? targetUser.name : "Unassigned"
-                                  };
-                                  if (onUpdateParty) {
-                                    await onUpdateParty(updated);
-                                  }
-                                }}
-                                className="form-control"
-                                style={{ fontSize: "0.82rem", height: "32px", padding: "4px 8px", background: party.assignedCrmId ? "rgba(99, 102, 241, 0.08)" : "rgba(245, 158, 11, 0.1)" }}
-                              >
-                                <option value="">-- Unassigned --</option>
-                                {crmExecutives.map(u => (
-                                  <option key={u.id} value={u.id}>
-                                    {u.name} ({u.email})
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td style={{ fontSize: "0.85rem" }}>
-                              <strong>{party.contactPerson || "—"}</strong><br />
-                              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{party.phone || ""}</span>
-                            </td>
-                            <td style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-                              {party.city || "—"} {party.state ? `(${party.state})` : ""}
-                            </td>
-                            <td style={{ fontSize: "0.8rem", fontFamily: "monospace" }}>
-                              {party.gstin || "—"}
-                            </td>
-                            <td style={{ textAlign: "center" }}>
-                              <div style={{ display: "inline-flex", gap: "6px" }}>
-                                <button
-                                  onClick={() => {
-                                    setEditingParty(party);
-                                    setShowPartyModal(true);
+                        {filteredCrmParties.map(party => {
+                          const isChecked = selectedPartyIds.includes(party.id);
+                          return (
+                            <tr key={party.id} style={{ background: isChecked ? "rgba(56, 189, 248, 0.08)" : undefined }}>
+                              <td style={{ textAlign: "center" }}>
+                                <input 
+                                  type="checkbox"
+                                  className="checkbox-input"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    setSelectedPartyIds(prev => prev.includes(party.id) ? prev.filter(x => x !== party.id) : [...prev, party.id]);
                                   }}
-                                  className="btn btn-secondary btn-sm"
-                                  title="Edit Party Details"
-                                  style={{ padding: "4px 7px" }}
-                                >
-                                  <Edit2 size={13} />
-                                </button>
-                                <button
-                                  onClick={async () => {
-                                    if (window.confirm(`Are you sure you want to delete party "${party.name}"?`)) {
-                                      if (onDeleteParty) await onDeleteParty(party.id);
+                                  title="Select party"
+                                />
+                              </td>
+                              <td>
+                                <div style={{ fontWeight: 700, color: "var(--text-main)", fontSize: "0.92rem" }}>
+                                  {party.name}
+                                </div>
+                                {party.status && (
+                                  <span className={`badge ${party.status === "Active" ? "badge-success" : "badge-secondary"}`} style={{ fontSize: "0.66rem", marginTop: "2px" }}>
+                                    {party.status}
+                                  </span>
+                                )}
+                              </td>
+                              <td>
+                                {/* Direct CRM Reassignment Dropdown */}
+                                <select
+                                  value={party.assignedCrmId || ""}
+                                  onChange={async (e) => {
+                                    const targetId = e.target.value;
+                                    const targetUser = users.find(u => u.id === targetId);
+                                    const updated = {
+                                      ...party,
+                                      assignedCrmId: targetId,
+                                      assignedCrmName: targetUser ? targetUser.name : "Unassigned"
+                                    };
+                                    if (onUpdateParty) {
+                                      await onUpdateParty(updated);
                                     }
                                   }}
-                                  className="btn btn-danger btn-sm"
-                                  title="Delete Party"
-                                  style={{ padding: "4px 7px" }}
+                                  className="form-control"
+                                  style={{ fontSize: "0.82rem", height: "32px", padding: "4px 8px", background: party.assignedCrmId ? "rgba(99, 102, 241, 0.08)" : "rgba(245, 158, 11, 0.1)" }}
                                 >
-                                  <Trash2 size={13} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                                  <option value="">-- Unassigned --</option>
+                                  {crmExecutives.map(u => (
+                                    <option key={u.id} value={u.id}>
+                                      {u.name} ({u.email})
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td style={{ fontSize: "0.85rem" }}>
+                                <strong>{party.contactPerson || "—"}</strong><br />
+                                <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{party.phone || ""}</span>
+                              </td>
+                              <td style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                                {party.city || "—"} {party.state ? `(${party.state})` : ""}
+                              </td>
+                              <td style={{ fontSize: "0.8rem", fontFamily: "monospace" }}>
+                                {party.gstin || "—"}
+                              </td>
+                              <td style={{ textAlign: "center" }}>
+                                <div style={{ display: "inline-flex", gap: "6px" }}>
+                                  <button
+                                    onClick={() => {
+                                      setEditingParty(party);
+                                      setShowPartyModal(true);
+                                    }}
+                                    className="btn btn-secondary btn-sm"
+                                    title="Edit Party Details"
+                                    style={{ padding: "4px 7px" }}
+                                  >
+                                    <Edit2 size={13} />
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      if (window.confirm(`Are you sure you want to delete party "${party.name}"?`)) {
+                                        if (onDeleteParty) await onDeleteParty(party.id);
+                                        setSelectedPartyIds(prev => prev.filter(x => x !== party.id));
+                                      }
+                                    }}
+                                    className="btn btn-danger btn-sm"
+                                    title="Delete Party"
+                                    style={{ padding: "4px 7px" }}
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   )}

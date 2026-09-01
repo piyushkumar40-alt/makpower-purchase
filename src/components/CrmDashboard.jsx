@@ -20,6 +20,7 @@ export default function CrmDashboard({
   onAddParty,
   onUpdateParty,
   onDeleteParty,
+  onBulkDeleteParties,
   onBatchUploadParties,
   onBatchAssignParties,
   onAddSalesOrder,

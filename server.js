@@ -2381,7 +2381,7 @@ app.post("/api/crm/parties/batch", async (req, res) => {
   }
 });
 
-// 4. DELETE /api/crm/parties/:id - Delete CRM Party
+// 4. DELETE /api/crm/parties/:id - Delete single CRM Party
 app.delete("/api/crm/parties/:id", async (req, res) => {
   const partyId = req.params.id;
   if (isPg) {
@@ -2397,6 +2397,49 @@ app.delete("/api/crm/parties/:id", async (req, res) => {
     data.crmParties = (data.crmParties || []).filter(x => x.id !== partyId);
     writeLocalJson(data);
     res.json({ success: true });
+  }
+});
+
+// 4c. POST /api/crm/parties/delete - Bulk Delete CRM Parties by ID array
+app.post("/api/crm/parties/delete", async (req, res) => {
+  const { ids, purgeAll } = req.body;
+  if (purgeAll === true) {
+    if (isPg) {
+      try {
+        await pool.query("DELETE FROM crm_parties");
+        return res.json({ success: true, count: 0 });
+      } catch (err) {
+        console.error("PURGE crm_parties error:", err.message);
+        return res.status(500).json({ error: "Failed to purge party list." });
+      }
+    } else {
+      const data = readLocalJson();
+      data.crmParties = [];
+      writeLocalJson(data);
+      return res.json({ success: true, count: 0 });
+    }
+  }
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: "No party IDs provided for deletion." });
+  }
+
+  if (isPg) {
+    try {
+      const deleteRes = await pool.query('DELETE FROM crm_parties WHERE "id" = ANY($1::text[])', [ids]);
+      res.json({ success: true, count: deleteRes.rowCount || ids.length });
+    } catch (err) {
+      console.error("POST /api/crm/parties/delete error:", err.message);
+      res.status(500).json({ error: "Failed to bulk delete parties: " + err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.crmParties) data.crmParties = [];
+    const initLen = data.crmParties.length;
+    data.crmParties = data.crmParties.filter(p => !ids.includes(p.id));
+    const delCount = initLen - data.crmParties.length;
+    writeLocalJson(data);
+    res.json({ success: true, count: delCount });
   }
 });
 
