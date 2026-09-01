@@ -161,7 +161,10 @@ export default function CrmDashboard({
         const matchId = myId && (p.assignedAsmId === myId || p.assignedTsmId === myId);
         const pAsm = (p.assignedAsmName || "").trim().toLowerCase();
         const pTsm = (p.assignedTsmName || "").trim().toLowerCase();
-        const matchName = myName && (pAsm.includes(myName) || pTsm.includes(myName) || myName.includes(pAsm) || myName.includes(pTsm));
+        const matchName = myName && (
+          (pAsm && (pAsm.includes(myName) || myName.includes(pAsm))) ||
+          (pTsm && (pTsm.includes(myName) || myName.includes(pTsm)))
+        );
         return matchId || matchName;
       });
     }
@@ -171,7 +174,7 @@ export default function CrmDashboard({
       return crmParties.filter(p => {
         const matchId = myId && (p.assignedCrmId === myId);
         const pCrm = (p.assignedCrmName || "").trim().toLowerCase();
-        const matchName = myName && (pCrm.includes(myName) || myName.includes(pCrm));
+        const matchName = myName && pCrm && (pCrm.includes(myName) || myName.includes(pCrm));
         return matchId || matchName;
       });
     }
@@ -182,7 +185,11 @@ export default function CrmDashboard({
       const pCrm = (p.assignedCrmName || "").trim().toLowerCase();
       const pAsm = (p.assignedAsmName || "").trim().toLowerCase();
       const pTsm = (p.assignedTsmName || "").trim().toLowerCase();
-      const matchName = execName && (pCrm.includes(execName) || pAsm.includes(execName) || pTsm.includes(execName) || execName.includes(pCrm) || execName.includes(pAsm) || execName.includes(pTsm));
+      const matchName = execName && (
+        (pCrm && (pCrm.includes(execName) || execName.includes(pCrm))) ||
+        (pAsm && (pAsm.includes(execName) || execName.includes(pAsm))) ||
+        (pTsm && (pTsm.includes(execName) || execName.includes(pTsm)))
+      );
       return matchId || matchName;
     });
   }, [crmParties, selectedExecutiveId, activeExecutive, isAsmOrTsm, isCrmUser, currentUser]);

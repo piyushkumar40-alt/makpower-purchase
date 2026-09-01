@@ -1545,8 +1545,8 @@ app.get("/api/state", async (req, res) => {
         if (isCrmRole) {
           crmPartiesQuery = `
             SELECT * FROM crm_parties 
-            WHERE "assignedCrmId" = $1 
-               OR ($2 <> '' AND (
+            WHERE ($1 <> '' AND "assignedCrmId" = $1) 
+               OR ($2 <> '' AND TRIM(COALESCE("assignedCrmName", '')) <> '' AND (
                      LOWER(TRIM("assignedCrmName")) LIKE '%' || $2 || '%' 
                   OR $2 LIKE '%' || LOWER(TRIM("assignedCrmName")) || '%'
                ))
@@ -1555,12 +1555,13 @@ app.get("/api/state", async (req, res) => {
         } else {
           crmPartiesQuery = `
             SELECT * FROM crm_parties 
-            WHERE "assignedAsmId" = $1 
-               OR "assignedTsmId" = $1 
-               OR ($2 <> '' AND (
+            WHERE ($1 <> '' AND ("assignedAsmId" = $1 OR "assignedTsmId" = $1))
+               OR ($2 <> '' AND TRIM(COALESCE("assignedAsmName", '')) <> '' AND (
                      LOWER(TRIM("assignedAsmName")) LIKE '%' || $2 || '%' 
-                  OR LOWER(TRIM("assignedTsmName")) LIKE '%' || $2 || '%'
                   OR $2 LIKE '%' || LOWER(TRIM("assignedAsmName")) || '%'
+               ))
+               OR ($2 <> '' AND TRIM(COALESCE("assignedTsmName", '')) <> '' AND (
+                     LOWER(TRIM("assignedTsmName")) LIKE '%' || $2 || '%' 
                   OR $2 LIKE '%' || LOWER(TRIM("assignedTsmName")) || '%'
                ))
             ORDER BY "name" ASC
@@ -1736,13 +1737,16 @@ app.get("/api/state", async (req, res) => {
         if (isCrmRole) {
           const matchId = effectiveId && (p.assignedCrmId === effectiveId);
           const pCrm = (p.assignedCrmName || "").trim().toLowerCase();
-          const matchName = cleanName && (pCrm.includes(cleanName) || cleanName.includes(pCrm));
+          const matchName = cleanName && pCrm && (pCrm.includes(cleanName) || cleanName.includes(pCrm));
           return matchId || matchName;
         } else {
           const matchId = effectiveId && (p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId);
           const pAsm = (p.assignedAsmName || "").trim().toLowerCase();
           const pTsm = (p.assignedTsmName || "").trim().toLowerCase();
-          const matchName = cleanName && (pAsm.includes(cleanName) || pTsm.includes(cleanName) || cleanName.includes(pAsm) || cleanName.includes(pTsm));
+          const matchName = cleanName && (
+            (pAsm && (pAsm.includes(cleanName) || cleanName.includes(pAsm))) ||
+            (pTsm && (pTsm.includes(cleanName) || cleanName.includes(pTsm)))
+          );
           return matchId || matchName;
         }
       });
@@ -2438,7 +2442,17 @@ app.get("/api/crm/parties", async (req, res) => {
       if (isRestrictedRole) {
         const effectiveId = asmId || tsmId || userId || "";
         const cleanName = (userName || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
-        conditions.push(`("assignedAsmId" = $${idx} OR "assignedTsmId" = $${idx} OR ($${idx + 1} <> '' AND (LOWER(TRIM("assignedAsmName")) LIKE '%' || $${idx + 1} || '%' OR LOWER(TRIM("assignedTsmName")) LIKE '%' || $${idx + 1} || '%' OR $${idx + 1} LIKE '%' || LOWER(TRIM("assignedAsmName")) || '%' OR $${idx + 1} LIKE '%' || LOWER(TRIM("assignedTsmName")) || '%')))`);
+        conditions.push(`(
+          ($${idx} <> '' AND ("assignedAsmId" = $${idx} OR "assignedTsmId" = $${idx}))
+          OR ($${idx + 1} <> '' AND TRIM(COALESCE("assignedAsmName", '')) <> '' AND (
+                LOWER(TRIM("assignedAsmName")) LIKE '%' || $${idx + 1} || '%' 
+             OR $${idx + 1} LIKE '%' || LOWER(TRIM("assignedAsmName")) || '%'
+          ))
+          OR ($${idx + 1} <> '' AND TRIM(COALESCE("assignedTsmName", '')) <> '' AND (
+                LOWER(TRIM("assignedTsmName")) LIKE '%' || $${idx + 1} || '%' 
+             OR $${idx + 1} LIKE '%' || LOWER(TRIM("assignedTsmName")) || '%'
+          ))
+        )`);
         values.push(effectiveId, cleanName);
         idx += 2;
       }
@@ -2465,7 +2479,10 @@ app.get("/api/crm/parties", async (req, res) => {
         const matchId = effectiveId && (p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId);
         const pAsm = (p.assignedAsmName || "").trim().toLowerCase();
         const pTsm = (p.assignedTsmName || "").trim().toLowerCase();
-        const matchName = cleanName && (pAsm.includes(cleanName) || pTsm.includes(cleanName) || cleanName.includes(pAsm) || cleanName.includes(pTsm));
+        const matchName = cleanName && (
+          (pAsm && (pAsm.includes(cleanName) || cleanName.includes(pAsm))) ||
+          (pTsm && (pTsm.includes(cleanName) || cleanName.includes(pTsm)))
+        );
         return matchId || matchName;
       });
     }
