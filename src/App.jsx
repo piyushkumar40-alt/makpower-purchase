@@ -167,15 +167,19 @@ export default function App() {
           const data = await res.json();
           if (Array.isArray(data)) setItems(data);
         } else if (moduleKey === TRACKABLE_MODULES.CRM_PARTIES) {
-          const res = await fetch("/api/crm/parties");
+          const q = currentUser ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(currentUser.role)}&userName=${encodeURIComponent(currentUser.name || '')}` : "";
+          const res = await fetch(`/api/crm/parties${q}`);
           const data = await res.json();
-          if (Array.isArray(data)) setCrmParties(data);
+          const list = Array.isArray(data) ? data : (data.parties || []);
+          setCrmParties(list);
         } else if (moduleKey === TRACKABLE_MODULES.CRM_SALES_ORDERS) {
-          const res = await fetch("/api/crm/sales-orders");
+          const q = currentUser ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(currentUser.role)}&userName=${encodeURIComponent(currentUser.name || '')}` : "";
+          const res = await fetch(`/api/crm/sales-orders${q}`);
           const data = await res.json();
           if (Array.isArray(data)) setCrmSalesOrders(data);
         } else if (moduleKey === TRACKABLE_MODULES.CRM_DISPATCHES) {
-          const res = await fetch("/api/crm/dispatches");
+          const q = currentUser ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(currentUser.role)}&userName=${encodeURIComponent(currentUser.name || '')}` : "";
+          const res = await fetch(`/api/crm/dispatches${q}`);
           const data = await res.json();
           if (Array.isArray(data)) setCrmDispatches(data);
         } else if (moduleKey === TRACKABLE_MODULES.IMS_TRANSACTIONS) {
@@ -355,7 +359,8 @@ export default function App() {
 
     async function loadData(isInterval = false) {
       try {
-        const res = await fetch("/api/state");
+        const q = currentUser ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(currentUser.role)}&userName=${encodeURIComponent(currentUser.name || '')}` : "";
+        const res = await fetch(`/api/state${q}`);
         const data = await res.json();
         if (!isMounted) return;
 
@@ -444,7 +449,7 @@ export default function App() {
       clearTimeout(safetyTimer);
       clearInterval(intervalId);
     };
-  }, []);
+  }, [currentUser]);
 
   // Add Designation Handler
   const addDesignation = async (designationObj) => {

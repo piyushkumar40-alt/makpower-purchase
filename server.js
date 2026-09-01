@@ -1507,13 +1507,36 @@ app.post("/api/storage/delete-all-cloudinary", async (req, res) => {
 
 // 1. GET /api/state - Fetches full system state with concurrent DB queries & memory cache
 app.get("/api/state", async (req, res) => {
+  const { userId, userRole, userName } = req.query;
+  const isRestrictedRole = userRole === "asm" || userRole === "tsm";
+
   const now = Date.now();
-  if (stateCache && (now - stateCacheTimestamp < STATE_CACHE_TTL_MS)) {
+  if (!isRestrictedRole && stateCache && (now - stateCacheTimestamp < STATE_CACHE_TTL_MS)) {
     return res.json(stateCache);
   }
 
+  // Calculate 3-month cutoff date for ASM/TSM (e.g. 1st day of month 2 months ago -> 3 months total)
+  const d3MonthsAgo = new Date();
+  d3MonthsAgo.setMonth(d3MonthsAgo.getMonth() - 2, 1);
+  const cutoffDate3Mo = d3MonthsAgo.toISOString().slice(0, 10);
+
   if (isPg) {
     try {
+      let crmPartiesQuery = 'SELECT * FROM crm_parties ORDER BY "name" ASC';
+      let crmPartiesParams = [];
+
+      if (isRestrictedRole && (userId || userName)) {
+        crmPartiesQuery = `
+          SELECT * FROM crm_parties 
+          WHERE "assignedAsmId" = $1 
+             OR "assignedTsmId" = $1 
+             OR ($2 <> '' AND LOWER(TRIM("assignedAsmName")) = LOWER(TRIM($2))) 
+             OR ($2 <> '' AND LOWER(TRIM("assignedTsmName")) = LOWER(TRIM($2)))
+          ORDER BY "name" ASC
+        `;
+        crmPartiesParams = [userId || "", (userName || "").trim()];
+      }
+
       const [
         usersRes,
         vendorsRes,
@@ -1523,12 +1546,9 @@ app.get("/api/state", async (req, res) => {
         settingsRes,
         itemsRes,
         crmPartiesRes,
-        crmSalesOrdersRes,
-        crmDispatchesRes,
         imsRes,
         designationsRes,
-        itemPricesRes,
-        crmPartyRemarksRes
+        itemPricesRes
       ] = await Promise.all([
         pool.query("SELECT * FROM users"),
         pool.query("SELECT * FROM vendors"),
@@ -1537,14 +1557,56 @@ app.get("/api/state", async (req, res) => {
         pool.query("SELECT * FROM requests"),
         pool.query("SELECT * FROM settings"),
         pool.query("SELECT * FROM items ORDER BY CAST(NULLIF(regexp_replace(\"id\", '\\D', '', 'g'), '') AS INTEGER) ASC, \"id\" ASC"),
-        pool.query("SELECT * FROM crm_parties ORDER BY \"name\" ASC"),
-        pool.query("SELECT * FROM crm_sales_orders ORDER BY \"orderDate\" DESC"),
-        pool.query("SELECT * FROM crm_dispatches ORDER BY \"dispatchDate\" DESC"),
+        pool.query(crmPartiesQuery, crmPartiesParams),
         pool.query("SELECT * FROM ims_transactions ORDER BY \"date\" DESC, \"createdAt\" DESC"),
         pool.query("SELECT * FROM designations"),
-        pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC"),
-        pool.query("SELECT * FROM crm_party_remarks ORDER BY \"createdAt\" DESC")
+        pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC")
       ]);
+
+      const myParties = crmPartiesRes.rows || [];
+      let crmSalesOrdersRes = { rows: [] };
+      let crmDispatchesRes = { rows: [] };
+      let crmPartyRemarksRes = { rows: [] };
+
+      if (isRestrictedRole) {
+        if (myParties.length > 0) {
+          const partyIds = myParties.map(p => p.id).filter(Boolean);
+          const partyNames = myParties.map(p => (p.name || "").trim().toLowerCase()).filter(Boolean);
+
+          const [ordersRes, dispatchesRes, remarksRes] = await Promise.all([
+            pool.query(`
+              SELECT * FROM crm_sales_orders 
+              WHERE ("partyId" = ANY($1) OR LOWER(TRIM("partyName")) = ANY($2))
+                AND ("orderDate" >= $3 OR "orderDate" IS NULL OR "orderDate" = '')
+              ORDER BY "orderDate" DESC
+            `, [partyIds, partyNames, cutoffDate3Mo]),
+            pool.query(`
+              SELECT * FROM crm_dispatches 
+              WHERE ("partyId" = ANY($1) OR LOWER(TRIM("partyName")) = ANY($2))
+                AND ("dispatchDate" >= $3 OR "dispatchDate" IS NULL OR "dispatchDate" = '')
+              ORDER BY "dispatchDate" DESC
+            `, [partyIds, partyNames, cutoffDate3Mo]),
+            pool.query(`
+              SELECT * FROM crm_party_remarks 
+              WHERE ("partyId" = ANY($1) OR LOWER(TRIM("partyName")) = ANY($2))
+              ORDER BY "createdAt" DESC
+            `, [partyIds, partyNames])
+          ]);
+
+          crmSalesOrdersRes = ordersRes;
+          crmDispatchesRes = dispatchesRes;
+          crmPartyRemarksRes = remarksRes;
+        }
+      } else {
+        const [ordersRes, dispatchesRes, remarksRes] = await Promise.all([
+          pool.query('SELECT * FROM crm_sales_orders ORDER BY "orderDate" DESC'),
+          pool.query('SELECT * FROM crm_dispatches ORDER BY "dispatchDate" DESC'),
+          pool.query('SELECT * FROM crm_party_remarks ORDER BY "createdAt" DESC')
+        ]);
+        crmSalesOrdersRes = ordersRes;
+        crmDispatchesRes = dispatchesRes;
+        crmPartyRemarksRes = remarksRes;
+      }
 
       // Format types back
       const vendors = vendorsRes.rows.map(v => ({
@@ -1586,7 +1648,7 @@ app.get("/api/state", async (req, res) => {
         settings,
         items: itemsRes.rows || [],
         designations: (designationsRes.rows && designationsRes.rows.length > 0) ? designationsRes.rows : initialDesignations,
-        crmParties: crmPartiesRes.rows || [],
+        crmParties: myParties,
         crmSalesOrders: (crmSalesOrdersRes.rows || []).map(so => ({
           ...so,
           orderQty: so.orderQty ? parseInt(so.orderQty) : 0,
@@ -1612,19 +1674,40 @@ app.get("/api/state", async (req, res) => {
         crmPartyRemarks: crmPartyRemarksRes?.rows || []
       };
 
-      stateCache = fullState;
-      stateCacheTimestamp = Date.now();
+      if (!isRestrictedRole) {
+        stateCache = fullState;
+        stateCacheTimestamp = Date.now();
+      }
 
       res.json(fullState);
     } catch (err) {
       console.error("GET /api/state error:", err.message);
-      if (stateCache) {
+      if (stateCache && !isRestrictedRole) {
         return res.json(stateCache);
       }
       res.status(500).json({ error: "Failed to query PG state." });
     }
   } else {
-    res.json(readLocalJson());
+    const data = readLocalJson();
+    if (isRestrictedRole && (userId || userName)) {
+      const effectiveId = userId || "";
+      const effectiveName = (userName || "").trim().toLowerCase();
+      const myParties = (data.crmParties || []).filter(p => 
+        p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId ||
+        (effectiveName && (p.assignedAsmName?.trim().toLowerCase() === effectiveName || p.assignedTsmName?.trim().toLowerCase() === effectiveName))
+      );
+      const partyIdSet = new Set(myParties.map(p => p.id));
+      const partyNameSet = new Set(myParties.map(p => (p.name || "").trim().toLowerCase()));
+
+      return res.json({
+        ...data,
+        crmParties: myParties,
+        crmSalesOrders: (data.crmSalesOrders || []).filter(o => (partyIdSet.has(o.partyId) || partyNameSet.has((o.partyName || "").trim().toLowerCase())) && (!o.orderDate || o.orderDate >= cutoffDate3Mo)),
+        crmDispatches: (data.crmDispatches || []).filter(d => (partyIdSet.has(d.partyId) || partyNameSet.has((d.partyName || "").trim().toLowerCase())) && (!d.dispatchDate || d.dispatchDate >= cutoffDate3Mo)),
+        crmPartyRemarks: (data.crmPartyRemarks || []).filter(r => partyIdSet.has(r.partyId) || partyNameSet.has((r.partyName || "").trim().toLowerCase()))
+      });
+    }
+    res.json(data);
   }
 });
 
@@ -1746,9 +1829,55 @@ app.get("/api/designations", async (req, res) => {
 
 // GET /api/crm/sales-orders - On-demand CRM Sales Orders pull
 app.get("/api/crm/sales-orders", async (req, res) => {
+  const { userId, userRole, userName, asmId, tsmId, partyId } = req.query;
+  const isRestrictedRole = userRole === "asm" || userRole === "tsm" || !!asmId || !!tsmId;
+
   if (isPg) {
     try {
-      const result = await pool.query('SELECT * FROM crm_sales_orders ORDER BY "orderDate" DESC');
+      let query = 'SELECT * FROM crm_sales_orders';
+      const conditions = [];
+      const values = [];
+      let idx = 1;
+
+      if (partyId) {
+        conditions.push(`"partyId" = $${idx++}`);
+        values.push(partyId);
+      }
+
+      if (isRestrictedRole) {
+        const effectiveId = asmId || tsmId || userId || "";
+        const effectiveName = (userName || "").trim().toLowerCase();
+
+        const pRes = await pool.query(`
+          SELECT id, name FROM crm_parties 
+          WHERE "assignedAsmId" = $1 OR "assignedTsmId" = $1 
+             OR ($2 <> '' AND LOWER(TRIM("assignedAsmName")) = $2) 
+             OR ($2 <> '' AND LOWER(TRIM("assignedTsmName")) = $2)
+        `, [effectiveId, effectiveName]);
+
+        const assignedIds = (pRes.rows || []).map(p => p.id);
+        const assignedNames = (pRes.rows || []).map(p => (p.name || "").trim().toLowerCase());
+
+        if (assignedIds.length === 0) {
+          return res.json([]);
+        }
+
+        conditions.push(`("partyId" = ANY($${idx++}) OR LOWER(TRIM("partyName")) = ANY($${idx++}))`);
+        values.push(assignedIds, assignedNames);
+
+        // 3-Month Cutoff
+        const d3 = new Date();
+        d3.setMonth(d3.getMonth() - 2, 1);
+        conditions.push(`("orderDate" >= $${idx++} OR "orderDate" IS NULL OR "orderDate" = '')`);
+        values.push(d3.toISOString().slice(0, 10));
+      }
+
+      if (conditions.length > 0) {
+        query += " WHERE " + conditions.join(" AND ");
+      }
+      query += ' ORDER BY "orderDate" DESC';
+
+      const result = await pool.query(query, values);
       res.json((result.rows || []).map(so => ({
         ...so,
         orderQty: so.orderQty ? parseInt(so.orderQty) : 0,
@@ -1763,15 +1892,78 @@ app.get("/api/crm/sales-orders", async (req, res) => {
     }
   } else {
     const data = readLocalJson();
-    res.json(data.crmSalesOrders || []);
+    let list = data.crmSalesOrders || [];
+    if (isRestrictedRole) {
+      const effectiveId = asmId || tsmId || userId;
+      const effectiveName = (userName || "").trim().toLowerCase();
+      const myParties = (data.crmParties || []).filter(p => 
+        p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId || 
+        (effectiveName && (p.assignedAsmName?.trim().toLowerCase() === effectiveName || p.assignedTsmName?.trim().toLowerCase() === effectiveName))
+      );
+      const pIdSet = new Set(myParties.map(p => p.id));
+      const pNameSet = new Set(myParties.map(p => (p.name || "").trim().toLowerCase()));
+
+      const d3 = new Date();
+      d3.setMonth(d3.getMonth() - 2, 1);
+      const cutoff = d3.toISOString().slice(0, 10);
+
+      list = list.filter(o => (pIdSet.has(o.partyId) || pNameSet.has((o.partyName || "").trim().toLowerCase())) && (!o.orderDate || o.orderDate >= cutoff));
+    }
+    res.json(list);
   }
 });
 
 // GET /api/crm/dispatches - On-demand CRM Dispatches pull
 app.get("/api/crm/dispatches", async (req, res) => {
+  const { userId, userRole, userName, asmId, tsmId, partyId } = req.query;
+  const isRestrictedRole = userRole === "asm" || userRole === "tsm" || !!asmId || !!tsmId;
+
   if (isPg) {
     try {
-      const result = await pool.query('SELECT * FROM crm_dispatches ORDER BY "dispatchDate" DESC');
+      let query = 'SELECT * FROM crm_dispatches';
+      const conditions = [];
+      const values = [];
+      let idx = 1;
+
+      if (partyId) {
+        conditions.push(`"partyId" = $${idx++}`);
+        values.push(partyId);
+      }
+
+      if (isRestrictedRole) {
+        const effectiveId = asmId || tsmId || userId || "";
+        const effectiveName = (userName || "").trim().toLowerCase();
+
+        const pRes = await pool.query(`
+          SELECT id, name FROM crm_parties 
+          WHERE "assignedAsmId" = $1 OR "assignedTsmId" = $1 
+             OR ($2 <> '' AND LOWER(TRIM("assignedAsmName")) = $2) 
+             OR ($2 <> '' AND LOWER(TRIM("assignedTsmName")) = $2)
+        `, [effectiveId, effectiveName]);
+
+        const assignedIds = (pRes.rows || []).map(p => p.id);
+        const assignedNames = (pRes.rows || []).map(p => (p.name || "").trim().toLowerCase());
+
+        if (assignedIds.length === 0) {
+          return res.json([]);
+        }
+
+        conditions.push(`("partyId" = ANY($${idx++}) OR LOWER(TRIM("partyName")) = ANY($${idx++}))`);
+        values.push(assignedIds, assignedNames);
+
+        // 3-Month Cutoff
+        const d3 = new Date();
+        d3.setMonth(d3.getMonth() - 2, 1);
+        conditions.push(`("dispatchDate" >= $${idx++} OR "dispatchDate" IS NULL OR "dispatchDate" = '')`);
+        values.push(d3.toISOString().slice(0, 10));
+      }
+
+      if (conditions.length > 0) {
+        query += " WHERE " + conditions.join(" AND ");
+      }
+      query += ' ORDER BY "dispatchDate" DESC';
+
+      const result = await pool.query(query, values);
       res.json((result.rows || []).map(d => ({
         ...d,
         dispatchedQty: d.dispatchedQty ? parseInt(d.dispatchedQty) : 0
@@ -1782,7 +1974,24 @@ app.get("/api/crm/dispatches", async (req, res) => {
     }
   } else {
     const data = readLocalJson();
-    res.json(data.crmDispatches || []);
+    let list = data.crmDispatches || [];
+    if (isRestrictedRole) {
+      const effectiveId = asmId || tsmId || userId;
+      const effectiveName = (userName || "").trim().toLowerCase();
+      const myParties = (data.crmParties || []).filter(p => 
+        p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId || 
+        (effectiveName && (p.assignedAsmName?.trim().toLowerCase() === effectiveName || p.assignedTsmName?.trim().toLowerCase() === effectiveName))
+      );
+      const pIdSet = new Set(myParties.map(p => p.id));
+      const pNameSet = new Set(myParties.map(p => (p.name || "").trim().toLowerCase()));
+
+      const d3 = new Date();
+      d3.setMonth(d3.getMonth() - 2, 1);
+      const cutoff = d3.toISOString().slice(0, 10);
+
+      list = list.filter(d => (pIdSet.has(d.partyId) || pNameSet.has((d.partyName || "").trim().toLowerCase())) && (!d.dispatchDate || d.dispatchDate >= cutoff));
+    }
+    res.json(list);
   }
 });
 
@@ -2162,7 +2371,9 @@ app.post("/api/users/update", async (req, res) => {
 
 // 1. GET /api/crm/parties - Retrieve CRM Parties
 app.get("/api/crm/parties", async (req, res) => {
-  const { crmId, asmId, tsmId } = req.query;
+  const { crmId, asmId, tsmId, userId, userRole, userName } = req.query;
+  const isRestrictedRole = userRole === "asm" || userRole === "tsm" || !!asmId || !!tsmId;
+
   if (isPg) {
     try {
       let query = "SELECT * FROM crm_parties";
@@ -2174,13 +2385,12 @@ app.get("/api/crm/parties", async (req, res) => {
         conditions.push(`"assignedCrmId" = $${idx++}`);
         values.push(crmId);
       }
-      if (asmId) {
-        conditions.push(`"assignedAsmId" = $${idx++}`);
-        values.push(asmId);
-      }
-      if (tsmId) {
-        conditions.push(`"assignedTsmId" = $${idx++}`);
-        values.push(tsmId);
+      if (isRestrictedRole) {
+        const effectiveId = asmId || tsmId || userId || "";
+        const effectiveName = (userName || "").trim().toLowerCase();
+        conditions.push(`("assignedAsmId" = $${idx} OR "assignedTsmId" = $${idx} OR ($${idx + 1} <> '' AND LOWER(TRIM("assignedAsmName")) = $${idx + 1}) OR ($${idx + 1} <> '' AND LOWER(TRIM("assignedTsmName")) = $${idx + 1}))`);
+        values.push(effectiveId, effectiveName);
+        idx += 2;
       }
 
       if (conditions.length > 0) {
@@ -2198,8 +2408,14 @@ app.get("/api/crm/parties", async (req, res) => {
     const data = readLocalJson();
     let list = data.crmParties || [];
     if (crmId) list = list.filter(p => p.assignedCrmId === crmId);
-    if (asmId) list = list.filter(p => p.assignedAsmId === asmId);
-    if (tsmId) list = list.filter(p => p.assignedTsmId === tsmId);
+    if (isRestrictedRole) {
+      const effectiveId = asmId || tsmId || userId;
+      const effectiveName = (userName || "").trim().toLowerCase();
+      list = list.filter(p => 
+        p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId || 
+        (effectiveName && (p.assignedAsmName?.trim().toLowerCase() === effectiveName || p.assignedTsmName?.trim().toLowerCase() === effectiveName))
+      );
+    }
     res.json({ success: true, parties: list });
   }
 });
