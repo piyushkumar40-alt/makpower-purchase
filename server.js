@@ -1521,7 +1521,9 @@ app.post("/api/storage/delete-all-cloudinary", async (req, res) => {
 // 1. GET /api/state - Fetches full system state with concurrent DB queries & memory cache
 app.get("/api/state", async (req, res) => {
   const { userId, userRole, userName } = req.query;
-  const isRestrictedRole = userRole === "asm" || userRole === "tsm";
+  const isCrmRole = userRole === "crm";
+  const isAsmTsmRole = userRole === "asm" || userRole === "tsm";
+  const isRestrictedRole = isCrmRole || isAsmTsmRole;
 
   const now = Date.now();
   if (!isRestrictedRole && stateCache && (now - stateCacheTimestamp < STATE_CACHE_TTL_MS)) {
@@ -1540,18 +1542,30 @@ app.get("/api/state", async (req, res) => {
 
       if (isRestrictedRole && (userId || userName)) {
         const cleanName = (userName || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
-        crmPartiesQuery = `
-          SELECT * FROM crm_parties 
-          WHERE "assignedAsmId" = $1 
-             OR "assignedTsmId" = $1 
-             OR ($2 <> '' AND (
-                   LOWER(TRIM("assignedAsmName")) LIKE '%' || $2 || '%' 
-                OR LOWER(TRIM("assignedTsmName")) LIKE '%' || $2 || '%'
-                OR $2 LIKE '%' || LOWER(TRIM("assignedAsmName")) || '%'
-                OR $2 LIKE '%' || LOWER(TRIM("assignedTsmName")) || '%'
-             ))
-          ORDER BY "name" ASC
-        `;
+        if (isCrmRole) {
+          crmPartiesQuery = `
+            SELECT * FROM crm_parties 
+            WHERE "assignedCrmId" = $1 
+               OR ($2 <> '' AND (
+                     LOWER(TRIM("assignedCrmName")) LIKE '%' || $2 || '%' 
+                  OR $2 LIKE '%' || LOWER(TRIM("assignedCrmName")) || '%'
+               ))
+            ORDER BY "name" ASC
+          `;
+        } else {
+          crmPartiesQuery = `
+            SELECT * FROM crm_parties 
+            WHERE "assignedAsmId" = $1 
+               OR "assignedTsmId" = $1 
+               OR ($2 <> '' AND (
+                     LOWER(TRIM("assignedAsmName")) LIKE '%' || $2 || '%' 
+                  OR LOWER(TRIM("assignedTsmName")) LIKE '%' || $2 || '%'
+                  OR $2 LIKE '%' || LOWER(TRIM("assignedAsmName")) || '%'
+                  OR $2 LIKE '%' || LOWER(TRIM("assignedTsmName")) || '%'
+               ))
+            ORDER BY "name" ASC
+          `;
+        }
         crmPartiesParams = [userId || "", cleanName];
       }
 
@@ -1591,19 +1605,19 @@ app.get("/api/state", async (req, res) => {
           const partyIds = myParties.map(p => p.id).filter(Boolean);
           const partyNames = myParties.map(p => (p.name || "").trim().toLowerCase()).filter(Boolean);
 
+          const orderQuery = isAsmTsmRole
+            ? `SELECT * FROM crm_sales_orders WHERE ("partyId" = ANY($1) OR LOWER(TRIM("partyName")) = ANY($2)) AND ("orderDate" >= $3 OR "orderDate" IS NULL OR "orderDate" = '') ORDER BY "orderDate" DESC`
+            : `SELECT * FROM crm_sales_orders WHERE ("partyId" = ANY($1) OR LOWER(TRIM("partyName")) = ANY($2)) ORDER BY "orderDate" DESC`;
+          const orderParams = isAsmTsmRole ? [partyIds, partyNames, cutoffDate3Mo] : [partyIds, partyNames];
+
+          const dispatchQuery = isAsmTsmRole
+            ? `SELECT * FROM crm_dispatches WHERE ("partyId" = ANY($1) OR LOWER(TRIM("partyName")) = ANY($2)) AND ("dispatchDate" >= $3 OR "dispatchDate" IS NULL OR "dispatchDate" = '') ORDER BY "dispatchDate" DESC`
+            : `SELECT * FROM crm_dispatches WHERE ("partyId" = ANY($1) OR LOWER(TRIM("partyName")) = ANY($2)) ORDER BY "dispatchDate" DESC`;
+          const dispatchParams = isAsmTsmRole ? [partyIds, partyNames, cutoffDate3Mo] : [partyIds, partyNames];
+
           const [ordersRes, dispatchesRes, remarksRes] = await Promise.all([
-            pool.query(`
-              SELECT * FROM crm_sales_orders 
-              WHERE ("partyId" = ANY($1) OR LOWER(TRIM("partyName")) = ANY($2))
-                AND ("orderDate" >= $3 OR "orderDate" IS NULL OR "orderDate" = '')
-              ORDER BY "orderDate" DESC
-            `, [partyIds, partyNames, cutoffDate3Mo]),
-            pool.query(`
-              SELECT * FROM crm_dispatches 
-              WHERE ("partyId" = ANY($1) OR LOWER(TRIM("partyName")) = ANY($2))
-                AND ("dispatchDate" >= $3 OR "dispatchDate" IS NULL OR "dispatchDate" = '')
-              ORDER BY "dispatchDate" DESC
-            `, [partyIds, partyNames, cutoffDate3Mo]),
+            pool.query(orderQuery, orderParams),
+            pool.query(dispatchQuery, dispatchParams),
             pool.query(`
               SELECT * FROM crm_party_remarks 
               WHERE ("partyId" = ANY($1) OR LOWER(TRIM("partyName")) = ANY($2))
@@ -1711,11 +1725,18 @@ app.get("/api/state", async (req, res) => {
       const effectiveId = userId || "";
       const cleanName = (userName || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       const myParties = (data.crmParties || []).filter(p => {
-        const matchId = effectiveId && (p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId);
-        const pAsm = (p.assignedAsmName || "").trim().toLowerCase();
-        const pTsm = (p.assignedTsmName || "").trim().toLowerCase();
-        const matchName = cleanName && (pAsm.includes(cleanName) || pTsm.includes(cleanName) || cleanName.includes(pAsm) || cleanName.includes(pTsm));
-        return matchId || matchName;
+        if (isCrmRole) {
+          const matchId = effectiveId && (p.assignedCrmId === effectiveId);
+          const pCrm = (p.assignedCrmName || "").trim().toLowerCase();
+          const matchName = cleanName && (pCrm.includes(cleanName) || cleanName.includes(pCrm));
+          return matchId || matchName;
+        } else {
+          const matchId = effectiveId && (p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId);
+          const pAsm = (p.assignedAsmName || "").trim().toLowerCase();
+          const pTsm = (p.assignedTsmName || "").trim().toLowerCase();
+          const matchName = cleanName && (pAsm.includes(cleanName) || pTsm.includes(cleanName) || cleanName.includes(pAsm) || cleanName.includes(pTsm));
+          return matchId || matchName;
+        }
       });
       const partyIdSet = new Set(myParties.map(p => p.id));
       const partyNameSet = new Set(myParties.map(p => (p.name || "").trim().toLowerCase()));
@@ -1723,8 +1744,8 @@ app.get("/api/state", async (req, res) => {
       return res.json({
         ...data,
         crmParties: myParties,
-        crmSalesOrders: (data.crmSalesOrders || []).filter(o => (partyIdSet.has(o.partyId) || partyNameSet.has((o.partyName || "").trim().toLowerCase())) && (!o.orderDate || o.orderDate >= cutoffDate3Mo)),
-        crmDispatches: (data.crmDispatches || []).filter(d => (partyIdSet.has(d.partyId) || partyNameSet.has((d.partyName || "").trim().toLowerCase())) && (!d.dispatchDate || d.dispatchDate >= cutoffDate3Mo)),
+        crmSalesOrders: (data.crmSalesOrders || []).filter(o => (partyIdSet.has(o.partyId) || partyNameSet.has((o.partyName || "").trim().toLowerCase())) && (!isAsmTsmRole || !o.orderDate || o.orderDate >= cutoffDate3Mo)),
+        crmDispatches: (data.crmDispatches || []).filter(d => (partyIdSet.has(d.partyId) || partyNameSet.has((d.partyName || "").trim().toLowerCase())) && (!isAsmTsmRole || !d.dispatchDate || d.dispatchDate >= cutoffDate3Mo)),
         crmPartyRemarks: (data.crmPartyRemarks || []).filter(r => partyIdSet.has(r.partyId) || partyNameSet.has((r.partyName || "").trim().toLowerCase()))
       });
     }
