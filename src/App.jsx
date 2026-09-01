@@ -1064,17 +1064,29 @@ export default function App() {
     }
   };
 
-  const handleBatchAssignParties = async (partyIds, assignedAsmId, assignedTsmId) => {
+  const handleBatchAssignParties = async (partyIds, assignedAsmId, assignedTsmId, assignedAsmName, assignedTsmName) => {
     try {
-      const res = await postData("/api/crm/parties/batch-assign", { partyIds, assignedAsmId, assignedTsmId });
+      const res = await postData("/api/crm/parties/batch-assign", { 
+        partyIds, 
+        assignedAsmId, 
+        assignedTsmId,
+        assignedAsmName,
+        assignedTsmName
+      });
       if (res && res.success) {
         setCrmParties(prev => prev.map(p => {
           if (partyIds.includes(p.id)) {
             return {
               ...p,
               assignedAsmId: assignedAsmId !== undefined ? assignedAsmId : p.assignedAsmId,
-              assignedTsmId: assignedTsmId !== undefined ? assignedTsmId : p.assignedTsmId
+              assignedAsmName: assignedAsmName !== undefined ? assignedAsmName : p.assignedAsmName,
+              assignedTsmId: assignedTsmId !== undefined ? assignedTsmId : p.assignedTsmId,
+              assignedTsmName: assignedTsmName !== undefined ? assignedTsmName : p.assignedTsmName
             };
+          } else if (assignedAsmId && (p.assignedAsmId === assignedAsmId || (p.assignedAsmName && assignedAsmName && p.assignedAsmName.toLowerCase() === assignedAsmName.toLowerCase()))) {
+            return { ...p, assignedAsmId: "", assignedAsmName: "" };
+          } else if (assignedTsmId && (p.assignedTsmId === assignedTsmId || (p.assignedTsmName && assignedTsmName && p.assignedTsmName.toLowerCase() === assignedTsmName.toLowerCase()))) {
+            return { ...p, assignedTsmId: "", assignedTsmName: "" };
           }
           return p;
         }));

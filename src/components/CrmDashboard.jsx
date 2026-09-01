@@ -107,20 +107,35 @@ export default function CrmDashboard({
   // Filtered Parties based on selected executive
   const currentParties = useMemo(() => {
     if (selectedExecutiveId === "all") return crmParties;
-    return crmParties.filter(p => p.assignedCrmId === selectedExecutiveId || p.assignedAsmId === selectedExecutiveId || p.assignedTsmId === selectedExecutiveId);
-  }, [crmParties, selectedExecutiveId]);
+    return crmParties.filter(p => {
+      const matchId = p.assignedCrmId === selectedExecutiveId || p.assignedAsmId === selectedExecutiveId || p.assignedTsmId === selectedExecutiveId;
+      const matchName = p.assignedCrmName && activeExecutive && p.assignedCrmName.trim().toLowerCase() === (activeExecutive.name || "").trim().toLowerCase();
+      return matchId || matchName;
+    });
+  }, [crmParties, selectedExecutiveId, activeExecutive]);
 
-  // Filtered Sales Orders
+  const currentPartyIdSet = useMemo(() => new Set(currentParties.map(p => p.id)), [currentParties]);
+  const currentPartyNameSet = useMemo(() => new Set(currentParties.map(p => (p.name || "").trim().toLowerCase()).filter(Boolean)), [currentParties]);
+
+  // Filtered Sales Orders (matched by executive ID or party name/ID)
   const currentSalesOrders = useMemo(() => {
     if (selectedExecutiveId === "all") return crmSalesOrders;
-    return crmSalesOrders.filter(so => so.assignedCrmId === selectedExecutiveId || so.assignedAsmId === selectedExecutiveId || so.assignedTsmId === selectedExecutiveId);
-  }, [crmSalesOrders, selectedExecutiveId]);
+    return crmSalesOrders.filter(so => {
+      if (so.assignedCrmId === selectedExecutiveId || so.assignedAsmId === selectedExecutiveId || so.assignedTsmId === selectedExecutiveId) return true;
+      if (currentPartyIdSet.has(so.partyId) || currentPartyNameSet.has((so.partyName || "").trim().toLowerCase())) return true;
+      return false;
+    });
+  }, [crmSalesOrders, selectedExecutiveId, currentPartyIdSet, currentPartyNameSet]);
 
-  // Filtered Dispatches
+  // Filtered Dispatches (matched by executive ID or party name/ID)
   const currentDispatches = useMemo(() => {
     if (selectedExecutiveId === "all") return crmDispatches;
-    return crmDispatches.filter(d => d.assignedCrmId === selectedExecutiveId || d.assignedAsmId === selectedExecutiveId || d.assignedTsmId === selectedExecutiveId);
-  }, [crmDispatches, selectedExecutiveId]);
+    return crmDispatches.filter(d => {
+      if (d.assignedCrmId === selectedExecutiveId || d.assignedAsmId === selectedExecutiveId || d.assignedTsmId === selectedExecutiveId) return true;
+      if (currentPartyIdSet.has(d.partyId) || currentPartyNameSet.has((d.partyName || "").trim().toLowerCase())) return true;
+      return false;
+    });
+  }, [crmDispatches, selectedExecutiveId, currentPartyIdSet, currentPartyNameSet]);
 
   // ASMs and TSMs under this executive or all
   const teamMembers = useMemo(() => {
@@ -854,8 +869,22 @@ export default function CrmDashboard({
           {/* Team Cards Grid */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "18px" }}>
             {teamMembers.map(member => {
-              const assignedParties = currentParties.filter(p => p.assignedAsmId === member.id || p.assignedTsmId === member.id);
-              const memberOrders = currentSalesOrders.filter(o => o.assignedAsmId === member.id || o.assignedTsmId === member.id);
+              const mId = member.id;
+              const mName = (member.name || "").trim().toLowerCase();
+              const assignedParties = crmParties.filter(p => {
+                if (p.assignedAsmId === mId || p.assignedTsmId === mId) return true;
+                if (p.assignedAsmName && p.assignedAsmName.trim().toLowerCase() === mName) return true;
+                if (p.assignedTsmName && p.assignedTsmName.trim().toLowerCase() === mName) return true;
+                return false;
+              });
+              const assignedPartyIds = new Set(assignedParties.map(p => p.id));
+              const assignedPartyNames = new Set(assignedParties.map(p => (p.name || "").trim().toLowerCase()).filter(Boolean));
+
+              const memberOrders = crmSalesOrders.filter(o => {
+                if (o.assignedAsmId === mId || o.assignedTsmId === mId) return true;
+                if (assignedPartyIds.has(o.partyId) || assignedPartyNames.has((o.partyName || "").trim().toLowerCase())) return true;
+                return false;
+              });
               const memberRevenue = memberOrders.reduce((acc, o) => acc + (parseFloat(o.totalInr) || 0), 0);
 
               return (
@@ -1652,7 +1681,9 @@ export default function CrmDashboard({
               await onBatchAssignParties(
                 partyIds, 
                 isAsm ? assigningTeamMember.id : undefined, 
-                !isAsm ? assigningTeamMember.id : undefined
+                !isAsm ? assigningTeamMember.id : undefined,
+                isAsm ? assigningTeamMember.name : undefined,
+                !isAsm ? assigningTeamMember.name : undefined
               );
               showSuccessToast(`✅ Assigned ${partyIds.length} parties to ${assigningTeamMember.name}!`);
               setAssigningTeamMember(null);
@@ -2289,8 +2320,16 @@ function AssignPartiesModal({ teamMember, allParties = [], onAssign, onClose }) 
   const [search, setSearch] = useState("");
   const [stateFilter, setStateFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState(() => {
+    const mId = teamMember.id;
+    const mName = (teamMember.name || "").trim().toLowerCase();
     return allParties
-      .filter(p => isAsm ? p.assignedAsmId === teamMember.id : p.assignedTsmId === teamMember.id)
+      .filter(p => {
+        if (isAsm) {
+          return p.assignedAsmId === mId || (p.assignedAsmName && p.assignedAsmName.trim().toLowerCase() === mName);
+        } else {
+          return p.assignedTsmId === mId || (p.assignedTsmName && p.assignedTsmName.trim().toLowerCase() === mName);
+        }
+      })
       .map(p => p.id);
   });
 
@@ -2471,19 +2510,29 @@ function AsmSalesDetailModal({
   const [endDate, setEndDate] = useState("");
   const [activeRemarkModalTarget, setActiveRemarkModalTarget] = useState(null);
 
-  // Find all assigned parties
+  // Find all assigned parties (by ID or Name)
   const assignedParties = useMemo(() => {
-    return allParties.filter(p => isAsm ? p.assignedAsmId === member.id : p.assignedTsmId === member.id);
+    const mId = member.id;
+    const mName = (member.name || "").trim().toLowerCase();
+    return allParties.filter(p => {
+      if (isAsm) {
+        return p.assignedAsmId === mId || (p.assignedAsmName && p.assignedAsmName.trim().toLowerCase() === mName);
+      } else {
+        return p.assignedTsmId === mId || (p.assignedTsmName && p.assignedTsmName.trim().toLowerCase() === mName);
+      }
+    });
   }, [allParties, member, isAsm]);
 
-  const assignedPartyIdSet = useMemo(() => {
-    return new Set(assignedParties.map(p => p.id));
-  }, [assignedParties]);
+  const assignedPartyIdSet = useMemo(() => new Set(assignedParties.map(p => p.id)), [assignedParties]);
+  const assignedPartyNameSet = useMemo(() => new Set(assignedParties.map(p => (p.name || "").trim().toLowerCase()).filter(Boolean)), [assignedParties]);
 
-  // Find all sales orders from these assigned parties
+  // Find all sales orders from these assigned parties (by ID or Name)
   const memberOrders = useMemo(() => {
     return allSalesOrders.filter(o => {
-      const matchParty = assignedPartyIdSet.has(o.partyId) || o.assignedAsmId === member.id || o.assignedTsmId === member.id;
+      const matchParty = assignedPartyIdSet.has(o.partyId) || 
+                         assignedPartyNameSet.has((o.partyName || "").trim().toLowerCase()) || 
+                         o.assignedAsmId === member.id || 
+                         o.assignedTsmId === member.id;
       if (!matchParty) return false;
       if (startDate || endDate) {
         if (!isDateInBetween(o.orderDate, startDate, endDate)) return false;
@@ -2497,7 +2546,30 @@ function AsmSalesDetailModal({
       }
       return true;
     });
-  }, [allSalesOrders, assignedPartyIdSet, member, startDate, endDate, search]);
+  }, [allSalesOrders, assignedPartyIdSet, assignedPartyNameSet, member, startDate, endDate, search]);
+
+  // Find all dispatches linked to these assigned parties (by ID or Name)
+  const memberDispatches = useMemo(() => {
+    return allDispatches.filter(d => {
+      const matchParty = assignedPartyIdSet.has(d.partyId) || 
+                         assignedPartyNameSet.has((d.partyName || "").trim().toLowerCase()) || 
+                         d.assignedAsmId === member.id || 
+                         d.assignedTsmId === member.id;
+      if (!matchParty) return false;
+      if (startDate || endDate) {
+        if (!isDateInBetween(d.dispatchDate, startDate, endDate)) return false;
+      }
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const match = (d.partyName || "").toLowerCase().includes(q) ||
+                      (d.itemModel || "").toLowerCase().includes(q) ||
+                      (d.invoiceNo || "").toLowerCase().includes(q) ||
+                      (d.transporterName || "").toLowerCase().includes(q);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [allDispatches, assignedPartyIdSet, assignedPartyNameSet, member, startDate, endDate, search]);
 
   // Month & Category Matrix for this specific ASM/TSM
   const memberMonthCategoryMatrix = useMemo(() => {
@@ -2535,7 +2607,7 @@ function AsmSalesDetailModal({
 
     // Also include assigned parties with remarks
     (crmPartyRemarks || []).forEach(r => {
-      if (assignedPartyIdSet.has(r.partyId)) {
+      if (assignedPartyIdSet.has(r.partyId) || assignedPartyNameSet.has((r.partyName || "").trim().toLowerCase())) {
         const key = `${r.partyId}___${r.category}___${r.month}`;
         if (!map.has(key)) {
           map.set(key, {
@@ -2553,7 +2625,7 @@ function AsmSalesDetailModal({
     });
 
     return Array.from(map.values()).sort((a, b) => b.month.localeCompare(a.month) || a.partyName.localeCompare(b.partyName));
-  }, [memberOrders, assignedPartyIdSet, crmPartyRemarks, items]);
+  }, [memberOrders, assignedPartyIdSet, assignedPartyNameSet, crmPartyRemarks, items]);
 
   // Summary KPIs
   const totalRevenue = useMemo(() => {
@@ -2565,8 +2637,10 @@ function AsmSalesDetailModal({
   }, [memberOrders]);
 
   const totalDispatchedUnits = useMemo(() => {
-    return memberOrders.reduce((acc, o) => acc + (parseInt(o.dispatchedQty) || 0), 0);
-  }, [memberOrders]);
+    const fromOrders = memberOrders.reduce((acc, o) => acc + (parseInt(o.dispatchedQty) || 0), 0);
+    const fromDispatches = memberDispatches.reduce((acc, d) => acc + (parseInt(d.dispatchedQty) || 0), 0);
+    return Math.max(fromOrders, fromDispatches);
+  }, [memberOrders, memberDispatches]);
 
   // Top Selling Items Leaderboard for this ASM
   const topItems = useMemo(() => {
@@ -2642,6 +2716,13 @@ function AsmSalesDetailModal({
               Purchased Items ({memberOrders.length})
             </button>
             <button
+              onClick={() => setSubTab("dispatches")}
+              className={`tab-btn ${subTab === "dispatches" ? "active" : ""}`}
+              style={{ fontSize: "0.82rem", padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+            >
+              <Truck size={13} /> Dispatched Items ({memberDispatches.length})
+            </button>
+            <button
               onClick={() => setSubTab("matrix")}
               className={`tab-btn ${subTab === "matrix" ? "active" : ""}`}
               style={{ fontSize: "0.82rem", padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: "5px", fontWeight: subTab === "matrix" ? 700 : 500 }}
@@ -2679,7 +2760,7 @@ function AsmSalesDetailModal({
               onStartDateChange={setStartDate}
               onEndDateChange={setEndDate}
               onClear={() => { setStartDate(""); setEndDate(""); }}
-              placeholder="Filter Order Dates"
+              placeholder="Filter Dates"
             />
           </div>
         </div>
@@ -2724,6 +2805,54 @@ function AsmSalesDetailModal({
                       <td style={{ textAlign: "center" }}>
                         <span className={`badge ${order.status === "Dispatched" ? "badge-success" : order.status === "Partially Dispatched" ? "badge-primary" : "badge-secondary"}`} style={{ fontSize: "0.7rem" }}>
                           {order.status || "Pending"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
+
+          {subTab === "dispatches" && (
+            <table className="table" style={{ width: "100%", fontSize: "0.82rem" }}>
+              <thead>
+                <tr>
+                  <th>Dispatch Date</th>
+                  <th>Invoice No</th>
+                  <th>Party Name</th>
+                  <th>Item Model</th>
+                  <th style={{ textAlign: "right" }}>Dispatched Qty</th>
+                  <th>Transporter & Docket LR</th>
+                  <th style={{ textAlign: "center" }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {memberDispatches.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                      No dispatched shipments logged for assigned parties.
+                    </td>
+                  </tr>
+                ) : (
+                  memberDispatches.map(dsp => (
+                    <tr key={dsp.id}>
+                      <td><code style={{ fontSize: "0.78rem" }}>{dsp.dispatchDate}</code></td>
+                      <td><code style={{ fontSize: "0.8rem", fontWeight: 700 }}>{dsp.invoiceNo || "INV-PENDING"}</code></td>
+                      <td><strong style={{ color: "var(--text-main)" }}>{dsp.partyName}</strong></td>
+                      <td><strong style={{ color: "var(--primary)" }}>{dsp.itemModel}</strong></td>
+                      <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)", fontSize: "0.9rem" }}>
+                        {dsp.dispatchedQty?.toLocaleString()} Pcs
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", flexDirection: "column", fontSize: "0.78rem" }}>
+                          <span>{dsp.transporterName || "—"}</span>
+                          <span style={{ color: "var(--text-muted)" }}>LR: {dsp.docketNo || "N/A"}</span>
+                        </div>
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <span className={`badge ${dsp.status === "Delivered" ? "badge-success" : dsp.status === "In Transit" ? "badge-primary" : "badge-secondary"}`} style={{ fontSize: "0.7rem" }}>
+                          {dsp.status || "Dispatched"}
                         </span>
                       </td>
                     </tr>
@@ -2817,7 +2946,7 @@ function AsmSalesDetailModal({
                   </tr>
                 ) : (
                   assignedParties.map(p => {
-                    const pOrders = memberOrders.filter(o => o.partyId === p.id);
+                    const pOrders = memberOrders.filter(o => o.partyId === p.id || (o.partyName && o.partyName.trim().toLowerCase() === (p.name || "").trim().toLowerCase()));
                     const pRevenue = pOrders.reduce((acc, o) => acc + (parseFloat(o.totalInr) || 0), 0);
 
                     return (

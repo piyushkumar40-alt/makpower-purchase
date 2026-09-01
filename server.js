@@ -2447,33 +2447,37 @@ app.post("/api/crm/parties/delete", async (req, res) => {
 
 // 4b. POST /api/crm/parties/batch-assign - Assign multiple parties to an ASM or TSM
 app.post("/api/crm/parties/batch-assign", async (req, res) => {
-  const { partyIds, assignedAsmId, assignedTsmId } = req.body;
-  if (!Array.isArray(partyIds) || partyIds.length === 0) {
+  const { partyIds, assignedAsmId, assignedTsmId, assignedAsmName, assignedTsmName } = req.body;
+  if (!Array.isArray(partyIds)) {
     return res.status(400).json({ error: "No party IDs provided for assignment." });
   }
 
   if (isPg) {
     try {
-      if (assignedAsmId !== undefined && assignedTsmId !== undefined) {
-        await pool.query(
-          'UPDATE crm_parties SET "assignedAsmId" = $1, "assignedTsmId" = $2 WHERE "id" = ANY($3::text[])',
-          [assignedAsmId, assignedTsmId, partyIds]
-        );
-      } else if (assignedAsmId !== undefined) {
-        await pool.query(
-          'UPDATE crm_parties SET "assignedAsmId" = $1 WHERE "id" = ANY($2::text[])',
-          [assignedAsmId, partyIds]
-        );
-      } else if (assignedTsmId !== undefined) {
-        await pool.query(
-          'UPDATE crm_parties SET "assignedTsmId" = $1 WHERE "id" = ANY($2::text[])',
-          [assignedTsmId, partyIds]
-        );
+      if (assignedAsmId !== undefined) {
+        // Clear prior assignments for this ASM so unselected ones are cleanly unassigned
+        await pool.query('UPDATE crm_parties SET "assignedAsmId" = NULL, "assignedAsmName" = NULL WHERE "assignedAsmId" = $1', [assignedAsmId]);
+        if (partyIds.length > 0) {
+          await pool.query(
+            'UPDATE crm_parties SET "assignedAsmId" = $1, "assignedAsmName" = $2 WHERE "id" = ANY($3::text[])',
+            [assignedAsmId, assignedAsmName || "", partyIds]
+          );
+        }
+      }
+      if (assignedTsmId !== undefined) {
+        // Clear prior assignments for this TSM so unselected ones are cleanly unassigned
+        await pool.query('UPDATE crm_parties SET "assignedTsmId" = NULL, "assignedTsmName" = NULL WHERE "assignedTsmId" = $1', [assignedTsmId]);
+        if (partyIds.length > 0) {
+          await pool.query(
+            'UPDATE crm_parties SET "assignedTsmId" = $1, "assignedTsmName" = $2 WHERE "id" = ANY($3::text[])',
+            [assignedTsmId, assignedTsmName || "", partyIds]
+          );
+        }
       }
       res.json({ success: true, count: partyIds.length });
     } catch (err) {
       console.error("POST /api/crm/parties/batch-assign error:", err.message);
-      res.status(500).json({ error: "Failed to batch assign parties." });
+      res.status(500).json({ error: "Failed to batch assign parties: " + err.message });
     }
   } else {
     const data = readLocalJson();
@@ -2483,8 +2487,14 @@ app.post("/api/crm/parties/batch-assign", async (req, res) => {
         return {
           ...p,
           assignedAsmId: assignedAsmId !== undefined ? assignedAsmId : p.assignedAsmId,
-          assignedTsmId: assignedTsmId !== undefined ? assignedTsmId : p.assignedTsmId
+          assignedAsmName: assignedAsmName !== undefined ? assignedAsmName : p.assignedAsmName,
+          assignedTsmId: assignedTsmId !== undefined ? assignedTsmId : p.assignedTsmId,
+          assignedTsmName: assignedTsmName !== undefined ? assignedTsmName : p.assignedTsmName
         };
+      } else if (assignedAsmId && p.assignedAsmId === assignedAsmId) {
+        return { ...p, assignedAsmId: "", assignedAsmName: "" };
+      } else if (assignedTsmId && p.assignedTsmId === assignedTsmId) {
+        return { ...p, assignedTsmId: "", assignedTsmName: "" };
       }
       return p;
     });
