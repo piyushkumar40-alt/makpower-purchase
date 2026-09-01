@@ -252,14 +252,31 @@ export default function App() {
 
   // activeView: "login" | "home" | "requester" | "dashboard" | "admin" | "nitin" | "rahul" | "coordinator" | "itemcatalog" | "itemdetail"
   const [activeView, setActiveView] = useState(() => {
-    const savedView = localStorage.getItem("makpower_active_view");
     const savedUser = localStorage.getItem("makpower_current_user");
+    const savedView = localStorage.getItem("makpower_active_view");
     if (savedUser) {
-      if (savedView && savedView !== "itemdetail") return savedView;
+      if (savedView && savedView !== "itemdetail" && savedView !== "login") return savedView;
+      try {
+        const u = JSON.parse(savedUser);
+        const r = (u.role || "").toLowerCase();
+        if (r === "superadmin") return "admin";
+        if (r === "crm" || r === "asm" || r === "tsm") return "crm";
+        if (r === "owner") return "owner";
+      } catch (e) {}
       return "home";
     }
     return "login";
   });
+
+  useEffect(() => {
+    if (currentUser && activeView === "login") {
+      const r = (currentUser.role || "").toLowerCase();
+      if (r === "superadmin") setActiveView("admin");
+      else if (r === "crm" || r === "asm" || r === "tsm") setActiveView("crm");
+      else if (r === "owner") setActiveView("owner");
+      else setActiveView("home");
+    }
+  }, [currentUser, activeView]);
 
   const [selectedItemForDetail, setSelectedItemForDetail] = useState(null);
   const [previousViewBeforeItemDetail, setPreviousViewBeforeItemDetail] = useState("dashboard");
@@ -2106,7 +2123,7 @@ export default function App() {
       ) : (
         /* Main App Screens */
         <main className="main-content-area" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-          {activeView === "login" && (
+          {activeView === "login" && !currentUser && (
             <LoginPage onLogin={handleLogin} onEnterAsGuest={enterAsGuest} users={users} />
           )}
 
