@@ -97,16 +97,9 @@ export default function App() {
     }
     return [];
   });
-  const [loading, setLoading] = useState(() => {
-    // Instant Load from LocalStorage Cache without blocking UI
-    if (cachedState && (cachedState.users?.length > 0 || cachedState.crmParties?.length > 0 || cachedState.requests?.length > 0)) {
-      return false;
-    }
-    return true;
-  });
-  const [initialLoadComplete, setInitialLoadComplete] = useState(() => {
-    return !!(cachedState && (cachedState.users?.length > 0 || cachedState.crmParties?.length > 0 || cachedState.requests?.length > 0));
-  });
+  const [settings, setSettings] = useState(() => cachedState?.settings || { isHidden: false, redirectUrl: "https://www.instagram.com/makpowerofficial/" });
+  const [loading, setLoading] = useState(true);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
 
   const handleHardCacheRefresh = async () => {
