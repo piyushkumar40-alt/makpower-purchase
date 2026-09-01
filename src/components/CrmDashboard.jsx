@@ -125,8 +125,31 @@ export default function CrmDashboard({
     return n1 === n2 || n1.includes(n2) || n2.includes(n1);
   };
 
-  // Direct, high-performance orders and dispatches arrays
-  const allUnifiedDispatches = crmDispatches;
+  // Unified Dispatches combining crmDispatches + IMS party stock movements
+  const allUnifiedDispatches = useMemo(() => {
+    const list = [...crmDispatches];
+    const existingIds = new Set(crmDispatches.map(d => d.id));
+    (imsTransactions || []).forEach(tx => {
+      if (tx.partyName && tx.partyName.trim() && (tx.movementType === "OUT" || !tx.movementType)) {
+        if (!existingIds.has(tx.id)) {
+          list.push({
+            id: tx.id,
+            dispatchDate: tx.date || "",
+            partyId: tx.partyId || "",
+            partyName: tx.partyName.trim(),
+            itemModel: tx.itemName || "Item",
+            dispatchedQty: Math.abs(parseInt(tx.stockQty) || 0),
+            transporterName: tx.location || tx.source || "Warehouse Dispatch",
+            docketNo: tx.remarks || "",
+            invoiceNo: `IMS-${tx.id.slice(0, 8)}`,
+            status: "Delivered"
+          });
+        }
+      }
+    });
+    return list;
+  }, [crmDispatches, imsTransactions]);
+
   const allUnifiedSalesOrders = crmSalesOrders;
 
   // Filtered Parties based on selected executive

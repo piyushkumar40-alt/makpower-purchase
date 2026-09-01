@@ -1569,10 +1569,6 @@ app.get("/api/state", async (req, res) => {
         crmPartiesParams = [userId || "", cleanName];
       }
 
-      const imsQuery = isRestrictedRole 
-        ? Promise.resolve({ rows: [] }) 
-        : pool.query('SELECT * FROM ims_transactions ORDER BY "date" DESC, "createdAt" DESC LIMIT 100');
-
       const [
         usersRes,
         vendorsRes,
@@ -1582,7 +1578,6 @@ app.get("/api/state", async (req, res) => {
         settingsRes,
         itemsRes,
         crmPartiesRes,
-        imsRes,
         designationsRes,
         itemPricesRes
       ] = await Promise.all([
@@ -1594,7 +1589,6 @@ app.get("/api/state", async (req, res) => {
         pool.query("SELECT * FROM settings"),
         pool.query("SELECT * FROM items ORDER BY CAST(NULLIF(regexp_replace(\"id\", '\\D', '', 'g'), '') AS INTEGER) ASC, \"id\" ASC"),
         pool.query(crmPartiesQuery, crmPartiesParams),
-        imsQuery,
         pool.query("SELECT * FROM designations"),
         pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC")
       ]);
@@ -1603,6 +1597,7 @@ app.get("/api/state", async (req, res) => {
       let crmSalesOrdersRes = { rows: [] };
       let crmDispatchesRes = { rows: [] };
       let crmPartyRemarksRes = { rows: [] };
+      let imsRes = { rows: [] };
 
       if (isRestrictedRole) {
         if (myParties.length > 0) {
@@ -1619,29 +1614,38 @@ app.get("/api/state", async (req, res) => {
             : `SELECT * FROM crm_dispatches WHERE ("partyId" = ANY($1) OR LOWER(TRIM("partyName")) = ANY($2)) ORDER BY "dispatchDate" DESC`;
           const dispatchParams = isAsmTsmRole ? [partyIds, partyNames, cutoffDate3Mo] : [partyIds, partyNames];
 
-          const [ordersRes, dispatchesRes, remarksRes] = await Promise.all([
+          const imsPartyQuery = isAsmTsmRole
+            ? `SELECT * FROM ims_transactions WHERE ("partyName" IS NOT NULL AND "partyName" <> '') AND ("movementType" = 'OUT' OR "movementType" IS NULL) AND (LOWER(TRIM("partyName")) = ANY($1)) AND ("date" >= $2 OR "date" IS NULL OR "date" = '') ORDER BY "date" DESC LIMIT 500`
+            : `SELECT * FROM ims_transactions WHERE ("partyName" IS NOT NULL AND "partyName" <> '') AND ("movementType" = 'OUT' OR "movementType" IS NULL) AND (LOWER(TRIM("partyName")) = ANY($1)) ORDER BY "date" DESC LIMIT 500`;
+          const imsPartyParams = isAsmTsmRole ? [partyNames, cutoffDate3Mo] : [partyNames];
+
+          const [ordersRes, dispatchesRes, remarksRes, imsPartyRes] = await Promise.all([
             pool.query(orderQuery, orderParams),
             pool.query(dispatchQuery, dispatchParams),
             pool.query(`
               SELECT * FROM crm_party_remarks 
               WHERE ("partyId" = ANY($1) OR LOWER(TRIM("partyName")) = ANY($2))
               ORDER BY "createdAt" DESC
-            `, [partyIds, partyNames])
+            `, [partyIds, partyNames]),
+            pool.query(imsPartyQuery, imsPartyParams)
           ]);
 
           crmSalesOrdersRes = ordersRes;
           crmDispatchesRes = dispatchesRes;
           crmPartyRemarksRes = remarksRes;
+          imsRes = imsPartyRes;
         }
       } else {
-        const [ordersRes, dispatchesRes, remarksRes] = await Promise.all([
+        const [ordersRes, dispatchesRes, remarksRes, allImsRes] = await Promise.all([
           pool.query('SELECT * FROM crm_sales_orders ORDER BY "orderDate" DESC'),
           pool.query('SELECT * FROM crm_dispatches ORDER BY "dispatchDate" DESC'),
-          pool.query('SELECT * FROM crm_party_remarks ORDER BY "createdAt" DESC')
+          pool.query('SELECT * FROM crm_party_remarks ORDER BY "createdAt" DESC'),
+          pool.query('SELECT * FROM ims_transactions WHERE ("partyName" IS NOT NULL AND "partyName" <> '') ORDER BY "date" DESC LIMIT 1000')
         ]);
         crmSalesOrdersRes = ordersRes;
         crmDispatchesRes = dispatchesRes;
         crmPartyRemarksRes = remarksRes;
+        imsRes = allImsRes;
       }
 
       // Format types back
