@@ -2,7 +2,6 @@ import express from "express";
 import pg from "pg";
 import path from "path";
 import fs from "fs";
-import zlib from "zlib";
 import { fileURLToPath } from "url";
 import { v2 as cloudinary } from "cloudinary";
 import { 
@@ -22,27 +21,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-
-// High-speed native GZIP compression middleware for all responses
-app.use((req, res, next) => {
-  const acceptEncoding = req.headers["accept-encoding"] || "";
-  if (!acceptEncoding.includes("gzip")) return next();
-
-  const originalSend = res.send;
-  res.send = function (body) {
-    if (typeof body === "string" || Buffer.isBuffer(body)) {
-      if (body.length > 1024) { // Only compress payloads > 1KB
-        res.setHeader("Content-Encoding", "gzip");
-        res.removeHeader("Content-Length");
-        const compressed = zlib.gzipSync(body, { level: 6 });
-        return originalSend.call(this, compressed);
-      }
-    }
-    return originalSend.call(this, body);
-  };
-  next();
-});
-
 app.use(express.json({ limit: "200mb" }));
 app.use(express.urlencoded({ limit: "200mb", extended: true }));
 
