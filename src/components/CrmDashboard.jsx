@@ -1210,15 +1210,15 @@ export default function CrmDashboard({
               const memberRevenue = memberOrders.reduce((acc, o) => acc + (parseFloat(o.totalInr) || 0), 0);
 
               return (
-                <div key={member.id} className="glass-panel" style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "14px", borderRadius: "14px", border: "1px solid var(--border-glass)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                      <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: member.role === "asm" ? "linear-gradient(135deg, #10b981, #059669)" : "linear-gradient(135deg, #f59e0b, #d97706)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1rem" }}>
+                <div key={member.id} className="glass-panel sales-team-card" style={{ padding: "18px", display: "flex", flexDirection: "column", gap: "14px", borderRadius: "14px", border: "1px solid var(--border-glass)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: "180px", flex: "1 1 auto" }}>
+                      <div style={{ width: "42px", height: "42px", minWidth: "42px", borderRadius: "50%", background: member.role === "asm" ? "linear-gradient(135deg, #10b981, #059669)" : "linear-gradient(135deg, #f59e0b, #d97706)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1rem" }}>
                         {member.name ? member.name.slice(0, 2).toUpperCase() : "SM"}
                       </div>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: "1rem", color: "var(--text-main)" }}>{member.name}</div>
-                        <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{member.email}</div>
+                      <div style={{ overflow: "hidden" }}>
+                        <div style={{ fontWeight: 700, fontSize: "0.98rem", color: "var(--text-main)", wordBreak: "break-word" }}>{member.name}</div>
+                        <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", wordBreak: "break-all" }}>{member.email}</div>
                       </div>
                     </div>
 
@@ -1227,7 +1227,10 @@ export default function CrmDashboard({
                       color: member.role === "asm" ? "#34d399" : "#fbbf24",
                       border: member.role === "asm" ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(245, 158, 11, 0.3)",
                       fontWeight: 700,
-                      fontSize: "0.75rem"
+                      fontSize: "0.74rem",
+                      whiteSpace: "normal",
+                      textAlign: "center",
+                      padding: "4px 8px"
                     }}>
                       {member.role === "asm" ? "ASM (Area Manager)" : "TSM (Territory Manager)"}
                     </span>

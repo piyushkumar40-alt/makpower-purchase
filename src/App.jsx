@@ -1727,25 +1727,18 @@ export default function App() {
             </div>
           </div>
 
-          {/* Mobile hamburger menu toggle */}
-          <button 
-            className="mobile-menu-toggle btn btn-sm btn-secondary" 
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label="Toggle navigation menu"
-          >
-            {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
-          </button>
-
           {/* Desktop Navigation Links */}
           <div className="nav-links" style={{ display: "flex", alignItems: "center", gap: "22px" }}>
             {currentUser && (
               <>
-                <button 
-                  onClick={handleGoHome} 
-                  className={`nav-tab-item ${activeView === "home" ? "active" : ""}`}
-                >
-                  Home
-                </button>
+                {!["crm", "asm", "tsm"].includes(currentUser.role) && (
+                  <button 
+                    onClick={handleGoHome} 
+                    className={`nav-tab-item ${activeView === "home" ? "active" : ""}`}
+                  >
+                    Home
+                  </button>
+                )}
 
                 {currentUser.role === "superadmin" && (
                   <button 
@@ -1819,8 +1812,8 @@ export default function App() {
             )}
           </div>
 
-          {/* Right Side Controls (Theme Toggle, Bell, Profile, Logout) */}
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "16px" }}>
+          {/* Right Side Controls (Theme Toggle, Bell, Profile, Logout, Mobile Menu Toggle) */}
+          <div className="header-controls-right" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "12px" }}>
             
             {/* Mode Switcher Toggle Pill */}
             <div 
@@ -1931,19 +1924,23 @@ export default function App() {
               )}
             </div>
 
-            {/* User Avatar Badge matching mockup */}
+            {/* User Avatar Badge */}
             {currentUser ? (
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <div style={{ width: "28px", height: "28px", borderRadius: "50%", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff", fontWeight: 800, fontSize: "0.75rem", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 8px rgba(99, 102, 241, 0.4)" }}>
+                <div 
+                  onClick={() => setMobileMenuOpen(prev => !prev)}
+                  title={currentUser.name}
+                  style={{ width: "28px", height: "28px", minWidth: "28px", borderRadius: "50%", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff", fontWeight: 800, fontSize: "0.75rem", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 8px rgba(99, 102, 241, 0.4)", cursor: "pointer" }}
+                >
                   {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : "AP"}
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
-                  <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-main)" }}>
+                <div className="desktop-user-badge-text" style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
+                  <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-main)", whiteSpace: "nowrap" }}>
                     {currentUser.role === "superadmin" ? "Admin" : currentUser.name}
                   </span>
-                  <span style={{ fontSize: "0.66rem", color: "var(--text-muted)" }}>({currentUser.role?.toUpperCase() || "STAFF"})</span>
+                  <span style={{ fontSize: "0.66rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>({currentUser.role?.toUpperCase() || "STAFF"})</span>
                 </div>
-                <button onClick={handleLogout} className="btn btn-sm btn-danger" style={{ borderRadius: "8px", padding: "2px 6px", fontSize: "0.72rem", marginLeft: "4px" }}>
+                <button onClick={handleLogout} className="btn btn-sm btn-danger desktop-user-logout-btn" style={{ borderRadius: "8px", padding: "2px 6px", fontSize: "0.72rem", marginLeft: "4px" }}>
                   Logout
                 </button>
               </div>
@@ -1954,6 +1951,15 @@ export default function App() {
                 </button>
               )
             )}
+
+            {/* Mobile hamburger menu toggle */}
+            <button 
+              className="mobile-menu-toggle btn btn-sm btn-secondary" 
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle navigation menu"
+            >
+              {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+            </button>
           </div>
         </div>
       </header>
@@ -1998,12 +2004,14 @@ export default function App() {
             <div className="mobile-nav-list">
               {currentUser && (
                 <>
-                  <button 
-                    onClick={() => { handleGoHome(); setMobileMenuOpen(false); }} 
-                    className={`mobile-nav-item ${activeView === "home" ? "active" : ""}`}
-                  >
-                    <Home size={18} /> <span>Home</span>
-                  </button>
+                  {!["crm", "asm", "tsm"].includes(currentUser.role) && (
+                    <button 
+                      onClick={() => { handleGoHome(); setMobileMenuOpen(false); }} 
+                      className={`mobile-nav-item ${activeView === "home" ? "active" : ""}`}
+                    >
+                      <Home size={18} /> <span>Home</span>
+                    </button>
+                  )}
 
                   {currentUser.role === "superadmin" && (
                     <button 

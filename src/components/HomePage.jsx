@@ -358,278 +358,353 @@ export default function HomePage({
             <div className="table-container">
               <table className="custom-table">
                 <thead>
-                  <tr>
-                    <th>Person / Purchaser Name</th>
-                    <th>Total Assigned</th>
-                    <th>Pending Orders</th>
-                    <th>In-Transit Cargo</th>
-                    <th>Delayed Tasks (Target Missed)</th>
-                    <th>On-Time Rate %</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {personWiseTaskStats.map(stat => {
-                    const delayedRate = stat.pending > 0 ? ((stat.delayed / stat.pending) * 100).toFixed(0) : 0;
-                    const onTimeRate = 100 - Number(delayedRate);
+      <p style={{ color: "var(--text-muted)", fontSize: "0.92rem", margin: 0 }}>
+        {["crm", "asm", "tsm"].includes(currentUser?.role)
+          ? "Mak Power CRM & Field Sales Command Center"
+          : "Mak Power Purchase Ledger & Operations Command Center"} • Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{currentUser?.role || "Staff"}</strong>
+      </p>
+    </div>
 
-                    return (
-                      <tr key={stat.purchaser.id}>
-                        <td style={{ fontWeight: 600, fontSize: "0.95rem" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: stat.delayed > 0 ? "var(--danger)" : "var(--success)" }}></div>
-                            {stat.purchaser.name} ({stat.purchaser.email})
-                          </div>
-                        </td>
-                        <td style={{ fontWeight: 600 }}>{stat.total} items</td>
-                        <td>{stat.pending} pending</td>
-                        <td><span className="badge badge-cargo">{stat.inTransit} shipments</span></td>
-                        <td>
-                          <span style={{ 
-                            padding: "4px 10px", 
-                            borderRadius: "6px", 
-                            fontWeight: 700, 
-                            background: stat.delayed > 0 ? "rgba(239, 68, 68, 0.2)" : "rgba(16, 185, 129, 0.15)",
-                            color: stat.delayed > 0 ? "#fca5a5" : "#a7f3d0"
-                          }}>
-                            {stat.delayed} Delayed
-                          </span>
-                        </td>
-                        <td>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <div style={{ flex: 1, height: "8px", borderRadius: "99px", background: "rgba(255,255,255,0.1)", overflow: "hidden" }}>
-                              <div style={{ width: `${onTimeRate}%`, height: "100%", background: onTimeRate < 60 ? "var(--danger)" : onTimeRate < 85 ? "#f59e0b" : "var(--success)", borderRadius: "99px" }}></div>
-                            </div>
-                            <span style={{ fontSize: "0.8rem", fontWeight: 600 }}>{onTimeRate}%</span>
-                          </div>
-                        </td>
-                        <td>
-                          <button 
-                            onClick={() => onNavigateView(currentUser?.role === "coordinator" ? "coordinator" : "dashboard")}
-                            className="btn btn-secondary btn-sm"
-                            style={{ padding: "4px 10px", fontSize: "0.78rem" }}
-                          >
-                            View Person Tasks
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-        </div>
-      )}
-
-      {/* ==================== ROLE VIEW 3: SUPER ADMIN HOME DASHBOARD ==================== */}
+    <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+      <button onClick={fetchMetrics} className="btn btn-secondary btn-sm" title="Refresh Dashboard Data">
+        <RefreshCw size={14} className={loadingMetrics ? "spin" : ""} /> Refresh Status
+      </button>
       {currentUser?.role === "superadmin" && (
-        <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          
-          {/* Active Users & Storage Usage vs Limits Bar */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px" }}>
-            
-            {/* Active Users Card */}
-            <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
-              <div style={{ padding: "14px", borderRadius: "12px", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8" }}>
-                <Users size={28} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Active Registered Users</div>
-                <div style={{ fontSize: "1.8rem", fontWeight: 700, color: "var(--text-main)" }}>
-                  {totalActiveUsers} <span style={{ fontSize: "0.9rem", color: "var(--text-muted)", fontWeight: 400 }}>/ {users.length} total</span>
-                </div>
-                <div style={{ fontSize: "0.75rem", color: "#38bdf8", marginTop: "2px" }}>
-                  {activeSessions.length} active live login session(s)
-                </div>
-              </div>
-            </div>
-
-            {/* PostgreSQL DB Usage vs Limit Card */}
-            <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
-              <div style={{ padding: "14px", borderRadius: "12px", background: "rgba(16, 185, 129, 0.15)", color: "var(--success)" }}>
-                <Database size={28} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>PostgreSQL Storage Usage vs Limit</div>
-                <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--text-main)" }}>
-                  {storageMetrics?.postgres?.sizeStr || "1.2 MB"} <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 400 }}>/ 1,000 MB</span>
-                </div>
-                <div style={{ width: "100%", height: "6px", background: "rgba(255,255,255,0.1)", borderRadius: "99px", marginTop: "6px", overflow: "hidden" }}>
-                  <div style={{ width: "1.2%", height: "100%", background: "var(--success)", borderRadius: "99px" }}></div>
-                </div>
-              </div>
-            </div>
-
-            {/* Cloudinary Usage vs Limit Card */}
-            <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
-              <div style={{ padding: "14px", borderRadius: "12px", background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" }}>
-                <HardDrive size={28} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Cloudinary Media CDN Usage vs Limit</div>
-                <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--text-main)" }}>
-                  {storageMetrics?.cloudinary?.usageStr || "0.5 MB"} <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 400 }}>/ 25,000 MB</span>
-                </div>
-                <div style={{ width: "100%", height: "6px", background: "rgba(255,255,255,0.1)", borderRadius: "99px", marginTop: "6px", overflow: "hidden" }}>
-                  <div style={{ width: "0.5%", height: "100%", background: "#f59e0b", borderRadius: "99px" }}></div>
-                </div>
-              </div>
-            </div>
-
-          </div>
-
-          {/* Active Users Table & Session Audit */}
-          <div className="glass-panel" style={{ padding: "24px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 style={{ fontSize: "1.2rem", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
-                <Users size={18} /> Active System Users & Live Sessions
-              </h3>
-              <button onClick={() => onNavigateView("admin")} className="btn btn-secondary btn-sm">
-                Manage Staff Accounts
-              </button>
-            </div>
-
-            <div className="table-container">
-              <table className="custom-table">
-                <thead>
-                  <tr>
-                    <th>User ID</th>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Status</th>
-                    <th>Assigned Vendors</th>
-                    <th>Live Session</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map(u => {
-                    const uVendors = vendors.filter(v => (v.purchaserIds || []).includes(u.id));
-                    const isOnline = activeSessions.some(s => s.userId === u.id);
-
-                    return (
-                      <tr key={u.id}>
-                        <td><code>{u.id}</code></td>
-                        <td style={{ fontWeight: 600 }}>{u.name}</td>
-                        <td>{u.email}</td>
-                        <td>
-                          <span className="badge badge-secondary" style={{ textTransform: "capitalize" }}>
-                            {u.role}
-                          </span>
-                        </td>
-                        <td>
-                          <span style={{ color: u.status === "active" ? "var(--success)" : "var(--danger)", fontWeight: 600 }}>
-                            {u.status === "active" ? "Active" : "Inactive"}
-                          </span>
-                        </td>
-                        <td style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-                          {uVendors.length > 0 ? `${uVendors.length} vendors` : "—"}
-                        </td>
-                        <td>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", fontWeight: 600, color: isOnline ? "var(--success)" : "var(--text-muted)" }}>
-                            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: isOnline ? "var(--success)" : "#475569" }}></span>
-                            {isOnline ? "Online Now" : "Offline"}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-        </div>
+        <button onClick={() => onNavigateView("admin")} className="btn btn-primary btn-sm">
+          <ShieldCheck size={14} /> Open Admin Panel
+        </button>
       )}
+      {(currentUser?.role === "crm" || currentUser?.role === "asm" || currentUser?.role === "tsm" || currentUser?.role === "superadmin" || currentUser?.role === "owner") && (
+        <button onClick={() => onNavigateView("crm")} className="btn btn-primary btn-sm" style={{ background: "linear-gradient(135deg, #0284c7, #6366f1)" }}>
+          <Activity size={14} /> Dashboard
+        </button>
+      )}
+    </div>
+  </div>
 
-      {/* ==================== GLOBAL VISUAL REPORTS & CHARTS SECTION ==================== */}
-      <div className="glass-panel" style={{ padding: "24px" }}>
-        <h3 style={{ fontSize: "1.3rem", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px", marginBottom: "20px" }}>
-          <BarChart2 size={20} /> System Performance Analytics & Progress Charts
-        </h3>
+  {/* ==================== ROLE VIEW 1: PURCHASER / BUYER PERSONAL DESK ==================== */}
+  {currentUser?.role === "purchaser" && (
+    <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      
+      {/* Quick Metrics Bar for Purchaser */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "18px" }}>
+        <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
+          <div style={{ padding: "12px", borderRadius: "12px", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8" }}>
+            <FileText size={24} />
+          </div>
+          <div>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>My Assigned Requisitions</div>
+            <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--text-main)" }}>{myRequests.length}</div>
+          </div>
+        </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "24px" }}>
-          
-          {/* Chart 1: Order Lifecycle Status Distribution */}
-          <div className="glass-panel" style={{ padding: "20px", background: "rgba(0,0,0,0.2)" }}>
-            <h4 style={{ fontSize: "0.95rem", color: "var(--text-main)", marginBottom: "16px", display: "flex", alignItems: "center", gap: "6px" }}>
-              <Layers size={16} style={{ color: "#38bdf8" }} /> Order Lifecycle Distribution
-            </h4>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: "4px" }}>
-                  <span>Pending Commercial Specifications</span>
-                  <strong>{totalPendingPrice} ({((totalPendingPrice / Math.max(1, activeRequests.length)) * 100).toFixed(0)}%)</strong>
-                </div>
-                <div style={{ height: "10px", borderRadius: "99px", background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-                  <div style={{ width: `${(totalPendingPrice / Math.max(1, activeRequests.length)) * 100}%`, height: "100%", background: "#f59e0b" }}></div>
-                </div>
-              </div>
-
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: "4px" }}>
-                  <span>In-Transit Cargo Shipments</span>
-                  <strong>{totalInTransit} ({((totalInTransit / Math.max(1, activeRequests.length)) * 100).toFixed(0)}%)</strong>
-                </div>
-                <div style={{ height: "10px", borderRadius: "99px", background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-                  <div style={{ width: `${(totalInTransit / Math.max(1, activeRequests.length)) * 100}%`, height: "100%", background: "#818cf8" }}></div>
-                </div>
-              </div>
-
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: "4px" }}>
-                  <span>Completed Warehouse Receipts</span>
-                  <strong>{totalReceived} ({((totalReceived / Math.max(1, activeRequests.length)) * 100).toFixed(0)}%)</strong>
-                </div>
-                <div style={{ height: "10px", borderRadius: "99px", background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-                  <div style={{ width: `${(totalReceived / Math.max(1, activeRequests.length)) * 100}%`, height: "100%", background: "var(--success)" }}></div>
-                </div>
-              </div>
+        <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
+          <div style={{ padding: "12px", borderRadius: "12px", background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" }}>
+            <Clock size={24} />
+          </div>
+          <div>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Pending Execution</div>
+            <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "#f59e0b" }}>
+              {myRequests.filter(r => r.isMaterialRec !== "Yes").length}
             </div>
           </div>
+        </div>
 
-          {/* Chart 2: Material Nature & Logistics Breakdown */}
-          <div className="glass-panel" style={{ padding: "20px", background: "rgba(0,0,0,0.2)" }}>
-            <h4 style={{ fontSize: "0.95rem", color: "var(--text-main)", marginBottom: "16px", display: "flex", alignItems: "center", gap: "6px" }}>
-              <Package size={16} style={{ color: "#f59e0b" }} /> Shipment Types & Categories
-            </h4>
-
-            {(() => {
-              const localCount = activeRequests.filter(r => r.type === "Local").length;
-              const importCount = activeRequests.filter(r => r.type === "Import").length;
-              const totalCount = Math.max(1, localCount + importCount);
-
-              return (
-                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                  <div style={{ display: "flex", height: "24px", borderRadius: "8px", overflow: "hidden" }}>
-                    <div style={{ width: `${(localCount / totalCount) * 100}%`, background: "#38bdf8", display: "flex", alignItems: "center", justifyContent: "center", color: "#000", fontSize: "0.75rem", fontWeight: "bold" }}>
-                      Local ({localCount})
-                    </div>
-                    <div style={{ width: `${(importCount / totalCount) * 100}%`, background: "#818cf8", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "0.75rem", fontWeight: "bold" }}>
-                      Import ({importCount})
-                    </div>
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", fontSize: "0.85rem" }}>
-                    <div style={{ padding: "10px", background: "rgba(56, 189, 248, 0.1)", borderRadius: "8px" }}>
-                      <span style={{ color: "#38bdf8", fontWeight: 600 }}>Local Procurement:</span><br />
-                      <strong>{localCount} requisitions</strong>
-                    </div>
-                    <div style={{ padding: "10px", background: "rgba(129, 140, 248, 0.1)", borderRadius: "8px" }}>
-                      <span style={{ color: "#818cf8", fontWeight: 600 }}>Import Procurement:</span><br />
-                      <strong>{importCount} requisitions</strong>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
+        <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
+          <div style={{ padding: "12px", borderRadius: "12px", background: "rgba(239, 68, 68, 0.15)", color: "#ef4444" }}>
+            <AlertTriangle size={24} />
           </div>
+          <div>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Delayed Requisitions</div>
+            <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "#ef4444" }}>{purchaserDelayedCount}</div>
+          </div>
+        </div>
 
+        <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
+          <div style={{ padding: "12px", borderRadius: "12px", background: "rgba(16, 185, 129, 0.15)", color: "#10b981" }}>
+            <CheckCircle2 size={24} />
+          </div>
+          <div>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Fulfilled & Received</div>
+            <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "#10b981" }}>
+              {myRequests.filter(r => r.isMaterialRec === "Yes").length}
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Upcoming Requisition Tasks Table */}
+      <div className="glass-panel" style={{ padding: "24px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+          <div>
+            <h3 style={{ fontSize: "1.2rem", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
+              <Calendar size={18} /> Urgent & Upcoming Procurement Tasks
+            </h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: "4px 0 0 0" }}>
+              Requisitions due within 14 days or requiring price/supplier action.
+            </p>
+          </div>
+          <button 
+            onClick={() => onNavigateView("dashboard")} 
+            className="btn btn-primary btn-sm"
+          >
+            Open Full Workboard <ArrowRight size={14} />
+          </button>
+        </div>
+
+        <div className="table-container">
+          {upcomingTasks.length === 0 ? (
+            <div style={{ padding: "30px", textAlign: "center", color: "var(--text-muted)" }}>
+              <CheckCircle2 size={32} style={{ color: "var(--success)", marginBottom: "8px" }} />
+              <div>All your assigned requisitions are up to date!</div>
+            </div>
+          ) : (
+            <table className="custom-table">
+              <thead>
+                <tr>
+                  <th>Req ID</th>
+                  <th>Item Description</th>
+                  <th>Qty</th>
+                  <th>Required By</th>
+                  <th>Vendor EDD</th>
+                  <th>Price (RMB)</th>
+                  <th>Cargo Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {upcomingTasks.slice(0, 10).map(r => {
+                  const isDelayed = r.vendorEdd && new Date(r.vendorEdd) < today;
+                  return (
+                    <tr key={r.id}>
+                      <td><code>{r.id}</code></td>
+                      <td style={{ fontWeight: 600 }}>{r.itemDesc}</td>
+                      <td>{r.orderQty || "—"}</td>
+                      <td>{r.requiredByDate || "—"}</td>
+                      <td>
+                        {r.vendorEdd ? (
+                          <span style={{ color: isDelayed ? "var(--danger)" : "var(--text-main)", fontWeight: isDelayed ? 700 : 400 }}>
+                            {r.vendorEdd} {isDelayed && "⚠️"}
+                          </span>
+                        ) : "Not Set"}
+                      </td>
+                      <td>{r.priceRmb ? `¥${r.priceRmb}` : <span style={{ color: "var(--warning)" }}>Pending</span>}</td>
+                      <td>
+                        <span className={`badge ${r.cargoId ? "badge-cargo" : "badge-secondary"}`}>
+                          {r.cargoId ? "Assigned" : "No Cargo"}
+                        </span>
+                      </td>
+                      <td>
+                        <button 
+                          onClick={() => onNavigateView("dashboard")}
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: "4px 8px", fontSize: "0.75rem" }}
+                        >
+                          Open
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+    </div>
+  )}
+
+  {/* ==================== ROLE VIEW 2: NITIN / RAHUL / COORDINATOR OVERVIEW ==================== */}
+  {(currentUser?.role === "nitin" || currentUser?.role === "rahul" || currentUser?.role === "coordinator") && (
+    <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      
+      {/* Purchaser Performance & Delayed Task Table */}
+      <div className="glass-panel" style={{ padding: "24px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+          <div>
+            <h3 style={{ fontSize: "1.2rem", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
+              <Users size={18} /> Procurement Team Fulfillment & Delay Monitor
+            </h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: "4px 0 0 0" }}>
+              Live tracking of each purchaser's assigned requisitions and delay bottlenecks.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            <span className="badge badge-danger" style={{ fontSize: "0.85rem", padding: "6px 12px" }}>
+              Total Delayed: {totalDelayedAllPersons}
+            </span>
+            <button 
+              onClick={() => onNavigateView(currentUser?.role === "coordinator" ? "coordinator" : "dashboard")}
+              className="btn btn-primary btn-sm"
+            >
+              Manage Workflow <ArrowRight size={14} />
+            </button>
+          </div>
+        </div>
+
+        <div className="table-container">
+          <table className="custom-table">
+            <thead>
+              <tr>
+                <th>Purchaser Name</th>
+                <th>Assigned Items</th>
+                <th>Pending</th>
+                <th>In-Transit</th>
+                <th>Delayed Items</th>
+                <th>On-Time Fulfillment</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {personWiseTaskStats.map(stat => {
+                const onTimeRate = stat.total > 0 ? Math.round((stat.onTime / stat.total) * 100) : 100;
+                return (
+                  <tr key={stat.purchaser.id}>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600 }}>
+                        <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: stat.delayed > 0 ? "var(--danger)" : "var(--success)" }}></div>
+                        {stat.purchaser.name} ({stat.purchaser.email})
+                      </div>
+                    </td>
+                    <td style={{ fontWeight: 600 }}>{stat.total} items</td>
+                    <td>{stat.pending}</td>
+                    <td>{stat.inTransit}</td>
+                    <td>{stat.delayed}</td>
+                    <td>{onTimeRate}%</td>
+                    <td><button onClick={() => onNavigateView("dashboard")} className="btn btn-secondary btn-sm">View</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )}
+
+  {/* ==================== ROLE VIEW 3: SUPER ADMIN ==================== */}
+  {currentUser?.role === "superadmin" && (
+    <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px" }}>
+        
+        {/* Active Users Card */}
+        <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
+          <div style={{ padding: "14px", borderRadius: "12px", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8" }}>
+            <Users size={28} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Active Registered Users</div>
+            <div style={{ fontSize: "1.8rem", fontWeight: 700, color: "var(--text-main)" }}>
+              {totalActiveUsers} Users
+            </div>
+          </div>
+        </div>
+
+        {/* Cloudinary Usage Card */}
+        <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px" }}>
+          <div style={{ padding: "14px", borderRadius: "12px", background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" }}>
+            <HardDrive size={28} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Media Storage Usage</div>
+            <div style={{ fontSize: "1.8rem", fontWeight: 700, color: "var(--text-main)" }}>
+              {storageMetrics?.cloudinary?.usageStr || "0.5 MB"}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )}
+
+  {/* ==================== GLOBAL VISUAL REPORTS & CHARTS SECTION (PURCHASE TEAM ONLY) ==================== */}
+  {!["crm", "asm", "tsm"].includes(currentUser?.role) && (
+    <div className="glass-panel" style={{ padding: "24px" }}>
+      <h3 style={{ fontSize: "1.3rem", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px", marginBottom: "20px" }}>
+        <BarChart2 size={20} /> System Performance Analytics & Progress Charts
+      </h3>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "24px" }}>
+        
+        {/* Chart 1: Order Lifecycle Status Distribution */}
+        <div className="glass-panel" style={{ padding: "20px", background: "rgba(0,0,0,0.2)" }}>
+          <h4 style={{ fontSize: "0.95rem", color: "var(--text-main)", marginBottom: "16px", display: "flex", alignItems: "center", gap: "6px" }}>
+            <Layers size={16} style={{ color: "#38bdf8" }} /> Order Lifecycle Distribution
+          </h4>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: "4px" }}>
+                <span>Pending Commercial Specifications</span>
+                <strong>{totalPendingPrice} ({((totalPendingPrice / Math.max(1, activeRequests.length)) * 100).toFixed(0)}%)</strong>
+              </div>
+              <div style={{ height: "10px", borderRadius: "99px", background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                <div style={{ width: `${(totalPendingPrice / Math.max(1, activeRequests.length)) * 100}%`, height: "100%", background: "#f59e0b" }}></div>
+              </div>
+            </div>
+
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: "4px" }}>
+                <span>In-Transit Cargo Shipments</span>
+                <strong>{totalInTransit} ({((totalInTransit / Math.max(1, activeRequests.length)) * 100).toFixed(0)}%)</strong>
+              </div>
+              <div style={{ height: "10px", borderRadius: "99px", background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                <div style={{ width: `${(totalInTransit / Math.max(1, activeRequests.length)) * 100}%`, height: "100%", background: "#818cf8" }}></div>
+              </div>
+            </div>
+
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: "4px" }}>
+                <span>Completed Warehouse Receipts</span>
+                <strong>{totalReceived} ({((totalReceived / Math.max(1, activeRequests.length)) * 100).toFixed(0)}%)</strong>
+              </div>
+              <div style={{ height: "10px", borderRadius: "99px", background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                <div style={{ width: `${(totalReceived / Math.max(1, activeRequests.length)) * 100}%`, height: "100%", background: "var(--success)" }}></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Chart 2: Material Nature & Logistics Breakdown */}
+        <div className="glass-panel" style={{ padding: "20px", background: "rgba(0,0,0,0.2)" }}>
+          <h4 style={{ fontSize: "0.95rem", color: "var(--text-main)", marginBottom: "16px", display: "flex", alignItems: "center", gap: "6px" }}>
+            <Package size={16} style={{ color: "#f59e0b" }} /> Shipment Types & Categories
+          </h4>
+
+          {(() => {
+            const localCount = activeRequests.filter(r => r.type === "Local").length;
+            const importCount = activeRequests.filter(r => r.type === "Import").length;
+            const totalCount = Math.max(1, localCount + importCount);
+
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div style={{ display: "flex", height: "24px", borderRadius: "8px", overflow: "hidden" }}>
+                  <div style={{ width: `${(localCount / totalCount) * 100}%`, background: "#38bdf8", display: "flex", alignItems: "center", justifyContent: "center", color: "#000", fontSize: "0.75rem", fontWeight: "bold" }}>
+                    Local ({localCount})
+                  </div>
+                  <div style={{ width: `${(importCount / totalCount) * 100}%`, background: "#818cf8", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "0.75rem", fontWeight: "bold" }}>
+                    Import ({importCount})
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", fontSize: "0.85rem" }}>
+                  <div style={{ padding: "10px", background: "rgba(56, 189, 248, 0.1)", borderRadius: "8px" }}>
+                    <span style={{ color: "#38bdf8", fontWeight: 600 }}>Local Procurement:</span><br />
+                    <strong>{localCount} requisitions</strong>
+                  </div>
+                  <div style={{ padding: "10px", background: "rgba(129, 140, 248, 0.1)", borderRadius: "8px" }}>
+                    <span style={{ color: "#818cf8", fontWeight: 600 }}>Import Procurement:</span><br />
+                    <strong>{importCount} requisitions</strong>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+
+      </div>
+    </div>
+  )}
 
     </div>
   );
