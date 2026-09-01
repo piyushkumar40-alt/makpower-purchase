@@ -20,6 +20,8 @@ export default function CrmDashboard({
   onAddParty,
   onUpdateParty,
   onDeleteParty,
+  onBatchUploadParties,
+  onBatchAssignParties,
   onAddSalesOrder,
   onUpdateSalesOrder,
   onDeleteSalesOrder,
@@ -150,6 +152,8 @@ export default function CrmDashboard({
   // Sales Team Modal State
   const [showAddTeamModal, setShowAddTeamModal] = useState(false);
   const [editingTeamMember, setEditingTeamMember] = useState(null);
+  const [assigningTeamMember, setAssigningTeamMember] = useState(null);
+  const [trackingAsmMember, setTrackingAsmMember] = useState(null);
 
   // Order & Dispatch Modal State
   const [showAddOrderModal, setShowAddOrderModal] = useState(false);
@@ -310,68 +314,72 @@ export default function CrmDashboard({
           </div>
         </div>
 
-        {/* Executive Switcher Pill Bar (Ankita, Ajit, Prince, Simran, Harish) */}
+        {/* Executive Switcher Bar - Only Visible to Superadmin / Owner */}
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-          {isElevated && (
-            <div style={{ display: "flex", background: "rgba(0,0,0,0.3)", padding: "4px", borderRadius: "12px", border: "1px solid var(--border-glass)" }}>
-              <button
-                onClick={() => setSelectedExecutiveId("all")}
-                style={{
-                  padding: "6px 14px",
-                  borderRadius: "8px",
-                  border: "none",
-                  background: selectedExecutiveId === "all" ? "linear-gradient(135deg, #0284c7, #38bdf8)" : "transparent",
-                  color: selectedExecutiveId === "all" ? "#fff" : "var(--text-muted)",
-                  fontWeight: selectedExecutiveId === "all" ? 700 : 500,
-                  fontSize: "0.82rem",
-                  cursor: "pointer",
-                  transition: "all 0.2s ease"
-                }}
-              >
-                🌐 All CRM (Company Overview)
-              </button>
-            </div>
-          )}
-
-          <div style={{ display: "flex", gap: "6px", background: "rgba(0,0,0,0.3)", padding: "4px", borderRadius: "12px", border: "1px solid var(--border-glass)", flexWrap: "wrap" }}>
-            {crmExecutives.map(exec => {
-              const isSelected = selectedExecutiveId === exec.id;
-              return (
+          {isElevated ? (
+            <>
+              <div style={{ display: "flex", background: "rgba(0,0,0,0.3)", padding: "4px", borderRadius: "12px", border: "1px solid var(--border-glass)" }}>
                 <button
-                  key={exec.id}
-                  onClick={() => setSelectedExecutiveId(exec.id)}
+                  onClick={() => setSelectedExecutiveId("all")}
                   style={{
                     padding: "6px 14px",
                     borderRadius: "8px",
                     border: "none",
-                    background: isSelected ? "linear-gradient(135deg, #6366f1, #8b5cf6)" : "transparent",
-                    color: isSelected ? "#fff" : "var(--text-muted)",
-                    fontWeight: isSelected ? 700 : 500,
+                    background: selectedExecutiveId === "all" ? "linear-gradient(135deg, #0284c7, #38bdf8)" : "transparent",
+                    color: selectedExecutiveId === "all" ? "#fff" : "var(--text-muted)",
+                    fontWeight: selectedExecutiveId === "all" ? 700 : 500,
                     fontSize: "0.82rem",
                     cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    boxShadow: isSelected ? "0 2px 10px rgba(99, 102, 241, 0.4)" : "none",
                     transition: "all 0.2s ease"
                   }}
                 >
-                  <User size={13} />
-                  <span>{exec.name}</span>
+                  🌐 All CRM (Company Overview)
                 </button>
-              );
-            })}
-          </div>
+              </div>
 
-          {isAdminOrOwner && (
-            <button 
-              onClick={() => setShowAddPartyModal(true)} 
-              className="btn btn-primary"
-              style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700, padding: "8px 16px" }}
-            >
-              <Plus size={16} /> Add Party
-            </button>
+              <div style={{ display: "flex", gap: "6px", background: "rgba(0,0,0,0.3)", padding: "4px", borderRadius: "12px", border: "1px solid var(--border-glass)", flexWrap: "wrap" }}>
+                {crmExecutives.map(exec => {
+                  const isSelected = selectedExecutiveId === exec.id;
+                  return (
+                    <button
+                      key={exec.id}
+                      onClick={() => setSelectedExecutiveId(exec.id)}
+                      style={{
+                        padding: "6px 14px",
+                        borderRadius: "8px",
+                        border: "none",
+                        background: isSelected ? "linear-gradient(135deg, #6366f1, #8b5cf6)" : "transparent",
+                        color: isSelected ? "#fff" : "var(--text-muted)",
+                        fontWeight: isSelected ? 700 : 500,
+                        fontSize: "0.82rem",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        boxShadow: isSelected ? "0 2px 10px rgba(99, 102, 241, 0.4)" : "none",
+                        transition: "all 0.2s ease"
+                      }}
+                    >
+                      <User size={13} />
+                      <span>{exec.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(99, 102, 241, 0.15)", border: "1px solid rgba(99, 102, 241, 0.3)", padding: "6px 14px", borderRadius: "10px", color: "#a5b4fc", fontWeight: 700, fontSize: "0.85rem" }}>
+              <User size={15} /> <span>{currentUser?.name || "My CRM Workspace"} (Assigned Accounts)</span>
+            </div>
           )}
+
+          <button 
+            onClick={() => setShowAddPartyModal(true)} 
+            className="btn btn-primary"
+            style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700, padding: "8px 16px" }}
+          >
+            <Plus size={16} /> Add Party
+          </button>
         </div>
       </div>
 
@@ -782,11 +790,27 @@ export default function CrmDashboard({
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", gap: "8px", marginTop: "auto" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "auto" }}>
+                    <button
+                      onClick={() => setAssigningTeamMember(member)}
+                      className="btn btn-secondary btn-sm"
+                      style={{ justifyContent: "center", fontSize: "0.8rem", color: "var(--primary)", borderColor: "var(--primary)", fontWeight: 700 }}
+                    >
+                      <UserCheck size={13} /> Assign Parties ({assignedParties.length})
+                    </button>
+
+                    <button
+                      onClick={() => setTrackingAsmMember(member)}
+                      className="btn btn-primary btn-sm"
+                      style={{ justifyContent: "center", fontSize: "0.8rem", fontWeight: 700 }}
+                    >
+                      <TrendingUp size={13} /> Track Sales ({formatInr(memberRevenue)})
+                    </button>
+
                     <button
                       onClick={() => setEditingTeamMember(member)}
                       className="btn btn-secondary btn-sm"
-                      style={{ flex: 1, justifyContent: "center", fontSize: "0.8rem" }}
+                      style={{ justifyContent: "center", fontSize: "0.8rem" }}
                     >
                       <Edit2 size={13} /> Edit Account
                     </button>
@@ -797,7 +821,7 @@ export default function CrmDashboard({
                         onUpdateUser(member.id, { status: newStatus });
                       }}
                       className={`btn btn-sm ${member.status === "active" ? "btn-danger" : "btn-success"}`}
-                      style={{ fontSize: "0.8rem" }}
+                      style={{ fontSize: "0.8rem", justifyContent: "center" }}
                     >
                       {member.status === "active" ? "Deactivate" : "Activate"}
                     </button>
@@ -962,7 +986,7 @@ export default function CrmDashboard({
                 value={dispatchStatusFilter}
                 onChange={e => setDispatchStatusFilter(e.target.value)}
                 className="form-control"
-                style={{ width: "auto", height: "36px", fontSize: "0.85rem" }}
+                style={{ width: "auto", minHeight: "38px", height: "38px", fontSize: "0.85rem", padding: "6px 36px 6px 12px", display: "inline-flex", alignItems: "center" }}
               >
                 <option value="all">All Dispatch Statuses</option>
                 <option value="Delivered">Delivered</option>
@@ -1283,6 +1307,41 @@ export default function CrmDashboard({
             setShowAddTeamModal(false);
             setEditingTeamMember(null);
           }}
+        />
+      )}
+
+      {/* ==================== MODAL: ASSIGN PARTIES TO ASM / TSM ==================== */}
+      {assigningTeamMember && (
+        <AssignPartiesModal
+          teamMember={assigningTeamMember}
+          allParties={crmParties}
+          onAssign={async (partyIds) => {
+            try {
+              const isAsm = assigningTeamMember.role === "asm";
+              await onBatchAssignParties(
+                partyIds, 
+                isAsm ? assigningTeamMember.id : undefined, 
+                !isAsm ? assigningTeamMember.id : undefined
+              );
+              showSuccessToast(`✅ Assigned ${partyIds.length} parties to ${assigningTeamMember.name}!`);
+              setAssigningTeamMember(null);
+            } catch (err) {
+              showErrorToast("Failed to assign parties: " + err.message);
+            }
+          }}
+          onClose={() => setAssigningTeamMember(null)}
+        />
+      )}
+
+      {/* ==================== MODAL: TRACK ASM SALES & PURCHASED ITEMS ==================== */}
+      {trackingAsmMember && (
+        <AsmSalesDetailModal
+          member={trackingAsmMember}
+          allParties={crmParties}
+          allSalesOrders={crmSalesOrders}
+          allDispatches={crmDispatches}
+          formatInr={formatInr}
+          onClose={() => setTrackingAsmMember(null)}
         />
       )}
 
@@ -1834,6 +1893,464 @@ function DispatchModal({ order, onSave, onClose }) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// ==================== SUB-COMPONENT: ASSIGN PARTIES MODAL ====================
+function AssignPartiesModal({ teamMember, allParties = [], onAssign, onClose }) {
+  const isAsm = teamMember.role === "asm";
+  const [search, setSearch] = useState("");
+  const [stateFilter, setStateFilter] = useState("all");
+  const [selectedIds, setSelectedIds] = useState(() => {
+    return allParties
+      .filter(p => isAsm ? p.assignedAsmId === teamMember.id : p.assignedTsmId === teamMember.id)
+      .map(p => p.id);
+  });
+
+  const uniqueStates = useMemo(() => {
+    return Array.from(new Set(allParties.map(p => p.state).filter(Boolean))).sort();
+  }, [allParties]);
+
+  const filtered = useMemo(() => {
+    return allParties.filter(p => {
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const match = (p.name || "").toLowerCase().includes(q) ||
+                      (p.city || "").toLowerCase().includes(q) ||
+                      (p.phone || "").toLowerCase().includes(q);
+        if (!match) return false;
+      }
+      if (stateFilter !== "all" && p.state !== stateFilter) return false;
+      return true;
+    });
+  }, [allParties, search, stateFilter]);
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every(p => selectedIds.includes(p.id));
+
+  const handleToggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelectedIds(prev => prev.filter(id => !filtered.some(p => p.id === id)));
+    } else {
+      setSelectedIds(prev => Array.from(new Set([...prev, ...filtered.map(p => p.id)])));
+    }
+  };
+
+  const handleToggleRow = (id) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "750px", padding: "24px", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+        
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
+          <div>
+            <h3 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--primary)", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+              <UserCheck size={20} /> Assign Parties to {teamMember.name}
+            </h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.82rem", margin: "4px 0 0 0" }}>
+              Role: <strong>{isAsm ? "Area Sales Manager (ASM)" : "Territory Sales Manager (TSM)"}</strong> | Selected: <strong style={{ color: "var(--primary)" }}>{selectedIds.length}</strong> parties
+            </p>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={20} /></button>
+        </div>
+
+        {/* Search & State Filter */}
+        <div style={{ display: "flex", gap: "10px", marginBottom: "12px" }}>
+          <div style={{ position: "relative", flex: 1 }}>
+            <Search size={15} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+            <input
+              type="text"
+              placeholder="Search party by name, city, phone..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="form-control"
+              style={{ paddingLeft: "32px", height: "36px" }}
+            />
+          </div>
+          <select
+            value={stateFilter}
+            onChange={e => setStateFilter(e.target.value)}
+            className="form-control"
+            style={{ width: "auto", minHeight: "36px", height: "36px", fontSize: "0.82rem" }}
+          >
+            <option value="all">All States</option>
+            {uniqueStates.map(st => <option key={st} value={st}>{st}</option>)}
+          </select>
+        </div>
+
+        {/* Quick Select Bar */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", padding: "6px 10px", background: "rgba(0,0,0,0.15)", borderRadius: "8px", fontSize: "0.82rem" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600 }}>
+            <input
+              type="checkbox"
+              checked={allFilteredSelected}
+              onChange={handleToggleSelectAll}
+              className="checkbox-input"
+            />
+            Select All Matching ({filtered.length} parties)
+          </label>
+          <button
+            type="button"
+            onClick={() => setSelectedIds([])}
+            className="btn btn-secondary btn-sm"
+            style={{ fontSize: "0.75rem", padding: "2px 8px" }}
+          >
+            Clear All
+          </button>
+        </div>
+
+        {/* Parties Checklist */}
+        <div style={{ flex: 1, overflowY: "auto", border: "1px solid var(--border-glass)", borderRadius: "10px", padding: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
+          {filtered.length === 0 ? (
+            <div style={{ padding: "30px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem" }}>
+              No parties found matching criteria.
+            </div>
+          ) : (
+            filtered.map(p => {
+              const isChecked = selectedIds.includes(p.id);
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => handleToggleRow(p.id)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "8px 12px",
+                    borderRadius: "8px",
+                    background: isChecked ? "rgba(56, 189, 248, 0.1)" : "transparent",
+                    border: isChecked ? "1px solid rgba(56, 189, 248, 0.3)" : "1px solid transparent",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease"
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => {}}
+                    className="checkbox-input"
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: "0.88rem", color: "var(--text-main)", display: "flex", alignItems: "center", gap: "6px" }}>
+                      {p.name}
+                      <span className="badge badge-secondary" style={{ fontSize: "0.7rem", padding: "1px 6px" }}>{p.city || "—"}</span>
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                      State: {p.state || "—"} | Phone: {p.phone || "—"}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div style={{ display: "flex", gap: "10px", marginTop: "16px" }}>
+          <button
+            onClick={() => onAssign(selectedIds)}
+            className="btn btn-primary"
+            style={{ flex: 1, padding: "10px", fontWeight: 700 }}
+          >
+            Save Party Assignments ({selectedIds.length})
+          </button>
+          <button type="button" onClick={onClose} className="btn btn-secondary">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== SUB-COMPONENT: TRACK ASM SALES & PURCHASES MODAL ====================
+function AsmSalesDetailModal({ member, allParties = [], allSalesOrders = [], allDispatches = [], formatInr, onClose }) {
+  const isAsm = member.role === "asm";
+  const [subTab, setSubTab] = useState("items"); // "items" | "parties" | "leaderboard"
+  const [search, setSearch] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  // Find all assigned parties
+  const assignedParties = useMemo(() => {
+    return allParties.filter(p => isAsm ? p.assignedAsmId === member.id : p.assignedTsmId === member.id);
+  }, [allParties, member, isAsm]);
+
+  const assignedPartyIdSet = useMemo(() => {
+    return new Set(assignedParties.map(p => p.id));
+  }, [assignedParties]);
+
+  // Find all sales orders from these assigned parties
+  const memberOrders = useMemo(() => {
+    return allSalesOrders.filter(o => {
+      const matchParty = assignedPartyIdSet.has(o.partyId) || o.assignedAsmId === member.id || o.assignedTsmId === member.id;
+      if (!matchParty) return false;
+      if (startDate || endDate) {
+        if (!isDateInBetween(o.orderDate, startDate, endDate)) return false;
+      }
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const match = (o.partyName || "").toLowerCase().includes(q) ||
+                      (o.itemModel || "").toLowerCase().includes(q) ||
+                      (o.orderNo || "").toLowerCase().includes(q);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [allSalesOrders, assignedPartyIdSet, member, startDate, endDate, search]);
+
+  // Summary KPIs
+  const totalRevenue = useMemo(() => {
+    return memberOrders.reduce((acc, o) => acc + (parseFloat(o.totalInr) || 0), 0);
+  }, [memberOrders]);
+
+  const totalOrderedUnits = useMemo(() => {
+    return memberOrders.reduce((acc, o) => acc + (parseInt(o.orderQty) || 0), 0);
+  }, [memberOrders]);
+
+  const totalDispatchedUnits = useMemo(() => {
+    return memberOrders.reduce((acc, o) => acc + (parseInt(o.dispatchedQty) || 0), 0);
+  }, [memberOrders]);
+
+  // Top Selling Items Leaderboard for this ASM
+  const topItems = useMemo(() => {
+    const map = new Map();
+    memberOrders.forEach(o => {
+      const key = o.itemModel || "Unspecified";
+      if (!map.has(key)) {
+        map.set(key, { itemModel: key, totalQty: 0, totalRevenue: 0, orderCount: 0 });
+      }
+      const cur = map.get(key);
+      cur.totalQty += parseInt(o.orderQty) || 0;
+      cur.totalRevenue += parseFloat(o.totalInr) || 0;
+      cur.orderCount += 1;
+    });
+    return Array.from(map.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
+  }, [memberOrders]);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "1000px", padding: "26px", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+        
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: isAsm ? "linear-gradient(135deg, #10b981, #059669)" : "linear-gradient(135deg, #f59e0b, #d97706)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>
+                {member.name ? member.name.slice(0, 2).toUpperCase() : "SM"}
+              </div>
+              <div>
+                <h3 style={{ fontSize: "1.3rem", fontWeight: 800, color: "var(--text-main)", margin: 0 }}>
+                  {member.name} — Sales & Purchased Items
+                </h3>
+                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                  {isAsm ? "Area Sales Manager (ASM)" : "Territory Sales Manager (TSM)"} | Territory: {member.territory || "General"} | Phone: {member.phone || "—"}
+                </div>
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={20} /></button>
+        </div>
+
+        {/* 4 Summary KPI Cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", marginBottom: "16px" }}>
+          <div style={{ background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.25)", padding: "12px", borderRadius: "10px" }}>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Sales Revenue</div>
+            <div style={{ fontSize: "1.3rem", fontWeight: 800, color: "var(--success)" }}>{formatInr(totalRevenue)}</div>
+          </div>
+
+          <div style={{ background: "rgba(56, 189, 248, 0.1)", border: "1px solid rgba(56, 189, 248, 0.25)", padding: "12px", borderRadius: "10px" }}>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Units Sold</div>
+            <div style={{ fontSize: "1.3rem", fontWeight: 800, color: "var(--primary)" }}>{totalOrderedUnits.toLocaleString()} Pcs</div>
+          </div>
+
+          <div style={{ background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.25)", padding: "12px", borderRadius: "10px" }}>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Dispatches</div>
+            <div style={{ fontSize: "1.3rem", fontWeight: 800, color: "#fbbf24" }}>{totalDispatchedUnits.toLocaleString()} Pcs</div>
+          </div>
+
+          <div style={{ background: "rgba(139, 92, 246, 0.1)", border: "1px solid rgba(139, 92, 246, 0.25)", padding: "12px", borderRadius: "10px" }}>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600 }}>Assigned Parties</div>
+            <div style={{ fontSize: "1.3rem", fontWeight: 800, color: "#c084fc" }}>{assignedParties.length} Parties</div>
+          </div>
+        </div>
+
+        {/* Sub-tabs & Filter Controls */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "12px" }}>
+          <div style={{ display: "flex", gap: "6px" }}>
+            <button
+              onClick={() => setSubTab("items")}
+              className={`tab-btn ${subTab === "items" ? "active" : ""}`}
+              style={{ fontSize: "0.82rem", padding: "6px 12px" }}
+            >
+              Purchased Items ({memberOrders.length})
+            </button>
+            <button
+              onClick={() => setSubTab("parties")}
+              className={`tab-btn ${subTab === "parties" ? "active" : ""}`}
+              style={{ fontSize: "0.82rem", padding: "6px 12px" }}
+            >
+              Assigned Parties ({assignedParties.length})
+            </button>
+            <button
+              onClick={() => setSubTab("leaderboard")}
+              className={`tab-btn ${subTab === "leaderboard" ? "active" : ""}`}
+              style={{ fontSize: "0.82rem", padding: "6px 12px" }}
+            >
+              Top Items Leaderboard
+            </button>
+          </div>
+
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <input
+              type="text"
+              placeholder="Search items or parties..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="form-control"
+              style={{ width: "180px", height: "34px", fontSize: "0.82rem" }}
+            />
+            <DateRangeFilter
+              startDate={startDate}
+              endDate={endDate}
+              onStartDateChange={setStartDate}
+              onEndDateChange={setEndDate}
+              onClear={() => { setStartDate(""); setEndDate(""); }}
+              placeholder="Filter Order Dates"
+            />
+          </div>
+        </div>
+
+        {/* Tab Content Display */}
+        <div style={{ flex: 1, overflowY: "auto", border: "1px solid var(--border-glass)", borderRadius: "10px" }}>
+          {subTab === "items" && (
+            <table className="table" style={{ width: "100%", fontSize: "0.82rem" }}>
+              <thead>
+                <tr>
+                  <th>Order Date</th>
+                  <th>Party Name</th>
+                  <th>Item Model</th>
+                  <th style={{ textAlign: "right" }}>Qty</th>
+                  <th style={{ textAlign: "right" }}>Unit Price</th>
+                  <th style={{ textAlign: "right" }}>Total (₹)</th>
+                  <th style={{ textAlign: "center" }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {memberOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                      No purchases found for this ASM's assigned parties.
+                    </td>
+                  </tr>
+                ) : (
+                  memberOrders.map(o => (
+                    <tr key={o.id}>
+                      <td>{o.orderDate || "—"}</td>
+                      <td><strong>{o.partyName}</strong></td>
+                      <td><span style={{ color: "var(--primary)", fontWeight: 700 }}>{o.itemModel}</span></td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>{Number(o.orderQty || 0).toLocaleString()}</td>
+                      <td style={{ textAlign: "right" }}>₹{Number(o.unitPriceInr || 0).toLocaleString()}</td>
+                      <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)" }}>{formatInr(o.totalInr)}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <span className={`badge ${o.status === "Delivered" ? "badge-success" : o.status === "Partial" ? "badge-warning" : "badge-secondary"}`}>
+                          {o.status || "Pending"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
+
+          {subTab === "parties" && (
+            <table className="table" style={{ width: "100%", fontSize: "0.82rem" }}>
+              <thead>
+                <tr>
+                  <th>Party Name</th>
+                  <th>City / State</th>
+                  <th>Phone</th>
+                  <th style={{ textAlign: "right" }}>Total Orders</th>
+                  <th style={{ textAlign: "right" }}>Total Revenue</th>
+                  <th style={{ textAlign: "center" }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {assignedParties.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                      No parties assigned yet. Click 'Assign Parties' to add accounts.
+                    </td>
+                  </tr>
+                ) : (
+                  assignedParties.map(p => {
+                    const pOrders = allSalesOrders.filter(o => o.partyId === p.id);
+                    const pRevenue = pOrders.reduce((acc, o) => acc + (parseFloat(o.totalInr) || 0), 0);
+
+                    return (
+                      <tr key={p.id}>
+                        <td><strong>{p.name}</strong></td>
+                        <td>{p.city}, {p.state}</td>
+                        <td>{p.phone || "—"}</td>
+                        <td style={{ textAlign: "right", fontWeight: 700 }}>{pOrders.length}</td>
+                        <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)" }}>{formatInr(pRevenue)}</td>
+                        <td style={{ textAlign: "center" }}>
+                          <span className={`badge ${p.status === "Active" ? "badge-success" : "badge-secondary"}`}>
+                            {p.status || "Active"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          )}
+
+          {subTab === "leaderboard" && (
+            <table className="table" style={{ width: "100%", fontSize: "0.82rem" }}>
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Item Model</th>
+                  <th style={{ textAlign: "right" }}>Total Units Sold</th>
+                  <th style={{ textAlign: "right" }}>Orders Count</th>
+                  <th style={{ textAlign: "right" }}>Total Revenue (₹)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                      No sales recorded for this sales manager yet.
+                    </td>
+                  </tr>
+                ) : (
+                  topItems.map((item, idx) => (
+                    <tr key={item.itemModel}>
+                      <td style={{ fontWeight: 800, color: idx === 0 ? "#fbbf24" : idx === 1 ? "#94a3b8" : idx === 2 ? "#d97706" : "var(--text-muted)" }}>
+                        #{idx + 1}
+                      </td>
+                      <td><strong style={{ color: "var(--primary)" }}>{item.itemModel}</strong></td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>{item.totalQty.toLocaleString()} Pcs</td>
+                      <td style={{ textAlign: "right" }}>{item.orderCount}</td>
+                      <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)" }}>{formatInr(item.totalRevenue)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div style={{ marginTop: "14px", display: "flex", justifyContent: "flex-end" }}>
+          <button type="button" onClick={onClose} className="btn btn-secondary">
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );

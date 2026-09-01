@@ -21,6 +21,7 @@ import {
   getPredictivePreloadSections, 
   TRACKABLE_MODULES 
 } from "./utils/userIntentionTracker";
+import { isDateInBetween } from "./components/DateRangeFilter";
 
 export default function App() {
   // Mobile drawer state
@@ -81,6 +82,12 @@ export default function App() {
   const [imsTransactions, setImsTransactions] = useState(() => {
     if (cachedState?.imsTransactions && Array.isArray(cachedState.imsTransactions)) {
       return cachedState.imsTransactions;
+    }
+    return [];
+  });
+  const [itemPrices, setItemPrices] = useState(() => {
+    if (cachedState?.itemPrices && Array.isArray(cachedState.itemPrices)) {
+      return cachedState.itemPrices;
     }
     return [];
   });
@@ -222,7 +229,11 @@ export default function App() {
       isoTime: new Date().toISOString()
     };
     try {
-      await postData("/api/audit-logs", entry);
+      fetch("/api/audit-logs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(entry)
+      }).catch(() => {});
       setAuditLogs(prev => [entry, ...prev]);
     } catch (err) {
       console.error("Failed to record audit log:", err);
@@ -313,6 +324,9 @@ export default function App() {
         if (Array.isArray(data.imsTransactions)) {
           setImsTransactions(data.imsTransactions);
         }
+        if (Array.isArray(data.itemPrices)) {
+          setItemPrices(data.itemPrices);
+        }
         
         if (data.settings) {
           setSettings(data.settings);
@@ -341,6 +355,7 @@ export default function App() {
             crmSalesOrders: data.crmSalesOrders || [],
             crmDispatches: data.crmDispatches || [],
             imsTransactions: data.imsTransactions || [],
+            itemPrices: data.itemPrices || [],
             settings: data.settings || {}
           }));
         } catch (storageErr) {
@@ -415,8 +430,8 @@ export default function App() {
   // DB post helper
   const postData = async (url, data) => {
     const isHeavy = url.includes("batch") || url.includes("bulk") || url.includes("purge") || url.includes("backup") || url.includes("upload") || (Array.isArray(data) && data.length > 5);
-    if (window.__startLoadingProgress) {
-      window.__startLoadingProgress(isHeavy ? "Saving Bulk Changes..." : "Syncing with Server...", "Saving data to PostgreSQL database...", 1);
+    if (isHeavy && window.__startLoadingProgress) {
+      window.__startLoadingProgress("Saving Bulk Changes...", "Saving data to database...", 1);
     }
     try {
       const res = await fetch(url, {
@@ -432,12 +447,12 @@ export default function App() {
         console.error(`Non-JSON response from ${url}:`, text);
         json = { success: res.ok, error: `Server error (${res.status}): ${text.slice(0, 150)}` };
       }
-      if (window.__finishLoadingProgress) {
+      if (isHeavy && window.__finishLoadingProgress) {
         window.__finishLoadingProgress();
       }
       return json;
     } catch (err) {
-      if (window.__finishLoadingProgress) {
+      if (isHeavy && window.__finishLoadingProgress) {
         window.__finishLoadingProgress();
       }
       console.error(`Error posting to ${url}:`, err);
@@ -1009,6 +1024,119 @@ export default function App() {
     }
   };
 
+  const handleBatchAssignParties = async (partyIds, assignedAsmId, assignedTsmId) => {
+    try {
+      const res = await postData("/api/crm/parties/batch-assign", { partyIds, assignedAsmId, assignedTsmId });
+      if (res && res.success) {
+        setCrmParties(prev => prev.map(p => {
+          if (partyIds.includes(p.id)) {
+            return {
+              ...p,
+              assignedAsmId: assignedAsmId !== undefined ? assignedAsmId : p.assignedAsmId,
+              assignedTsmId: assignedTsmId !== undefined ? assignedTsmId : p.assignedTsmId
+            };
+          }
+          return p;
+        }));
+        logSystemActivity("CRM_PARTIES_BATCH_ASSIGN", `Assigned ${partyIds.length} parties to team member`, "CRM Party", "batch_assign");
+      }
+      return res;
+    } catch (err) {
+      console.error("Batch assign parties error:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  // ==================== PRICE MANAGEMENT HANDLERS ====================
+  const handleAddPrice = async (priceData) => {
+    try {
+      const res = await postData("/api/prices", priceData);
+      if (res && res.success && res.price) {
+        setItemPrices(prev => {
+          const idx = prev.findIndex(p => p.id === res.price.id);
+          if (idx !== -1) {
+            const next = [...prev];
+            next[idx] = res.price;
+            return next;
+          }
+          return [res.price, ...prev];
+        });
+        logSystemActivity("PRICE_SAVED", `Saved price ₹${res.price.pp} for ${res.price.itemName || res.price.itemId}`, "Price Master", res.price.id);
+      }
+      return res;
+    } catch (err) {
+      console.error("Failed to save price:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const handleUpdatePrice = async (id, priceData) => {
+    return handleAddPrice({ ...priceData, id });
+  };
+
+  const handleDeletePrice = async (id) => {
+    setItemPrices(prev => {
+      const next = prev.filter(p => p.id !== id);
+      try {
+        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+        cached.itemPrices = next;
+        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+      } catch (e) {}
+      return next;
+    });
+    try {
+      const res = await fetch(`/api/prices/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        logSystemActivity("PRICE_DELETED", `Deleted price entry #${id}`, "Price Master", id);
+      }
+      return data;
+    } catch (err) {
+      console.error("Failed to delete price:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const handleBatchUploadPrices = async (pricesList) => {
+    try {
+      const res = await postData("/api/prices/batch", { prices: pricesList });
+      if (res && res.success) {
+        const stateRes = await fetch("/api/state");
+        const sData = await stateRes.json();
+        if (Array.isArray(sData.itemPrices)) {
+          setItemPrices(sData.itemPrices);
+        }
+        logSystemActivity("PRICES_BULK_UPLOAD", `Bulk uploaded ${res.count || pricesList.length} price master records`, "Price Master", "bulk");
+      }
+      return res;
+    } catch (err) {
+      console.error("Failed to bulk upload prices:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const handleBulkDeletePrices = async (ids, purgeAll = false) => {
+    setItemPrices(prev => {
+      let next = purgeAll ? [] : prev.filter(p => !ids.includes(p.id));
+      try {
+        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+        cached.itemPrices = next;
+        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+      } catch (e) {}
+      return next;
+    });
+    try {
+      const res = await postData("/api/prices/delete", { ids, purgeAll });
+      if (res && res.success) {
+        logSystemActivity("PRICES_BULK_DELETE", `Bulk deleted ${res.count || ids.length} price master records`, "Price Master", "bulk_delete");
+      }
+      return res;
+    } catch (err) {
+      console.error("Failed to bulk delete prices:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
   // ==================== IMS INVENTORY MANAGEMENT HANDLERS ====================
   const handleAddImsTransaction = async (txData) => {
     try {
@@ -1054,7 +1182,15 @@ export default function App() {
 
   const handleDeleteImsTransaction = async (txId) => {
     // 1. Instant Optimistic UI Update (0ms lag)
-    setImsTransactions(prev => prev.filter(t => t.id !== txId));
+    setImsTransactions(prev => {
+      const next = prev.filter(t => t.id !== txId);
+      try {
+        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+        cached.imsTransactions = next;
+        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+      } catch (e) {}
+      return next;
+    });
     try {
       const res = await fetch(`/api/ims/transactions/${txId}`, { method: "DELETE" });
       const data = await res.json();
@@ -1070,19 +1206,30 @@ export default function App() {
 
   const handleDeleteImsRange = async (startDate, endDate, ids = null, location = null) => {
     // 1. Instant Optimistic UI Update (0ms lag)
-    if (Array.isArray(ids) && ids.length > 0) {
-      const idSet = new Set(ids);
-      setImsTransactions(prev => prev.filter(t => !idSet.has(t.id)));
-    } else if (location && location !== "all" && (!startDate || !endDate)) {
-      const locClean = location.trim().toLowerCase();
-      setImsTransactions(prev => prev.filter(t => (t.location || "Delhi").trim().toLowerCase() !== locClean));
-    } else if (startDate && endDate) {
-      setImsTransactions(prev => prev.filter(t => {
-        const inRange = t.date >= startDate && t.date <= endDate;
-        const inLoc = location && location !== "all" ? (t.location || "Delhi").trim().toLowerCase() === location.trim().toLowerCase() : true;
-        return !(inRange && inLoc);
-      }));
-    }
+    setImsTransactions(prev => {
+      let next = [...prev];
+      if (Array.isArray(ids) && ids.length > 0) {
+        const idSet = new Set(ids);
+        next = next.filter(t => !idSet.has(t.id));
+      }
+      if (location && location !== "all" && (!startDate || !endDate)) {
+        const locClean = location.trim().toLowerCase();
+        next = next.filter(t => (t.location || "Delhi").trim().toLowerCase() !== locClean);
+      }
+      if (startDate && endDate) {
+        next = next.filter(t => {
+          const inRange = isDateInBetween(t.date, startDate, endDate);
+          const inLoc = location && location !== "all" ? (t.location || "Delhi").trim().toLowerCase() === location.trim().toLowerCase() : true;
+          return !(inRange && inLoc);
+        });
+      }
+      try {
+        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+        cached.imsTransactions = next;
+        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+      } catch (e) {}
+      return next;
+    });
 
     try {
       const res = await postData("/api/ims/transactions/delete-range", { startDate, endDate, ids, location });
@@ -1845,6 +1992,13 @@ export default function App() {
             onUpdateParty={handleUpdateParty}
             onDeleteParty={handleDeleteParty}
             onBatchUploadParties={handleBatchUploadParties}
+            onBatchAssignParties={handleBatchAssignParties}
+            itemPrices={itemPrices}
+            onAddPrice={handleAddPrice}
+            onUpdatePrice={handleUpdatePrice}
+            onDeletePrice={handleDeletePrice}
+            onBatchUploadPrices={handleBatchUploadPrices}
+            onBulkDeletePrices={handleBulkDeletePrices}
             onPullModuleData={pullModuleData}
             loadingModules={loadingModules}
             recordSectionVisit={recordSectionVisit}
@@ -1883,9 +2037,12 @@ export default function App() {
             crmSalesOrders={crmSalesOrders}
             crmDispatches={crmDispatches}
             items={items}
+            itemPrices={itemPrices}
             onAddParty={handleAddParty}
             onUpdateParty={handleUpdateParty}
             onDeleteParty={handleDeleteParty}
+            onBatchUploadParties={handleBatchUploadParties}
+            onBatchAssignParties={handleBatchAssignParties}
             onAddSalesOrder={handleAddSalesOrder}
             onUpdateSalesOrder={handleUpdateSalesOrder}
             onDeleteSalesOrder={handleDeleteSalesOrder}

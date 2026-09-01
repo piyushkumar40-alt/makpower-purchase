@@ -3,7 +3,7 @@ import {
   Users, User, UserCheck, Building, Database, FileText, Plus, UserMinus, RefreshCw, Download, 
   Upload, Eye, Truck, ChevronRight, Sliders, Package, ShieldCheck, Clock, 
   UserX, LogOut, Folder, HardDrive, Trash2, Copy, ExternalLink, Key, Check, 
-  CheckCircle, CheckCircle2, Layers, AlertTriangle, ShieldAlert, X, Search, Edit2
+  CheckCircle, CheckCircle2, Layers, AlertTriangle, ShieldAlert, X, Search, Edit2, Tag, DollarSign
 } from "lucide-react";
 import TransferModal from "./TransferModal";
 import { getCurrencySymbol, CargoCompaniesPanel, VendorDetailModal, CargoCompanyDetailModal } from "./PurchaserDashboard";
@@ -11,6 +11,7 @@ import ItemMasterView from "./ItemMasterView";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
+import PriceManagementPanel from "./PriceManagementPanel";
 import { QuickCreateDesignationModal, QuickCreateVendorModal, QuickCreateCargoCompanyModal, QuickCreateItemModal, QuickCreateUserModal } from "./QuickCreateModals";
 import { useLoading } from "../context/LoadingContext";
 import { initialUsers } from "../mockData";
@@ -51,12 +52,20 @@ export default function SuperAdminDashboard({
   onUpdateParty,
   onDeleteParty,
   onBatchUploadParties,
+  onBatchAssignParties,
+  itemPrices = [],
+  onAddPrice,
+  onUpdatePrice,
+  onDeletePrice,
+  onBatchUploadPrices,
+  onBulkDeletePrices,
   designations = [],
   onAddDesignation,
   onPullModuleData,
   loadingModules = {},
   recordSectionVisit,
-  currentUserId
+  currentUserId,
+  currentUser
 }) {
   const effectiveUsers = (users && Array.isArray(users) && users.length > 0) ? users : initialUsers;
 
@@ -1033,6 +1042,14 @@ export default function SuperAdminDashboard({
         </button>
 
         <button 
+          onClick={() => handleTabSwitch("pricemanagement")}
+          className={`sidebar-link ${subTab === "pricemanagement" ? "active" : ""}`}
+          style={{ color: "#34d399", fontWeight: 700 }}
+        >
+          <Tag size={16} /> Price Management
+        </button>
+
+        <button 
           onClick={() => handleTabSwitch("missingids")}
           className={`sidebar-link ${subTab === "missingids" ? "active" : ""}`}
           style={{ 
@@ -1235,6 +1252,20 @@ export default function SuperAdminDashboard({
               cargoCompanies={cargoCompanies}
             />
           )
+        )}
+
+        {/* PRICE MANAGEMENT TAB (IMAGE 3 SPECIFICATION) */}
+        {subTab === "pricemanagement" && (
+          <PriceManagementPanel 
+            items={items}
+            itemPrices={itemPrices}
+            onAddPrice={onAddPrice}
+            onUpdatePrice={onUpdatePrice}
+            onDeletePrice={onDeletePrice}
+            onBatchUploadPrices={onBatchUploadPrices}
+            onBulkDeletePrices={onBulkDeletePrices}
+            currentUser={currentUser}
+          />
         )}
 
         {/* PURCHASERS & CRM USERS MANAGEMENT TAB */}

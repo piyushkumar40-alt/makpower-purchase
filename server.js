@@ -24,6 +24,24 @@ const app = express();
 app.use(express.json({ limit: "200mb" }));
 app.use(express.urlencoded({ limit: "200mb", extended: true }));
 
+// High-performance State Cache to prevent DB pool exhaustion
+let stateCache = null;
+let stateCacheTimestamp = 0;
+const STATE_CACHE_TTL_MS = 3000;
+
+function invalidateStateCache() {
+  stateCache = null;
+  stateCacheTimestamp = 0;
+}
+
+// Automatically invalidate full-state cache on any mutating request
+app.use((req, res, next) => {
+  if (req.method !== "GET" && req.path.startsWith("/api") && !req.path.startsWith("/api/audit-logs") && !req.path.startsWith("/api/auth")) {
+    invalidateStateCache();
+  }
+  next();
+});
+
 const PORT = process.env.PORT || 3001;
 
 // Cloudinary Setup
@@ -518,6 +536,21 @@ async function setupPgDatabase() {
         "description" TEXT,
         "role" TEXT
       );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS item_prices (
+        "id" TEXT PRIMARY KEY,
+        "itemId" TEXT,
+        "itemName" TEXT,
+        "pp" NUMERIC,
+        "from" TEXT,
+        "to" TEXT,
+        "createdAt" TEXT,
+        "updatedAt" TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_item_prices_item_id ON item_prices("itemId");
+      CREATE INDEX IF NOT EXISTS idx_item_prices_dates ON item_prices("from", "to");
     `);
 
     // Seed default designations if empty
@@ -1472,15 +1505,6 @@ app.post("/api/storage/delete-all-cloudinary", async (req, res) => {
   }
 });
 
-// High-performance State Cache to prevent DB pool exhaustion
-let stateCache = null;
-let stateCacheTimestamp = 0;
-const STATE_CACHE_TTL_MS = 3000;
-
-function invalidateStateCache() {
-  stateCache = null;
-  stateCacheTimestamp = 0;
-}
 
 // 1. GET /api/state - Fetches full system state with concurrent DB queries & memory cache
 app.get("/api/state", async (req, res) => {
@@ -1503,7 +1527,8 @@ app.get("/api/state", async (req, res) => {
         crmSalesOrdersRes,
         crmDispatchesRes,
         imsRes,
-        designationsRes
+        designationsRes,
+        itemPricesRes
       ] = await Promise.all([
         pool.query("SELECT * FROM users"),
         pool.query("SELECT * FROM vendors"),
@@ -1516,7 +1541,8 @@ app.get("/api/state", async (req, res) => {
         pool.query("SELECT * FROM crm_sales_orders ORDER BY \"orderDate\" DESC"),
         pool.query("SELECT * FROM crm_dispatches ORDER BY \"dispatchDate\" DESC"),
         pool.query("SELECT * FROM ims_transactions ORDER BY \"date\" DESC, \"createdAt\" DESC"),
-        pool.query("SELECT * FROM designations")
+        pool.query("SELECT * FROM designations"),
+        pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC")
       ]);
 
       // Format types back
@@ -1577,6 +1603,10 @@ app.get("/api/state", async (req, res) => {
           stockQty: row.stockQty ? parseInt(row.stockQty) : 0,
           location: row.location || "Delhi",
           isMissingId: !!row.isMissingId
+        })),
+        itemPrices: (itemPricesRes?.rows || []).map(p => ({
+          ...p,
+          pp: p.pp ? parseFloat(p.pp) : 0
         }))
       };
 
@@ -2367,6 +2397,54 @@ app.delete("/api/crm/parties/:id", async (req, res) => {
     data.crmParties = (data.crmParties || []).filter(x => x.id !== partyId);
     writeLocalJson(data);
     res.json({ success: true });
+  }
+});
+
+// 4b. POST /api/crm/parties/batch-assign - Assign multiple parties to an ASM or TSM
+app.post("/api/crm/parties/batch-assign", async (req, res) => {
+  const { partyIds, assignedAsmId, assignedTsmId } = req.body;
+  if (!Array.isArray(partyIds) || partyIds.length === 0) {
+    return res.status(400).json({ error: "No party IDs provided for assignment." });
+  }
+
+  if (isPg) {
+    try {
+      if (assignedAsmId !== undefined && assignedTsmId !== undefined) {
+        await pool.query(
+          'UPDATE crm_parties SET "assignedAsmId" = $1, "assignedTsmId" = $2 WHERE "id" = ANY($3::text[])',
+          [assignedAsmId, assignedTsmId, partyIds]
+        );
+      } else if (assignedAsmId !== undefined) {
+        await pool.query(
+          'UPDATE crm_parties SET "assignedAsmId" = $1 WHERE "id" = ANY($2::text[])',
+          [assignedAsmId, partyIds]
+        );
+      } else if (assignedTsmId !== undefined) {
+        await pool.query(
+          'UPDATE crm_parties SET "assignedTsmId" = $1 WHERE "id" = ANY($2::text[])',
+          [assignedTsmId, partyIds]
+        );
+      }
+      res.json({ success: true, count: partyIds.length });
+    } catch (err) {
+      console.error("POST /api/crm/parties/batch-assign error:", err.message);
+      res.status(500).json({ error: "Failed to batch assign parties." });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.crmParties) data.crmParties = [];
+    data.crmParties = data.crmParties.map(p => {
+      if (partyIds.includes(p.id)) {
+        return {
+          ...p,
+          assignedAsmId: assignedAsmId !== undefined ? assignedAsmId : p.assignedAsmId,
+          assignedTsmId: assignedTsmId !== undefined ? assignedTsmId : p.assignedTsmId
+        };
+      }
+      return p;
+    });
+    writeLocalJson(data);
+    res.json({ success: true, count: partyIds.length });
   }
 });
 
@@ -3633,6 +3711,242 @@ app.post("/api/items/merge", async (req, res) => {
       success: true,
       message: `Successfully merged "${sourceItem.name}" (#${sourceId}) into "${targetItem.name}" (#${targetId}). Updated ${updatedCount} order records.`
     });
+  }
+});
+
+// ==================== PRICE MANAGEMENT ENDPOINTS ====================
+
+// 1. GET /api/prices - List prices
+app.get("/api/prices", async (req, res) => {
+  const { itemId, itemName, search } = req.query;
+  if (isPg) {
+    try {
+      let query = "SELECT * FROM item_prices";
+      const conditions = [];
+      const values = [];
+      let idx = 1;
+
+      if (itemId) {
+        conditions.push(`"itemId" = $${idx++}`);
+        values.push(itemId);
+      }
+      if (itemName) {
+        conditions.push(`"itemName" ILIKE $${idx++}`);
+        values.push(`%${itemName}%`);
+      }
+      if (search) {
+        conditions.push(`("itemId" ILIKE $${idx} OR "itemName" ILIKE $${idx})`);
+        values.push(`%${search}%`);
+        idx++;
+      }
+
+      if (conditions.length > 0) {
+        query += " WHERE " + conditions.join(" AND ");
+      }
+      query += ' ORDER BY "from" DESC, "itemName" ASC';
+
+      const result = await pool.query(query, values);
+      const rows = result.rows.map(p => ({
+        ...p,
+        pp: p.pp ? parseFloat(p.pp) : 0
+      }));
+      res.json({ success: true, prices: rows });
+    } catch (err) {
+      console.error("GET /api/prices error:", err.message);
+      res.status(500).json({ error: "Failed to fetch item prices." });
+    }
+  } else {
+    const data = readLocalJson();
+    let list = data.itemPrices || [];
+    if (itemId) list = list.filter(p => p.itemId === itemId);
+    if (itemName) list = list.filter(p => (p.itemName || "").toLowerCase().includes(itemName.toLowerCase()));
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(p => (p.itemId || "").toLowerCase().includes(q) || (p.itemName || "").toLowerCase().includes(q));
+    }
+    res.json({ success: true, prices: list });
+  }
+});
+
+// 2. POST /api/prices - Create or Update Single Price
+app.post("/api/prices", async (req, res) => {
+  const { id, itemId, itemName, pp, from, to } = req.body;
+  if (!itemId && !itemName) {
+    return res.status(400).json({ error: "Item ID or Item Name is required." });
+  }
+
+  const priceId = id || `prc_${itemId || Date.now()}_${Date.now().toString(36)}`;
+  const ppNum = parseFloat(pp) || 0;
+  const fromDate = from || new Date().toISOString().split("T")[0];
+  const toDate = to || "2030-12-31";
+  const nowIso = new Date().toISOString();
+
+  if (isPg) {
+    try {
+      await pool.query(
+        `INSERT INTO item_prices ("id", "itemId", "itemName", "pp", "from", "to", "createdAt", "updatedAt")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+         ON CONFLICT ("id") DO UPDATE SET
+           "itemId" = EXCLUDED."itemId",
+           "itemName" = EXCLUDED."itemName",
+           "pp" = EXCLUDED."pp",
+           "from" = EXCLUDED."from",
+           "to" = EXCLUDED."to",
+           "updatedAt" = EXCLUDED."updatedAt"`,
+        [priceId, itemId || "", itemName || "", ppNum, fromDate, toDate, nowIso]
+      );
+      res.json({ success: true, price: { id: priceId, itemId, itemName, pp: ppNum, from: fromDate, to: toDate, updatedAt: nowIso } });
+    } catch (err) {
+      console.error("POST /api/prices error:", err.message);
+      res.status(500).json({ error: "Failed to save item price: " + err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.itemPrices) data.itemPrices = [];
+    const idx = data.itemPrices.findIndex(p => p.id === priceId || (p.itemId === itemId && p.from === fromDate));
+    const priceObj = { id: priceId, itemId: itemId || "", itemName: itemName || "", pp: ppNum, from: fromDate, to: toDate, updatedAt: nowIso };
+    if (idx >= 0) {
+      data.itemPrices[idx] = priceObj;
+    } else {
+      data.itemPrices.unshift(priceObj);
+    }
+    writeLocalJson(data);
+    res.json({ success: true, price: priceObj });
+  }
+});
+
+// 3. POST /api/prices/batch - Bulk Upload Prices (from Excel / Google Sheets / TSV / CSV)
+app.post("/api/prices/batch", async (req, res) => {
+  const { prices } = req.body;
+  if (!Array.isArray(prices) || prices.length === 0) {
+    return res.status(400).json({ error: "No prices provided for batch upload." });
+  }
+
+  const nowIso = new Date().toISOString();
+  let insertedCount = 0;
+  let updatedCount = 0;
+
+  if (isPg) {
+    try {
+      for (const p of prices) {
+        const itemId = String(p.itemId || p.id || "").trim();
+        const itemName = String(p.itemName || p.name || "").trim();
+        if (!itemId && !itemName) continue;
+
+        const priceId = p.id || `prc_${itemId || Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        const ppNum = parseFloat(p.pp || p.price || p.purchasePrice) || 0;
+        const fromDate = p.from || "2026-05-01";
+        const toDate = p.to || "2030-05-01";
+
+        const resCheck = await pool.query(
+          `INSERT INTO item_prices ("id", "itemId", "itemName", "pp", "from", "to", "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+           ON CONFLICT ("id") DO UPDATE SET
+             "itemId" = EXCLUDED."itemId",
+             "itemName" = EXCLUDED."itemName",
+             "pp" = EXCLUDED."pp",
+             "from" = EXCLUDED."from",
+             "to" = EXCLUDED."to",
+             "updatedAt" = EXCLUDED."updatedAt"
+           RETURNING xmax`,
+          [priceId, itemId, itemName, ppNum, fromDate, toDate, nowIso]
+        );
+        if (resCheck.rows[0]?.xmax === 0) insertedCount++;
+        else updatedCount++;
+      }
+      res.json({ success: true, count: insertedCount + updatedCount, insertedCount, updatedCount });
+    } catch (err) {
+      console.error("POST /api/prices/batch error:", err.message);
+      res.status(500).json({ error: "Failed to batch upload prices: " + err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.itemPrices) data.itemPrices = [];
+    for (const p of prices) {
+      const itemId = String(p.itemId || p.id || "").trim();
+      const itemName = String(p.itemName || p.name || "").trim();
+      if (!itemId && !itemName) continue;
+
+      const priceId = p.id || `prc_${itemId || Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+      const ppNum = parseFloat(p.pp || p.price || p.purchasePrice) || 0;
+      const fromDate = p.from || "2026-05-01";
+      const toDate = p.to || "2030-05-01";
+
+      const idx = data.itemPrices.findIndex(x => x.id === priceId || (x.itemId === itemId && x.from === fromDate));
+      const priceObj = { id: priceId, itemId, itemName, pp: ppNum, from: fromDate, to: toDate, updatedAt: nowIso };
+      if (idx >= 0) {
+        data.itemPrices[idx] = priceObj;
+        updatedCount++;
+      } else {
+        data.itemPrices.unshift(priceObj);
+        insertedCount++;
+      }
+    }
+    writeLocalJson(data);
+    res.json({ success: true, count: insertedCount + updatedCount, insertedCount, updatedCount });
+  }
+});
+
+// 4. POST /api/prices/delete - Bulk Delete Prices by ID array
+app.post("/api/prices/delete", async (req, res) => {
+  const { ids, purgeAll } = req.body;
+  if (purgeAll === true) {
+    if (isPg) {
+      try {
+        await pool.query("DELETE FROM item_prices");
+        return res.json({ success: true, count: 0 });
+      } catch (err) {
+        console.error("PURGE prices error:", err.message);
+        return res.status(500).json({ error: "Failed to purge price list." });
+      }
+    } else {
+      const data = readLocalJson();
+      data.itemPrices = [];
+      writeLocalJson(data);
+      return res.json({ success: true, count: 0 });
+    }
+  }
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: "No price IDs provided for deletion." });
+  }
+
+  if (isPg) {
+    try {
+      const deleteRes = await pool.query('DELETE FROM item_prices WHERE "id" = ANY($1::text[])', [ids]);
+      res.json({ success: true, count: deleteRes.rowCount || ids.length });
+    } catch (err) {
+      console.error("POST /api/prices/delete error:", err.message);
+      res.status(500).json({ error: "Failed to delete prices: " + err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.itemPrices) data.itemPrices = [];
+    const initLen = data.itemPrices.length;
+    data.itemPrices = data.itemPrices.filter(p => !ids.includes(p.id));
+    const delCount = initLen - data.itemPrices.length;
+    writeLocalJson(data);
+    res.json({ success: true, count: delCount });
+  }
+});
+
+// 5. DELETE /api/prices/:id - Delete single price entry
+app.delete("/api/prices/:id", async (req, res) => {
+  const priceId = req.params.id;
+  if (isPg) {
+    try {
+      await pool.query('DELETE FROM item_prices WHERE "id" = $1', [priceId]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/prices/:id error:", err.message);
+      res.status(500).json({ error: "Failed to delete price entry." });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.itemPrices) data.itemPrices = [];
+    data.itemPrices = data.itemPrices.filter(p => p.id !== priceId);
+    writeLocalJson(data);
+    res.json({ success: true });
   }
 });
 

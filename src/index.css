@@ -300,13 +300,16 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 /* Select wrapper */
-select.form-control {
+select.form-control,
+select {
   appearance: none;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
   background-repeat: no-repeat;
   background-position: right 10px center;
   background-size: 16px;
-  padding-right: 36px;
+  padding: 8px 36px 8px 12px;
+  line-height: 1.4;
+  vertical-align: middle;
 }
 
 /* Checkbox Toggle styling */
@@ -1280,6 +1283,15 @@ table th {
   --danger-glow: rgba(220, 38, 38, 0.15);
   --info: #1d4ed8;
   --info-glow: rgba(29, 78, 216, 0.15);
+
+  /* Bootstrap 5 Theme Variable Bridge in Light Mode */
+  --bs-body-bg: #ffffff;
+  --bs-body-color: #0f172a;
+  --bs-table-bg: #ffffff;
+  --bs-table-color: #0f172a;
+  --bs-table-striped-bg: #f8fafc;
+  --bs-table-hover-bg: #e0f2fe;
+  --bs-border-color: #cbd5e1;
 }
 
 [data-theme="light"] body {
@@ -1377,6 +1389,16 @@ table th {
   border-color: #0284c7 !important;
   box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15) !important;
   background: #ffffff !important;
+}
+
+[data-theme="light"] select.form-control,
+[data-theme="light"] select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 10px center !important;
+  background-size: 16px !important;
+  padding: 8px 36px 8px 12px !important;
+  line-height: 1.4 !important;
 }
 
 [data-theme="light"] select.form-control option {
@@ -1539,7 +1561,7 @@ table th {
   text-shadow: none !important;
 }
 
-/* Tables */
+/* Tables in Light Theme */
 [data-theme="light"] .table-container {
   border: 1px solid #cbd5e1 !important;
   background: #ffffff !important;
@@ -1547,9 +1569,12 @@ table th {
 }
 
 [data-theme="light"] .custom-table,
-[data-theme="light"] .table {
+[data-theme="light"] .table,
+[data-theme="light"] table {
   border: 1px solid #cbd5e1 !important;
   background: #ffffff !important;
+  background-color: #ffffff !important;
+  color: #0f172a !important;
   min-width: 680px;
 }
 
@@ -1562,21 +1587,41 @@ table th {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: #e2e8f0 !important;
+  background: #f1f5f9 !important;
+  background-color: #f1f5f9 !important;
   color: #0f172a !important;
   border: 1px solid #cbd5e1 !important;
+  border-color: #cbd5e1 !important;
   font-family: var(--font-heading) !important;
   font-weight: 700 !important;
   font-size: 0.82rem !important;
   padding: 8px 10px !important;
   white-space: nowrap !important;
   word-break: normal !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04) !important;
+}
+
+[data-theme="light"] .custom-table tbody,
+[data-theme="light"] .table tbody,
+[data-theme="light"] table tbody {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .custom-table tbody tr,
+[data-theme="light"] .table tbody tr,
+[data-theme="light"] table tbody tr {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
 }
 
 [data-theme="light"] .custom-table td,
-[data-theme="light"] .table td {
+[data-theme="light"] .table td,
+[data-theme="light"] table td,
+[data-theme="light"] .table > :not(caption) > * > * {
+  background-color: #ffffff !important;
   border: 1px solid #cbd5e1 !important;
+  border-color: #cbd5e1 !important;
   color: #0f172a !important;
   font-family: var(--font-body) !important;
   font-size: 0.82rem !important;
@@ -1587,14 +1632,22 @@ table th {
 }
 
 [data-theme="light"] .custom-table tbody tr:nth-child(even),
-[data-theme="light"] .table tbody tr:nth-child(even) {
-  background: #f8fafc !important;
+[data-theme="light"] .table tbody tr:nth-child(even),
+[data-theme="light"] table tbody tr:nth-child(even),
+[data-theme="light"] .custom-table tbody tr:nth-child(even) td,
+[data-theme="light"] .table tbody tr:nth-child(even) td,
+[data-theme="light"] table tbody tr:nth-child(even) td,
+[data-theme="light"] .table-striped > tbody > tr:nth-of-type(odd) > * {
+  background-color: #f8fafc !important;
 }
 
 [data-theme="light"] .custom-table tbody tr:hover,
 [data-theme="light"] .table tbody tr:hover,
-[data-theme="light"] .table tr:hover td {
-  background: #e0f2fe !important;
+[data-theme="light"] table tbody tr:hover,
+[data-theme="light"] .table tbody tr:hover td,
+[data-theme="light"] .table tr:hover td,
+[data-theme="light"] table tr:hover td {
+  background-color: #e0f2fe !important;
 }
 
 /* Modals */

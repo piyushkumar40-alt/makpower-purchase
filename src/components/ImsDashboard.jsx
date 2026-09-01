@@ -857,7 +857,7 @@ export default function ImsDashboard({
   const rangeMatchedTransactions = useMemo(() => {
     if (!delRangeStart || !delRangeEnd) return [];
     return effectiveTransactions.filter(tx => {
-      const inDate = tx.date >= delRangeStart && tx.date <= delRangeEnd;
+      const inDate = isDateInBetween(tx.date, delRangeStart, delRangeEnd);
       const inLoc = delRangeLocation && delRangeLocation !== "all" ? (tx.location || "Delhi").trim().toLowerCase() === delRangeLocation.trim().toLowerCase() : true;
       return inDate && inLoc;
     });

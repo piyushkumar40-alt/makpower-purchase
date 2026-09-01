@@ -108,7 +108,7 @@ export function LoadingProvider({ children }) {
     }, 250);
   }, []);
 
-  const finishLoading = useCallback((completedMessage = "Saved successfully!", showPopup = true) => {
+  const finishLoading = useCallback((completedMessage = null, showPopup = false) => {
     activeRef.current = false;
     if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
     if (tickerIntervalRef.current) clearInterval(tickerIntervalRef.current);
@@ -125,7 +125,7 @@ export function LoadingProvider({ children }) {
         if (showPopup && completedMessage) {
           showSuccessToast(completedMessage);
         }
-      }, 500);
+      }, 400);
     } else {
       setVisible(false);
       setActive(false);
