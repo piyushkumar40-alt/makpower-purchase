@@ -377,27 +377,30 @@ export default function CrmDashboard({
     // Standard Makpower Finished Goods (FG) categories
     const standardFg = [
       "Fast Charger", "Data Cable", "Neckband", "TWS Earbuds", 
-      "Power Bank", "Earphones", "Batteries", "Speaker", 
+      "Polymer", "Power Bank", "Earphones", "Batteries", "Speaker", 
       "Smart Watch", "Car Charger", "Mobile Accessories"
     ];
     standardFg.forEach(c => set.add(c));
     return set;
   }, [items]);
 
+  const normalizeFgCategory = (cat) => {
+    if (!cat) return "";
+    const clean = cat.trim();
+    const lower = clean.toLowerCase();
+    if (lower.includes("polymer") || lower.includes("li-poly") || lower.includes("lithium poly") || lower.includes("pouch battery")) {
+      return "Polymer";
+    }
+    if (clean === "General" || clean === "Unspecified") return "";
+    if (lower.includes("raw") || lower.includes("material") || lower.includes("pcb") || lower.includes("ic ") || lower.includes("packing") || lower.includes("box") || lower.includes("carton") || lower.includes("wire") || lower.includes("hardware") || lower.includes("connector")) {
+      return "";
+    }
+    return clean;
+  };
+
   const isFgCategory = (cat) => {
     if (!cat) return false;
-    const clean = cat.trim();
-    if (clean === "General" || clean === "Unspecified") return false;
-    const lower = clean.toLowerCase();
-    // Exclude RM / non-FG indicators
-    if (lower.includes("raw") || lower.includes("material") || lower.includes("pcb") || lower.includes("ic ") || lower.includes("packing") || lower.includes("box") || lower.includes("carton") || lower.includes("wire") || lower.includes("hardware")) {
-      return false;
-    }
-    // Check in FG set or allow standard sales category
-    for (const fg of fgCategoryList) {
-      if (fg.toLowerCase() === lower) return true;
-    }
-    return true;
+    return !!normalizeFgCategory(cat);
   };
 
   // ==================== MONTH & CATEGORY MATRIX DATA + REMARKS ====================
@@ -413,14 +416,14 @@ export default function CrmDashboard({
     currentSalesOrders.forEach(o => {
       const orderMonth = (o.orderDate || "").slice(0, 7) || "2026-08";
       
-      let cat = o.category;
-      if (!cat || cat === "General" || cat === "Unspecified") {
+      let rawCat = o.category;
+      if (!rawCat || rawCat === "General" || rawCat === "Unspecified") {
         const foundItem = items.find(it => it.name === o.itemModel || it.id === o.itemId);
-        cat = foundItem?.category || "";
+        rawCat = foundItem?.category || "";
       }
 
-      // Restrict strictly to FG categories
-      if (!cat || !isFgCategory(cat)) return;
+      const cat = normalizeFgCategory(rawCat);
+      if (!cat) return;
 
       const pId = o.partyId || "unknown";
       const pName = o.partyName || "Unknown Party";
@@ -2199,10 +2202,6 @@ function Party360Modal({
   const [modalTab, setModalTab] = useState("category_matrix"); // "category_matrix" | "orders"
   const [activeRemarkModalTarget, setActiveRemarkModalTarget] = useState(null);
 
-  const totalSpend = salesOrders.reduce((a, b) => a + (parseFloat(b.totalInr) || 0), 0);
-  const totalUnits = salesOrders.reduce((a, b) => a + (parseInt(b.orderQty) || 0), 0);
-  const totalDelivered = dispatches.reduce((a, b) => a + (parseInt(b.dispatchedQty) || 0), 0);
-
   // Dynamic Last 3 Months
   const last3Months = useMemo(() => {
     const months = [];
@@ -2218,28 +2217,75 @@ function Party360Modal({
     return months;
   }, []);
 
-  const isFg = (cat) => {
-    if (!cat) return false;
+  const last3MonthKeys = useMemo(() => new Set(last3Months.map(m => m.key)), [last3Months]);
+
+  const last3MoOrders = useMemo(() => {
+    return salesOrders.filter(o => {
+      const m = (o.orderDate || "").slice(0, 7);
+      return last3MonthKeys.has(m);
+    });
+  }, [salesOrders, last3MonthKeys]);
+
+  const last3MoOrderedQty = useMemo(() => {
+    return last3MoOrders.reduce((a, b) => a + (parseInt(b.orderQty) || 0), 0);
+  }, [last3MoOrders]);
+
+  const last3MoDispatches = useMemo(() => {
+    return dispatches.filter(d => {
+      const m = (d.dispatchDate || "").slice(0, 7);
+      return last3MonthKeys.has(m);
+    });
+  }, [dispatches, last3MonthKeys]);
+
+  const last3MoDispatchedQty = useMemo(() => {
+    return last3MoDispatches.reduce((a, b) => a + (parseInt(b.dispatchedQty) || 0), 0);
+  }, [last3MoDispatches]);
+
+  const totalSpend = last3MoOrders.reduce((a, b) => a + (parseFloat(b.totalInr) || 0), 0);
+
+  const normalizeCategory = (cat) => {
+    if (!cat) return "";
     const clean = cat.trim();
-    if (clean === "General" || clean === "Unspecified") return false;
     const lower = clean.toLowerCase();
-    if (lower.includes("raw") || lower.includes("material") || lower.includes("pcb") || lower.includes("ic ") || lower.includes("packing") || lower.includes("box") || lower.includes("carton") || lower.includes("wire") || lower.includes("hardware")) {
-      return false;
+    if (lower.includes("polymer") || lower.includes("li-poly") || lower.includes("lithium poly") || lower.includes("pouch battery")) {
+      return "Polymer";
     }
-    return true;
+    if (lower.includes("raw") || lower.includes("material") || lower.includes("pcb") || lower.includes("ic ") || lower.includes("packing") || lower.includes("box") || lower.includes("carton") || lower.includes("wire") || lower.includes("hardware") || lower.includes("connector")) {
+      return "";
+    }
+    return clean;
   };
 
-  // 3-Month Category-Wise aggregation for this party (FG only)
+  // 3-Month Category-Wise aggregation for this party (FG only, Polymer consolidated)
   const partyCategoryRows = useMemo(() => {
     const map = new Map();
 
+    // Standard Makpower FG Categories
+    const standardFgCategories = [
+      "Fast Charger", "Data Cable", "Neckband", "TWS Earbuds", 
+      "Polymer", "Power Bank", "Earphones", "Batteries", 
+      "Speaker", "Smart Watch", "Car Charger", "Mobile Accessories"
+    ];
+
+    standardFgCategories.forEach(cat => {
+      map.set(cat, {
+        category: cat,
+        m1: 0,
+        m2: 0,
+        m3: 0,
+        totalQty: 0,
+        totalRevenue: 0
+      });
+    });
+
     salesOrders.forEach(o => {
-      let cat = o.category;
-      if (!cat || cat === "General" || cat === "Unspecified") {
+      let rawCat = o.category;
+      if (!rawCat || rawCat === "General" || rawCat === "Unspecified") {
         const found = items.find(it => it.name === o.itemModel || it.id === o.itemId);
-        cat = found?.category || "";
+        rawCat = found?.category || "";
       }
-      if (!cat || !isFg(cat)) return;
+      const cat = normalizeCategory(rawCat);
+      if (!cat) return;
 
       const oMonth = (o.orderDate || "").slice(0, 7) || last3Months[2].key;
       if (!map.has(cat)) {
@@ -2264,8 +2310,8 @@ function Party360Modal({
     // Also include dispatches
     dispatches.forEach(d => {
       const found = items.find(it => it.name === d.itemModel || it.id === d.itemId);
-      const cat = found?.category || "";
-      if (!cat || !isFg(cat)) return;
+      const cat = normalizeCategory(found?.category || "");
+      if (!cat) return;
 
       const dMonth = (d.dispatchDate || "").slice(0, 7) || last3Months[2].key;
       if (!map.has(cat)) {
@@ -2284,20 +2330,13 @@ function Party360Modal({
     // Also include categories from existing remarks
     (crmPartyRemarks || []).forEach(r => {
       const matchP = r.partyId === party.id || (r.partyName && r.partyName.trim().toLowerCase() === (party.name || "").trim().toLowerCase());
-      if (matchP && r.category && isFg(r.category)) {
-        if (!map.has(r.category)) {
-          map.set(r.category, { category: r.category, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
+      if (matchP && r.category) {
+        const cat = normalizeCategory(r.category);
+        if (cat && !map.has(cat)) {
+          map.set(cat, { category: cat, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
         }
       }
     });
-
-    // Default standard FG categories if empty so remarks can always be logged
-    if (map.size === 0) {
-      const standardCats = ["Fast Charger", "Data Cable", "Neckband", "TWS Earbuds", "Power Bank", "Earphones", "Batteries", "Speaker", "Smart Watch", "Car Charger", "Mobile Accessories"];
-      standardCats.forEach(cat => {
-        map.set(cat, { category: cat, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
-      });
-    }
 
     return Array.from(map.values()).sort((a, b) => b.totalQty - a.totalQty || a.category.localeCompare(b.category));
   }, [salesOrders, dispatches, crmPartyRemarks, items, party, last3Months]);
@@ -2325,21 +2364,23 @@ function Party360Modal({
           <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={22} /></button>
         </div>
 
-        {/* Overview Stats */}
+        {/* Overview Stats (Last 3 Months) */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "12px", marginBottom: "18px" }}>
           {canViewFinancials && (
             <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total Business</div>
+              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total Business (3-Mo)</div>
               <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "var(--success)" }}>₹{totalSpend.toLocaleString()}</div>
             </div>
           )}
           <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total Ordered</div>
-            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "var(--primary)" }}>{totalUnits.toLocaleString()} Pcs</div>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total Ordered (3-Mo)</div>
+            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "var(--primary)" }}>{last3MoOrders.length} Orders</div>
+            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{last3MoOrderedQty.toLocaleString()} Pcs total</div>
           </div>
           <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Dispatched</div>
-            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#f59e0b" }}>{totalDelivered.toLocaleString()} Pcs</div>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Dispatched (3-Mo)</div>
+            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#f59e0b" }}>{last3MoDispatchedQty.toLocaleString()} Pcs</div>
+            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Across {last3MoDispatches.length} dispatches</div>
           </div>
           <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Categories Active</div>
@@ -2377,19 +2418,19 @@ function Party360Modal({
             <table className="table" style={{ width: "100%", fontSize: "0.84rem" }}>
               <thead>
                 <tr>
-                  <th style={{ width: "22%" }}>Category</th>
-                  <th style={{ width: "14%", textAlign: "right" }}>{last3Months[0].label}</th>
-                  <th style={{ width: "14%", textAlign: "right" }}>{last3Months[1].label}</th>
-                  <th style={{ width: "14%", textAlign: "right" }}>{last3Months[2].label}</th>
-                  <th style={{ width: "14%", textAlign: "right" }}>3-Mo Total</th>
-                  <th style={{ width: "22%", textAlign: "center" }}>Remarks</th>
+                  <th style={{ width: "20%" }}>Category</th>
+                  <th style={{ width: "12%", textAlign: "right" }}>{last3Months[0].label}</th>
+                  <th style={{ width: "12%", textAlign: "right" }}>{last3Months[1].label}</th>
+                  <th style={{ width: "12%", textAlign: "right" }}>{last3Months[2].label}</th>
+                  <th style={{ width: "12%", textAlign: "right" }}>3-Mo Total</th>
+                  <th style={{ width: "32%", textAlign: "center" }}>Remarks</th>
                 </tr>
               </thead>
               <tbody>
                 {partyCategoryRows.map(row => {
                   const categoryRemarks = (crmPartyRemarks || []).filter(r => 
                     (r.partyId === party.id || (r.partyName && r.partyName.trim().toLowerCase() === (party.name || "").trim().toLowerCase())) && 
-                    r.category === row.category
+                    (r.category === row.category || (row.category === "Polymer" && (r.category || "").toLowerCase().includes("polymer")))
                   );
                   const latest = categoryRemarks[0];
 
@@ -2411,10 +2452,20 @@ function Party360Modal({
                         {row.totalQty > 0 ? `${row.totalQty.toLocaleString()} Pcs` : "0 Pcs"}
                       </td>
                       <td style={{ textAlign: "center" }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "center" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "stretch" }}>
                           {latest && (
-                            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontStyle: "italic", maxWidth: "160px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              "{latest.remark}"
+                            <div style={{ display: "flex", flexDirection: "column", gap: "2px", textAlign: "left", padding: "6px 8px", background: "rgba(255,255,255,0.04)", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <span style={{ fontSize: "0.7rem", fontWeight: 700, color: latest.authorRole === "asm" ? "#34d399" : latest.authorRole === "tsm" ? "#fbbf24" : "#818cf8" }}>
+                                  {latest.authorName} ({latest.authorRole?.toUpperCase()})
+                                </span>
+                                <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>
+                                  {latest.createdAt ? new Date(latest.createdAt).toLocaleDateString("en-IN") : latest.month}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: "0.76rem", color: "var(--text-main)", lineHeight: 1.3 }}>
+                                "{latest.remark}"
+                              </div>
                             </div>
                           )}
                           <button
@@ -2427,7 +2478,7 @@ function Party360Modal({
                               totalRevenue: row.totalRevenue
                             })}
                             className="btn btn-secondary btn-sm"
-                            style={{ fontSize: "0.74rem", padding: "3px 8px", display: "inline-flex", alignItems: "center", gap: "4px", color: categoryRemarks.length > 0 ? "#38bdf8" : undefined }}
+                            style={{ fontSize: "0.74rem", padding: "4px 8px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "4px", color: categoryRemarks.length > 0 ? "#38bdf8" : undefined, width: "100%" }}
                           >
                             <MessageSquare size={12} /> {categoryRemarks.length > 0 ? `Remarks (${categoryRemarks.length})` : "+ Add Remark"}
                           </button>
@@ -2485,10 +2536,23 @@ function Party360Modal({
             target={activeRemarkModalTarget}
             remarks={(crmPartyRemarks || []).filter(r => 
               (r.partyId === activeRemarkModalTarget.partyId || (r.partyName && r.partyName.trim().toLowerCase() === (activeRemarkModalTarget.partyName || "").trim().toLowerCase())) && 
-              r.category === activeRemarkModalTarget.category
+              (r.category === activeRemarkModalTarget.category || (activeRemarkModalTarget.category === "Polymer" && (r.category || "").toLowerCase().includes("polymer")))
             )}
             currentUser={currentUser}
-            onSave={onSavePartyRemark}
+            onSave={async (text) => {
+              if (onSavePartyRemark) {
+                await onSavePartyRemark({
+                  partyId: activeRemarkModalTarget.partyId,
+                  partyName: activeRemarkModalTarget.partyName,
+                  category: activeRemarkModalTarget.category,
+                  month: activeRemarkModalTarget.month,
+                  remark: text,
+                  authorId: currentUser?.id,
+                  authorName: currentUser?.name || "ASM/TSM",
+                  authorRole: currentUser?.role || "asm"
+                });
+              }
+            }}
             onDelete={onDeletePartyRemark}
             onClose={() => setActiveRemarkModalTarget(null)}
           />
@@ -2538,10 +2602,11 @@ function PartyMonthlyCategoryStudioModal({
     if (!cat) return "";
     const clean = cat.trim();
     const lower = clean.toLowerCase();
-    if (lower.includes("polymer") || lower.includes("li-poly") || lower.includes("lithium poly")) {
+    if (lower.includes("polymer") || lower.includes("li-poly") || lower.includes("lithium poly") || lower.includes("pouch battery")) {
       return "Polymer";
     }
-    if (lower.includes("raw") || lower.includes("material") || lower.includes("pcb") || lower.includes("ic ") || lower.includes("packing") || lower.includes("box") || lower.includes("carton") || lower.includes("wire") || lower.includes("hardware")) {
+    if (clean === "General" || clean === "Unspecified") return "";
+    if (lower.includes("raw") || lower.includes("material") || lower.includes("pcb") || lower.includes("ic ") || lower.includes("packing") || lower.includes("box") || lower.includes("carton") || lower.includes("wire") || lower.includes("hardware") || lower.includes("connector")) {
       return "";
     }
     return clean;
@@ -3424,16 +3489,13 @@ function AsmSalesDetailModal({
 
     memberOrders.forEach(o => {
       const orderMonth = (o.orderDate || "").slice(0, 7) || "2026-08";
-      let cat = o.category;
-      if (!cat || cat === "General" || cat === "Unspecified") {
+      let rawCat = o.category;
+      if (!rawCat || rawCat === "General" || rawCat === "Unspecified") {
         const foundItem = items.find(it => it.name === o.itemModel || it.id === o.itemId);
-        cat = foundItem?.category || "";
+        rawCat = foundItem?.category || "";
       }
+      const cat = normalizeFgCategory(rawCat);
       if (!cat) return;
-      const lower = cat.toLowerCase();
-      if (lower.includes("raw") || lower.includes("material") || lower.includes("pcb") || lower.includes("ic ") || lower.includes("packing") || lower.includes("box") || lower.includes("carton") || lower.includes("wire") || lower.includes("hardware")) {
-        return;
-      }
 
       const pId = o.partyId || "unknown";
       const pName = o.partyName || "Unknown Party";
@@ -3919,7 +3981,7 @@ function PartyCategoryRemarkModal({ target, remarks = [], currentUser, formatInr
               {target.partyName}
             </h3>
             <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "2px" }}>
-              Current Month Volume: <strong style={{ color: "var(--primary)" }}>{(target.totalOrderQty || 0).toLocaleString()} Pcs</strong> {target.totalRevenue ? `• ${formatInr(target.totalRevenue)}` : ""}
+              Current Month Sales: <strong style={{ color: "var(--primary)" }}>{(target.totalOrderQty || 0).toLocaleString()} Pcs</strong> {target.totalRevenue ? `• ${formatInr(target.totalRevenue)}` : ""}
             </div>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={20} /></button>
@@ -3933,8 +3995,7 @@ function PartyCategoryRemarkModal({ target, remarks = [], currentUser, formatInr
 
           {remarks.length === 0 ? (
             <div style={{ padding: "26px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.86rem" }}>
-              No remarks recorded for this party & category in <strong>{target.month}</strong> yet.<br />
-              <span style={{ fontSize: "0.78rem" }}>ASMs, TSMs, and CRMs can log observations, dealer commitments, or demand trends below.</span>
+              You can log remarks, dealer commitments, and observations below.
             </div>
           ) : (
             remarks.map(r => {
@@ -3944,7 +4005,7 @@ function PartyCategoryRemarkModal({ target, remarks = [], currentUser, formatInr
               return (
                 <div key={r.id} style={{ background: "var(--bg-card)", border: "1px solid var(--border-glass)", borderRadius: "10px", padding: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                       <span className="badge" style={{ 
                         background: r.authorRole === "asm" ? "rgba(16, 185, 129, 0.15)" : r.authorRole === "tsm" ? "rgba(245, 158, 11, 0.15)" : "rgba(99, 102, 241, 0.15)",
                         color: r.authorRole === "asm" ? "#34d399" : r.authorRole === "tsm" ? "#fbbf24" : "#818cf8",
@@ -3954,6 +4015,9 @@ function PartyCategoryRemarkModal({ target, remarks = [], currentUser, formatInr
                         {r.authorRole ? r.authorRole.toUpperCase() : "TEAM"}
                       </span>
                       <strong style={{ fontSize: "0.85rem", color: "var(--text-main)" }}>{r.authorName}</strong>
+                      <span className="badge" style={{ background: "rgba(56, 189, 248, 0.12)", color: "#38bdf8", fontSize: "0.7rem", padding: "2px 6px" }}>
+                        {r.category || target.category}
+                      </span>
                     </div>
 
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -3974,7 +4038,7 @@ function PartyCategoryRemarkModal({ target, remarks = [], currentUser, formatInr
                   </div>
 
                   <div style={{ fontSize: "0.88rem", color: "var(--text-main)", lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
-                    {r.remark}
+                    "{r.remark}"
                   </div>
                 </div>
               );
@@ -3985,17 +4049,17 @@ function PartyCategoryRemarkModal({ target, remarks = [], currentUser, formatInr
         {/* Add Remark Form */}
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label" style={{ fontWeight: 700, fontSize: "0.82rem", margin: 0 }}>
-              Add New Remark for {target.partyName} ({target.category} • {target.month})
+            <label className="form-label" style={{ fontWeight: 700, fontSize: "0.86rem", margin: "0 0 6px 0", color: "var(--text-main)" }}>
+              Remarks
             </label>
             <textarea
               rows={3}
               required
-              placeholder={`Write observation or update for ${target.partyName} in ${target.category}... (e.g. Dealer requested 500 pcs next month with special terms)`}
+              placeholder="Type remark here..."
               value={remarkText}
               onChange={e => setRemarkText(e.target.value)}
               className="form-control"
-              style={{ fontSize: "0.86rem" }}
+              style={{ fontSize: "0.86rem", background: "rgba(0,0,0,0.25)", color: "var(--text-main)", borderColor: "var(--border-glass)" }}
             />
           </div>
 
