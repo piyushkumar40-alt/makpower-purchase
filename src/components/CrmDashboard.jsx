@@ -278,6 +278,88 @@ export default function CrmDashboard({
   const [dispatchStartDate, setDispatchStartDate] = useState("");
   const [dispatchEndDate, setDispatchEndDate] = useState("");
 
+  // Dynamic Multi-Search Criteria for Dispatches Report
+  const [dispatchSearchFilters, setDispatchSearchFilters] = useState([
+    { id: "filter-1", field: "all", value: "" }
+  ]);
+  const [dispatchMatchMode, setDispatchMatchMode] = useState("all"); // "all" (AND) | "any" (OR)
+
+  const handleAddDispatchSearchFilter = () => {
+    setDispatchSearchFilters(prev => [
+      ...prev,
+      { id: `filter-${Date.now()}-${Math.floor(Math.random() * 1000)}`, field: "all", value: "" }
+    ]);
+  };
+
+  const handleUpdateDispatchSearchFilter = (id, key, val) => {
+    setDispatchSearchFilters(prev => prev.map(f => f.id === id ? { ...f, [key]: val } : f));
+  };
+
+  const handleRemoveDispatchSearchFilter = (id) => {
+    setDispatchSearchFilters(prev => {
+      if (prev.length <= 1) {
+        return [{ id: `filter-${Date.now()}`, field: "all", value: "" }];
+      }
+      return prev.filter(f => f.id !== id);
+    });
+  };
+
+  const handleResetDispatchSearchFilters = () => {
+    setDispatchSearchFilters([{ id: `filter-${Date.now()}`, field: "all", value: "" }]);
+    setDispatchStatusFilter("all");
+    setDispatchStartDate("");
+    setDispatchEndDate("");
+  };
+
+  // Filtered Dispatches for Logistics Report (incorporating Multi-Search Filters)
+  const filteredDispatchesReport = useMemo(() => {
+    const activeFilters = dispatchSearchFilters.filter(f => (f.value || "").trim() !== "");
+
+    return currentDispatches.filter(d => {
+      if (dispatchStatusFilter !== "all" && d.status !== dispatchStatusFilter) return false;
+      if (dispatchStartDate || dispatchEndDate) {
+        if (!isDateInBetween(d.dispatchDate, dispatchStartDate, dispatchEndDate)) return false;
+      }
+
+      if (activeFilters.length === 0) return true;
+
+      const checkFilter = (f) => {
+        const term = f.value.trim().toLowerCase();
+        if (!term) return true;
+
+        if (f.field === "party") {
+          return (d.partyName || "").toLowerCase().includes(term);
+        } else if (f.field === "item") {
+          return (d.itemModel || "").toLowerCase().includes(term);
+        } else if (f.field === "invoice") {
+          return (d.invoiceNo || "").toLowerCase().includes(term);
+        } else if (f.field === "transporter") {
+          return (d.transporterName || "").toLowerCase().includes(term);
+        } else if (f.field === "docket") {
+          return (d.docketNo || "").toLowerCase().includes(term);
+        } else {
+          const combined = [
+            d.partyName,
+            d.itemModel,
+            d.invoiceNo,
+            d.transporterName,
+            d.docketNo,
+            d.orderNo,
+            d.status,
+            d.dispatchDate
+          ].filter(Boolean).join(" ").toLowerCase();
+          return combined.includes(term);
+        }
+      };
+
+      if (dispatchMatchMode === "any") {
+        return activeFilters.some(checkFilter);
+      } else {
+        return activeFilters.every(checkFilter);
+      }
+    });
+  }, [currentDispatches, dispatchStatusFilter, dispatchStartDate, dispatchEndDate, dispatchSearchFilters, dispatchMatchMode]);
+
   const [ordersStartDate, setOrdersStartDate] = useState("");
   const [ordersEndDate, setOrdersEndDate] = useState("");
 
@@ -535,7 +617,7 @@ export default function CrmDashboard({
 
   const handleExportDispatchesCsv = () => {
     const headers = ["Dispatch Date", "Invoice No", "Party Name", "Item Model", "Dispatched Qty", "Transporter", "Docket / LR No", "Status", "Assigned CRM"];
-    const rows = currentDispatches.map(d => [
+    const rows = filteredDispatchesReport.map(d => [
       d.dispatchDate, d.invoiceNo, d.partyName, d.itemModel, d.dispatchedQty, d.transporterName, d.docketNo, d.status, crmExecutives.find(c => c.id === d.assignedCrmId)?.name || d.assignedCrmId
     ]);
     exportCsv(headers, rows, "makpower_dispatch_qty_report");
@@ -1582,15 +1664,148 @@ export default function CrmDashboard({
                 <Download size={14} /> Export Dispatches (CSV)
               </button>
             </div>
+          {/* Multi-Search Criteria Filter Panel */}
+          <div className="glass-panel" style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "12px", border: "1px solid rgba(56, 189, 248, 0.2)", background: "rgba(15, 23, 42, 0.55)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 700, fontSize: "0.95rem", color: "var(--text-main)" }}>
+                  <Filter size={16} style={{ color: "#38bdf8" }} />
+                  <span>Multi-Search Filters</span>
+                </div>
+                {dispatchSearchFilters.filter(f => (f.value || "").trim() !== "").length > 0 && (
+                  <span style={{ fontSize: "0.75rem", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", padding: "2px 8px", borderRadius: "12px", fontWeight: 700 }}>
+                    {dispatchSearchFilters.filter(f => (f.value || "").trim() !== "").length} active
+                  </span>
+                )}
+                <span style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                  Showing <strong>{filteredDispatchesReport.length}</strong> of {currentDispatches.length} dispatches
+                </span>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", background: "rgba(0,0,0,0.3)", borderRadius: "8px", padding: "2px", border: "1px solid var(--border-glass)" }}>
+                  <button
+                    onClick={() => setDispatchMatchMode("all")}
+                    className={`btn btn-sm ${dispatchMatchMode === "all" ? "btn-primary" : "btn-secondary"}`}
+                    style={{ fontSize: "0.75rem", padding: "3px 10px", borderRadius: "6px", height: "auto" }}
+                  >
+                    Match ALL (AND)
+                  </button>
+                  <button
+                    onClick={() => setDispatchMatchMode("any")}
+                    className={`btn btn-sm ${dispatchMatchMode === "any" ? "btn-primary" : "btn-secondary"}`}
+                    style={{ fontSize: "0.75rem", padding: "3px 10px", borderRadius: "6px", height: "auto" }}
+                  >
+                    Match ANY (OR)
+                  </button>
+                </div>
+
+                <button
+                  onClick={handleAddDispatchSearchFilter}
+                  className="btn btn-primary btn-sm"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", padding: "6px 14px", fontWeight: 700 }}
+                >
+                  <Plus size={15} /> Add Search Filter (+)
+                </button>
+
+                <button
+                  onClick={handleResetDispatchSearchFilters}
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "0.82rem" }}
+                  title="Reset all search filters"
+                >
+                  <RefreshCw size={13} /> Reset
+                </button>
+              </div>
+            </div>
+
+            {/* Dynamic Search Filter Rows */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {dispatchSearchFilters.map((filter, index) => (
+                <div key={filter.id} style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", background: "rgba(30, 41, 59, 0.45)", padding: "8px 12px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-muted)", minWidth: "22px" }}>
+                    #{index + 1}
+                  </span>
+
+                  <select
+                    value={filter.field}
+                    onChange={e => handleUpdateDispatchSearchFilter(filter.id, "field", e.target.value)}
+                    className="form-control"
+                    style={{ width: "auto", minWidth: "165px", height: "34px", minHeight: "34px", fontSize: "0.82rem", padding: "4px 28px 4px 10px" }}
+                  >
+                    <option value="all">🔍 All Fields</option>
+                    <option value="party">🏢 Party Name</option>
+                    <option value="item">📦 Item Model / Product</option>
+                    <option value="invoice">📄 Invoice No</option>
+                    <option value="transporter">🚚 Transporter Name</option>
+                    <option value="docket">🏷️ Docket / LR No</option>
+                  </select>
+
+                  <div style={{ position: "relative", flex: 1, minWidth: "220px" }}>
+                    <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder={`Search by ${filter.field === "all" ? "party, item, invoice, transporter, LR docket..." : filter.field}...`}
+                      value={filter.value}
+                      onChange={e => handleUpdateDispatchSearchFilter(filter.id, "value", e.target.value)}
+                      style={{ height: "34px", minHeight: "34px", paddingLeft: "32px", paddingRight: filter.value ? "30px" : "10px", fontSize: "0.85rem" }}
+                    />
+                    {filter.value && (
+                      <button
+                        onClick={() => handleUpdateDispatchSearchFilter(filter.id, "value", "")}
+                        style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "2px" }}
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                    <button
+                      onClick={handleAddDispatchSearchFilter}
+                      className="btn btn-secondary btn-sm"
+                      style={{ height: "34px", width: "34px", padding: 0, justifyContent: "center", borderColor: "rgba(56, 189, 248, 0.4)", color: "#38bdf8" }}
+                      title="Add another search filter (+)"
+                    >
+                      <Plus size={15} />
+                    </button>
+                    {dispatchSearchFilters.length > 1 && (
+                      <button
+                        onClick={() => handleRemoveDispatchSearchFilter(filter.id)}
+                        className="btn btn-secondary btn-sm"
+                        style={{ height: "34px", width: "34px", padding: 0, justifyContent: "center", color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.4)" }}
+                        title="Remove this filter"
+                      >
+                        <X size={15} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Dispatches Table */}
           <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
-            {currentDispatches.length === 0 ? (
+            {filteredDispatchesReport.length === 0 ? (
               <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
                 <Truck size={36} style={{ marginBottom: "12px", opacity: 0.5 }} />
-                <h4>No dispatch logs found</h4>
-                <p style={{ fontSize: "0.85rem" }}>Record dispatches against sales orders to view shipment logs.</p>
+                <h4>No matching dispatch logs found</h4>
+                <p style={{ fontSize: "0.85rem" }}>
+                  {currentDispatches.length === 0
+                    ? "Record dispatches against sales orders to view shipment logs."
+                    : "No dispatches matched your current search filters. Try adjusting or resetting your search criteria."}
+                </p>
+                {dispatchSearchFilters.some(f => (f.value || "").trim() !== "") && (
+                  <button
+                    onClick={handleResetDispatchSearchFilters}
+                    className="btn btn-secondary btn-sm"
+                    style={{ marginTop: "10px", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                  >
+                    <RefreshCw size={13} /> Reset All Search Filters
+                  </button>
+                )}
               </div>
             ) : (
               <table className="table" style={{ width: "100%", minWidth: "950px" }}>
@@ -1607,15 +1822,7 @@ export default function CrmDashboard({
                   </tr>
                 </thead>
                 <tbody>
-                  {currentDispatches
-                    .filter(d => {
-                      if (dispatchStatusFilter !== "all" && d.status !== dispatchStatusFilter) return false;
-                      if (dispatchStartDate || dispatchEndDate) {
-                        if (!isDateInBetween(d.dispatchDate, dispatchStartDate, dispatchEndDate)) return false;
-                      }
-                      return true;
-                    })
-                    .map(dsp => (
+                  {filteredDispatchesReport.map(dsp => (
                       <tr key={dsp.id}>
                         <td>
                           <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", fontWeight: 600 }}>
