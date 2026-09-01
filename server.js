@@ -551,6 +551,22 @@ async function setupPgDatabase() {
       );
       CREATE INDEX IF NOT EXISTS idx_item_prices_item_id ON item_prices("itemId");
       CREATE INDEX IF NOT EXISTS idx_item_prices_dates ON item_prices("from", "to");
+
+      CREATE TABLE IF NOT EXISTS crm_party_remarks (
+        "id" TEXT PRIMARY KEY,
+        "partyId" TEXT,
+        "partyName" TEXT,
+        "category" TEXT,
+        "month" TEXT,
+        "remark" TEXT,
+        "authorId" TEXT,
+        "authorName" TEXT,
+        "authorRole" TEXT,
+        "createdAt" TEXT,
+        "updatedAt" TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_crm_remarks_party ON crm_party_remarks("partyId");
+      CREATE INDEX IF NOT EXISTS idx_crm_remarks_party_cat_month ON crm_party_remarks("partyId", "category", "month");
     `);
 
     // Seed default designations if empty
@@ -1528,7 +1544,8 @@ app.get("/api/state", async (req, res) => {
         crmDispatchesRes,
         imsRes,
         designationsRes,
-        itemPricesRes
+        itemPricesRes,
+        crmPartyRemarksRes
       ] = await Promise.all([
         pool.query("SELECT * FROM users"),
         pool.query("SELECT * FROM vendors"),
@@ -1542,7 +1559,8 @@ app.get("/api/state", async (req, res) => {
         pool.query("SELECT * FROM crm_dispatches ORDER BY \"dispatchDate\" DESC"),
         pool.query("SELECT * FROM ims_transactions ORDER BY \"date\" DESC, \"createdAt\" DESC"),
         pool.query("SELECT * FROM designations"),
-        pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC")
+        pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC"),
+        pool.query("SELECT * FROM crm_party_remarks ORDER BY \"createdAt\" DESC")
       ]);
 
       // Format types back
@@ -1607,7 +1625,8 @@ app.get("/api/state", async (req, res) => {
         itemPrices: (itemPricesRes?.rows || []).map(p => ({
           ...p,
           pp: p.pp ? parseFloat(p.pp) : 0
-        }))
+        })),
+        crmPartyRemarks: crmPartyRemarksRes?.rows || []
       };
 
       stateCache = fullState;
@@ -2703,6 +2722,126 @@ app.delete("/api/crm/dispatches/:id", async (req, res) => {
   } else {
     const data = readLocalJson();
     data.crmDispatches = (data.crmDispatches || []).filter(x => x.id !== dispatchId);
+    writeLocalJson(data);
+    res.json({ success: true });
+  }
+});
+
+// ==================== CRM PARTY REMARKS (MONTH & CATEGORY WISE) ====================
+
+// GET /api/crm/party-remarks
+app.get("/api/crm/party-remarks", async (req, res) => {
+  const { partyId, category, month } = req.query;
+  if (isPg) {
+    try {
+      let query = 'SELECT * FROM crm_party_remarks WHERE 1=1';
+      const params = [];
+      if (partyId) {
+        params.push(partyId);
+        query += ` AND "partyId" = $${params.length}`;
+      }
+      if (category) {
+        params.push(category);
+        query += ` AND "category" = $${params.length}`;
+      }
+      if (month) {
+        params.push(month);
+        query += ` AND "month" = $${params.length}`;
+      }
+      query += ' ORDER BY "createdAt" DESC';
+      const result = await pool.query(query, params);
+      res.json(result.rows);
+    } catch (err) {
+      console.error("GET /api/crm/party-remarks error:", err.message);
+      res.status(500).json({ error: "Failed to fetch party remarks." });
+    }
+  } else {
+    const data = readLocalJson();
+    let remarks = data.crmPartyRemarks || [];
+    if (partyId) remarks = remarks.filter(r => r.partyId === partyId);
+    if (category) remarks = remarks.filter(r => r.category === category);
+    if (month) remarks = remarks.filter(r => r.month === month);
+    res.json(remarks);
+  }
+});
+
+// POST /api/crm/party-remarks
+app.post("/api/crm/party-remarks", async (req, res) => {
+  const r = req.body;
+  if (!r.partyName && !r.partyId) {
+    return res.status(400).json({ error: "Party name or ID is required." });
+  }
+
+  const remarkObj = {
+    id: r.id || `rem-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    partyId: r.partyId || "",
+    partyName: r.partyName || "",
+    category: r.category || "General",
+    month: r.month || new Date().toISOString().slice(0, 7),
+    remark: r.remark || "",
+    authorId: r.authorId || "",
+    authorName: r.authorName || "Team Member",
+    authorRole: r.authorRole || "asm",
+    createdAt: r.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  if (isPg) {
+    try {
+      const query = `
+        INSERT INTO crm_party_remarks (
+          "id", "partyId", "partyName", "category", "month", "remark",
+          "authorId", "authorName", "authorRole", "createdAt", "updatedAt"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        ON CONFLICT ("id") DO UPDATE SET
+          "partyId" = EXCLUDED."partyId",
+          "partyName" = EXCLUDED."partyName",
+          "category" = EXCLUDED."category",
+          "month" = EXCLUDED."month",
+          "remark" = EXCLUDED."remark",
+          "authorId" = EXCLUDED."authorId",
+          "authorName" = EXCLUDED."authorName",
+          "authorRole" = EXCLUDED."authorRole",
+          "updatedAt" = EXCLUDED."updatedAt"
+      `;
+      await pool.query(query, [
+        remarkObj.id, remarkObj.partyId, remarkObj.partyName, remarkObj.category,
+        remarkObj.month, remarkObj.remark, remarkObj.authorId, remarkObj.authorName,
+        remarkObj.authorRole, remarkObj.createdAt, remarkObj.updatedAt
+      ]);
+      res.json({ success: true, remark: remarkObj });
+    } catch (err) {
+      console.error("POST /api/crm/party-remarks error:", err.message);
+      res.status(500).json({ error: "Failed to save remark: " + err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.crmPartyRemarks) data.crmPartyRemarks = [];
+    const idx = data.crmPartyRemarks.findIndex(x => x.id === remarkObj.id);
+    if (idx !== -1) {
+      data.crmPartyRemarks[idx] = remarkObj;
+    } else {
+      data.crmPartyRemarks.unshift(remarkObj);
+    }
+    writeLocalJson(data);
+    res.json({ success: true, remark: remarkObj });
+  }
+});
+
+// DELETE /api/crm/party-remarks/:id
+app.delete("/api/crm/party-remarks/:id", async (req, res) => {
+  const remarkId = req.params.id;
+  if (isPg) {
+    try {
+      await pool.query('DELETE FROM crm_party_remarks WHERE "id" = $1', [remarkId]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/crm/party-remarks error:", err.message);
+      res.status(500).json({ error: "Failed to delete remark." });
+    }
+  } else {
+    const data = readLocalJson();
+    data.crmPartyRemarks = (data.crmPartyRemarks || []).filter(x => x.id !== remarkId);
     writeLocalJson(data);
     res.json({ success: true });
   }

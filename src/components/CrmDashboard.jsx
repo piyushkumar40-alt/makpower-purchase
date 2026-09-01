@@ -4,7 +4,7 @@ import {
   Download, Eye, Edit2, Trash2, CheckCircle2, Clock, AlertCircle, 
   Phone, Mail, MapPin, ChevronRight, ArrowUpDown, UserPlus, UserCheck, 
   Shield, Calendar, FileText, BarChart2, RefreshCw, Layers, DollarSign,
-  X, Check, ExternalLink, Share2, Briefcase, User, Send, Lock
+  X, Check, ExternalLink, Share2, Briefcase, User, Send, Lock, MessageSquare
 } from "lucide-react";
 import Pagination from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
@@ -16,13 +16,17 @@ export default function CrmDashboard({
   crmParties = [],
   crmSalesOrders = [],
   crmDispatches = [],
+  crmPartyRemarks = [],
   items = [],
+  itemPrices = [],
   onAddParty,
   onUpdateParty,
   onDeleteParty,
   onBulkDeleteParties,
   onBatchUploadParties,
   onBatchAssignParties,
+  onSavePartyRemark,
+  onDeletePartyRemark,
   onAddSalesOrder,
   onUpdateSalesOrder,
   onDeleteSalesOrder,
@@ -259,6 +263,102 @@ export default function CrmDashboard({
     return Array.from(new Set(currentSalesOrders.map(o => o.category).filter(Boolean)));
   }, [currentSalesOrders]);
 
+  // ==================== MONTH & CATEGORY MATRIX DATA + REMARKS ====================
+  const [activeRemarkPartyCategory, setActiveRemarkPartyCategory] = useState(null);
+  const [matrixMonthFilter, setMatrixMonthFilter] = useState("all");
+  const [matrixCategoryFilter, setMatrixCategoryFilter] = useState("all");
+  const [matrixPartySearch, setMatrixPartySearch] = useState("");
+  const [matrixAsmFilter, setMatrixAsmFilter] = useState("all");
+
+  const monthCategoryMatrixData = useMemo(() => {
+    const map = new Map();
+
+    currentSalesOrders.forEach(o => {
+      const orderMonth = (o.orderDate || "").slice(0, 7) || "2026-08";
+      
+      let cat = o.category;
+      if (!cat || cat === "General" || cat === "Unspecified") {
+        const foundItem = items.find(it => it.name === o.itemModel || it.id === o.itemId);
+        cat = foundItem?.category || "General";
+      }
+
+      const pId = o.partyId || "unknown";
+      const pName = o.partyName || "Unknown Party";
+
+      const key = `${pId}___${cat}___${orderMonth}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          partyId: pId,
+          partyName: pName,
+          category: cat,
+          month: orderMonth,
+          totalOrderQty: 0,
+          totalRevenue: 0,
+          orderCount: 0,
+          assignedAsmId: o.assignedAsmId || "",
+          assignedTsmId: o.assignedTsmId || ""
+        });
+      }
+      const cur = map.get(key);
+      cur.totalOrderQty += parseInt(o.orderQty) || 0;
+      cur.totalRevenue += parseFloat(o.totalInr) || 0;
+      cur.orderCount += 1;
+    });
+
+    // Also ensure parties with remarks in a category/month are represented
+    (crmPartyRemarks || []).forEach(r => {
+      const key = `${r.partyId}___${r.category}___${r.month}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          partyId: r.partyId,
+          partyName: r.partyName,
+          category: r.category,
+          month: r.month,
+          totalOrderQty: 0,
+          totalRevenue: 0,
+          orderCount: 0,
+          assignedAsmId: "",
+          assignedTsmId: ""
+        });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.month.localeCompare(a.month) || a.partyName.localeCompare(b.partyName));
+  }, [currentSalesOrders, items, crmPartyRemarks]);
+
+  const availableMatrixMonths = useMemo(() => {
+    const set = new Set();
+    monthCategoryMatrixData.forEach(r => { if (r.month && r.month !== "Unspecified") set.add(r.month); });
+    return Array.from(set).sort().reverse();
+  }, [monthCategoryMatrixData]);
+
+  const availableMatrixCategories = useMemo(() => {
+    const set = new Set();
+    monthCategoryMatrixData.forEach(r => { if (r.category) set.add(r.category); });
+    items.forEach(i => { if (i.category) set.add(i.category); });
+    return Array.from(set).sort();
+  }, [monthCategoryMatrixData, items]);
+
+  const filteredMonthCategoryMatrix = useMemo(() => {
+    return monthCategoryMatrixData.filter(row => {
+      if (matrixMonthFilter !== "all" && row.month !== matrixMonthFilter) return false;
+      if (matrixCategoryFilter !== "all" && row.category !== matrixCategoryFilter) return false;
+      if (matrixAsmFilter !== "all") {
+        const party = currentParties.find(p => p.id === row.partyId);
+        const matchAsm = row.assignedAsmId === matrixAsmFilter || row.assignedTsmId === matrixAsmFilter || (party && (party.assignedAsmId === matrixAsmFilter || party.assignedTsmId === matrixAsmFilter));
+        if (!matchAsm) return false;
+      }
+      if (matrixPartySearch.trim()) {
+        const q = matrixPartySearch.toLowerCase();
+        const match = row.partyName.toLowerCase().includes(q) || row.category.toLowerCase().includes(q);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [monthCategoryMatrixData, matrixMonthFilter, matrixCategoryFilter, matrixAsmFilter, matrixPartySearch, currentParties]);
+
   // Export to CSV helper
   const exportCsv = (headers, rows, filename) => {
     const csvContent = "data:text/csv;charset=utf-8," + [
@@ -289,6 +389,18 @@ export default function CrmDashboard({
       d.dispatchDate, d.invoiceNo, d.partyName, d.itemModel, d.dispatchedQty, d.transporterName, d.docketNo, d.status, crmExecutives.find(c => c.id === d.assignedCrmId)?.name || d.assignedCrmId
     ]);
     exportCsv(headers, rows, "makpower_dispatch_qty_report");
+  };
+
+  const handleExportMonthlyCategoryCsv = () => {
+    const headers = ["Party Name", "Category", "Month", "Total Ordered Qty", "Total Amount (INR)", "Order Bookings", "Remarks Count", "Latest Remark"];
+    const rows = filteredMonthCategoryMatrix.map(row => {
+      const remarks = (crmPartyRemarks || []).filter(r => r.partyId === row.partyId && r.category === row.category && r.month === row.month);
+      const latest = remarks.length > 0 ? `[${remarks[0].authorName} (${remarks[0].authorRole})]: ${remarks[0].remark}` : "";
+      return [
+        row.partyName, row.category, row.month, row.totalOrderQty, row.totalRevenue, row.orderCount, remarks.length, latest
+      ];
+    });
+    exportCsv(headers, rows, "makpower_monthly_category_remarks_report");
   };
 
   return (
@@ -470,6 +582,14 @@ export default function CrmDashboard({
           style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 18px", borderRadius: "10px", fontSize: "0.92rem", fontWeight: 600 }}
         >
           <Users size={16} /> <span>Sales Team (ASM / TSM) ({teamMembers.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("monthly_category")}
+          className={`nav-tab-item ${activeTab === "monthly_category" ? "active" : ""}`}
+          style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 18px", borderRadius: "10px", fontSize: "0.92rem", fontWeight: 700, color: activeTab === "monthly_category" ? "#38bdf8" : undefined }}
+        >
+          <MessageSquare size={16} /> <span>Monthly Category & Remarks ({crmPartyRemarks.length})</span>
         </button>
 
         <button
@@ -830,6 +950,226 @@ export default function CrmDashboard({
                 </div>
               );
             })}
+          </div>
+
+        </div>
+      )}
+
+      {/* ==================== TAB: MONTH & CATEGORY WISE PERFORMANCE & REMARKS ==================== */}
+      {activeTab === "monthly_category" && (
+        <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          
+          {/* Header & Controls Bar */}
+          <div className="glass-panel" style={{ padding: "18px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "14px" }}>
+            <div>
+              <h3 style={{ fontSize: "1.3rem", fontWeight: 700, color: "var(--primary)", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+                <MessageSquare size={20} style={{ color: "#38bdf8" }} /> Party Order Volume — Month & Category Wise Analysis
+              </h3>
+              <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: "4px 0 0 0" }}>
+                Track order quantities month-wise and category-wise per party. ASMs and TSMs can put remarks bound to the party and category; CRM can view and monitor all remarks.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                onClick={handleExportMonthlyCategoryCsv}
+                className="btn btn-secondary"
+                style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.88rem" }}
+              >
+                <Download size={15} /> Export Matrix CSV
+              </button>
+            </div>
+          </div>
+
+          {/* Filter Toolbar */}
+          <div className="glass-panel" style={{ padding: "16px 20px", display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
+            {/* Search Party */}
+            <div style={{ position: "relative", flex: 1, minWidth: "220px" }}>
+              <Search size={15} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+              <input
+                type="text"
+                placeholder="Search party name or category..."
+                value={matrixPartySearch}
+                onChange={e => setMatrixPartySearch(e.target.value)}
+                className="form-control"
+                style={{ paddingLeft: "34px", height: "38px", fontSize: "0.86rem" }}
+              />
+            </div>
+
+            {/* Month Filter */}
+            <div style={{ minWidth: "160px" }}>
+              <select
+                value={matrixMonthFilter}
+                onChange={e => setMatrixMonthFilter(e.target.value)}
+                className="form-control"
+                style={{ height: "38px", fontSize: "0.86rem" }}
+              >
+                <option value="all">📅 All Months</option>
+                {availableMatrixMonths.map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Category Filter */}
+            <div style={{ minWidth: "160px" }}>
+              <select
+                value={matrixCategoryFilter}
+                onChange={e => setMatrixCategoryFilter(e.target.value)}
+                className="form-control"
+                style={{ height: "38px", fontSize: "0.86rem" }}
+              >
+                <option value="all">🏷️ All Categories</option>
+                {availableMatrixCategories.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Sales Manager Filter */}
+            {teamMembers.length > 0 && (
+              <div style={{ minWidth: "160px" }}>
+                <select
+                  value={matrixAsmFilter}
+                  onChange={e => setMatrixAsmFilter(e.target.value)}
+                  className="form-control"
+                  style={{ height: "38px", fontSize: "0.86rem" }}
+                >
+                  <option value="all">👤 All Sales Team</option>
+                  {teamMembers.map(t => (
+                    <option key={t.id} value={t.id}>{t.name} ({t.role.toUpperCase()})</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {(matrixPartySearch || matrixMonthFilter !== "all" || matrixCategoryFilter !== "all" || matrixAsmFilter !== "all") && (
+              <button
+                onClick={() => {
+                  setMatrixPartySearch("");
+                  setMatrixMonthFilter("all");
+                  setMatrixCategoryFilter("all");
+                  setMatrixAsmFilter("all");
+                }}
+                className="btn btn-secondary btn-sm"
+                style={{ height: "38px" }}
+              >
+                Reset
+              </button>
+            )}
+          </div>
+
+          {/* Matrix Table */}
+          <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
+            {filteredMonthCategoryMatrix.length === 0 ? (
+              <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
+                <MessageSquare size={36} style={{ marginBottom: "12px", opacity: 0.4 }} />
+                <h4>No order data or remarks found for this filter</h4>
+                <p style={{ fontSize: "0.85rem" }}>Try clearing filters or check back after sales orders are recorded.</p>
+              </div>
+            ) : (
+              <table className="table" style={{ width: "100%", minWidth: "1050px" }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: "24%" }}>Party Name & City</th>
+                    <th style={{ width: "14%" }}>Category</th>
+                    <th style={{ width: "10%" }}>Month</th>
+                    <th style={{ width: "12%", textAlign: "right" }}>Order Qty</th>
+                    <th style={{ width: "14%", textAlign: "right" }}>Total Amount (₹)</th>
+                    <th style={{ width: "26%" }}>ASM / TSM Remarks & Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredMonthCategoryMatrix.map(row => {
+                    const remarks = (crmPartyRemarks || []).filter(r => (r.partyId === row.partyId || r.partyName === row.partyName) && r.category === row.category && r.month === row.month);
+                    const latestRemark = remarks[0];
+
+                    return (
+                      <tr key={row.key}>
+                        <td>
+                          <div style={{ fontWeight: 700, color: "var(--text-main)", fontSize: "0.92rem" }}>
+                            {row.partyName}
+                          </div>
+                          <div style={{ fontSize: "0.76rem", color: "var(--text-muted)" }}>
+                            ID: {row.partyId}
+                          </div>
+                        </td>
+
+                        <td>
+                          <span className="badge" style={{ background: "rgba(56, 189, 248, 0.12)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)", fontWeight: 700, fontSize: "0.8rem", padding: "4px 8px" }}>
+                            {row.category}
+                          </span>
+                        </td>
+
+                        <td>
+                          <span style={{ fontWeight: 600, fontSize: "0.88rem", color: "var(--text-main)" }}>
+                            {row.month}
+                          </span>
+                        </td>
+
+                        <td style={{ textAlign: "right" }}>
+                          <span style={{ fontWeight: 800, fontSize: "1rem", color: row.totalOrderQty > 0 ? "var(--primary)" : "var(--text-muted)" }}>
+                            {row.totalOrderQty.toLocaleString()} Pcs
+                          </span>
+                          {row.orderCount > 0 && (
+                            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                              {row.orderCount} {row.orderCount === 1 ? "order" : "orders"}
+                            </div>
+                          )}
+                        </td>
+
+                        <td style={{ textAlign: "right" }}>
+                          <div style={{ fontWeight: 800, color: "var(--success)", fontSize: "0.95rem" }}>
+                            {formatInr(row.totalRevenue)}
+                          </div>
+                        </td>
+
+                        <td>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                            {latestRemark ? (
+                              <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border-glass)", borderRadius: "8px", padding: "6px 10px", fontSize: "0.82rem" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2px" }}>
+                                  <span style={{ fontWeight: 700, color: latestRemark.authorRole === "asm" ? "#34d399" : latestRemark.authorRole === "tsm" ? "#fbbf24" : "#818cf8", fontSize: "0.75rem" }}>
+                                    {latestRemark.authorName} ({latestRemark.authorRole.toUpperCase()})
+                                  </span>
+                                  <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                                    {latestRemark.createdAt ? new Date(latestRemark.createdAt).toLocaleDateString("en-IN") : ""}
+                                  </span>
+                                </div>
+                                <div style={{ color: "var(--text-main)", fontStyle: "italic", lineHeight: 1.3 }}>
+                                  "{latestRemark.remark}"
+                                </div>
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", fontStyle: "italic" }}>
+                                No remarks recorded yet
+                              </span>
+                            )}
+
+                            <div>
+                              <button
+                                onClick={() => setActiveRemarkPartyCategory({
+                                  partyId: row.partyId,
+                                  partyName: row.partyName,
+                                  category: row.category,
+                                  month: row.month,
+                                  totalOrderQty: row.totalOrderQty,
+                                  totalRevenue: row.totalRevenue
+                                })}
+                                className="btn btn-secondary btn-sm"
+                                style={{ fontSize: "0.76rem", padding: "3px 8px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                              >
+                                <MessageSquare size={12} /> {remarks.length > 0 ? `Remarks (${remarks.length})` : "+ Add Remark"}
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
 
         </div>
@@ -1341,8 +1681,47 @@ export default function CrmDashboard({
           allParties={crmParties}
           allSalesOrders={crmSalesOrders}
           allDispatches={crmDispatches}
+          crmPartyRemarks={crmPartyRemarks}
+          items={items}
+          currentUser={currentUser}
+          onSavePartyRemark={onSavePartyRemark}
+          onDeletePartyRemark={onDeletePartyRemark}
           formatInr={formatInr}
           onClose={() => setTrackingAsmMember(null)}
+        />
+      )}
+
+      {/* ==================== MODAL: PARTY & CATEGORY MONTHLY REMARKS ==================== */}
+      {activeRemarkPartyCategory && (
+        <PartyCategoryRemarkModal
+          target={activeRemarkPartyCategory}
+          remarks={(crmPartyRemarks || []).filter(r => (r.partyId === activeRemarkPartyCategory.partyId || r.partyName === activeRemarkPartyCategory.partyName) && r.category === activeRemarkPartyCategory.category && r.month === activeRemarkPartyCategory.month)}
+          currentUser={currentUser}
+          formatInr={formatInr}
+          onSave={async (remarkText) => {
+            try {
+              await onSavePartyRemark({
+                partyId: activeRemarkPartyCategory.partyId,
+                partyName: activeRemarkPartyCategory.partyName,
+                category: activeRemarkPartyCategory.category,
+                month: activeRemarkPartyCategory.month,
+                remark: remarkText,
+                authorId: currentUser?.id || "",
+                authorName: currentUser?.name || "Team Member",
+                authorRole: currentUser?.role || "asm"
+              });
+              showSuccessToast("✅ Remark saved successfully!");
+            } catch (err) {
+              showErrorToast("Failed to save remark: " + err.message);
+            }
+          }}
+          onDelete={async (remarkId) => {
+            if (window.confirm("Are you sure you want to delete this remark?")) {
+              await onDeletePartyRemark(remarkId);
+              showSuccessToast("Remark deleted.");
+            }
+          }}
+          onClose={() => setActiveRemarkPartyCategory(null)}
         />
       )}
 
@@ -2067,12 +2446,25 @@ function AssignPartiesModal({ teamMember, allParties = [], onAssign, onClose }) 
 }
 
 // ==================== SUB-COMPONENT: TRACK ASM SALES & PURCHASES MODAL ====================
-function AsmSalesDetailModal({ member, allParties = [], allSalesOrders = [], allDispatches = [], formatInr, onClose }) {
+function AsmSalesDetailModal({ 
+  member, 
+  allParties = [], 
+  allSalesOrders = [], 
+  allDispatches = [], 
+  crmPartyRemarks = [],
+  items = [],
+  currentUser,
+  onSavePartyRemark,
+  onDeletePartyRemark,
+  formatInr, 
+  onClose 
+}) {
   const isAsm = member.role === "asm";
-  const [subTab, setSubTab] = useState("items"); // "items" | "parties" | "leaderboard"
+  const [subTab, setSubTab] = useState("items"); // "items" | "parties" | "matrix" | "leaderboard"
   const [search, setSearch] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [activeRemarkModalTarget, setActiveRemarkModalTarget] = useState(null);
 
   // Find all assigned parties
   const assignedParties = useMemo(() => {
@@ -2101,6 +2493,62 @@ function AsmSalesDetailModal({ member, allParties = [], allSalesOrders = [], all
       return true;
     });
   }, [allSalesOrders, assignedPartyIdSet, member, startDate, endDate, search]);
+
+  // Month & Category Matrix for this specific ASM/TSM
+  const memberMonthCategoryMatrix = useMemo(() => {
+    const map = new Map();
+
+    memberOrders.forEach(o => {
+      const orderMonth = (o.orderDate || "").slice(0, 7) || "2026-08";
+      let cat = o.category;
+      if (!cat || cat === "General" || cat === "Unspecified") {
+        const foundItem = items.find(it => it.name === o.itemModel || it.id === o.itemId);
+        cat = foundItem?.category || "General";
+      }
+
+      const pId = o.partyId || "unknown";
+      const pName = o.partyName || "Unknown Party";
+
+      const key = `${pId}___${cat}___${orderMonth}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          partyId: pId,
+          partyName: pName,
+          category: cat,
+          month: orderMonth,
+          totalOrderQty: 0,
+          totalRevenue: 0,
+          orderCount: 0
+        });
+      }
+      const cur = map.get(key);
+      cur.totalOrderQty += parseInt(o.orderQty) || 0;
+      cur.totalRevenue += parseFloat(o.totalInr) || 0;
+      cur.orderCount += 1;
+    });
+
+    // Also include assigned parties with remarks
+    (crmPartyRemarks || []).forEach(r => {
+      if (assignedPartyIdSet.has(r.partyId)) {
+        const key = `${r.partyId}___${r.category}___${r.month}`;
+        if (!map.has(key)) {
+          map.set(key, {
+            key,
+            partyId: r.partyId,
+            partyName: r.partyName,
+            category: r.category,
+            month: r.month,
+            totalOrderQty: 0,
+            totalRevenue: 0,
+            orderCount: 0
+          });
+        }
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.month.localeCompare(a.month) || a.partyName.localeCompare(b.partyName));
+  }, [memberOrders, assignedPartyIdSet, crmPartyRemarks, items]);
 
   // Summary KPIs
   const totalRevenue = useMemo(() => {
@@ -2133,7 +2581,7 @@ function AsmSalesDetailModal({ member, allParties = [], allSalesOrders = [], all
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "1000px", padding: "26px", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "1050px", padding: "26px", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
         
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px" }}>
@@ -2144,7 +2592,7 @@ function AsmSalesDetailModal({ member, allParties = [], allSalesOrders = [], all
               </div>
               <div>
                 <h3 style={{ fontSize: "1.3rem", fontWeight: 800, color: "var(--text-main)", margin: 0 }}>
-                  {member.name} — Sales & Purchased Items
+                  {member.name} — Sales & Performance Studio
                 </h3>
                 <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
                   {isAsm ? "Area Sales Manager (ASM)" : "Territory Sales Manager (TSM)"} | Territory: {member.territory || "General"} | Phone: {member.phone || "—"}
@@ -2180,13 +2628,20 @@ function AsmSalesDetailModal({ member, allParties = [], allSalesOrders = [], all
 
         {/* Sub-tabs & Filter Controls */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "12px" }}>
-          <div style={{ display: "flex", gap: "6px" }}>
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
             <button
               onClick={() => setSubTab("items")}
               className={`tab-btn ${subTab === "items" ? "active" : ""}`}
               style={{ fontSize: "0.82rem", padding: "6px 12px" }}
             >
               Purchased Items ({memberOrders.length})
+            </button>
+            <button
+              onClick={() => setSubTab("matrix")}
+              className={`tab-btn ${subTab === "matrix" ? "active" : ""}`}
+              style={{ fontSize: "0.82rem", padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: "5px", fontWeight: subTab === "matrix" ? 700 : 500 }}
+            >
+              <MessageSquare size={13} /> Month & Category Matrix + Remarks ({memberMonthCategoryMatrix.length})
             </button>
             <button
               onClick={() => setSubTab("parties")}
@@ -2243,21 +2698,27 @@ function AsmSalesDetailModal({ member, allParties = [], allSalesOrders = [], all
                 {memberOrders.length === 0 ? (
                   <tr>
                     <td colSpan={7} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
-                      No purchases found for this ASM's assigned parties.
+                      No purchase orders recorded from assigned parties.
                     </td>
                   </tr>
                 ) : (
-                  memberOrders.map(o => (
-                    <tr key={o.id}>
-                      <td>{o.orderDate || "—"}</td>
-                      <td><strong>{o.partyName}</strong></td>
-                      <td><span style={{ color: "var(--primary)", fontWeight: 700 }}>{o.itemModel}</span></td>
-                      <td style={{ textAlign: "right", fontWeight: 700 }}>{Number(o.orderQty || 0).toLocaleString()}</td>
-                      <td style={{ textAlign: "right" }}>₹{Number(o.unitPriceInr || 0).toLocaleString()}</td>
-                      <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)" }}>{formatInr(o.totalInr)}</td>
+                  memberOrders.map(order => (
+                    <tr key={order.id}>
+                      <td><code style={{ fontSize: "0.78rem" }}>{order.orderDate}</code></td>
+                      <td>
+                        <strong style={{ color: "var(--text-main)" }}>{order.partyName}</strong>
+                        {order.city && <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{order.city}</div>}
+                      </td>
+                      <td>
+                        <strong style={{ color: "var(--primary)" }}>{order.itemModel}</strong>
+                        {order.category && <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginLeft: "6px" }}>({order.category})</span>}
+                      </td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>{order.orderQty?.toLocaleString()} Pcs</td>
+                      <td style={{ textAlign: "right" }}>₹{order.unitPriceInr}</td>
+                      <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)" }}>{formatInr(order.totalInr)}</td>
                       <td style={{ textAlign: "center" }}>
-                        <span className={`badge ${o.status === "Delivered" ? "badge-success" : o.status === "Partial" ? "badge-warning" : "badge-secondary"}`}>
-                          {o.status || "Pending"}
+                        <span className={`badge ${order.status === "Dispatched" ? "badge-success" : order.status === "Partially Dispatched" ? "badge-primary" : "badge-secondary"}`} style={{ fontSize: "0.7rem" }}>
+                          {order.status || "Pending"}
                         </span>
                       </td>
                     </tr>
@@ -2267,13 +2728,76 @@ function AsmSalesDetailModal({ member, allParties = [], allSalesOrders = [], all
             </table>
           )}
 
+          {subTab === "matrix" && (
+            <table className="table" style={{ width: "100%", fontSize: "0.82rem" }}>
+              <thead>
+                <tr>
+                  <th style={{ width: "26%" }}>Party Name</th>
+                  <th style={{ width: "16%" }}>Category</th>
+                  <th style={{ width: "12%" }}>Month</th>
+                  <th style={{ width: "14%", textAlign: "right" }}>Order Qty</th>
+                  <th style={{ width: "14%", textAlign: "right" }}>Total (₹)</th>
+                  <th style={{ width: "18%", textAlign: "center" }}>Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {memberMonthCategoryMatrix.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                      No month-wise category orders recorded yet.
+                    </td>
+                  </tr>
+                ) : (
+                  memberMonthCategoryMatrix.map(row => {
+                    const rowRemarks = (crmPartyRemarks || []).filter(r => (r.partyId === row.partyId || r.partyName === row.partyName) && r.category === row.category && r.month === row.month);
+                    const latest = rowRemarks[0];
+
+                    return (
+                      <tr key={row.key}>
+                        <td><strong style={{ color: "var(--text-main)" }}>{row.partyName}</strong></td>
+                        <td>
+                          <span className="badge" style={{ background: "rgba(56, 189, 248, 0.12)", color: "#38bdf8", fontWeight: 700 }}>
+                            {row.category}
+                          </span>
+                        </td>
+                        <td><strong>{row.month}</strong></td>
+                        <td style={{ textAlign: "right", fontWeight: 800, color: row.totalOrderQty > 0 ? "var(--primary)" : "var(--text-muted)" }}>
+                          {row.totalOrderQty.toLocaleString()} Pcs
+                        </td>
+                        <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)" }}>
+                          {formatInr(row.totalRevenue)}
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <button
+                            onClick={() => setActiveRemarkModalTarget({
+                              partyId: row.partyId,
+                              partyName: row.partyName,
+                              category: row.category,
+                              month: row.month,
+                              totalOrderQty: row.totalOrderQty,
+                              totalRevenue: row.totalRevenue
+                            })}
+                            className="btn btn-secondary btn-sm"
+                            style={{ fontSize: "0.74rem", padding: "3px 8px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                          >
+                            <MessageSquare size={12} /> {rowRemarks.length > 0 ? `Remarks (${rowRemarks.length})` : "+ Put Remark"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          )}
+
           {subTab === "parties" && (
             <table className="table" style={{ width: "100%", fontSize: "0.82rem" }}>
               <thead>
                 <tr>
-                  <th>Party Name</th>
-                  <th>City / State</th>
-                  <th>Phone</th>
+                  <th>Party / Dealer Name</th>
+                  <th>Location / State</th>
+                  <th>Contact Person & Phone</th>
                   <th style={{ textAlign: "right" }}>Total Orders</th>
                   <th style={{ textAlign: "right" }}>Total Revenue</th>
                   <th style={{ textAlign: "center" }}>Status</th>
@@ -2283,20 +2807,20 @@ function AsmSalesDetailModal({ member, allParties = [], allSalesOrders = [], all
                 {assignedParties.length === 0 ? (
                   <tr>
                     <td colSpan={6} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
-                      No parties assigned yet. Click 'Assign Parties' to add accounts.
+                      No parties assigned to this sales manager yet. Click "Assign Parties" on the team card to link accounts.
                     </td>
                   </tr>
                 ) : (
                   assignedParties.map(p => {
-                    const pOrders = allSalesOrders.filter(o => o.partyId === p.id);
+                    const pOrders = memberOrders.filter(o => o.partyId === p.id);
                     const pRevenue = pOrders.reduce((acc, o) => acc + (parseFloat(o.totalInr) || 0), 0);
 
                     return (
                       <tr key={p.id}>
-                        <td><strong>{p.name}</strong></td>
-                        <td>{p.city}, {p.state}</td>
-                        <td>{p.phone || "—"}</td>
-                        <td style={{ textAlign: "right", fontWeight: 700 }}>{pOrders.length}</td>
+                        <td><strong style={{ color: "var(--text-main)" }}>{p.name}</strong></td>
+                        <td>{p.city || "—"} {p.state ? `(${p.state})` : ""}</td>
+                        <td>{p.contactPerson || "—"} • {p.phone || "—"}</td>
+                        <td style={{ textAlign: "right", fontWeight: 700 }}>{pOrders.length} Orders</td>
                         <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)" }}>{formatInr(pRevenue)}</td>
                         <td style={{ textAlign: "center" }}>
                           <span className={`badge ${p.status === "Active" ? "badge-success" : "badge-secondary"}`}>
@@ -2347,11 +2871,174 @@ function AsmSalesDetailModal({ member, allParties = [], allSalesOrders = [], all
           )}
         </div>
 
+        {/* Sub-modal for Remarks inside ASM Sales modal */}
+        {activeRemarkModalTarget && (
+          <PartyCategoryRemarkModal
+            target={activeRemarkModalTarget}
+            remarks={(crmPartyRemarks || []).filter(r => (r.partyId === activeRemarkModalTarget.partyId || r.partyName === activeRemarkModalTarget.partyName) && r.category === activeRemarkModalTarget.category && r.month === activeRemarkModalTarget.month)}
+            currentUser={currentUser}
+            formatInr={formatInr}
+            onSave={async (text) => {
+              if (onSavePartyRemark) {
+                await onSavePartyRemark({
+                  partyId: activeRemarkModalTarget.partyId,
+                  partyName: activeRemarkModalTarget.partyName,
+                  category: activeRemarkModalTarget.category,
+                  month: activeRemarkModalTarget.month,
+                  remark: text,
+                  authorId: currentUser?.id || member.id,
+                  authorName: currentUser?.name || member.name,
+                  authorRole: currentUser?.role || member.role || "asm"
+                });
+              }
+            }}
+            onDelete={async (id) => {
+              if (onDeletePartyRemark) await onDeletePartyRemark(id);
+            }}
+            onClose={() => setActiveRemarkModalTarget(null)}
+          />
+        )}
+
         <div style={{ marginTop: "14px", display: "flex", justifyContent: "flex-end" }}>
           <button type="button" onClick={onClose} className="btn btn-secondary">
             Close
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== SUB-COMPONENT: PARTY & CATEGORY MONTHLY REMARK MODAL ====================
+function PartyCategoryRemarkModal({ target, remarks = [], currentUser, formatInr, onSave, onDelete, onClose }) {
+  const [remarkText, setRemarkText] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!remarkText.trim()) return;
+    setIsSubmitting(true);
+    try {
+      await onSave(remarkText.trim());
+      setRemarkText("");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1100 }}>
+      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "650px", padding: "26px", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
+              <span className="badge" style={{ background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)", fontWeight: 800 }}>
+                {target.category}
+              </span>
+              <span className="badge badge-secondary" style={{ fontWeight: 700 }}>
+                📅 {target.month}
+              </span>
+            </div>
+            <h3 style={{ fontSize: "1.3rem", fontWeight: 800, color: "var(--text-main)", margin: 0 }}>
+              {target.partyName}
+            </h3>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "2px" }}>
+              Current Month Volume: <strong style={{ color: "var(--primary)" }}>{(target.totalOrderQty || 0).toLocaleString()} Pcs</strong> {target.totalRevenue ? `• ${formatInr(target.totalRevenue)}` : ""}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={20} /></button>
+        </div>
+
+        {/* Existing Remarks Thread */}
+        <div style={{ flex: 1, overflowY: "auto", border: "1px solid var(--border-glass)", borderRadius: "10px", padding: "14px", display: "flex", flexDirection: "column", gap: "10px", background: "rgba(0,0,0,0.15)", marginBottom: "16px", minHeight: "160px", maxHeight: "300px" }}>
+          <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Remarks History ({remarks.length})
+          </div>
+
+          {remarks.length === 0 ? (
+            <div style={{ padding: "26px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.86rem" }}>
+              No remarks recorded for this party & category in <strong>{target.month}</strong> yet.<br />
+              <span style={{ fontSize: "0.78rem" }}>ASMs, TSMs, and CRMs can log observations, dealer commitments, or demand trends below.</span>
+            </div>
+          ) : (
+            remarks.map(r => {
+              const isAuthor = currentUser?.id === r.authorId || currentUser?.name === r.authorName;
+              const canDelete = isAuthor || currentUser?.role === "superadmin" || currentUser?.role === "crm" || currentUser?.role === "owner";
+
+              return (
+                <div key={r.id} style={{ background: "var(--bg-card)", border: "1px solid var(--border-glass)", borderRadius: "10px", padding: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span className="badge" style={{ 
+                        background: r.authorRole === "asm" ? "rgba(16, 185, 129, 0.15)" : r.authorRole === "tsm" ? "rgba(245, 158, 11, 0.15)" : "rgba(99, 102, 241, 0.15)",
+                        color: r.authorRole === "asm" ? "#34d399" : r.authorRole === "tsm" ? "#fbbf24" : "#818cf8",
+                        fontWeight: 800,
+                        fontSize: "0.72rem"
+                      }}>
+                        {r.authorRole ? r.authorRole.toUpperCase() : "TEAM"}
+                      </span>
+                      <strong style={{ fontSize: "0.85rem", color: "var(--text-main)" }}>{r.authorName}</strong>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                        {r.createdAt ? new Date(r.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}
+                      </span>
+                      {canDelete && (
+                        <button
+                          onClick={() => onDelete(r.id)}
+                          className="btn btn-ghost btn-sm"
+                          style={{ color: "var(--danger)", padding: "2px 6px" }}
+                          title="Delete remark"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: "0.88rem", color: "var(--text-main)", lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
+                    {r.remark}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Add Remark Form */}
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label" style={{ fontWeight: 700, fontSize: "0.82rem", margin: 0 }}>
+              Add New Remark for {target.partyName} ({target.category} • {target.month})
+            </label>
+            <textarea
+              rows={3}
+              required
+              placeholder={`Write observation or update for ${target.partyName} in ${target.category}... (e.g. Dealer requested 500 pcs next month with special terms)`}
+              value={remarkText}
+              onChange={e => setRemarkText(e.target.value)}
+              className="form-control"
+              style={{ fontSize: "0.86rem" }}
+            />
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+            <button type="button" onClick={onClose} className="btn btn-secondary btn-sm">
+              Close
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting || !remarkText.trim()}
+              className="btn btn-primary btn-sm"
+              style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
+            >
+              {isSubmitting ? <RefreshCw size={14} className="spin" /> : <Send size={14} />}
+              Post Remark
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

@@ -91,6 +91,12 @@ export default function App() {
     }
     return [];
   });
+  const [crmPartyRemarks, setCrmPartyRemarks] = useState(() => {
+    if (cachedState?.crmPartyRemarks && Array.isArray(cachedState.crmPartyRemarks)) {
+      return cachedState.crmPartyRemarks;
+    }
+    return [];
+  });
   const [settings, setSettings] = useState(() => cachedState?.settings || { isHidden: false, redirectUrl: "https://www.instagram.com/makpowerofficial/" });
   const [loading, setLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
@@ -327,6 +333,9 @@ export default function App() {
         if (Array.isArray(data.itemPrices)) {
           setItemPrices(data.itemPrices);
         }
+        if (Array.isArray(data.crmPartyRemarks)) {
+          setCrmPartyRemarks(data.crmPartyRemarks);
+        }
         
         if (data.settings) {
           setSettings(data.settings);
@@ -356,6 +365,7 @@ export default function App() {
             crmDispatches: data.crmDispatches || [],
             imsTransactions: data.imsTransactions || [],
             itemPrices: data.itemPrices || [],
+            crmPartyRemarks: data.crmPartyRemarks || [],
             settings: data.settings || {}
           }));
         } catch (storageErr) {
@@ -1074,6 +1084,53 @@ export default function App() {
     } catch (err) {
       console.error("Batch assign parties error:", err);
       return { success: false, error: err.message };
+    }
+  };
+
+  const handleSavePartyRemark = async (remarkData) => {
+    try {
+      const res = await postData("/api/crm/party-remarks", remarkData);
+      if (res && res.success && res.remark) {
+        setCrmPartyRemarks(prev => {
+          const idx = prev.findIndex(r => r.id === res.remark.id);
+          let next;
+          if (idx !== -1) {
+            next = [...prev];
+            next[idx] = res.remark;
+          } else {
+            next = [res.remark, ...prev];
+          }
+          try {
+            const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+            cached.crmPartyRemarks = next;
+            localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+          } catch (e) {}
+          return next;
+        });
+        logSystemActivity("CRM_PARTY_REMARK_SAVED", `Remark added by ${res.remark.authorName} on "${res.remark.partyName}" [${res.remark.category} / ${res.remark.month}]`, "Party Remark", res.remark.id);
+      }
+      return res;
+    } catch (err) {
+      console.error("Failed to save party remark:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const handleDeletePartyRemark = async (id) => {
+    setCrmPartyRemarks(prev => {
+      const next = prev.filter(r => r.id !== id);
+      try {
+        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+        cached.crmPartyRemarks = next;
+        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+      } catch (e) {}
+      return next;
+    });
+    try {
+      await fetch(`/api/crm/party-remarks/${id}`, { method: "DELETE" });
+      logSystemActivity("CRM_PARTY_REMARK_DELETED", `Deleted party remark ID: ${id}`, "Party Remark", id);
+    } catch (err) {
+      console.error("Delete remark error:", err);
     }
   };
 
@@ -2067,6 +2124,7 @@ export default function App() {
             crmParties={crmParties}
             crmSalesOrders={crmSalesOrders}
             crmDispatches={crmDispatches}
+            crmPartyRemarks={crmPartyRemarks}
             items={items}
             itemPrices={itemPrices}
             onAddParty={handleAddParty}
@@ -2075,6 +2133,8 @@ export default function App() {
             onBulkDeleteParties={handleBulkDeleteParties}
             onBatchUploadParties={handleBatchUploadParties}
             onBatchAssignParties={handleBatchAssignParties}
+            onSavePartyRemark={handleSavePartyRemark}
+            onDeletePartyRemark={handleDeletePartyRemark}
             onAddSalesOrder={handleAddSalesOrder}
             onUpdateSalesOrder={handleUpdateSalesOrder}
             onDeleteSalesOrder={handleDeleteSalesOrder}
