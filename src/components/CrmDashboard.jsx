@@ -2096,11 +2096,19 @@ function TeamMemberModal({ member, currentExecutive, onSave, onClose }) {
 // ==================== SUB-COMPONENT: SALES ORDER MODAL ====================
 function SalesOrderModal({ parties, items, currentExecutive, onSave, onClose }) {
   const [partyId, setPartyId] = useState(parties[0]?.id || "");
-  const [itemModel, setItemModel] = useState(items[0]?.name || "MP-PB-10000 Power Bank");
-  const [category, setCategory] = useState("Power Bank");
+  const [itemModel, setItemModel] = useState(items[0]?.name || "");
+  const [category, setCategory] = useState(items[0]?.category || "General");
   const [orderQty, setOrderQty] = useState(100);
-  const [unitPriceInr, setUnitPriceInr] = useState(450);
+  const [unitPriceInr, setUnitPriceInr] = useState(0);
   const [notes, setNotes] = useState("");
+
+  const handleItemSelect = (selectedName) => {
+    setItemModel(selectedName);
+    const found = items.find(it => it.name === selectedName);
+    if (found?.category) {
+      setCategory(found.category);
+    }
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -2148,11 +2156,32 @@ function SalesOrderModal({ parties, items, currentExecutive, onSave, onClose }) 
           <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: "12px" }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Item / Model *</label>
-              <input type="text" required value={itemModel} onChange={e => setItemModel(e.target.value)} className="form-control" placeholder="e.g. MP-PB-10000" />
+              {items && items.length > 0 ? (
+                <select 
+                  value={itemModel} 
+                  onChange={e => handleItemSelect(e.target.value)} 
+                  className="form-control" 
+                  required
+                >
+                  <option value="">-- Select Item Model --</option>
+                  {items.map(it => (
+                    <option key={it.id || it.name} value={it.name}>{it.name} ({it.category || "General"})</option>
+                  ))}
+                </select>
+              ) : (
+                <input 
+                  type="text" 
+                  required 
+                  value={itemModel} 
+                  onChange={e => setItemModel(e.target.value)} 
+                  className="form-control" 
+                  placeholder="Enter item model name" 
+                />
+              )}
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Category</label>
-              <input type="text" value={category} onChange={e => setCategory(e.target.value)} className="form-control" placeholder="e.g. Charger" />
+              <input type="text" value={category} onChange={e => setCategory(e.target.value)} className="form-control" placeholder="e.g. Chargers" />
             </div>
           </div>
 

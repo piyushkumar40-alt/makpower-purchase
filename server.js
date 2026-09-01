@@ -154,8 +154,10 @@ function readLocalJson() {
       };
     }
     if (!Array.isArray(data.crmParties)) data.crmParties = initialCrmParties;
-    if (!Array.isArray(data.crmSalesOrders)) data.crmSalesOrders = initialCrmSalesOrders;
-    if (!Array.isArray(data.crmDispatches)) data.crmDispatches = initialCrmDispatches;
+    if (!Array.isArray(data.crmSalesOrders)) data.crmSalesOrders = [];
+    data.crmSalesOrders = data.crmSalesOrders.filter(o => !o.id?.startsWith('so-10') && !o.itemModel?.startsWith('MP-'));
+    if (!Array.isArray(data.crmDispatches)) data.crmDispatches = [];
+    data.crmDispatches = data.crmDispatches.filter(d => !d.id?.startsWith('dsp-50') && !d.itemModel?.startsWith('MP-'));
     if (!Array.isArray(data.imsTransactions)) data.imsTransactions = [];
     if (!Array.isArray(data.designations)) data.designations = initialDesignations;
     if (!Array.isArray(data.items) || data.items.length === 0) {
@@ -332,29 +334,10 @@ async function setupPgDatabase() {
         }
       }
 
-      const soCheck = await pool.query("SELECT COUNT(*) FROM crm_sales_orders");
-      if (parseInt(soCheck.rows[0].count) === 0) {
-        for (const so of initialCrmSalesOrders) {
-          await pool.query(
-            `INSERT INTO crm_sales_orders ("id", "orderNo", "orderDate", "partyId", "partyName", "itemModel", "category", "orderQty", "unitPriceInr", "totalInr", "dispatchedQty", "pendingQty", "status", "assignedCrmId", "assignedAsmId", "assignedTsmId", "notes")
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-             ON CONFLICT ("id") DO NOTHING`,
-            [so.id, so.orderNo, so.orderDate, so.partyId, so.partyName, so.itemModel, so.category, so.orderQty, so.unitPriceInr, so.totalInr, so.dispatchedQty, so.pendingQty, so.status, so.assignedCrmId, so.assignedAsmId, so.assignedTsmId, so.notes]
-          );
-        }
-      }
-
-      const dspCheck = await pool.query("SELECT COUNT(*) FROM crm_dispatches");
-      if (parseInt(dspCheck.rows[0].count) === 0) {
-        for (const d of initialCrmDispatches) {
-          await pool.query(
-            `INSERT INTO crm_dispatches ("id", "orderId", "orderNo", "partyId", "partyName", "itemModel", "dispatchedQty", "transporterName", "docketNo", "invoiceNo", "dispatchDate", "deliveryDate", "status", "assignedCrmId", "assignedAsmId", "assignedTsmId")
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-             ON CONFLICT ("id") DO NOTHING`,
-            [d.id, d.orderId, d.orderNo, d.partyId, d.partyName, d.itemModel, d.dispatchedQty, d.transporterName, d.docketNo, d.invoiceNo, d.dispatchDate, d.deliveryDate, d.status, d.assignedCrmId, d.assignedAsmId, d.assignedTsmId]
-          );
-        }
-      }
+      // Clean up any old mock/dummy sales orders, dispatches, and transactions from system
+      await pool.query(`DELETE FROM crm_sales_orders WHERE "id" LIKE 'so-10%' OR "itemModel" LIKE 'MP-%'`);
+      await pool.query(`DELETE FROM crm_dispatches WHERE "id" LIKE 'dsp-50%' OR "itemModel" LIKE 'MP-%'`);
+      await pool.query(`DELETE FROM ims_transactions WHERE "id" LIKE 'ims-10%' OR "itemName" LIKE 'MP-%'`);
 
       // Upsert CRM users in PG
       for (const u of initialUsers) {
