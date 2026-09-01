@@ -679,9 +679,9 @@ export default function CrmDashboard({
             <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
               <button 
                 onClick={() => {
-                  const headers = ["Party Name", "Contact Person", "Phone", "Email", "City", "State", "GSTIN", "Credit Limit", "Outstanding", "Assigned CRM", "Assigned ASM", "Assigned TSM", "Status"];
+                  const headers = ["Party Name", "Contact Person", "Phone", "Email", "City", "State", "GSTIN", "Assigned CRM", "Assigned ASM", "Assigned TSM", "Status"];
                   const rows = filteredParties.map(p => [
-                    p.name, p.contactPerson, p.phone, p.email, p.city, p.state, p.gstin, p.creditLimit, p.outstanding, p.assignedCrmName, p.assignedAsmName, p.assignedTsmName, p.status
+                    p.name, p.contactPerson, p.phone, p.email, p.city, p.state, p.gstin, p.assignedCrmName, p.assignedAsmName, p.assignedTsmName, p.status
                   ]);
                   exportCsv(headers, rows, "makpower_parties_list");
                 }}
@@ -712,13 +712,12 @@ export default function CrmDashboard({
                 <p style={{ fontSize: "0.85rem" }}>Click "Add New Party" to create and assign customer/dealer accounts.</p>
               </div>
             ) : (
-              <table className="table" style={{ width: "100%", minWidth: "1000px" }}>
+              <table className="table" style={{ width: "100%", minWidth: "900px" }}>
                 <thead>
                   <tr>
                     <th>Party Name & Location</th>
                     <th>Contact Person</th>
                     <th>Assigned CRM / ASM / TSM</th>
-                    <th>Credit & Outstanding</th>
                     <th>Status</th>
                     <th style={{ textAlign: "center" }}>Actions</th>
                   </tr>
@@ -760,15 +759,6 @@ export default function CrmDashboard({
                                 TSM: {party.assignedTsmName}
                               </span>
                             )}
-                          </div>
-                        </td>
-
-                        <td>
-                          <div style={{ display: "flex", flexDirection: "column", fontSize: "0.85rem" }}>
-                            <span><strong>Credit:</strong> {formatInr(party.creditLimit)}</span>
-                            <span style={{ color: party.outstanding > 0 ? "var(--danger)" : "var(--success)", fontWeight: 600 }}>
-                              <strong>Bal:</strong> {formatInr(party.outstanding)}
-                            </span>
                           </div>
                         </td>
 
@@ -1779,8 +1769,6 @@ function PartyModal({ party, crmExecutives, asmList, tsmList, currentExecutive, 
   const [city, setCity] = useState(party?.city || "");
   const [state, setState] = useState(party?.state || "Rajasthan");
   const [gstin, setGstin] = useState(party?.gstin || "");
-  const [creditLimit, setCreditLimit] = useState(party?.creditLimit || 500000);
-  const [paymentTerms, setPaymentTerms] = useState(party?.paymentTerms || "30 Days");
   const [assignedCrmId, setAssignedCrmId] = useState(party?.assignedCrmId || currentExecutive?.id || "u-ankita");
   const [assignedAsmId, setAssignedAsmId] = useState(party?.assignedAsmId || "");
   const [assignedTsmId, setAssignedTsmId] = useState(party?.assignedTsmId || "");
@@ -1804,8 +1792,6 @@ function PartyModal({ party, crmExecutives, asmList, tsmList, currentExecutive, 
       city: city.trim(),
       state: state.trim(),
       gstin: gstin.trim(),
-      creditLimit: parseFloat(creditLimit) || 0,
-      paymentTerms: paymentTerms.trim(),
       assignedCrmId,
       assignedCrmName: crmObj?.name || "Ankita",
       assignedAsmId,
@@ -1878,15 +1864,9 @@ function PartyModal({ party, crmExecutives, asmList, tsmList, currentExecutive, 
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">GSTIN / Tax ID</label>
-              <input type="text" placeholder="e.g. 08AABCS1429B1Z2" value={gstin} onChange={e => setGstin(e.target.value)} className="form-control" />
-            </div>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Credit Limit (₹)</label>
-              <input type="number" placeholder="500000" value={creditLimit} onChange={e => setCreditLimit(e.target.value)} className="form-control" />
-            </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">GSTIN / Tax ID</label>
+            <input type="text" placeholder="e.g. 08AABCS1429B1Z2" value={gstin} onChange={e => setGstin(e.target.value)} className="form-control" />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
@@ -1967,10 +1947,6 @@ function Party360Modal({ party, salesOrders, dispatches, onClose }) {
           <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Dispatched</div>
             <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#f59e0b" }}>{totalDelivered.toLocaleString()} Pcs</div>
-          </div>
-          <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Outstanding</div>
-            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: party.outstanding > 0 ? "var(--danger)" : "var(--success)" }}>₹{(party.outstanding || 0).toLocaleString()}</div>
           </div>
         </div>
 
