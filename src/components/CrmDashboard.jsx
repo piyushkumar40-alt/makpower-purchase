@@ -17,6 +17,7 @@ export default function CrmDashboard({
   crmSalesOrders = [],
   crmDispatches = [],
   crmPartyRemarks = [],
+  imsTransactions = [],
   items = [],
   itemPrices = [],
   onAddParty,
@@ -77,6 +78,8 @@ export default function CrmDashboard({
 
   // Navigation Tabs: "parties" | "team" | "salesreport" | "dispatchreport" | "orders"
   const [activeTab, setActiveTab] = useState("parties");
+  const [globalStartDate, setGlobalStartDate] = useState("");
+  const [globalEndDate, setGlobalEndDate] = useState("");
 
   const handleCrmTabSwitch = (tab) => {
     setActiveTab(tab);
@@ -99,12 +102,78 @@ export default function CrmDashboard({
   useEffect(() => {
     if (onPullModuleData) {
       onPullModuleData("crmParties");
+      onPullModuleData("crmSalesOrders");
+      onPullModuleData("crmDispatches");
     }
     const uId = currentUserId || currentUser?.id;
     if (recordSectionVisit && uId) {
       recordSectionVisit(uId, "crmParties");
     }
   }, []);
+
+  // Helper to normalize and match party names across all formats
+  const normParty = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const matchParty = (p1, p2, id1, id2) => {
+    if (id1 && id2 && id1 === id2) return true;
+    if (!p1 || !p2) return false;
+    const n1 = normParty(p1);
+    const n2 = normParty(p2);
+    return n1 === n2 || n1.includes(n2) || n2.includes(n1);
+  };
+
+  // Unified Dispatches combining crmDispatches + IMS stock out records to parties
+  const allUnifiedDispatches = useMemo(() => {
+    const list = [...crmDispatches];
+    const existingIds = new Set(crmDispatches.map(d => d.id));
+    (imsTransactions || []).forEach(tx => {
+      if (tx.partyName && tx.partyName.trim() && (tx.movementType === "OUT" || !tx.movementType)) {
+        if (!existingIds.has(tx.id)) {
+          list.push({
+            id: tx.id,
+            dispatchDate: tx.date || "",
+            partyId: tx.partyId || "",
+            partyName: tx.partyName.trim(),
+            itemModel: tx.itemName || "Item",
+            dispatchedQty: Math.abs(parseInt(tx.stockQty) || 0),
+            transporterName: tx.location || tx.source || "Warehouse Dispatch",
+            docketNo: tx.remarks || "",
+            invoiceNo: `IMS-${tx.id.slice(0, 8)}`,
+            status: "Delivered"
+          });
+        }
+      }
+    });
+    return list;
+  }, [crmDispatches, imsTransactions]);
+
+  // Unified Orders combining crmSalesOrders + IMS stock out records to parties
+  const allUnifiedSalesOrders = useMemo(() => {
+    const list = [...crmSalesOrders];
+    const existingIds = new Set(crmSalesOrders.map(o => o.id));
+    (imsTransactions || []).forEach(tx => {
+      if (tx.partyName && tx.partyName.trim() && (tx.movementType === "OUT" || !tx.movementType)) {
+        const orderSyntheticId = `ord-${tx.id}`;
+        if (!existingIds.has(tx.id) && !existingIds.has(orderSyntheticId)) {
+          list.push({
+            id: orderSyntheticId,
+            orderNo: `PO-${tx.id.slice(0, 8)}`,
+            orderDate: tx.date || "",
+            partyId: tx.partyId || "",
+            partyName: tx.partyName.trim(),
+            itemModel: tx.itemName || "Item",
+            category: "General",
+            orderQty: Math.abs(parseInt(tx.stockQty) || 0),
+            unitPriceInr: 0,
+            totalInr: 0,
+            dispatchedQty: Math.abs(parseInt(tx.stockQty) || 0),
+            pendingQty: 0,
+            status: "Dispatched"
+          });
+        }
+      }
+    });
+    return list;
+  }, [crmSalesOrders, imsTransactions]);
 
   // Filtered Parties based on selected executive
   const currentParties = useMemo(() => {
@@ -116,28 +185,37 @@ export default function CrmDashboard({
     });
   }, [crmParties, selectedExecutiveId, activeExecutive]);
 
-  const currentPartyIdSet = useMemo(() => new Set(currentParties.map(p => p.id)), [currentParties]);
-  const currentPartyNameSet = useMemo(() => new Set(currentParties.map(p => (p.name || "").trim().toLowerCase()).filter(Boolean)), [currentParties]);
-
-  // Filtered Sales Orders (matched by executive ID or party name/ID)
+  // Filtered Sales Orders (matched by executive ID or party name/ID, and global dates)
   const currentSalesOrders = useMemo(() => {
-    if (selectedExecutiveId === "all") return crmSalesOrders;
-    return crmSalesOrders.filter(so => {
-      if (so.assignedCrmId === selectedExecutiveId || so.assignedAsmId === selectedExecutiveId || so.assignedTsmId === selectedExecutiveId) return true;
-      if (currentPartyIdSet.has(so.partyId) || currentPartyNameSet.has((so.partyName || "").trim().toLowerCase())) return true;
-      return false;
-    });
-  }, [crmSalesOrders, selectedExecutiveId, currentPartyIdSet, currentPartyNameSet]);
+    let list = allUnifiedSalesOrders;
+    if (selectedExecutiveId !== "all") {
+      list = list.filter(so => {
+        if (so.assignedCrmId === selectedExecutiveId || so.assignedAsmId === selectedExecutiveId || so.assignedTsmId === selectedExecutiveId) return true;
+        if (currentParties.some(p => matchParty(p.name, so.partyName, p.id, so.partyId))) return true;
+        return false;
+      });
+    }
+    if (globalStartDate || globalEndDate) {
+      list = list.filter(so => isDateInBetween(so.orderDate, globalStartDate, globalEndDate));
+    }
+    return list;
+  }, [allUnifiedSalesOrders, selectedExecutiveId, currentParties, globalStartDate, globalEndDate]);
 
-  // Filtered Dispatches (matched by executive ID or party name/ID)
+  // Filtered Dispatches (matched by executive ID or party name/ID, and global dates)
   const currentDispatches = useMemo(() => {
-    if (selectedExecutiveId === "all") return crmDispatches;
-    return crmDispatches.filter(d => {
-      if (d.assignedCrmId === selectedExecutiveId || d.assignedAsmId === selectedExecutiveId || d.assignedTsmId === selectedExecutiveId) return true;
-      if (currentPartyIdSet.has(d.partyId) || currentPartyNameSet.has((d.partyName || "").trim().toLowerCase())) return true;
-      return false;
-    });
-  }, [crmDispatches, selectedExecutiveId, currentPartyIdSet, currentPartyNameSet]);
+    let list = allUnifiedDispatches;
+    if (selectedExecutiveId !== "all") {
+      list = list.filter(d => {
+        if (d.assignedCrmId === selectedExecutiveId || d.assignedAsmId === selectedExecutiveId || d.assignedTsmId === selectedExecutiveId) return true;
+        if (currentParties.some(p => matchParty(p.name, d.partyName, p.id, d.partyId))) return true;
+        return false;
+      });
+    }
+    if (globalStartDate || globalEndDate) {
+      list = list.filter(d => isDateInBetween(d.dispatchDate, globalStartDate, globalEndDate));
+    }
+    return list;
+  }, [allUnifiedDispatches, selectedExecutiveId, currentParties, globalStartDate, globalEndDate]);
 
   // ASMs and TSMs under this executive or all
   const teamMembers = useMemo(() => {
@@ -503,13 +581,47 @@ export default function CrmDashboard({
             </div>
           )}
 
-          <button 
-            onClick={() => setShowAddPartyModal(true)} 
-            className="btn btn-primary"
-            style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700, padding: "8px 16px" }}
-          >
-            <Plus size={16} /> Add Party
-          </button>
+          {/* Global CRM Date Filter */}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginLeft: "auto" }}>
+            <DateRangeFilter
+              startDate={globalStartDate}
+              endDate={globalEndDate}
+              onStartDateChange={setGlobalStartDate}
+              onEndDateChange={setGlobalEndDate}
+              onClear={() => {
+                setGlobalStartDate("");
+                setGlobalEndDate("");
+              }}
+              placeholder="Filter by Date"
+            />
+            <div style={{ display: "flex", gap: "4px" }}>
+              <button
+                onClick={() => {
+                  const now = new Date();
+                  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+                  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+                  setGlobalStartDate(firstDay);
+                  setGlobalEndDate(lastDay);
+                }}
+                className="btn btn-secondary btn-sm"
+                style={{ fontSize: "0.75rem", padding: "5px 10px" }}
+              >
+                This Month
+              </button>
+              {(globalStartDate || globalEndDate) && (
+                <button
+                  onClick={() => {
+                    setGlobalStartDate("");
+                    setGlobalEndDate("");
+                  }}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: "0.75rem", padding: "5px 10px" }}
+                >
+                  Clear Date
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1673,8 +1785,8 @@ export default function CrmDashboard({
       {selectedPartyFor360 && (
         <Party360Modal
           party={selectedPartyFor360}
-          salesOrders={currentSalesOrders.filter(o => o.partyId === selectedPartyFor360.id || (o.partyName && o.partyName.trim().toLowerCase() === selectedPartyFor360.name.trim().toLowerCase()))}
-          dispatches={currentDispatches.filter(d => d.partyId === selectedPartyFor360.id || (d.partyName && d.partyName.trim().toLowerCase() === selectedPartyFor360.name.trim().toLowerCase()))}
+          salesOrders={allUnifiedSalesOrders.filter(o => matchParty(o.partyName, selectedPartyFor360.name, o.partyId, selectedPartyFor360.id))}
+          dispatches={allUnifiedDispatches.filter(d => matchParty(d.partyName, selectedPartyFor360.name, d.partyId, selectedPartyFor360.id))}
           canViewFinancials={canViewFinancials}
           onClose={() => setSelectedPartyFor360(null)}
         />
@@ -1737,8 +1849,8 @@ export default function CrmDashboard({
         <AsmSalesDetailModal
           member={trackingAsmMember}
           allParties={crmParties}
-          allSalesOrders={crmSalesOrders}
-          allDispatches={crmDispatches}
+          allSalesOrders={allUnifiedSalesOrders}
+          allDispatches={allUnifiedDispatches}
           crmPartyRemarks={crmPartyRemarks}
           items={items}
           currentUser={currentUser}
@@ -1885,9 +1997,9 @@ function PartyModal({ party, crmExecutives, asmList, tsmList, currentExecutive, 
           <div className="form-group" style={{ marginBottom: 0 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
               <label className="form-label" style={{ margin: 0 }}>Party / Firm Name *</label>
-              {isCrmRole && !!party && (
+              {!!party && (
                 <span style={{ fontSize: "0.76rem", color: "#f59e0b", display: "flex", alignItems: "center", gap: "4px", fontWeight: 600 }}>
-                  <Lock size={12} /> Locked (CRM cannot change party name)
+                  <Lock size={12} /> Locked (Party Name cannot be changed)
                 </span>
               )}
             </div>
@@ -1897,16 +2009,16 @@ function PartyModal({ party, crmExecutives, asmList, tsmList, currentExecutive, 
               placeholder="e.g. Shree Ganesh Electronics" 
               value={name} 
               onChange={e => {
-                if (!isCrmRole || !party) setName(e.target.value);
+                if (!party) setName(e.target.value);
               }} 
-              readOnly={isCrmRole && !!party}
-              disabled={isCrmRole && !!party}
+              readOnly={Boolean(party)}
+              disabled={Boolean(party)}
               className="form-control" 
               style={{
-                background: (isCrmRole && !!party) ? "rgba(255, 255, 255, 0.04)" : "",
-                cursor: (isCrmRole && !!party) ? "not-allowed" : "text",
-                color: (isCrmRole && !!party) ? "var(--text-muted)" : "var(--text-main)",
-                border: (isCrmRole && !!party) ? "1px solid rgba(245, 158, 11, 0.3)" : ""
+                background: Boolean(party) ? "rgba(255, 255, 255, 0.04)" : "",
+                cursor: Boolean(party) ? "not-allowed" : "text",
+                color: Boolean(party) ? "var(--text-muted)" : "var(--text-main)",
+                border: Boolean(party) ? "1px solid rgba(245, 158, 11, 0.3)" : ""
               }}
             />
           </div>

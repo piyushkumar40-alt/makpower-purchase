@@ -3543,7 +3543,7 @@ export default function SuperAdminDashboard({
                   <form onSubmit={async (e) => {
                     e.preventDefault();
                     const formData = new FormData(e.target);
-                    const partyName = formData.get("name")?.trim();
+                    const partyName = editingParty ? editingParty.name : (formData.get("name")?.trim());
                     if (!partyName) return;
 
                     const crmId = formData.get("assignedCrmId");
@@ -3574,14 +3574,29 @@ export default function SuperAdminDashboard({
                   }} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
                     
                     <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label" style={{ fontWeight: 700 }}>Party / Firm Name *</label>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                        <label className="form-label" style={{ fontWeight: 700, margin: 0 }}>Party / Firm Name *</label>
+                        {!!editingParty && (
+                          <span style={{ fontSize: "0.76rem", color: "#f59e0b", display: "flex", alignItems: "center", gap: "4px", fontWeight: 600 }}>
+                            <Lock size={12} /> Locked (Party Name cannot be changed)
+                          </span>
+                        )}
+                      </div>
                       <input 
                         name="name" 
                         type="text" 
                         defaultValue={editingParty?.name || ""} 
                         required 
                         placeholder="e.g. Shree Ganesh Electronics, Balaji Telecom..." 
+                        readOnly={Boolean(editingParty)}
+                        disabled={Boolean(editingParty)}
                         className="form-control"
+                        style={{
+                          background: Boolean(editingParty) ? "rgba(255, 255, 255, 0.04)" : "",
+                          cursor: Boolean(editingParty) ? "not-allowed" : "text",
+                          color: Boolean(editingParty) ? "var(--text-muted)" : "var(--text-main)",
+                          border: Boolean(editingParty) ? "1px solid rgba(245, 158, 11, 0.3)" : ""
+                        }}
                       />
                     </div>
 

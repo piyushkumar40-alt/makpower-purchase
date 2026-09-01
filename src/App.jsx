@@ -1735,12 +1735,14 @@ export default function App() {
               </>
             )}
 
-            <button 
-              onClick={() => setActiveView("requester")} 
-              className={`nav-tab-item ${activeView === "requester" ? "active" : ""}`}
-            >
-              Requester Portal
-            </button>
+            {(!currentUser || (!["crm", "asm", "tsm"].includes(currentUser.role))) && (
+              <button 
+                onClick={() => setActiveView("requester")} 
+                className={`nav-tab-item ${activeView === "requester" ? "active" : ""}`}
+              >
+                Requester Portal
+              </button>
+            )}
 
             {currentUser && currentUser.role !== "superadmin" && !["crm", "asm", "tsm"].includes(currentUser.role) && (
               <button 
@@ -1892,14 +1894,16 @@ export default function App() {
                 </>
               )}
 
-              <button 
-                onClick={() => { setActiveView("requester"); setMobileMenuOpen(false); }} 
-                className={`mobile-nav-item ${activeView === "requester" ? "active" : ""}`}
-              >
-                <ShoppingCart size={18} /> <span>Requester Portal</span>
-              </button>
+              {(!currentUser || (!["crm", "asm", "tsm"].includes(currentUser.role))) && (
+                <button 
+                  onClick={() => { setActiveView("requester"); setMobileMenuOpen(false); }} 
+                  className={`mobile-nav-item ${activeView === "requester" ? "active" : ""}`}
+                >
+                  <ShoppingCart size={18} /> <span>Requester Portal</span>
+                </button>
+              )}
 
-              {currentUser && currentUser.role !== "superadmin" && (
+              {currentUser && currentUser.role !== "superadmin" && !["crm", "asm", "tsm"].includes(currentUser.role) && (
                 <button 
                   onClick={() => { setActiveView("itemcatalog"); setMobileMenuOpen(false); }} 
                   className={`mobile-nav-item ${activeView === "itemcatalog" ? "active" : ""}`}
@@ -2137,6 +2141,7 @@ export default function App() {
             crmSalesOrders={crmSalesOrders}
             crmDispatches={crmDispatches}
             crmPartyRemarks={crmPartyRemarks}
+            imsTransactions={imsTransactions}
             items={items}
             itemPrices={itemPrices}
             onAddParty={handleAddParty}
