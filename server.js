@@ -2,6 +2,7 @@ import express from "express";
 import pg from "pg";
 import path from "path";
 import fs from "fs";
+import zlib from "zlib";
 import { fileURLToPath } from "url";
 import { v2 as cloudinary } from "cloudinary";
 import { 
@@ -21,6 +22,27 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+// High-speed native GZIP compression middleware for all responses
+app.use((req, res, next) => {
+  const acceptEncoding = req.headers["accept-encoding"] || "";
+  if (!acceptEncoding.includes("gzip")) return next();
+
+  const originalSend = res.send;
+  res.send = function (body) {
+    if (typeof body === "string" || Buffer.isBuffer(body)) {
+      if (body.length > 1024) { // Only compress payloads > 1KB
+        res.setHeader("Content-Encoding", "gzip");
+        res.removeHeader("Content-Length");
+        const compressed = zlib.gzipSync(body, { level: 6 });
+        return originalSend.call(this, compressed);
+      }
+    }
+    return originalSend.call(this, body);
+  };
+  next();
+});
+
 app.use(express.json({ limit: "200mb" }));
 app.use(express.urlencoded({ limit: "200mb", extended: true }));
 
@@ -384,6 +406,19 @@ async function setupPgDatabase() {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_date ON ims_transactions("date" DESC, "createdAt" DESC);`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_item_id ON ims_transactions("itemId");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_item_name ON ims_transactions("itemName");`);
+
+      // CRM Database Indexes for instant sub-millisecond querying
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_parties_asm ON crm_parties("assignedAsmId");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_parties_tsm ON crm_parties("assignedTsmId");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_parties_crm ON crm_parties("assignedCrmId");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_orders_party ON crm_sales_orders("partyId");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_orders_date ON crm_sales_orders("orderDate" DESC);`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_orders_asm ON crm_sales_orders("assignedAsmId");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_orders_tsm ON crm_sales_orders("assignedTsmId");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_dispatches_party ON crm_dispatches("partyId");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_dispatches_date ON crm_dispatches("dispatchDate" DESC);`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_remarks_party ON crm_party_remarks("partyId");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_remarks_date ON crm_party_remarks("createdAt" DESC);`);
 
       // Seed initial IMS stock transactions only once during first setup (not re-seeded if user deletes)
       await pool.query(`CREATE TABLE IF NOT EXISTS sys_metadata ("key" TEXT PRIMARY KEY, "value" TEXT);`);
