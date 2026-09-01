@@ -1532,10 +1532,10 @@ app.get("/api/state", async (req, res) => {
     return res.json(stateCache);
   }
 
-  // Calculate 3-month cutoff date for ASM/TSM (e.g. 1st day of month 2 months ago -> 3 months total)
-  const d3MonthsAgo = new Date();
-  d3MonthsAgo.setMonth(d3MonthsAgo.getMonth() - 2, 1);
-  const cutoffDate3Mo = d3MonthsAgo.toISOString().slice(0, 10);
+  // Calculate cutoff date for ASM/TSM to include full 4-month category & remarks studio data (at least 6 months)
+  const dCutoff = new Date();
+  dCutoff.setMonth(dCutoff.getMonth() - 5, 1);
+  const cutoffDate3Mo = dCutoff.toISOString().slice(0, 10);
 
   if (isPg) {
     try {
