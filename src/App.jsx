@@ -1705,7 +1705,7 @@ export default function App() {
                     onClick={() => setActiveView("crm")} 
                     className={`nav-tab-item ${activeView === "crm" ? "active" : ""}`}
                   >
-                    CRM Dashboard
+                    Dashboard
                   </button>
                 )}
 
@@ -1864,7 +1864,7 @@ export default function App() {
                       onClick={() => { setActiveView("crm"); setMobileMenuOpen(false); }} 
                       className={`mobile-nav-item ${activeView === "crm" ? "active" : ""}`}
                     >
-                      <Briefcase size={18} /> <span>CRM Command Center</span>
+                      <Briefcase size={18} /> <span>Dashboard</span>
                     </button>
                   )}
 

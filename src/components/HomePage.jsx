@@ -132,7 +132,7 @@ export default function HomePage({
           )}
           {(currentUser?.role === "crm" || currentUser?.role === "asm" || currentUser?.role === "tsm" || currentUser?.role === "superadmin" || currentUser?.role === "owner") && (
             <button onClick={() => onNavigateView("crm")} className="btn btn-primary btn-sm" style={{ background: "linear-gradient(135deg, #0284c7, #6366f1)" }}>
-              <Activity size={14} /> CRM Dashboard
+              <Activity size={14} /> Dashboard
             </button>
           )}
           {currentUser?.role === "superadmin" && (
@@ -154,14 +154,14 @@ export default function HomePage({
           <div>
             <span className="badge badge-primary" style={{ marginBottom: "6px" }}>Customer Relationship Management</span>
             <h2 style={{ fontSize: "1.4rem", fontWeight: 800, color: "var(--text-main)", margin: 0 }}>
-              {currentUser.name}'s CRM Command Center
+              {currentUser.name}'s Dashboard
             </h2>
             <p style={{ color: "var(--text-muted)", fontSize: "0.88rem", marginTop: "4px", margin: 0 }}>
               Manage your assigned party accounts, field sales representatives (ASM/TSM), item-wise sales, and dispatch fulfillment.
             </p>
           </div>
           <button onClick={() => onNavigateView("crm")} className="btn btn-primary" style={{ padding: "10px 22px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
-            Open My CRM Dashboard <ArrowRight size={16} />
+            Open Dashboard <ArrowRight size={16} />
           </button>
         </div>
       )}
