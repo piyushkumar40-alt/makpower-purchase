@@ -1735,21 +1735,53 @@ function extractYearMonthFromAnyDate(dStr) {
   return "";
 }
 
-function normalizeFgCategory(cat, itemDesc = "") {
-  const raw = `${cat || ""} ${itemDesc || ""}`.toLowerCase();
-  if (raw.includes("polymer") || raw.includes("li-poly") || raw.includes("lithium poly") || raw.includes("pouch battery")) return "Polymer";
-  if (raw.includes("fast charge") || raw.includes("adapter") || raw.includes("charger") || raw.includes("wall charge")) return "Fast Charger";
-  if (raw.includes("cable") || raw.includes("usb") || raw.includes("type-c") || raw.includes("micro") || raw.includes("lightning")) return "Data Cable";
-  if (raw.includes("neckband") || raw.includes("neck band") || raw.includes("nb-") || raw.includes("nb ")) return "Neckband";
-  if (raw.includes("tws") || raw.includes("earbuds") || raw.includes("airpods") || raw.includes("ear buds") || raw.includes("buds")) return "TWS Earbuds";
-  if (raw.includes("power bank") || raw.includes("powerbank") || raw.includes("pb-") || raw.includes("pb ")) return "Power Bank";
-  if (raw.includes("earphone") || raw.includes("headphone") || raw.includes("handsfree") || raw.includes("ear phone")) return "Earphones";
-  if (raw.includes("battery") || raw.includes("batteries") || raw.includes("cell") || raw.includes("bf3") || raw.includes("b-f3") || raw.includes("bm4") || raw.includes("bn4") || raw.includes("bl-") || raw.includes("blp") || raw.includes("li-ion")) return "Batteries";
-  if (raw.includes("speaker") || raw.includes("soundbar") || raw.includes("audio")) return "Speaker";
-  if (raw.includes("watch") || raw.includes("smartwatch") || raw.includes("smart watch") || raw.includes("band")) return "Smart Watch";
-  if (raw.includes("car charge") || raw.includes("car")) return "Car Charger";
-  if (cat && cat.trim() && cat !== "General" && cat !== "Unspecified" && !cat.toLowerCase().includes("raw")) return cat.trim();
-  return "Mobile Accessories";
+function normalizeFgCategory(cat = "", itemDesc = "", itemType = "") {
+  // If explicitly marked as Raw Material / RM, exclude from FG category sales
+  const typeUpper = (itemType || "").trim().toUpperCase();
+  if (typeUpper === "RM" || typeUpper === "RAW" || typeUpper === "RAW MATERIAL" || typeUpper === "NON CONSUMABLES") {
+    return "";
+  }
+
+  const rawCat = (cat || "").trim();
+  const rawCatLower = rawCat.toLowerCase();
+  const rawDescLower = (itemDesc || "").toLowerCase();
+  const combined = `${rawCatLower} ${rawDescLower}`;
+
+  // If item is FG, use its master catalog category name directly
+  if (rawCat && rawCat !== "General" && rawCat !== "Unspecified" && rawCat !== "RM" && rawCat !== "PCB" && rawCat !== "Bottom" && rawCat !== "Top" && rawCat !== "Inner" && rawCat !== "Blister") {
+    if (rawCatLower.includes("polymer")) return "Polymer";
+    if (rawCatLower.includes("cable") || rawCatLower.includes("aux")) return "Data Cable";
+    if (rawCatLower.includes("neckband")) return "Neckband";
+    if (rawCatLower.includes("tws") || rawCatLower.includes("earbuds") || rawCatLower.includes("buds")) return "TWS Earbuds";
+    if (rawCatLower.includes("power bank") || rawCatLower.includes("powerbank")) return "Power Bank";
+    if (rawCatLower.includes("handsfree") || rawCatLower.includes("headphone") || rawCatLower.includes("earphone")) return "Earphones";
+    if (rawCatLower.includes("cell") || rawCatLower.includes("battery") || rawCatLower.includes("batteries")) return "Batteries";
+    if (rawCatLower.includes("charger") || rawCatLower.includes("adapter")) {
+      if (rawCatLower.includes("car")) return "Car Charger";
+      return "Fast Charger";
+    }
+    if (rawCatLower.includes("car")) return "Car Charger";
+    if (rawCatLower.includes("speaker") || rawCatLower.includes("audio") || rawCatLower.includes("soundbar")) return "Speaker";
+    if (rawCatLower.includes("watch")) return "Smart Watch";
+    return rawCat;
+  }
+
+  // Fallback keyword matching on itemDesc only for FG items
+  if (typeUpper === "FG" || typeUpper === "FINISHED GOODS" || !typeUpper) {
+    if (combined.includes("polymer")) return "Polymer";
+    if (combined.includes("fast charge") || combined.includes("charger") || combined.includes("adapter")) return "Fast Charger";
+    if (combined.includes("cable") || combined.includes("usb") || combined.includes("type-c") || combined.includes("micro")) return "Data Cable";
+    if (combined.includes("neckband") || combined.includes("soldier")) return "Neckband";
+    if (combined.includes("tws") || combined.includes("earbuds") || combined.includes("airpods") || combined.includes("buds")) return "TWS Earbuds";
+    if (combined.includes("power bank") || combined.includes("powerbank")) return "Power Bank";
+    if (combined.includes("earphone") || combined.includes("headphone") || combined.includes("handsfree")) return "Earphones";
+    if (combined.includes("battery") || combined.includes("batteries") || combined.includes("cell") || combined.includes("bf3")) return "Batteries";
+    if (combined.includes("speaker") || combined.includes("soundbar") || combined.includes("audio")) return "Speaker";
+    if (combined.includes("car charge") || combined.includes("car")) return "Car Charger";
+    if (combined.includes("watch")) return "Smart Watch";
+  }
+
+  return "";
 }
 
 async function syncPartyCategoryMonthlySales() {
@@ -1759,20 +1791,22 @@ async function syncPartyCategoryMonthlySales() {
 
   if (isPg) {
     try {
-      // Items category lookup
+      // Items category & type lookup directly from Item Catalog
       const itemMap = new Map();
-      const itemsRes = await pool.query(`SELECT "id", "name", "category" FROM items`);
+      const itemsRes = await pool.query(`SELECT "id", "name", "category", "itemType" FROM items`);
       (itemsRes.rows || []).forEach(it => {
         const cat = it.category || "";
+        const itemType = it.itemType || "";
+        const obj = { category: cat, itemType };
         if (it.id) {
-          const rawId = String(it.id).trim();
+          const rawId = String(it.id).trim().toLowerCase();
           const cleanId = rawId.replace(/^#+/, "");
-          itemMap.set(rawId.toLowerCase(), cat);
-          itemMap.set(cleanId.toLowerCase(), cat);
-          itemMap.set(('#' + cleanId).toLowerCase(), cat);
+          itemMap.set(rawId, obj);
+          itemMap.set(cleanId, obj);
+          itemMap.set('#' + cleanId, obj);
         }
         if (it.name) {
-          itemMap.set(it.name.trim().toLowerCase(), cat);
+          itemMap.set(it.name.trim().toLowerCase(), obj);
         }
       });
 
@@ -1802,8 +1836,10 @@ async function syncPartyCategoryMonthlySales() {
 
         const rawItemId = String(r.itemId || "").trim().toLowerCase();
         const cleanItemId = rawItemId.replace(/^#+/, "");
-        const rawCat = itemMap.get(rawItemId) || itemMap.get(cleanItemId) || itemMap.get('#' + cleanItemId) || itemMap.get((r.itemName || "").trim().toLowerCase()) || "";
-        const cat = normalizeFgCategory(rawCat, r.itemName || "");
+        const itInfo = itemMap.get(rawItemId) || itemMap.get(cleanItemId) || itemMap.get('#' + cleanItemId) || itemMap.get((r.itemName || "").trim().toLowerCase()) || { category: "", itemType: "" };
+        
+        // Take category from Item Catalog & Stock, take only FG
+        const cat = normalizeFgCategory(itInfo.category, r.itemName || "", itInfo.itemType);
         if (!cat) return;
 
         const key = `${pName}___${cat}___${month}`;
