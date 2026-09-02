@@ -108,10 +108,8 @@ export default function CrmDashboard({
   };
 
   useEffect(() => {
-    if (onPullModuleData) {
+    if (onPullModuleData && crmParties.length === 0) {
       onPullModuleData("crmParties");
-      onPullModuleData("crmSalesOrders");
-      onPullModuleData("crmDispatches");
     }
     const uId = currentUserId || currentUser?.id;
     if (recordSectionVisit && uId) {

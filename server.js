@@ -1539,8 +1539,17 @@ app.post("/api/storage/delete-all-cloudinary", async (req, res) => {
 });
 
 
-// High-Performance Full Stock Calculation across all transactions in PostgreSQL
-async function calculateImsFullSummary() {
+// High-Performance Full Stock Calculation across all transactions in PostgreSQL (with In-Memory Cache)
+let imsFullSummaryCache = null;
+let imsFullSummaryCacheTime = 0;
+const IMS_FULL_SUMMARY_TTL_MS = 60 * 1000; // 60s memory cache
+
+async function calculateImsFullSummary(forceFresh = false) {
+  const now = Date.now();
+  if (!forceFresh && imsFullSummaryCache && (now - imsFullSummaryCacheTime < IMS_FULL_SUMMARY_TTL_MS)) {
+    return imsFullSummaryCache;
+  }
+
   if (isPg) {
     try {
       const summaryRes = await pool.query(`
@@ -1580,7 +1589,7 @@ async function calculateImsFullSummary() {
         GROUP BY "itemId", "itemName"
       `);
 
-      return {
+      const result = {
         totalNetStock: Number(row.totalNetStock || 0),
         totalInwardUnits: Number(row.totalInwardUnits || 0),
         totalOutwardUnits: Number(row.totalOutwardUnits || 0),
@@ -1605,6 +1614,10 @@ async function calculateImsFullSummary() {
           lastDate: r.lastDate || ""
         }))
       };
+
+      imsFullSummaryCache = result;
+      imsFullSummaryCacheTime = Date.now();
+      return result;
     } catch (err) {
       console.error("Error calculating IMS full summary in PG:", err.message);
       return {
@@ -2005,7 +2018,7 @@ app.get("/api/state", async (req, res) => {
         imsRes = allImsRes;
       }
 
-      const imsSummary = await calculateImsFullSummary();
+      const imsSummary = isRestrictedRole ? (imsFullSummaryCache || null) : await calculateImsFullSummary();
 
       // Format types back
       const vendors = vendorsRes.rows.map(v => ({
@@ -3812,6 +3825,7 @@ app.post("/api/ims/transactions", async (req, res) => {
         txObj.isMissingId, txObj.createdAt
       ];
       await pool.query(query, values);
+      imsFullSummaryCache = null;
       res.json({ success: true, transaction: txObj });
     } catch (err) {
       console.error("POST /api/ims/transactions error:", err.message);
@@ -3989,6 +4003,7 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
         }
       }
 
+      imsFullSummaryCache = null;
       res.setHeader("Content-Type", "application/json");
       res.json({ success: true, count: insertedCount, missingIdCount });
     } catch (err) {
@@ -4063,6 +4078,7 @@ app.delete("/api/ims/transactions/:id", async (req, res) => {
   if (isPg) {
     try {
       await pool.query('DELETE FROM ims_transactions WHERE "id" = $1', [txId]);
+      imsFullSummaryCache = null;
       res.json({ success: true });
     } catch (err) {
       console.error("DELETE /api/ims/transactions error:", err.message);
