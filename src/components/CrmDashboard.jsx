@@ -1157,14 +1157,14 @@ export default function CrmDashboard({
                   {paginatedParties.map(party => (
                     <div 
                       key={party.id}
+                      className="mobile-party-card glass-panel"
                       style={{
                         padding: "14px",
-                        borderRadius: "12px",
+                        borderRadius: "14px",
                         display: "flex",
                         flexDirection: "column",
                         gap: "10px",
-                        border: "1px solid var(--border-glass)",
-                        background: "rgba(15, 23, 42, 0.65)"
+                        border: "1px solid var(--border-glass)"
                       }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
@@ -1187,10 +1187,10 @@ export default function CrmDashboard({
                       </div>
 
                       {(party.contactPerson || party.phone) && (
-                        <div style={{ fontSize: "0.82rem", display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.03)", padding: "7px 10px", borderRadius: "8px" }}>
+                        <div style={{ fontSize: "0.82rem", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg-card-hover, rgba(0,0,0,0.04))", padding: "7px 10px", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
                           <span style={{ fontWeight: 600, color: "var(--text-main)" }}>{party.contactPerson || "Contact"}</span>
                           {party.phone && (
-                            <a href={`tel:${party.phone}`} style={{ color: "#38bdf8", textDecoration: "none", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                            <a href={`tel:${party.phone}`} style={{ color: "var(--primary)", textDecoration: "none", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "5px" }}>
                               <Phone size={12} /> {party.phone}
                             </a>
                           )}
@@ -1198,16 +1198,16 @@ export default function CrmDashboard({
                       )}
 
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-                        <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(99, 102, 241, 0.15)", color: "#a5b4fc", border: "1px solid rgba(99, 102, 241, 0.3)" }}>
+                        <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(99, 102, 241, 0.15)", color: "#818cf8", border: "1px solid rgba(99, 102, 241, 0.3)" }}>
                           CRM: {party.assignedCrmName || crmExecutives.find(c => c.id === party.assignedCrmId)?.name || "Unassigned"}
                         </span>
                         {party.assignedAsmName && (
-                          <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(16, 185, 129, 0.12)", color: "#6ee7b7", border: "1px solid rgba(16, 185, 129, 0.3)" }}>
+                          <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(16, 185, 129, 0.12)", color: "#10b981", border: "1px solid rgba(16, 185, 129, 0.3)" }}>
                             ASM: {party.assignedAsmName}
                           </span>
                         )}
                         {party.assignedTsmName && (
-                          <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(245, 158, 11, 0.12)", color: "#fcd34d", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
+                          <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(245, 158, 11, 0.12)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
                             TSM: {party.assignedTsmName}
                           </span>
                         )}
@@ -2867,118 +2867,222 @@ function Party360Modal({
         {/* TAB 1: 4-Month Category-Wise Sales & Remarks Matrix */}
         {modalTab === "category_matrix" && (
           <div>
-            <div style={{ marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                Swipe horizontally to compare monthly trends & record category remarks.
-              </span>
-            </div>
+            {/* Desktop Spreadsheet Table View */}
+            <div className="desktop-table-view">
+              <div style={{ marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                  Track 4-month order & dispatch volumes and record category-wise field remarks.
+                </span>
+              </div>
 
-            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%", borderRadius: "10px", border: "1px solid var(--border-glass)" }}>
-              <table className="table" style={{ width: "100%", minWidth: "580px", fontSize: "0.82rem", margin: 0 }}>
-              <thead>
-                <tr>
-                  <th style={{ width: "20%" }}>Category</th>
-                  <th style={{ width: "11%", textAlign: "right" }}>{last4Months[0].label}</th>
-                  <th style={{ width: "11%", textAlign: "right" }}>{last4Months[1].label}</th>
-                  <th style={{ width: "11%", textAlign: "right" }}>{last4Months[2].label}</th>
-                  <th style={{ width: "12%", textAlign: "right", color: "var(--primary)" }}>{last4Months[3].label} (Current)</th>
-                  <th style={{ width: "12%", textAlign: "right" }}>4-Mo Total</th>
-                  <th style={{ width: "23%", textAlign: "center" }}>Remarks</th>
-                </tr>
-              </thead>
-              <tbody>
-                {/* Grand Total Summary Row (Between Category header and first category) */}
-                <tr style={{ background: "rgba(56, 189, 248, 0.12)", borderBottom: "2px solid rgba(56, 189, 248, 0.35)", fontWeight: 800 }}>
-                  <td style={{ padding: "10px 12px" }}>
-                    <strong style={{ color: "#38bdf8", fontSize: "0.92rem", letterSpacing: "0.5px" }}>TOTAL</strong>
-                  </td>
-                  <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
-                    {partyCategoryTotals.m0 > 0 ? `${partyCategoryTotals.m0.toLocaleString()} Pcs` : "—"}
-                  </td>
-                  <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
-                    {partyCategoryTotals.m1 > 0 ? `${partyCategoryTotals.m1.toLocaleString()} Pcs` : "—"}
-                  </td>
-                  <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
-                    {partyCategoryTotals.m2 > 0 ? `${partyCategoryTotals.m2.toLocaleString()} Pcs` : "—"}
-                  </td>
-                  <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
-                    {partyCategoryTotals.m3 > 0 ? `${partyCategoryTotals.m3.toLocaleString()} Pcs` : "—"}
-                  </td>
-                  <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 900, fontSize: "0.92rem" }}>
-                    {partyCategoryTotals.totalQty > 0 ? `${partyCategoryTotals.totalQty.toLocaleString()} Pcs` : "0 Pcs"}
-                  </td>
-                  <td style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.78rem" }}>
-                    —
-                  </td>
-                </tr>
-
-                {partyCategoryRows.map(row => {
-                  const categoryRemarks = (crmPartyRemarks || []).filter(r => 
-                    (r.partyId === party.id || (r.partyName && r.partyName.trim().toLowerCase() === (party.name || "").trim().toLowerCase())) && 
-                    (r.category === row.category || 
-                     (row.category === "Polymer Batteries" && (r.category || "").toLowerCase().includes("polymer")) ||
-                     (row.category === "Eco Battery" && (r.category || "").toLowerCase().includes("eco")))
-                  );
-                  const latest = categoryRemarks[0];
-
-                  return (
-                    <tr key={row.category}>
-                      <td>
-                        <strong style={{ color: "var(--text-main)" }}>{row.category}</strong>
+              <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%", borderRadius: "10px", border: "1px solid var(--border-glass)" }}>
+                <table className="table" style={{ width: "100%", minWidth: "580px", fontSize: "0.82rem", margin: 0 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: "20%" }}>Category</th>
+                      <th style={{ width: "11%", textAlign: "right" }}>{last4Months[0].label}</th>
+                      <th style={{ width: "11%", textAlign: "right" }}>{last4Months[1].label}</th>
+                      <th style={{ width: "11%", textAlign: "right" }}>{last4Months[2].label}</th>
+                      <th style={{ width: "12%", textAlign: "right", color: "var(--primary)" }}>{last4Months[3].label} (Current)</th>
+                      <th style={{ width: "12%", textAlign: "right" }}>4-Mo Total</th>
+                      <th style={{ width: "23%", textAlign: "center" }}>Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Grand Total Summary Row */}
+                    <tr style={{ background: "rgba(56, 189, 248, 0.12)", borderBottom: "2px solid rgba(56, 189, 248, 0.35)", fontWeight: 800 }}>
+                      <td style={{ padding: "10px 12px" }}>
+                        <strong style={{ color: "#38bdf8", fontSize: "0.92rem", letterSpacing: "0.5px" }}>TOTAL</strong>
                       </td>
-                      <td style={{ textAlign: "right", color: row.m0 > 0 ? "var(--text-main)" : "var(--text-muted)" }}>
-                        {row.m0 > 0 ? `${row.m0.toLocaleString()} Pcs` : "—"}
+                      <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
+                        {partyCategoryTotals.m0 > 0 ? `${partyCategoryTotals.m0.toLocaleString()} Pcs` : "—"}
                       </td>
-                      <td style={{ textAlign: "right", color: row.m1 > 0 ? "var(--text-main)" : "var(--text-muted)" }}>
-                        {row.m1 > 0 ? `${row.m1.toLocaleString()} Pcs` : "—"}
+                      <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
+                        {partyCategoryTotals.m1 > 0 ? `${partyCategoryTotals.m1.toLocaleString()} Pcs` : "—"}
                       </td>
-                      <td style={{ textAlign: "right", color: row.m2 > 0 ? "var(--text-main)" : "var(--text-muted)" }}>
-                        {row.m2 > 0 ? `${row.m2.toLocaleString()} Pcs` : "—"}
+                      <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
+                        {partyCategoryTotals.m2 > 0 ? `${partyCategoryTotals.m2.toLocaleString()} Pcs` : "—"}
                       </td>
-                      <td style={{ textAlign: "right", fontWeight: 700, color: row.m3 > 0 ? "var(--primary)" : "var(--text-muted)" }}>
-                        {row.m3 > 0 ? `${row.m3.toLocaleString()} Pcs` : "—"}
+                      <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
+                        {partyCategoryTotals.m3 > 0 ? `${partyCategoryTotals.m3.toLocaleString()} Pcs` : "—"}
                       </td>
-                      <td style={{ textAlign: "right", fontWeight: 800, color: row.totalQty > 0 ? "var(--primary)" : "var(--text-muted)" }}>
-                        {row.totalQty > 0 ? `${row.totalQty.toLocaleString()} Pcs` : "0 Pcs"}
+                      <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 900, fontSize: "0.92rem" }}>
+                        {partyCategoryTotals.totalQty > 0 ? `${partyCategoryTotals.totalQty.toLocaleString()} Pcs` : "0 Pcs"}
                       </td>
-                      <td style={{ textAlign: "center" }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "stretch" }}>
-                          {latest && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: "2px", textAlign: "left", padding: "6px 8px", background: "rgba(255,255,255,0.04)", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <span style={{ fontSize: "0.7rem", fontWeight: 700, color: latest.authorRole === "asm" ? "#34d399" : latest.authorRole === "tsm" ? "#fbbf24" : "#818cf8" }}>
-                                  {latest.authorName} ({latest.authorRole?.toUpperCase()})
-                                </span>
-                                <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>
-                                  {latest.createdAt ? new Date(latest.createdAt).toLocaleDateString("en-IN") : latest.month}
-                                </span>
-                              </div>
-                              <div style={{ fontSize: "0.76rem", color: "var(--text-main)", lineHeight: 1.3 }}>
-                                "{latest.remark}"
-                              </div>
-                            </div>
-                          )}
-                          <button
-                            onClick={() => setActiveRemarkModalTarget({
-                              partyId: party.id,
-                              partyName: party.name,
-                              category: row.category,
-                              month: last4Months[3].key,
-                              totalOrderQty: row.totalQty,
-                              totalRevenue: row.totalRevenue
-                            })}
-                            className="btn btn-secondary btn-sm"
-                            style={{ fontSize: "0.74rem", padding: "4px 8px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "4px", color: categoryRemarks.length > 0 ? "#38bdf8" : undefined, width: "100%" }}
-                          >
-                            <MessageSquare size={12} /> {categoryRemarks.length > 0 ? `Remarks (${categoryRemarks.length})` : "+ Add Remark"}
-                          </button>
-                        </div>
+                      <td style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.78rem" }}>
+                        —
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+
+                    {partyCategoryRows.map(row => {
+                      const categoryRemarks = (crmPartyRemarks || []).filter(r => 
+                        (r.partyId === party.id || (r.partyName && r.partyName.trim().toLowerCase() === (party.name || "").trim().toLowerCase())) && 
+                        (r.category === row.category || 
+                         (row.category === "Polymer Batteries" && (r.category || "").toLowerCase().includes("polymer")) ||
+                         (row.category === "Eco Battery" && (r.category || "").toLowerCase().includes("eco")))
+                      );
+                      const latest = categoryRemarks[0];
+
+                      return (
+                        <tr key={row.category}>
+                          <td>
+                            <strong style={{ color: "var(--text-main)" }}>{row.category}</strong>
+                          </td>
+                          <td style={{ textAlign: "right", color: row.m0 > 0 ? "var(--text-main)" : "var(--text-muted)" }}>
+                            {row.m0 > 0 ? `${row.m0.toLocaleString()} Pcs` : "—"}
+                          </td>
+                          <td style={{ textAlign: "right", color: row.m1 > 0 ? "var(--text-main)" : "var(--text-muted)" }}>
+                            {row.m1 > 0 ? `${row.m1.toLocaleString()} Pcs` : "—"}
+                          </td>
+                          <td style={{ textAlign: "right", color: row.m2 > 0 ? "var(--text-main)" : "var(--text-muted)" }}>
+                            {row.m2 > 0 ? `${row.m2.toLocaleString()} Pcs` : "—"}
+                          </td>
+                          <td style={{ textAlign: "right", fontWeight: 700, color: row.m3 > 0 ? "var(--primary)" : "var(--text-muted)" }}>
+                            {row.m3 > 0 ? `${row.m3.toLocaleString()} Pcs` : "—"}
+                          </td>
+                          <td style={{ textAlign: "right", fontWeight: 800, color: row.totalQty > 0 ? "var(--primary)" : "var(--text-muted)" }}>
+                            {row.totalQty > 0 ? `${row.totalQty.toLocaleString()} Pcs` : "0 Pcs"}
+                          </td>
+                          <td style={{ textAlign: "center" }}>
+                            <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "stretch" }}>
+                              {latest && (
+                                <div style={{ display: "flex", flexDirection: "column", gap: "2px", textAlign: "left", padding: "6px 8px", background: "rgba(255,255,255,0.04)", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                    <span style={{ fontSize: "0.7rem", fontWeight: 700, color: latest.authorRole === "asm" ? "#34d399" : latest.authorRole === "tsm" ? "#fbbf24" : "#818cf8" }}>
+                                      {latest.authorName} ({latest.authorRole?.toUpperCase()})
+                                    </span>
+                                    <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>
+                                      {latest.createdAt ? new Date(latest.createdAt).toLocaleDateString("en-IN") : latest.month}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: "0.76rem", color: "var(--text-main)", lineHeight: 1.3 }}>
+                                    "{latest.remark}"
+                                  </div>
+                                </div>
+                              )}
+                              <button
+                                onClick={() => setActiveRemarkModalTarget({
+                                  partyId: party.id,
+                                  partyName: party.name,
+                                  category: row.category,
+                                  month: last4Months[3].key,
+                                  totalOrderQty: row.totalQty,
+                                  totalRevenue: row.totalRevenue
+                                })}
+                                className="btn btn-secondary btn-sm"
+                                style={{ fontSize: "0.74rem", padding: "4px 8px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "4px", color: categoryRemarks.length > 0 ? "#38bdf8" : undefined, width: "100%" }}
+                              >
+                                <MessageSquare size={12} /> {categoryRemarks.length > 0 ? `Remarks (${categoryRemarks.length})` : "+ Add Remark"}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Mobile Cards View (100% Clear Visibility on Phone) */}
+            <div className="mobile-card-view" style={{ gap: "10px" }}>
+              {/* Grand Total Card */}
+              <div className="glass-panel" style={{ padding: "12px", borderRadius: "12px", border: "1px solid rgba(56, 189, 248, 0.4)", background: "rgba(56, 189, 248, 0.08)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                  <span style={{ fontWeight: 800, color: "var(--primary)", fontSize: "0.92rem", letterSpacing: "0.5px" }}>TOTAL SALES (4-MO)</span>
+                  <span style={{ fontWeight: 900, color: "var(--primary)", fontSize: "1.05rem" }}>{partyCategoryTotals.totalQty.toLocaleString()} Pcs</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "4px", textAlign: "center" }}>
+                  <div style={{ background: "var(--bg-card-hover, rgba(0,0,0,0.03))", padding: "6px 2px", borderRadius: "6px", border: "1px solid var(--border-glass)" }}>
+                    <div style={{ fontSize: "0.66rem", color: "var(--text-muted)" }}>{last4Months[0].label}</div>
+                    <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-main)" }}>{partyCategoryTotals.m0 > 0 ? partyCategoryTotals.m0.toLocaleString() : "—"}</div>
+                  </div>
+                  <div style={{ background: "var(--bg-card-hover, rgba(0,0,0,0.03))", padding: "6px 2px", borderRadius: "6px", border: "1px solid var(--border-glass)" }}>
+                    <div style={{ fontSize: "0.66rem", color: "var(--text-muted)" }}>{last4Months[1].label}</div>
+                    <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-main)" }}>{partyCategoryTotals.m1 > 0 ? partyCategoryTotals.m1.toLocaleString() : "—"}</div>
+                  </div>
+                  <div style={{ background: "var(--bg-card-hover, rgba(0,0,0,0.03))", padding: "6px 2px", borderRadius: "6px", border: "1px solid var(--border-glass)" }}>
+                    <div style={{ fontSize: "0.66rem", color: "var(--text-muted)" }}>{last4Months[2].label}</div>
+                    <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-main)" }}>{partyCategoryTotals.m2 > 0 ? partyCategoryTotals.m2.toLocaleString() : "—"}</div>
+                  </div>
+                  <div style={{ background: "rgba(56, 189, 248, 0.15)", padding: "6px 2px", borderRadius: "6px", border: "1px solid rgba(56, 189, 248, 0.3)" }}>
+                    <div style={{ fontSize: "0.66rem", color: "var(--primary)", fontWeight: 700 }}>{last4Months[3].label}</div>
+                    <div style={{ fontSize: "0.82rem", fontWeight: 800, color: "var(--primary)" }}>{partyCategoryTotals.m3 > 0 ? partyCategoryTotals.m3.toLocaleString() : "—"}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Individual Category Cards */}
+              {partyCategoryRows.map(row => {
+                const categoryRemarks = (crmPartyRemarks || []).filter(r => 
+                  (r.partyId === party.id || (r.partyName && r.partyName.trim().toLowerCase() === (party.name || "").trim().toLowerCase())) && 
+                  (r.category === row.category || 
+                   (row.category === "Polymer Batteries" && (r.category || "").toLowerCase().includes("polymer")) ||
+                   (row.category === "Eco Battery" && (r.category || "").toLowerCase().includes("eco")))
+                );
+                const latest = categoryRemarks[0];
+
+                return (
+                  <div key={row.category} className="glass-panel" style={{ padding: "12px", borderRadius: "12px", display: "flex", flexDirection: "column", gap: "8px", border: "1px solid var(--border-glass)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <strong style={{ color: "var(--text-main)", fontSize: "0.95rem" }}>{row.category}</strong>
+                      <span className="badge badge-primary" style={{ fontSize: "0.78rem", fontWeight: 800 }}>
+                        {row.totalQty > 0 ? `${row.totalQty.toLocaleString()} Pcs` : "0 Pcs"}
+                      </span>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "4px", textAlign: "center" }}>
+                      <div style={{ background: "var(--bg-card-hover, rgba(0,0,0,0.03))", padding: "5px 2px", borderRadius: "6px", border: "1px solid var(--border-glass)" }}>
+                        <div style={{ fontSize: "0.64rem", color: "var(--text-muted)" }}>{last4Months[0].label}</div>
+                        <div style={{ fontSize: "0.78rem", fontWeight: 600, color: row.m0 > 0 ? "var(--text-main)" : "var(--text-muted)" }}>{row.m0 > 0 ? row.m0.toLocaleString() : "—"}</div>
+                      </div>
+                      <div style={{ background: "var(--bg-card-hover, rgba(0,0,0,0.03))", padding: "5px 2px", borderRadius: "6px", border: "1px solid var(--border-glass)" }}>
+                        <div style={{ fontSize: "0.64rem", color: "var(--text-muted)" }}>{last4Months[1].label}</div>
+                        <div style={{ fontSize: "0.78rem", fontWeight: 600, color: row.m1 > 0 ? "var(--text-main)" : "var(--text-muted)" }}>{row.m1 > 0 ? row.m1.toLocaleString() : "—"}</div>
+                      </div>
+                      <div style={{ background: "var(--bg-card-hover, rgba(0,0,0,0.03))", padding: "5px 2px", borderRadius: "6px", border: "1px solid var(--border-glass)" }}>
+                        <div style={{ fontSize: "0.64rem", color: "var(--text-muted)" }}>{last4Months[2].label}</div>
+                        <div style={{ fontSize: "0.78rem", fontWeight: 600, color: row.m2 > 0 ? "var(--text-main)" : "var(--text-muted)" }}>{row.m2 > 0 ? row.m2.toLocaleString() : "—"}</div>
+                      </div>
+                      <div style={{ background: "rgba(56, 189, 248, 0.1)", padding: "5px 2px", borderRadius: "6px", border: "1px solid rgba(56, 189, 248, 0.25)" }}>
+                        <div style={{ fontSize: "0.64rem", color: "var(--primary)", fontWeight: 700 }}>{last4Months[3].label}</div>
+                        <div style={{ fontSize: "0.8rem", fontWeight: 800, color: row.m3 > 0 ? "var(--primary)" : "var(--text-muted)" }}>{row.m3 > 0 ? row.m3.toLocaleString() : "—"}</div>
+                      </div>
+                    </div>
+
+                    {latest && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "2px", textAlign: "left", padding: "6px 8px", background: "var(--bg-card-hover, rgba(0,0,0,0.03))", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: "0.7rem", fontWeight: 700, color: latest.authorRole === "asm" ? "#10b981" : latest.authorRole === "tsm" ? "#f59e0b" : "#818cf8" }}>
+                            {latest.authorName} ({latest.authorRole?.toUpperCase()})
+                          </span>
+                          <span style={{ fontSize: "0.66rem", color: "var(--text-muted)" }}>
+                            {latest.createdAt ? new Date(latest.createdAt).toLocaleDateString("en-IN") : latest.month}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: "0.76rem", color: "var(--text-main)", lineHeight: 1.3 }}>
+                          "{latest.remark}"
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => setActiveRemarkModalTarget({
+                        partyId: party.id,
+                        partyName: party.name,
+                        category: row.category,
+                        month: last4Months[3].key,
+                        totalOrderQty: row.totalQty,
+                        totalRevenue: row.totalRevenue
+                      })}
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: "0.76rem", padding: "6px 10px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "4px", color: categoryRemarks.length > 0 ? "var(--primary)" : undefined, width: "100%", fontWeight: 600 }}
+                    >
+                      <MessageSquare size={12} /> {categoryRemarks.length > 0 ? `Remarks (${categoryRemarks.length})` : "+ Add Remark"}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
