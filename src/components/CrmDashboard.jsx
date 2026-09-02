@@ -1516,129 +1516,186 @@ export default function CrmDashboard({
             )}
           </div>
 
-          {/* Parties Directory Table for Monthly Category & Remarks */}
-          <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
+          {/* Parties List Table & Remarks Launcher */}
+          <div className="glass-panel" style={{ padding: "16px" }}>
             {filteredParties.length === 0 ? (
               <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
-                <MessageSquare size={36} style={{ marginBottom: "12px", opacity: 0.4 }} />
-                <h4>No parties found matching search criteria</h4>
-                <p style={{ fontSize: "0.85rem" }}>Try clearing search or filters.</p>
+                <MessageSquare size={36} style={{ marginBottom: "12px", opacity: 0.5 }} />
+                <h4>No parties found matching criteria</h4>
               </div>
             ) : (
-              <table className="table" style={{ width: "100%", minWidth: "900px" }}>
-                <thead>
-                  <tr>
-                    <th style={{ width: "34%" }}>Party Name & Location</th>
-                    <th style={{ width: "24%" }}>Assigned CRM / ASM / TSM</th>
-                    <th style={{ width: "16%", textAlign: "right" }}>Total Volume</th>
-                    <th style={{ width: "12%", textAlign: "center" }}>Remarks Logged</th>
-                    <th style={{ width: "14%", textAlign: "center" }}>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                {/* Desktop View */}
+                <div className="desktop-table-view" style={{ overflowX: "auto" }}>
+                  <table className="table" style={{ width: "100%", minWidth: "850px" }}>
+                    <thead>
+                      <tr>
+                        <th>Party Name & Location</th>
+                        <th>Team Hierarchy</th>
+                        <th style={{ textAlign: "right" }}>4-Month Sales Volume</th>
+                        <th style={{ textAlign: "center" }}>Category Remarks</th>
+                        <th style={{ textAlign: "center" }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredParties
+                        .filter(p => {
+                          if (categoryRemarksFilter === "all") return true;
+                          const partyRemarks = (crmPartyRemarks || []).filter(r => matchParty(r.partyName, p.name, r.partyId, p.id));
+                          if (categoryRemarksFilter === "with_remarks") return partyRemarks.length > 0;
+                          if (categoryRemarksFilter === "no_remarks") return partyRemarks.length === 0;
+                          return true;
+                        })
+                        .map(party => {
+                          const partyOrders = allUnifiedSalesOrders.filter(o => matchParty(o.partyName, party.name, o.partyId, party.id));
+                          const partyRemarks = (crmPartyRemarks || []).filter(r => matchParty(r.partyName, party.name, r.partyId, party.id));
+                          
+                          const serverEntry = (partyCategoryMonthlySales || []).find(e => matchParty(e.partyName, party.name, e.partyId, party.id));
+                          let effective4MoQty = 0;
+                          let activeCatsCount = 0;
+
+                          if (serverEntry && serverEntry.categories) {
+                            Object.entries(serverEntry.categories).forEach(([cat, months]) => {
+                              const catTotal = Object.values(months).reduce((sum, v) => sum + (parseFloat(v.qty) || 0), 0);
+                              effective4MoQty += catTotal;
+                              if (catTotal > 0) activeCatsCount++;
+                            });
+                          } else {
+                            effective4MoQty = partyOrders.reduce((sum, o) => sum + (parseFloat(o.orderQty) || 0), 0);
+                          }
+
+                          return (
+                            <tr 
+                              key={party.id} 
+                              style={{ cursor: "pointer" }}
+                              onClick={() => setSelectedPartyForCategoryStudio(party)}
+                              className="table-row-hover"
+                            >
+                              <td>
+                                <div style={{ fontWeight: 700, color: "var(--primary)", fontSize: "0.95rem" }}>
+                                  {party.name}
+                                </div>
+                                <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                                  {[party.city, party.state].filter(Boolean).join(", ") || "Location unassigned"}
+                                </div>
+                              </td>
+
+                              <td>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "2px", fontSize: "0.78rem" }}>
+                                  <span style={{ color: "var(--text-muted)" }}>CRM: <strong style={{ color: "var(--text-main)" }}>{party.assignedCrmName || "—"}</strong></span>
+                                  {party.assignedAsmName && <span style={{ color: "var(--text-muted)" }}>ASM: <strong style={{ color: "#34d399" }}>{party.assignedAsmName}</strong></span>}
+                                  {party.assignedTsmName && <span style={{ color: "var(--text-muted)" }}>TSM: <strong style={{ color: "#fbbf24" }}>{party.assignedTsmName}</strong></span>}
+                                </div>
+                              </td>
+
+                              <td style={{ textAlign: "right" }}>
+                                <span style={{ fontWeight: 800, fontSize: "0.95rem", color: effective4MoQty > 0 ? "var(--primary)" : "var(--text-muted)" }}>
+                                  {effective4MoQty > 0 ? `${effective4MoQty.toLocaleString()} Pcs` : "0 Pcs"}
+                                </span>
+                                <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>
+                                  {activeCatsCount > 0 ? `${activeCatsCount} active categories` : `${partyOrders.length} orders`}
+                                </div>
+                              </td>
+
+                              <td style={{ textAlign: "center" }}>
+                                <span className="badge" style={{
+                                  background: partyRemarks.length > 0 ? "rgba(56, 189, 248, 0.15)" : "rgba(255,255,255,0.05)",
+                                  color: partyRemarks.length > 0 ? "#38bdf8" : "var(--text-muted)",
+                                  border: partyRemarks.length > 0 ? "1px solid rgba(56, 189, 248, 0.3)" : "1px solid var(--border-glass)",
+                                  fontWeight: 700
+                                }}>
+                                  {partyRemarks.length > 0 ? `${partyRemarks.length} Remarks` : "No Remarks"}
+                                </span>
+                              </td>
+
+                              <td style={{ textAlign: "center" }} onClick={e => e.stopPropagation()}>
+                                <button
+                                  onClick={() => setSelectedPartyForCategoryStudio(party)}
+                                  className="btn btn-primary btn-sm"
+                                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.78rem", fontWeight: 700, padding: "5px 12px" }}
+                                >
+                                  <MessageSquare size={13} /> Open Remarks Studio
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile View Card Grid (Zero Horizontal Scroll) */}
+                <div className="mobile-card-view" style={{ display: "none", flexDirection: "column", gap: "10px" }}>
                   {filteredParties
                     .filter(p => {
-                      if (matrixPartySearch.trim()) {
-                        const q = matrixPartySearch.toLowerCase();
-                        const match = p.name?.toLowerCase().includes(q) || p.city?.toLowerCase().includes(q) || p.gstin?.toLowerCase().includes(q);
-                        if (!match) return false;
-                      }
-                      if (matrixAsmFilter !== "all") {
-                        const matchAsm = p.assignedAsmId === matrixAsmFilter || p.assignedTsmId === matrixAsmFilter;
-                        if (!matchAsm) return false;
-                      }
+                      if (categoryRemarksFilter === "all") return true;
+                      const partyRemarks = (crmPartyRemarks || []).filter(r => matchParty(r.partyName, p.name, r.partyId, p.id));
+                      if (categoryRemarksFilter === "with_remarks") return partyRemarks.length > 0;
+                      if (categoryRemarksFilter === "no_remarks") return partyRemarks.length === 0;
                       return true;
                     })
                     .map(party => {
                       const partyOrders = allUnifiedSalesOrders.filter(o => matchParty(o.partyName, party.name, o.partyId, party.id));
-                      const partyNameNorm = (party.name || "").trim().toLowerCase();
-                      const relevantCatSales = (partyCategoryMonthlySales || []).filter(s => {
-                        const sNorm = (s.partyName || "").trim().toLowerCase();
-                        return (party.id && s.partyId === party.id) || sNorm === partyNameNorm || sNorm.includes(partyNameNorm) || partyNameNorm.includes(sNorm);
-                      });
-                      const totalCatSalesQty = relevantCatSales.reduce((acc, s) => acc + (parseInt(s.salesQty) || 0), 0);
-                      const rawTotalQty = partyOrders.reduce((acc, o) => acc + (parseInt(o.orderQty) || 0), 0);
-                      const effective4MoQty = Math.max(totalCatSalesQty, rawTotalQty);
-                      const activeCatsCount = new Set(relevantCatSales.filter(s => (s.salesQty || 0) > 0).map(s => s.category)).size;
                       const partyRemarks = (crmPartyRemarks || []).filter(r => matchParty(r.partyName, party.name, r.partyId, party.id));
+                      const serverEntry = (partyCategoryMonthlySales || []).find(e => matchParty(e.partyName, party.name, e.partyId, party.id));
+                      let effective4MoQty = 0;
+                      let activeCatsCount = 0;
+
+                      if (serverEntry && serverEntry.categories) {
+                        Object.entries(serverEntry.categories).forEach(([cat, months]) => {
+                          const catTotal = Object.values(months).reduce((sum, v) => sum + (parseFloat(v.qty) || 0), 0);
+                          effective4MoQty += catTotal;
+                          if (catTotal > 0) activeCatsCount++;
+                        });
+                      } else {
+                        effective4MoQty = partyOrders.reduce((sum, o) => sum + (parseFloat(o.orderQty) || 0), 0);
+                      }
 
                       return (
-                        <tr 
+                        <div 
                           key={party.id}
-                          style={{ cursor: "pointer" }}
-                          onClick={() => setSelectedPartyForCategoryStudio(party)}
-                          className="table-row-hover"
+                          className="mobile-party-card glass-panel"
+                          style={{ padding: "14px", borderRadius: "14px", display: "flex", flexDirection: "column", gap: "10px", border: "1px solid var(--border-glass)" }}
                         >
-                          <td>
-                            <div style={{ display: "flex", flexDirection: "column" }}>
-                              <span style={{ fontWeight: 700, color: "var(--primary)", fontSize: "0.95rem" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                            <div>
+                              <div style={{ fontWeight: 800, color: "var(--primary)", fontSize: "1rem" }}>
                                 {party.name}
-                              </span>
+                              </div>
                               {[party.city, party.state].filter(Boolean).length > 0 && (
-                                <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
-                                  <MapPin size={12} /> {[party.city, party.state].filter(Boolean).join(", ")}
-                                </span>
+                                <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                                  <MapPin size={11} style={{ display: "inline", verticalAlign: "middle" }} /> {[party.city, party.state].filter(Boolean).join(", ")}
+                                </div>
                               )}
                             </div>
-                          </td>
-
-                          <td>
-                            <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-                              <span className="badge" style={{ fontSize: "0.72rem", background: "rgba(99, 102, 241, 0.15)", color: "#a5b4fc", border: "1px solid rgba(99, 102, 241, 0.3)", width: "fit-content" }}>
-                                CRM: {party.assignedCrmName || "Unassigned"}
-                              </span>
-                              {party.assignedAsmName && (
-                                <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(16, 185, 129, 0.12)", color: "#6ee7b7", border: "1px solid rgba(16, 185, 129, 0.3)", width: "fit-content" }}>
-                                  ASM: {party.assignedAsmName}
-                                </span>
-                              )}
-                              {party.assignedTsmName && (
-                                <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(245, 158, 11, 0.12)", color: "#fcd34d", border: "1px solid rgba(245, 158, 11, 0.3)", width: "fit-content" }}>
-                                  TSM: {party.assignedTsmName}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-
-                          <td style={{ textAlign: "right" }}>
-                            <span style={{ fontWeight: 800, fontSize: "0.95rem", color: effective4MoQty > 0 ? "var(--primary)" : "var(--text-muted)" }}>
+                            <span className="badge badge-primary" style={{ fontSize: "0.76rem", fontWeight: 800, flexShrink: 0 }}>
                               {effective4MoQty > 0 ? `${effective4MoQty.toLocaleString()} Pcs` : "0 Pcs"}
                             </span>
-                            <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>
-                              {activeCatsCount > 0 ? `${activeCatsCount} active categories` : `${partyOrders.length} orders`}
-                            </div>
-                          </td>
+                          </div>
 
-                          <td style={{ textAlign: "center" }}>
-                            <span className="badge" style={{
-                              background: partyRemarks.length > 0 ? "rgba(56, 189, 248, 0.15)" : "rgba(255,255,255,0.05)",
-                              color: partyRemarks.length > 0 ? "#38bdf8" : "var(--text-muted)",
-                              border: partyRemarks.length > 0 ? "1px solid rgba(56, 189, 248, 0.3)" : "1px solid var(--border-glass)",
-                              fontWeight: 700
-                            }}>
-                              {partyRemarks.length > 0 ? `${partyRemarks.length} Remarks` : "No Remarks"}
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-card-hover, rgba(0,0,0,0.03))", padding: "6px 10px", borderRadius: "8px", border: "1px solid var(--border-glass)", fontSize: "0.76rem" }}>
+                            <span style={{ color: "var(--text-muted)" }}>
+                              CRM: <strong style={{ color: "var(--text-main)" }}>{party.assignedCrmName || "—"}</strong>
                             </span>
-                          </td>
+                            <span className="badge" style={{ background: partyRemarks.length > 0 ? "rgba(56, 189, 248, 0.15)" : "transparent", color: partyRemarks.length > 0 ? "var(--primary)" : "var(--text-muted)", fontWeight: 700 }}>
+                              {partyRemarks.length > 0 ? `${partyRemarks.length} Remarks` : "0 Remarks"}
+                            </span>
+                          </div>
 
-                          <td style={{ textAlign: "center" }} onClick={e => e.stopPropagation()}>
-                            <button
-                              onClick={() => setSelectedPartyForCategoryStudio(party)}
-                              className="btn btn-primary btn-sm"
-                              style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.78rem", fontWeight: 700, padding: "5px 12px" }}
-                            >
-                              <MessageSquare size={13} /> Open Remarks Studio
-                            </button>
-                          </td>
-                        </tr>
+                          <button
+                            onClick={() => setSelectedPartyForCategoryStudio(party)}
+                            className="btn btn-primary btn-sm"
+                            style={{ width: "100%", padding: "8px 12px", fontSize: "0.82rem", fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+                          >
+                            <MessageSquare size={14} /> Open Remarks Studio
+                          </button>
+                        </div>
                       );
                     })}
-                </tbody>
-              </table>
+                </div>
+              </>
             )}
           </div>
-
-        </div>
-      )}
 
       {/* ==================== TAB 3: ITEM-WISE SALE REPORT ==================== */}
       {activeTab === "salesreport" && (
@@ -1693,7 +1750,7 @@ export default function CrmDashboard({
           </div>
 
           {/* Item-Wise Sales Table */}
-          <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
+          <div className="glass-panel" style={{ padding: "16px" }}>
             {itemWiseSalesData.length === 0 ? (
               <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
                 <Package size={36} style={{ marginBottom: "12px", opacity: 0.5 }} />
@@ -1701,61 +1758,124 @@ export default function CrmDashboard({
                 <p style={{ fontSize: "0.85rem" }}>Log party orders in the "Sales Bookings" tab to populate this item report.</p>
               </div>
             ) : (
-              <table className="table" style={{ width: "100%", minWidth: "900px" }}>
-                <thead>
-                  <tr>
-                    <th>Item Model / Product</th>
-                    <th>Category</th>
-                    <th style={{ textAlign: "right" }}>Total Qty Ordered</th>
-                    <th style={{ textAlign: "right" }}>Avg Unit Price</th>
-                    <th style={{ textAlign: "right" }}>Total Revenue (₹)</th>
-                    <th style={{ textAlign: "right" }}>Dispatched / Pending</th>
-                    <th style={{ textAlign: "center" }}>Fulfillment %</th>
-                    <th>Key Buying Parties</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                {/* Desktop View Table */}
+                <div className="desktop-table-view" style={{ overflowX: "auto" }}>
+                  <table className="table" style={{ width: "100%", minWidth: "900px" }}>
+                    <thead>
+                      <tr>
+                        <th>Item Model / Product</th>
+                        <th>Category</th>
+                        <th style={{ textAlign: "right" }}>Total Qty Ordered</th>
+                        <th style={{ textAlign: "right" }}>Avg Unit Price</th>
+                        <th style={{ textAlign: "right" }}>Total Revenue (₹)</th>
+                        <th style={{ textAlign: "right" }}>Dispatched / Pending</th>
+                        <th style={{ textAlign: "center" }}>Fulfillment %</th>
+                        <th>Key Buying Parties</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itemWiseSalesData
+                        .filter(i => salesReportCategory === "all" || i.category === salesReportCategory)
+                        .map((item, idx) => (
+                          <tr key={idx}>
+                            <td>
+                              <span style={{ fontWeight: 700, color: "var(--primary)", fontSize: "0.92rem" }}>
+                                {item.itemModel}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="badge badge-secondary">{item.category}</span>
+                            </td>
+                            <td style={{ textAlign: "right", fontWeight: 700 }}>
+                              {item.totalQty.toLocaleString()} Pcs
+                            </td>
+                            <td style={{ textAlign: "right", color: "var(--text-muted)" }}>
+                              ₹{Number(item.avgPrice).toLocaleString()}
+                            </td>
+                            <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)", fontSize: "0.95rem" }}>
+                              {formatInr(item.totalRevenue)}
+                            </td>
+                            <td style={{ textAlign: "right", fontSize: "0.85rem" }}>
+                              <span style={{ color: "var(--success)", fontWeight: 600 }}>{item.dispatchedQty}</span> / <span style={{ color: item.pendingQty > 0 ? "var(--danger)" : "var(--text-muted)" }}>{item.pendingQty}</span>
+                            </td>
+                            <td style={{ textAlign: "center" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px", justifyContent: "center" }}>
+                                <div style={{ width: "50px", height: "6px", borderRadius: "99px", background: "rgba(255,255,255,0.1)", overflow: "hidden" }}>
+                                  <div style={{ width: `${item.ratePercent}%`, height: "100%", background: item.ratePercent >= 80 ? "var(--success)" : item.ratePercent >= 40 ? "#f59e0b" : "var(--danger)" }}></div>
+                                </div>
+                                <span style={{ fontSize: "0.78rem", fontWeight: 600 }}>{item.ratePercent}%</span>
+                              </div>
+                            </td>
+                            <td>
+                              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                                {item.partyList || "—"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile View Card Grid (Zero Horizontal Scroll) */}
+                <div className="mobile-card-view" style={{ gap: "10px" }}>
                   {itemWiseSalesData
                     .filter(i => salesReportCategory === "all" || i.category === salesReportCategory)
                     .map((item, idx) => (
-                      <tr key={idx}>
-                        <td>
-                          <span style={{ fontWeight: 700, color: "var(--primary)", fontSize: "0.92rem" }}>
-                            {item.itemModel}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="badge badge-secondary">{item.category}</span>
-                        </td>
-                        <td style={{ textAlign: "right", fontWeight: 700 }}>
-                          {item.totalQty.toLocaleString()} Pcs
-                        </td>
-                        <td style={{ textAlign: "right", color: "var(--text-muted)" }}>
-                          ₹{Number(item.avgPrice).toLocaleString()}
-                        </td>
-                        <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)", fontSize: "0.95rem" }}>
-                          {formatInr(item.totalRevenue)}
-                        </td>
-                        <td style={{ textAlign: "right", fontSize: "0.85rem" }}>
-                          <span style={{ color: "var(--success)", fontWeight: 600 }}>{item.dispatchedQty}</span> / <span style={{ color: item.pendingQty > 0 ? "var(--danger)" : "var(--text-muted)" }}>{item.pendingQty}</span>
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px", justifyContent: "center" }}>
-                            <div style={{ width: "50px", height: "6px", borderRadius: "99px", background: "rgba(255,255,255,0.1)", overflow: "hidden" }}>
-                              <div style={{ width: `${item.ratePercent}%`, height: "100%", background: item.ratePercent >= 80 ? "var(--success)" : item.ratePercent >= 40 ? "#f59e0b" : "var(--danger)" }}></div>
+                      <div 
+                        key={idx}
+                        className="mobile-party-card glass-panel"
+                        style={{ padding: "14px", borderRadius: "14px", display: "flex", flexDirection: "column", gap: "8px", border: "1px solid var(--border-glass)" }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                          <div>
+                            <div style={{ fontWeight: 800, color: "var(--primary)", fontSize: "0.98rem" }}>
+                              {item.itemModel}
                             </div>
-                            <span style={{ fontSize: "0.78rem", fontWeight: 600 }}>{item.ratePercent}%</span>
+                            <span className="badge badge-secondary" style={{ fontSize: "0.7rem", marginTop: "3px" }}>
+                              {item.category}
+                            </span>
                           </div>
-                        </td>
-                        <td>
-                          <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                            {item.partyList || "—"}
+                          <span className="badge badge-success" style={{ fontSize: "0.8rem", fontWeight: 800 }}>
+                            {item.totalQty.toLocaleString()} Pcs
                           </span>
-                        </td>
-                      </tr>
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", background: "var(--bg-card-hover, rgba(0,0,0,0.03))", padding: "8px 10px", borderRadius: "8px", border: "1px solid var(--border-glass)", fontSize: "0.78rem" }}>
+                          <div>
+                            <span style={{ color: "var(--text-muted)" }}>Dispatched / Pending:</span>
+                            <div style={{ fontWeight: 700 }}>
+                              <span style={{ color: "var(--success)" }}>{item.dispatchedQty}</span> / <span style={{ color: item.pendingQty > 0 ? "var(--danger)" : "var(--text-muted)" }}>{item.pendingQty}</span>
+                            </div>
+                          </div>
+                          <div>
+                            <span style={{ color: "var(--text-muted)" }}>Fulfillment:</span>
+                            <div style={{ fontWeight: 700, color: item.ratePercent >= 80 ? "var(--success)" : "#f59e0b" }}>{item.ratePercent}%</div>
+                          </div>
+                          {canViewFinancials && (
+                            <>
+                              <div>
+                                <span style={{ color: "var(--text-muted)" }}>Avg Price:</span>
+                                <div style={{ fontWeight: 600 }}>₹{Number(item.avgPrice).toLocaleString()}</div>
+                              </div>
+                              <div>
+                                <span style={{ color: "var(--text-muted)" }}>Revenue:</span>
+                                <div style={{ fontWeight: 800, color: "var(--success)" }}>{formatInr(item.totalRevenue)}</div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {item.partyList && (
+                          <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", background: "var(--bg-card-hover, rgba(0,0,0,0.02))", padding: "6px 8px", borderRadius: "6px" }}>
+                            Buyers: <strong style={{ color: "var(--text-main)" }}>{item.partyList}</strong>
+                          </div>
+                        )}
+                      </div>
                     ))}
-                </tbody>
-              </table>
+                </div>
+              </>
             )}
           </div>
 
@@ -1886,9 +2006,6 @@ export default function CrmDashboard({
                     <option value="all">🔍 All Fields</option>
                     <option value="party">🏢 Party Name</option>
                     <option value="item">📦 Item Model / Product</option>
-                    <option value="invoice">📄 Invoice No</option>
-                    <option value="transporter">🚚 Transporter Name</option>
-                    <option value="docket">🏷️ Docket / LR No</option>
                   </select>
 
                   <div style={{ position: "relative", flex: 1, minWidth: "220px" }}>
@@ -1896,7 +2013,7 @@ export default function CrmDashboard({
                     <input
                       type="text"
                       className="form-control"
-                      placeholder={`Search by ${filter.field === "all" ? "party, item, invoice, transporter, LR docket..." : filter.field}...`}
+                      placeholder={`Search by ${filter.field === "all" ? "party name or item model..." : filter.field}...`}
                       value={filter.value}
                       onChange={e => handleUpdateDispatchSearchFilter(filter.id, "value", e.target.value)}
                       style={{ height: "34px", minHeight: "34px", paddingLeft: "32px", paddingRight: filter.value ? "30px" : "10px", fontSize: "0.85rem" }}
@@ -1937,7 +2054,7 @@ export default function CrmDashboard({
           </div>
 
           {/* Dispatches Table */}
-          <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
+          <div className="glass-panel" style={{ padding: "16px" }}>
             {filteredDispatchesReport.length === 0 ? (
               <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
                 <Truck size={36} style={{ marginBottom: "12px", opacity: 0.5 }} />
@@ -1958,74 +2075,85 @@ export default function CrmDashboard({
                 )}
               </div>
             ) : (
-              <table className="table" style={{ width: "100%", minWidth: "950px" }}>
-                <thead>
-                  <tr>
-                    <th>Dispatch Date</th>
-                    <th>Invoice No</th>
-                    <th>Party Name</th>
-                    <th>Item Model</th>
-                    <th style={{ textAlign: "right" }}>Dispatched Qty</th>
-                    <th>Transporter & Docket LR</th>
-                    <th>Status</th>
-                    <th style={{ textAlign: "center" }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredDispatchesReport.map(dsp => (
-                      <tr key={dsp.id}>
-                        <td>
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", fontWeight: 600 }}>
-                            <Calendar size={13} style={{ color: "var(--primary)" }} /> {dsp.dispatchDate}
-                          </div>
-                        </td>
-
-                        <td>
-                          <code style={{ fontSize: "0.82rem", fontWeight: 700 }}>{dsp.invoiceNo || "INV-PENDING"}</code>
-                        </td>
-
-                        <td>
-                          <span style={{ fontWeight: 600, color: "var(--text-main)" }}>{dsp.partyName}</span>
-                        </td>
-
-                        <td>
-                          <span style={{ fontWeight: 600, color: "var(--primary)" }}>{dsp.itemModel}</span>
-                        </td>
-
-                        <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)", fontSize: "0.95rem" }}>
-                          {dsp.dispatchedQty?.toLocaleString()} Pcs
-                        </td>
-
-                        <td>
-                          <div style={{ display: "flex", flexDirection: "column", fontSize: "0.82rem" }}>
-                            <span style={{ fontWeight: 600 }}>{dsp.transporterName}</span>
-                            <span style={{ color: "var(--text-muted)" }}>LR: {dsp.docketNo || "N/A"}</span>
-                          </div>
-                        </td>
-
-                        <td>
-                          <span className={`badge ${dsp.status === "Delivered" ? "badge-success" : dsp.status === "In Transit" ? "badge-primary" : "badge-secondary"}`}>
-                            {dsp.status}
-                          </span>
-                        </td>
-
-                        <td style={{ textAlign: "center" }}>
-                          <button
-                            onClick={() => {
-                              if (window.confirm("Are you sure you want to delete this dispatch record?")) {
-                                onDeleteDispatch(dsp.id);
-                              }
-                            }}
-                            className="btn btn-danger btn-sm"
-                            style={{ padding: "3px 8px", fontSize: "0.75rem" }}
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </td>
+              <>
+                {/* Desktop View Table */}
+                <div className="desktop-table-view" style={{ overflowX: "auto" }}>
+                  <table className="table" style={{ width: "100%", minWidth: "750px" }}>
+                    <thead>
+                      <tr>
+                        <th>Dispatch Date</th>
+                        <th>Party Name</th>
+                        <th>Item Model</th>
+                        <th style={{ textAlign: "right" }}>Dispatched Qty</th>
+                        <th style={{ textAlign: "center" }}>Status</th>
                       </tr>
-                    ))}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody>
+                      {filteredDispatchesReport.map(dsp => (
+                        <tr key={dsp.id}>
+                          <td>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", fontWeight: 600 }}>
+                              <Calendar size={13} style={{ color: "var(--primary)" }} /> {dsp.dispatchDate}
+                            </div>
+                          </td>
+
+                          <td>
+                            <span style={{ fontWeight: 600, color: "var(--text-main)" }}>{dsp.partyName}</span>
+                          </td>
+
+                          <td>
+                            <span style={{ fontWeight: 600, color: "var(--primary)" }}>{dsp.itemModel}</span>
+                          </td>
+
+                          <td style={{ textAlign: "right", fontWeight: 800, color: "var(--success)", fontSize: "0.95rem" }}>
+                            {dsp.dispatchedQty?.toLocaleString()} Pcs
+                          </td>
+
+                          <td style={{ textAlign: "center" }}>
+                            <span className={`badge ${dsp.status === "Delivered" ? "badge-success" : dsp.status === "In Transit" ? "badge-primary" : "badge-secondary"}`}>
+                              {dsp.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile View Card Grid (Zero Horizontal Scroll) */}
+                <div className="mobile-card-view" style={{ gap: "10px" }}>
+                  {filteredDispatchesReport.map(dsp => (
+                    <div 
+                      key={dsp.id}
+                      className="mobile-party-card glass-panel"
+                      style={{ padding: "14px", borderRadius: "14px", display: "flex", flexDirection: "column", gap: "8px", border: "1px solid var(--border-glass)" }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                        <div>
+                          <div style={{ fontWeight: 800, color: "var(--text-main)", fontSize: "0.98rem" }}>
+                            {dsp.partyName}
+                          </div>
+                          <div style={{ fontSize: "0.78rem", color: "var(--primary)", fontWeight: 700, marginTop: "2px" }}>
+                            {dsp.itemModel}
+                          </div>
+                        </div>
+                        <span className={`badge ${dsp.status === "Delivered" ? "badge-success" : dsp.status === "In Transit" ? "badge-primary" : "badge-secondary"}`} style={{ fontSize: "0.72rem" }}>
+                          {dsp.status}
+                        </span>
+                      </div>
+
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-card-hover, rgba(0,0,0,0.03))", padding: "6px 10px", borderRadius: "8px", border: "1px solid var(--border-glass)", fontSize: "0.8rem" }}>
+                        <span style={{ color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                          <Calendar size={12} /> {dsp.dispatchDate}
+                        </span>
+                        <strong style={{ color: "var(--success)", fontSize: "0.92rem", fontWeight: 800 }}>
+                          {dsp.dispatchedQty?.toLocaleString()} Pcs
+                        </strong>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
 
@@ -2069,8 +2197,8 @@ export default function CrmDashboard({
             </div>
           </div>
 
-          {/* Orders Table */}
-          <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
+          {/* Orders Table & Mobile Cards */}
+          <div className="glass-panel" style={{ padding: "16px" }}>
             {currentSalesOrders.length === 0 ? (
               <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
                 <FileText size={36} style={{ marginBottom: "12px", opacity: 0.5 }} />
@@ -2078,20 +2206,112 @@ export default function CrmDashboard({
                 <p style={{ fontSize: "0.85rem" }}>Click "New Sales Order" to create order entries for your assigned parties.</p>
               </div>
             ) : (
-              <table className="table" style={{ width: "100%", minWidth: "1000px" }}>
-                <thead>
-                  <tr>
-                    <th>Order No & Date</th>
-                    <th>Party Name</th>
-                    <th>Item Model & Category</th>
-                    <th style={{ textAlign: "right" }}>Ordered Qty</th>
-                    {canViewFinancials && <th style={{ textAlign: "right" }}>Unit Price & Total</th>}
-                    <th style={{ textAlign: "right" }}>Dispatched / Pending</th>
-                    <th>Status</th>
-                    <th style={{ textAlign: "center" }}>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                {/* Desktop View Table */}
+                <div className="desktop-table-view" style={{ overflowX: "auto" }}>
+                  <table className="table" style={{ width: "100%", minWidth: "950px" }}>
+                    <thead>
+                      <tr>
+                        <th>Order No & Date</th>
+                        <th>Party Name</th>
+                        <th>Item Model & Category</th>
+                        <th style={{ textAlign: "right" }}>Ordered Qty</th>
+                        {canViewFinancials && <th style={{ textAlign: "right" }}>Unit Price & Total</th>}
+                        <th style={{ textAlign: "right" }}>Dispatched / Pending</th>
+                        <th>Status</th>
+                        <th style={{ textAlign: "center" }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {currentSalesOrders
+                        .filter(order => {
+                          if (ordersStartDate || ordersEndDate) {
+                            if (!isDateInBetween(order.orderDate, ordersStartDate, ordersEndDate)) return false;
+                          }
+                          return true;
+                        })
+                        .map(order => (
+                          <tr key={order.id}>
+                            <td>
+                              <div style={{ display: "flex", flexDirection: "column" }}>
+                                <code style={{ fontWeight: 700, fontSize: "0.85rem" }}>{order.orderNo}</code>
+                                <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{order.orderDate}</span>
+                              </div>
+                            </td>
+
+                            <td>
+                              <span style={{ fontWeight: 600, color: "var(--text-main)" }}>{order.partyName}</span>
+                            </td>
+
+                            <td>
+                              <div style={{ display: "flex", flexDirection: "column" }}>
+                                <span style={{ fontWeight: 700, color: "var(--primary)" }}>{order.itemModel}</span>
+                                <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{order.category}</span>
+                              </div>
+                            </td>
+
+                            <td style={{ textAlign: "right", fontWeight: 700 }}>
+                              {order.orderQty?.toLocaleString()} Pcs
+                            </td>
+
+                            {canViewFinancials && (
+                              <td style={{ textAlign: "right" }}>
+                                <div style={{ display: "flex", flexDirection: "column" }}>
+                                  <span style={{ fontWeight: 800, color: "var(--success)" }}>{formatInr(order.totalInr)}</span>
+                                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>@ ₹{order.unitPriceInr}/unit</span>
+                                </div>
+                              </td>
+                            )}
+
+                            <td style={{ textAlign: "right", fontSize: "0.85rem" }}>
+                              <span style={{ color: "var(--success)", fontWeight: 700 }}>{order.dispatchedQty || 0}</span> / <span style={{ color: (order.pendingQty || 0) > 0 ? "var(--danger)" : "var(--text-muted)", fontWeight: 700 }}>{order.pendingQty || 0}</span>
+                            </td>
+
+                            <td>
+                              <span className={`badge ${order.status === "Dispatched" ? "badge-success" : order.status === "Partially Dispatched" ? "badge-primary" : "badge-secondary"}`}>
+                                {order.status}
+                              </span>
+                            </td>
+
+                            <td style={{ textAlign: "center" }}>
+                              <div style={{ display: "flex", gap: "6px", justifyContent: "center" }}>
+                                {(order.pendingQty || 0) > 0 && (
+                                  <button
+                                    onClick={() => {
+                                      setSelectedOrderForDispatch(order);
+                                      setShowRecordDispatchModal(true);
+                                    }}
+                                    className="btn btn-success btn-sm"
+                                    style={{ padding: "4px 8px", fontSize: "0.75rem" }}
+                                    title="Record Dispatch Shipment"
+                                  >
+                                    <Truck size={12} /> Dispatch
+                                  </button>
+                                )}
+
+                                {isAdminOrOwner && (
+                                  <button
+                                    onClick={() => {
+                                      if (window.confirm("Are you sure you want to delete this order?")) {
+                                        onDeleteSalesOrder(order.id);
+                                      }
+                                    }}
+                                    className="btn btn-danger btn-sm"
+                                    style={{ padding: "4px 8px", fontSize: "0.75rem" }}
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile View Card Grid (Zero Horizontal Scroll) */}
+                <div className="mobile-card-view" style={{ gap: "10px" }}>
                   {currentSalesOrders
                     .filter(order => {
                       if (ordersStartDate || ordersEndDate) {
@@ -2100,81 +2320,54 @@ export default function CrmDashboard({
                       return true;
                     })
                     .map(order => (
-                      <tr key={order.id}>
-                      <td>
-                        <div style={{ display: "flex", flexDirection: "column" }}>
-                          <code style={{ fontWeight: 700, fontSize: "0.85rem" }}>{order.orderNo}</code>
-                          <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{order.orderDate}</span>
-                        </div>
-                      </td>
-
-                      <td>
-                        <span style={{ fontWeight: 600, color: "var(--text-main)" }}>{order.partyName}</span>
-                      </td>
-
-                      <td>
-                        <div style={{ display: "flex", flexDirection: "column" }}>
-                          <span style={{ fontWeight: 700, color: "var(--primary)" }}>{order.itemModel}</span>
-                          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{order.category}</span>
-                        </div>
-                      </td>
-
-                      <td style={{ textAlign: "right", fontWeight: 700 }}>
-                        {order.orderQty?.toLocaleString()} Pcs
-                      </td>
-
-                      {canViewFinancials && (
-                        <td style={{ textAlign: "right" }}>
-                          <div style={{ display: "flex", flexDirection: "column" }}>
-                            <span style={{ fontWeight: 800, color: "var(--success)" }}>{formatInr(order.totalInr)}</span>
-                            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>@ ₹{order.unitPriceInr}/unit</span>
+                      <div 
+                        key={order.id}
+                        className="mobile-party-card glass-panel"
+                        style={{ padding: "14px", borderRadius: "14px", display: "flex", flexDirection: "column", gap: "10px", border: "1px solid var(--border-glass)" }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                          <div>
+                            <div style={{ fontWeight: 800, color: "var(--text-main)", fontSize: "0.98rem" }}>
+                              {order.partyName}
+                            </div>
+                            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                              <code>{order.orderNo}</code> • <span>{order.orderDate}</span>
+                            </div>
                           </div>
-                        </td>
-                      )}
+                          <span className={`badge ${order.status === "Dispatched" ? "badge-success" : order.status === "Partially Dispatched" ? "badge-primary" : "badge-secondary"}`} style={{ fontSize: "0.72rem" }}>
+                            {order.status}
+                          </span>
+                        </div>
 
-                      <td style={{ textAlign: "right", fontSize: "0.85rem" }}>
-                        <span style={{ color: "var(--success)", fontWeight: 700 }}>{order.dispatchedQty || 0}</span> / <span style={{ color: (order.pendingQty || 0) > 0 ? "var(--danger)" : "var(--text-muted)", fontWeight: 700 }}>{order.pendingQty || 0}</span>
-                      </td>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-card-hover, rgba(0,0,0,0.03))", padding: "8px 10px", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+                          <div>
+                            <div style={{ fontWeight: 700, color: "var(--primary)", fontSize: "0.92rem" }}>{order.itemModel}</div>
+                            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{order.category}</div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontWeight: 800, fontSize: "0.95rem" }}>{order.orderQty?.toLocaleString()} Pcs</div>
+                            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                              Disp: <span style={{ color: "var(--success)", fontWeight: 700 }}>{order.dispatchedQty || 0}</span> | Pend: <span style={{ color: (order.pendingQty || 0) > 0 ? "var(--danger)" : "var(--text-muted)", fontWeight: 700 }}>{order.pendingQty || 0}</span>
+                            </div>
+                          </div>
+                        </div>
 
-                      <td>
-                        <span className={`badge ${order.status === "Dispatched" ? "badge-success" : order.status === "Partially Dispatched" ? "badge-primary" : "badge-secondary"}`}>
-                          {order.status}
-                        </span>
-                      </td>
-
-                      <td style={{ textAlign: "center" }}>
-                        <div style={{ display: "flex", gap: "6px", justifyContent: "center" }}>
-                          {(order.pendingQty || 0) > 0 && (
-                            <button
-                              onClick={() => {
-                                setSelectedOrderForDispatch(order);
-                                setShowRecordDispatchModal(true);
-                              }}
-                              className="btn btn-success btn-sm"
-                              style={{ padding: "4px 8px", fontSize: "0.75rem" }}
-                              title="Record Dispatch Shipment"
-                            >
-                              <Truck size={12} /> Dispatch
-                            </button>
-                          )}
-
+                        {(order.pendingQty || 0) > 0 && (
                           <button
                             onClick={() => {
-                              if (window.confirm("Are you sure you want to delete this order?")) {
-                                onDeleteSalesOrder(order.id);
-                              }
+                              setSelectedOrderForDispatch(order);
+                              setShowRecordDispatchModal(true);
                             }}
-                            className="btn btn-danger btn-sm"
-                            style={{ padding: "4px 8px", fontSize: "0.75rem" }}
+                            className="btn btn-success btn-sm"
+                            style={{ width: "100%", padding: "8px 12px", fontSize: "0.82rem", fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
                           >
-                            <Trash2 size={12} />
+                            <Truck size={14} /> Record Dispatch Shipment ({order.pendingQty} pending)
                           </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        )}
+                      </div>
+                    ))}
+                </div>
+              </>
             )}
           </div>
 
@@ -3097,39 +3290,83 @@ function Party360Modal({
 
         {/* TAB 2: Order History & Dispatches */}
         {modalTab === "orders" && (
-          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%", borderRadius: "10px", border: "1px solid var(--border-glass)" }}>
-            <table className="table" style={{ width: "100%", minWidth: "540px", fontSize: "0.82rem", margin: 0 }}>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Order / Ref No</th>
-                  <th>Item Model</th>
-                  <th style={{ textAlign: "right" }}>Qty</th>
-                  {canViewFinancials && <th>Total (₹)</th>}
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {salesOrders.length === 0 ? (
+          <div>
+            {/* Desktop View */}
+            <div className="desktop-table-view" style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%", borderRadius: "10px", border: "1px solid var(--border-glass)" }}>
+              <table className="table" style={{ width: "100%", minWidth: "540px", fontSize: "0.82rem", margin: 0 }}>
+                <thead>
                   <tr>
-                    <td colSpan={canViewFinancials ? 6 : 5} style={{ textAlign: "center", padding: "26px", color: "var(--text-muted)" }}>
-                      No orders logged for this party yet.
-                    </td>
+                    <th>Date</th>
+                    <th>Order / Ref No</th>
+                    <th>Item Model</th>
+                    <th style={{ textAlign: "right" }}>Qty</th>
+                    {canViewFinancials && <th>Total (₹)</th>}
+                    <th>Status</th>
                   </tr>
-                ) : (
-                  salesOrders.map(o => (
-                    <tr key={o.id}>
-                      <td>{o.orderDate}</td>
-                      <td><code>{o.orderNo}</code></td>
-                      <td style={{ fontWeight: 600, color: "var(--primary)" }}>{o.itemModel}</td>
-                      <td style={{ textAlign: "right", fontWeight: 700 }}>{o.orderQty?.toLocaleString()} Pcs</td>
-                      {canViewFinancials && <td style={{ fontWeight: 700, color: "var(--success)" }}>₹{(o.totalInr || 0).toLocaleString()}</td>}
-                      <td><span className={`badge ${o.status === "Dispatched" ? "badge-success" : "badge-secondary"}`}>{o.status}</span></td>
+                </thead>
+                <tbody>
+                  {salesOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={canViewFinancials ? 6 : 5} style={{ textAlign: "center", padding: "26px", color: "var(--text-muted)" }}>
+                        No orders logged for this party yet.
+                      </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    salesOrders.map(o => (
+                      <tr key={o.id}>
+                        <td>{o.orderDate}</td>
+                        <td><code>{o.orderNo}</code></td>
+                        <td style={{ fontWeight: 600, color: "var(--primary)" }}>{o.itemModel}</td>
+                        <td style={{ textAlign: "right", fontWeight: 700 }}>{o.orderQty?.toLocaleString()} Pcs</td>
+                        {canViewFinancials && <td style={{ fontWeight: 700, color: "var(--success)" }}>₹{(o.totalInr || 0).toLocaleString()}</td>}
+                        <td><span className={`badge ${o.status === "Dispatched" ? "badge-success" : "badge-secondary"}`}>{o.status}</span></td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile View Card Grid (Zero Horizontal Scroll) */}
+            <div className="mobile-card-view" style={{ gap: "8px" }}>
+              {salesOrders.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "24px", color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                  No orders logged for this party yet.
+                </div>
+              ) : (
+                salesOrders.map(o => (
+                  <div 
+                    key={o.id}
+                    className="mobile-party-card glass-panel"
+                    style={{ padding: "12px", borderRadius: "12px", display: "flex", flexDirection: "column", gap: "6px", border: "1px solid var(--border-glass)" }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "6px" }}>
+                      <div>
+                        <div style={{ fontWeight: 700, color: "var(--primary)", fontSize: "0.92rem" }}>{o.itemModel}</div>
+                        <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                          <code>{o.orderNo}</code> • <span>{o.orderDate}</span>
+                        </div>
+                      </div>
+                      <span className={`badge ${o.status === "Dispatched" ? "badge-success" : "badge-secondary"}`} style={{ fontSize: "0.7rem" }}>
+                        {o.status}
+                      </span>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-card-hover, rgba(0,0,0,0.03))", padding: "6px 8px", borderRadius: "6px", fontSize: "0.78rem" }}>
+                      <span style={{ color: "var(--text-muted)" }}>Quantity:</span>
+                      <strong style={{ fontSize: "0.86rem" }}>{o.orderQty?.toLocaleString()} Pcs</strong>
+                    </div>
+
+                    {canViewFinancials && (
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.76rem" }}>
+                        <span style={{ color: "var(--text-muted)" }}>Total Value:</span>
+                        <strong style={{ color: "var(--success)" }}>₹{(o.totalInr || 0).toLocaleString()}</strong>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         )}
 
