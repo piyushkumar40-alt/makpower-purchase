@@ -14,6 +14,10 @@ export default function ImsDashboard({
   currentUser,
   items = [],
   imsTransactions = [],
+  imsSummary = null,
+  imsRange = "1000",
+  onFetchFullHistory,
+  onRefreshImsSummary,
   crmParties = [],
   vendors = [],
   loading = false,
@@ -46,7 +50,10 @@ export default function ImsDashboard({
 
   useEffect(() => {
     if (onPullModuleData) {
-      onPullModuleData("imsTransactions");
+      onPullModuleData("imsTransactions", true);
+    }
+    if (onRefreshImsSummary) {
+      onRefreshImsSummary();
     }
     const uId = currentUserId || currentUser?.id;
     if (recordSectionVisit && uId) {
@@ -171,6 +178,19 @@ export default function ImsDashboard({
     missingIdsCount,
     distinctMissingItems
   } = useMemo(() => {
+    // If backend provided precalculated summary for full stock across all 1.6+ lakh rows, use it!
+    if (imsSummary) {
+      return {
+        totalNetStock: imsSummary.totalNetStock ?? 0,
+        totalInwardUnits: imsSummary.totalInwardUnits ?? 0,
+        totalOutwardUnits: imsSummary.totalOutwardUnits ?? 0,
+        delhiStock: imsSummary.delhiStock ?? 0,
+        mumbaiStock: imsSummary.mumbaiStock ?? 0,
+        missingIdsCount: imsSummary.missingIdsCount ?? 0,
+        distinctMissingItems: Array.isArray(imsSummary.distinctMissingItems) ? imsSummary.distinctMissingItems : []
+      };
+    }
+
     let net = 0;
     let inUnits = 0;
     let outUnits = 0;
@@ -213,39 +233,26 @@ export default function ImsDashboard({
       missingIdsCount: missingCount,
       distinctMissingItems: Array.from(missingSet.values())
     };
-  }, [effectiveTransactions]);
+  }, [effectiveTransactions, imsSummary]);
 
   // ==================== FILTERED TRANSACTIONS ====================
   const filteredTransactions = useMemo(() => {
     return effectiveTransactions.filter(tx => {
-      // Multi-term Search (Party name, Item name, remarks, itemId, location, etc.)
+      // Fast Multi-term Search without allocating massive string arrays per row
       if (activeSearchTerms.length > 0) {
-        const txSearchStr = [
-          tx.partyName || "",
-          tx.party || "",
-          tx.customer || "",
-          tx.vendorName || "",
-          tx.vendor || "",
-          tx.itemName || "",
-          tx.item || "",
-          tx.name || "",
-          tx.itemId || "",
-          tx.id || "",
-          tx.remarks || "",
-          tx.narration || "",
-          tx.location || "",
-          tx.godown || "",
-          tx.warehouse || "",
-          tx.date || ""
-        ].join(" ").toLowerCase();
+        const party = (tx.partyName || tx.party || tx.customer || tx.vendorName || tx.vendor || "").toLowerCase();
+        const item = (tx.itemName || tx.item || tx.name || "").toLowerCase();
+        const id = (tx.itemId || tx.id || "").toLowerCase();
+        const remarks = (tx.remarks || tx.narration || "").toLowerCase();
+        const loc = (tx.location || tx.godown || tx.warehouse || "").toLowerCase();
+        const date = tx.date || "";
 
-        // Match if record satisfies ANY of the active search terms
         const match = activeSearchTerms.some(term => {
           const words = term.split(/\s+/).filter(Boolean);
           if (words.length > 1) {
-            return words.every(w => txSearchStr.includes(w));
+            return words.every(w => party.includes(w) || item.includes(w) || id.includes(w) || remarks.includes(w) || loc.includes(w) || date.includes(w));
           }
-          return txSearchStr.includes(term);
+          return party.includes(term) || item.includes(term) || id.includes(term) || remarks.includes(term) || loc.includes(term) || date.includes(term);
         });
         if (!match) return false;
       }
@@ -298,7 +305,7 @@ export default function ImsDashboard({
       if (valA > valB) return sortAsc ? 1 : -1;
       return 0;
     });
-  }, [effectiveTransactions, activeSearchTerms, locationFilter, startDate, endDate, movementFilter, missingIdFilter, selectedItemFilter, sortField, sortAsc]);
+  }, [effectiveTransactions, activeSearchTerms, selectedPartyFilter, locationFilter, startDate, endDate, movementFilter, missingIdFilter, selectedItemFilter, sortField, sortAsc]);
 
   // Dynamic metrics calculated from filtered transactions
   const {
@@ -336,6 +343,17 @@ export default function ImsDashboard({
       filteredMumbaiStock: mumbaiNet
     };
   }, [filteredTransactions]);
+
+  const hasActiveFilters = Boolean(
+    activeSearchTerms.length > 0 ||
+    selectedPartyFilter !== "all" ||
+    locationFilter !== "all" ||
+    movementFilter !== "all" ||
+    missingIdFilter !== "all" ||
+    selectedItemFilter !== "all" ||
+    startDate ||
+    endDate
+  );
 
   // Paginated Transactions Slice (100 rows per page)
   const paginatedTransactions = useMemo(() => {
@@ -1020,6 +1038,20 @@ export default function ImsDashboard({
         {/* Global Action Buttons */}
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
           <button 
+            onClick={async () => {
+              if (onPullModuleData) onPullModuleData("imsTransactions", true);
+              if (onRefreshImsSummary) onRefreshImsSummary();
+            }}
+            disabled={isDataLoading}
+            className="btn btn-secondary"
+            style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
+            title="Refetch IMS stock entries and server-calculated full summary"
+          >
+            <RefreshCw size={16} className={isDataLoading ? "spin" : ""} />
+            {isDataLoading ? "Syncing..." : "Refresh IMS Data"}
+          </button>
+
+          <button 
             onClick={() => setActiveTab("bulk")} 
             className={`btn ${activeTab === "bulk" ? "btn-primary" : "btn-secondary"}`}
             style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
@@ -1125,14 +1157,16 @@ export default function ImsDashboard({
       {activeTab === "ledger" && (
         <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           
-          {/* Action & Filter Bar */}
-          <div className="glass-panel" style={{ padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+          {/* Action & Filter Bar (Clean 2-Row Structured Layout) */}
+          <div className="glass-panel" style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "14px" }}>
             
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: "280px", flexWrap: "wrap" }}>
+            {/* Row 1: Search Inputs Group (Left) & Actions (Right) */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+              
               {/* Multi-Search Inputs Group with [+] Add button */}
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", flex: "1 1 320px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: "1 1 360px", minWidth: "280px", flexWrap: "wrap" }}>
                 {searchQueries.map((query, idx) => (
-                  <div key={idx} style={{ position: "relative", display: "flex", alignItems: "center", minWidth: "190px", flex: 1 }}>
+                  <div key={idx} style={{ position: "relative", display: "flex", alignItems: "center", minWidth: "200px", flex: 1 }}>
                     <Search size={14} style={{ position: "absolute", left: "12px", color: "var(--text-muted)", pointerEvents: "none" }} />
                     <input
                       type="text"
@@ -1140,7 +1174,7 @@ export default function ImsDashboard({
                       value={query}
                       onChange={e => handleUpdateSearchQuery(idx, e.target.value)}
                       className="form-control"
-                      style={{ paddingLeft: "34px", paddingRight: searchQueries.length > 1 || query ? "28px" : "12px", height: "36px", fontSize: "0.85rem" }}
+                      style={{ paddingLeft: "34px", paddingRight: searchQueries.length > 1 || query ? "28px" : "12px", height: "38px", fontSize: "0.85rem" }}
                     />
                     {(query || searchQueries.length > 1) && (
                       <button
@@ -1171,8 +1205,8 @@ export default function ImsDashboard({
                   onClick={handleAddSearchQuery}
                   className="btn btn-secondary btn-sm"
                   style={{
-                    height: "36px",
-                    padding: "0 10px",
+                    height: "38px",
+                    padding: "0 12px",
                     display: "inline-flex",
                     alignItems: "center",
                     gap: "4px",
@@ -1187,6 +1221,46 @@ export default function ImsDashboard({
                 </button>
               </div>
 
+              {/* Action Buttons Aligned on Right */}
+              <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                {hasActiveFilters && filteredTransactions.length > 0 && (
+                  <button 
+                    onClick={handleExecuteDeleteAllFiltered}
+                    className="btn btn-danger btn-sm"
+                    style={{ height: "38px", display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", fontWeight: 700 }}
+                    title={`Delete all ${filteredTransactions.length} transactions matching the current filters`}
+                  >
+                    <Trash2 size={14} /> Delete All Filtered ({filteredTransactions.length})
+                  </button>
+                )}
+
+                <button 
+                  onClick={() => {
+                    setDelRangeStart(startDate || "2026-01-01");
+                    setDelRangeEnd(endDate || new Date().toISOString().split("T")[0]);
+                    setDelRangeLocation(locationFilter !== "all" ? locationFilter : "all");
+                    setShowDeleteRangeModal(true);
+                  }}
+                  className="btn btn-secondary btn-sm"
+                  style={{ height: "38px", display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", color: "#f87171", borderColor: "rgba(239, 68, 68, 0.4)" }}
+                  title="Select date range & warehouse to delete transactions at once"
+                >
+                  <Trash2 size={14} /> Delete by Date Range
+                </button>
+
+                <button 
+                  onClick={handleExportCsv}
+                  className="btn btn-secondary btn-sm"
+                  style={{ height: "38px", display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.82rem" }}
+                >
+                  <Download size={14} /> Export CSV
+                </button>
+              </div>
+            </div>
+
+            {/* Row 2: Neatly Grouped Filter Controls & Date Range */}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", paddingTop: "10px", borderTop: "1px solid var(--border-glass)" }}>
+              
               {/* Warehouse Location Filter */}
               <select
                 value={locationFilter}
@@ -1251,7 +1325,7 @@ export default function ImsDashboard({
                 }}
               />
 
-              {(startDate || endDate || activeSearchTerms.length > 0 || selectedPartyFilter !== "all" || locationFilter !== "all" || movementFilter !== "all" || missingIdFilter !== "all") && (
+              {hasActiveFilters && (
                 <button
                   onClick={() => {
                     setSearchQueries([""]);
@@ -1268,46 +1342,37 @@ export default function ImsDashboard({
                   Clear Filters
                 </button>
               )}
-            </div>
 
-            {/* Export & Actions */}
-            <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-              {(locationFilter !== "all" || startDate || endDate || activeSearchTerms.length > 0 || selectedPartyFilter !== "all" || movementFilter !== "all" || missingIdFilter !== "all" || selectedItemFilter !== "all") && filteredTransactions.length > 0 && (
-                <button 
-                  onClick={handleExecuteDeleteAllFiltered}
-                  className="btn btn-danger btn-sm"
-                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", fontWeight: 700 }}
-                  title={`Delete all ${filteredTransactions.length} transactions matching the current filters`}
-                >
-                  <Trash2 size={14} /> Delete All Filtered ({filteredTransactions.length})
-                </button>
-              )}
+              {/* Range Indicator / Load All Toggle */}
+              <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                {imsRange !== "all" && (
+                  <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                    <span>Showing <strong>latest {imsRange === "1000" ? "1,000" : "6 months"}</strong> ({effectiveTransactions.length.toLocaleString()} rows)</span>
+                    {imsSummary?.totalTransactionsCount > effectiveTransactions.length && (
+                      <button
+                        onClick={() => {
+                          if (onFetchFullHistory) onFetchFullHistory();
+                        }}
+                        className="btn btn-secondary btn-sm"
+                        style={{ height: "28px", padding: "0 8px", fontSize: "0.74rem", fontWeight: 700, borderColor: "rgba(56, 189, 248, 0.4)", color: "#38bdf8" }}
+                        title={`Load all ${imsSummary.totalTransactionsCount.toLocaleString()} historical database transactions`}
+                      >
+                        Load All ({imsSummary.totalTransactionsCount.toLocaleString()})
+                      </button>
+                    )}
+                  </span>
+                )}
+                {imsRange === "all" && (
+                  <span className="badge" style={{ background: "rgba(16, 185, 129, 0.15)", color: "var(--success)", border: "1px solid rgba(16, 185, 129, 0.3)", fontSize: "0.75rem", fontWeight: 700 }}>
+                    ✓ All Database Records Loaded ({effectiveTransactions.length.toLocaleString()})
+                  </span>
+                )}
+              </div>
 
-              <button 
-                onClick={() => {
-                  setDelRangeStart(startDate || "2026-01-01");
-                  setDelRangeEnd(endDate || new Date().toISOString().split("T")[0]);
-                  setDelRangeLocation(locationFilter !== "all" ? locationFilter : "all");
-                  setShowDeleteRangeModal(true);
-                }}
-                className="btn btn-secondary btn-sm"
-                style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", color: "#f87171", borderColor: "rgba(239, 68, 68, 0.4)" }}
-                title="Select date range & warehouse to delete transactions at once"
-              >
-                <Trash2 size={14} /> Delete by Date Range
-              </button>
-
-              <button 
-                onClick={handleExportCsv}
-                className="btn btn-secondary btn-sm"
-                style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.82rem" }}
-              >
-                <Download size={14} /> Export CSV
-              </button>
             </div>
           </div>
 
-          {/* ==================== 5 DYNAMIC KPI SUMMARY CARDS (Updates with Filters) ==================== */}
+          {/* ==================== 5 DYNAMIC KPI SUMMARY CARDS (Server-Precalculated Full Stock & Filtered) ==================== */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px" }}>
             
             {/* Card 1: Total Physical Stock */}
@@ -1317,16 +1382,18 @@ export default function ImsDashboard({
               </div>
               <div>
                 <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total All On-Hand</div>
-                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: filteredNetStock >= 0 ? "var(--text-main)" : "var(--danger)" }}>
+                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: (hasActiveFilters ? filteredNetStock : totalNetStock) >= 0 ? "var(--text-main)" : "var(--danger)" }}>
                   {isDataLoading ? (
                     <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
                       <RefreshCw size={14} className="spin" /> Loading...
                     </span>
                   ) : (
-                    <>{filteredNetStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                    <>{(hasActiveFilters ? filteredNetStock : totalNetStock).toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
                   )}
                 </div>
-                <div style={{ fontSize: "0.68rem", color: "#38bdf8", marginTop: "1px" }}>Combined Warehouses</div>
+                <div style={{ fontSize: "0.68rem", color: "#38bdf8", marginTop: "1px" }}>
+                  {hasActiveFilters ? "Filtered Subset" : "Combined Warehouses (Full Stock)"}
+                </div>
               </div>
             </div>
 
@@ -1337,16 +1404,18 @@ export default function ImsDashboard({
               </div>
               <div>
                 <div style={{ fontSize: "0.74rem", color: "#38bdf8", fontWeight: 700 }}>🏢 Delhi Warehouse</div>
-                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: filteredDelhiStock >= 0 ? "#38bdf8" : "var(--danger)" }}>
+                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: (hasActiveFilters ? filteredDelhiStock : delhiStock) >= 0 ? "#38bdf8" : "var(--danger)" }}>
                   {isDataLoading ? (
                     <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
                       <RefreshCw size={14} className="spin" /> Loading...
                     </span>
                   ) : (
-                    <>{filteredDelhiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                    <>{(hasActiveFilters ? filteredDelhiStock : delhiStock).toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
                   )}
                 </div>
-                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Delhi On-Hand Stock</div>
+                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>
+                  {hasActiveFilters ? "Filtered Delhi Stock" : "Delhi On-Hand Stock (Full)"}
+                </div>
               </div>
             </div>
 
@@ -1357,16 +1426,18 @@ export default function ImsDashboard({
               </div>
               <div>
                 <div style={{ fontSize: "0.74rem", color: "#c084fc", fontWeight: 700 }}>🏢 Mumbai Warehouse</div>
-                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: filteredMumbaiStock >= 0 ? "#c084fc" : "var(--danger)" }}>
+                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: (hasActiveFilters ? filteredMumbaiStock : mumbaiStock) >= 0 ? "#c084fc" : "var(--danger)" }}>
                   {isDataLoading ? (
                     <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
                       <RefreshCw size={14} className="spin" /> Loading...
                     </span>
                   ) : (
-                    <>{filteredMumbaiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                    <>{(hasActiveFilters ? filteredMumbaiStock : mumbaiStock).toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
                   )}
                 </div>
-                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Mumbai On-Hand Stock</div>
+                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>
+                  {hasActiveFilters ? "Filtered Mumbai Stock" : "Mumbai On-Hand Stock (Full)"}
+                </div>
               </div>
             </div>
 
@@ -1383,10 +1454,12 @@ export default function ImsDashboard({
                       <RefreshCw size={14} className="spin" /> Loading...
                     </span>
                   ) : (
-                    <>+{filteredInwardUnits.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                    <>+{(hasActiveFilters ? filteredInwardUnits : totalInwardUnits).toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
                   )}
                 </div>
-                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Factory & Vendor Inflows</div>
+                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>
+                  {hasActiveFilters ? "Filtered Inflow" : "Factory & Vendor Inflows (Full)"}
+                </div>
               </div>
             </div>
 
@@ -1403,10 +1476,12 @@ export default function ImsDashboard({
                       <RefreshCw size={14} className="spin" /> Loading...
                     </span>
                   ) : (
-                    <>-{filteredOutwardUnits.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                    <>-{(hasActiveFilters ? filteredOutwardUnits : totalOutwardUnits).toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
                   )}
                 </div>
-                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>Party & Dealer Outflows</div>
+                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>
+                  {hasActiveFilters ? "Filtered Outflow" : "Party & Dealer Outflows (Full)"}
+                </div>
               </div>
             </div>
 

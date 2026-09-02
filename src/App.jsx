@@ -85,6 +85,8 @@ export default function App() {
     }
     return [];
   });
+  const [imsSummary, setImsSummary] = useState(() => cachedState?.imsSummary || null);
+  const [imsRange, setImsRange] = useState("1000"); // "1000" (initial preview) | "6months" | "all"
   const [itemPrices, setItemPrices] = useState(() => {
     if (cachedState?.itemPrices && Array.isArray(cachedState.itemPrices)) {
       return cachedState.itemPrices;
@@ -182,11 +184,16 @@ export default function App() {
           const res = await fetch(`/api/crm/dispatches${q}`);
           const data = await res.json();
           if (Array.isArray(data)) setCrmDispatches(data);
-        } else if (moduleKey === TRACKABLE_MODULES.IMS_TRANSACTIONS) {
-          const res = await fetch("/api/ims/transactions");
+        } else if (moduleKey === TRACKABLE_MODULES.IMS_TRANSACTIONS || moduleKey === "imsTransactions") {
+          const rangeQuery = force === "all" ? "?range=all" : "?range=6months";
+          const res = await fetch(`/api/ims/transactions${rangeQuery}`);
           const data = await res.json();
           const list = Array.isArray(data) ? data : (data.transactions || []);
           setImsTransactions(list);
+          if (data?.imsSummary) {
+            setImsSummary(data.imsSummary);
+          }
+          setImsRange(force === "all" ? "all" : "6months");
         } else if (moduleKey === TRACKABLE_MODULES.AUDIT_LOGS) {
           const res = await fetch("/api/audit-logs");
           const data = await res.json();
@@ -391,8 +398,13 @@ export default function App() {
         if (Array.isArray(data.crmParties)) setCrmParties(data.crmParties);
         if (Array.isArray(data.crmSalesOrders)) setCrmSalesOrders(data.crmSalesOrders);
         if (Array.isArray(data.crmDispatches)) setCrmDispatches(data.crmDispatches);
+        if (data.imsSummary) {
+          setImsSummary(data.imsSummary);
+        }
         if (Array.isArray(data.imsTransactions)) {
-          setImsTransactions(data.imsTransactions);
+          if (!loadedModulesRef.current.has(TRACKABLE_MODULES.IMS_TRANSACTIONS) && !loadedModulesRef.current.has("imsTransactions")) {
+            setImsTransactions(data.imsTransactions);
+          }
         }
         if (Array.isArray(data.itemPrices)) {
           setItemPrices(data.itemPrices);
@@ -428,12 +440,14 @@ export default function App() {
               crmParties: data.crmParties || [],
               crmSalesOrders: data.crmSalesOrders || [],
               crmDispatches: data.crmDispatches || [],
+              imsTransactions: (data.imsTransactions || []).slice(0, 1000),
+              imsSummary: data.imsSummary || null,
               itemPrices: data.itemPrices || [],
               crmPartyRemarks: data.crmPartyRemarks || [],
               settings: data.settings || {}
             }));
-          } catch (storageErr) {
-            // Ignore localStorage quota errors
+          } catch (e) {
+            console.warn("Local cache save warning:", e);
           }
         }, 50);
 
@@ -1316,6 +1330,7 @@ export default function App() {
           return [res.transaction, ...prev];
         });
         logSystemActivity("IMS_STOCK_MOVEMENT", `Logged stock movement for ${txData.itemName} (${txData.stockQty > 0 ? "+" : ""}${txData.stockQty} Pcs)`, "IMS", txData.id);
+        refreshImsSummary();
       }
       return res;
     } catch (err) {
@@ -1336,6 +1351,7 @@ export default function App() {
           });
         }
         logSystemActivity("IMS_BATCH_UPLOAD", `Bulk imported ${res.count || transactions.length} historical stock records (${res.missingIdCount || 0} unlinked IDs)`, "IMS", "batch");
+        refreshImsSummary();
       }
       return res;
     } catch (err) {
@@ -1360,6 +1376,7 @@ export default function App() {
       const data = await res.json();
       if (data.success) {
         logSystemActivity("IMS_DELETE_TRANSACTION", `Deleted stock movement #${txId}`, "IMS", txId);
+        refreshImsSummary();
       }
       return data;
     } catch (err) {
@@ -1399,6 +1416,7 @@ export default function App() {
       const res = await postData("/api/ims/transactions/delete-range", { startDate, endDate, ids, location });
       if (res && res.success) {
         logSystemActivity("IMS_BULK_DELETE", `Bulk deleted ${res.count} IMS transactions`, "IMS", "bulk_delete");
+        refreshImsSummary();
       }
       return res;
     } catch (err) {
@@ -1423,12 +1441,29 @@ export default function App() {
           return t;
         }));
         logSystemActivity("IMS_RESOLVE_MISSING_ID", `Resolved "${oldItemName}" to Master Item #${targetItemId} (${res.resolvedCount} rows updated)`, "IMS", targetItemId);
+        refreshImsSummary();
       }
       return res;
     } catch (err) {
       console.error("Failed to resolve missing ID:", err);
       return { success: false, error: err.message };
     }
+  };
+
+  const refreshImsSummary = async () => {
+    try {
+      const res = await fetch("/api/ims/summary");
+      const data = await res.json();
+      if (data && data.success && data.summary) {
+        setImsSummary(data.summary);
+      }
+    } catch (e) {
+      console.warn("Failed to refresh IMS summary:", e);
+    }
+  };
+
+  const handleFetchFullImsHistory = async () => {
+    return pullModuleData("imsTransactions", "all");
   };
 
   const addVendor = async (name, purchaserIds, location = "", phone = "", history = "") => {
@@ -2277,6 +2312,10 @@ export default function App() {
             currentUser={currentUser}
             items={items}
             imsTransactions={imsTransactions}
+            imsSummary={imsSummary}
+            imsRange={imsRange}
+            onFetchFullHistory={handleFetchFullImsHistory}
+            onRefreshImsSummary={refreshImsSummary}
             crmParties={crmParties}
             vendors={vendors}
             loading={loading}

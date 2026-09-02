@@ -1518,6 +1518,96 @@ app.post("/api/storage/delete-all-cloudinary", async (req, res) => {
 });
 
 
+// High-Performance Full Stock Calculation across all transactions in PostgreSQL
+async function calculateImsFullSummary() {
+  if (isPg) {
+    try {
+      const summaryRes = await pool.query(`
+        SELECT
+          COALESCE(SUM("stockQty"), 0)::bigint AS "totalNetStock",
+          COALESCE(SUM(CASE WHEN "stockQty" > 0 THEN "stockQty" ELSE 0 END), 0)::bigint AS "totalInwardUnits",
+          COALESCE(SUM(CASE WHEN "stockQty" < 0 THEN ABS("stockQty") ELSE 0 END), 0)::bigint AS "totalOutwardUnits",
+          COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE("location", 'Delhi'))) = 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "mumbaiStock",
+          COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE("location", 'Delhi'))) <> 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "delhiStock",
+          COALESCE(COUNT(CASE WHEN "isMissingId" = true OR "itemId" IS NULL OR "itemId" = '' THEN 1 END), 0)::int AS "missingIdsCount",
+          COUNT(*)::int AS "totalTransactionsCount"
+        FROM ims_transactions;
+      `);
+      const row = summaryRes.rows[0] || {};
+
+      const missingRes = await pool.query(`
+        SELECT "itemName" as name, COUNT(*)::int as count, COALESCE(SUM("stockQty"), 0)::bigint as "totalQty"
+        FROM ims_transactions
+        WHERE "isMissingId" = true OR "itemId" IS NULL OR "itemId" = ''
+        GROUP BY "itemName"
+        ORDER BY count DESC
+        LIMIT 500
+      `);
+
+      return {
+        totalNetStock: Number(row.totalNetStock || 0),
+        totalInwardUnits: Number(row.totalInwardUnits || 0),
+        totalOutwardUnits: Number(row.totalOutwardUnits || 0),
+        delhiStock: Number(row.delhiStock || 0),
+        mumbaiStock: Number(row.mumbaiStock || 0),
+        missingIdsCount: Number(row.missingIdsCount || 0),
+        totalTransactionsCount: Number(row.totalTransactionsCount || 0),
+        distinctMissingItems: (missingRes.rows || []).map(r => ({
+          name: r.name || "Unknown Item",
+          count: Number(r.count || 0),
+          totalQty: Number(r.totalQty || 0)
+        }))
+      };
+    } catch (err) {
+      console.error("Error calculating IMS full summary in PG:", err.message);
+      return {
+        totalNetStock: 0,
+        totalInwardUnits: 0,
+        totalOutwardUnits: 0,
+        delhiStock: 0,
+        mumbaiStock: 0,
+        missingIdsCount: 0,
+        totalTransactionsCount: 0,
+        distinctMissingItems: []
+      };
+    }
+  } else {
+    const data = readLocalJson();
+    const list = data.imsTransactions || [];
+    let net = 0, inUnits = 0, outUnits = 0, delhiNet = 0, mumbaiNet = 0, missingCount = 0;
+    const missingMap = new Map();
+    list.forEach(tx => {
+      const q = parseInt(tx.stockQty) || 0;
+      const loc = (tx.location || "Delhi").trim().toLowerCase();
+      net += q;
+      if (q > 0) inUnits += q;
+      else outUnits += Math.abs(q);
+      if (loc === "mumbai") mumbaiNet += q;
+      else delhiNet += q;
+      if (tx.isMissingId || !tx.itemId) {
+        missingCount++;
+        const itemKey = (tx.itemName || "Unknown Item").trim();
+        if (!missingMap.has(itemKey)) {
+          missingMap.set(itemKey, { name: itemKey, count: 0, totalQty: 0 });
+        }
+        const e = missingMap.get(itemKey);
+        e.count++;
+        e.totalQty += q;
+      }
+    });
+    return {
+      totalNetStock: net,
+      totalInwardUnits: inUnits,
+      totalOutwardUnits: outUnits,
+      delhiStock: delhiNet,
+      mumbaiStock: mumbaiNet,
+      missingIdsCount: missingCount,
+      totalTransactionsCount: list.length,
+      distinctMissingItems: Array.from(missingMap.values())
+    };
+  }
+}
+
 // 1. GET /api/state - Fetches full system state with concurrent DB queries & memory cache
 app.get("/api/state", async (req, res) => {
   const { userId, userRole, userName } = req.query;
@@ -1658,13 +1748,15 @@ app.get("/api/state", async (req, res) => {
           pool.query('SELECT * FROM crm_sales_orders ORDER BY "orderDate" DESC'),
           pool.query('SELECT * FROM crm_dispatches ORDER BY "dispatchDate" DESC'),
           pool.query('SELECT * FROM crm_party_remarks ORDER BY "createdAt" DESC'),
-          pool.query(`SELECT * FROM ims_transactions WHERE ("partyName" IS NOT NULL AND "partyName" <> '') ORDER BY "date" DESC LIMIT 1000`)
+          pool.query('SELECT * FROM ims_transactions ORDER BY "date" DESC, "createdAt" DESC LIMIT 1000')
         ]);
         crmSalesOrdersRes = ordersRes;
         crmDispatchesRes = dispatchesRes;
         crmPartyRemarksRes = remarksRes;
         imsRes = allImsRes;
       }
+
+      const imsSummary = await calculateImsFullSummary();
 
       // Format types back
       const vendors = vendorsRes.rows.map(v => ({
@@ -1725,6 +1817,7 @@ app.get("/api/state", async (req, res) => {
           location: row.location || "Delhi",
           isMissingId: !!row.isMissingId
         })),
+        imsSummary,
         itemPrices: (itemPricesRes?.rows || []).map(p => ({
           ...p,
           pp: p.pp ? parseFloat(p.pp) : 0
@@ -1747,6 +1840,7 @@ app.get("/api/state", async (req, res) => {
     }
   } else {
     const data = readLocalJson();
+    const imsSummary = await calculateImsFullSummary();
     if (isRestrictedRole && (userId || userName)) {
       const effectiveId = userId || "";
       const cleanName = (userName || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
@@ -1777,10 +1871,16 @@ app.get("/api/state", async (req, res) => {
         crmParties: myParties,
         crmSalesOrders: (data.crmSalesOrders || []).filter(o => (partyIdSet.has(o.partyId) || partyNameSet.has((o.partyName || "").trim().toLowerCase())) && (!isAsmTsmRole || !o.orderDate || o.orderDate >= cutoffDate3Mo)),
         crmDispatches: (data.crmDispatches || []).filter(d => (partyIdSet.has(d.partyId) || partyNameSet.has((d.partyName || "").trim().toLowerCase())) && (!isAsmTsmRole || !d.dispatchDate || d.dispatchDate >= cutoffDate3Mo)),
-        crmPartyRemarks: (data.crmPartyRemarks || []).filter(r => partyIdSet.has(r.partyId) || partyNameSet.has((r.partyName || "").trim().toLowerCase()))
+        crmPartyRemarks: (data.crmPartyRemarks || []).filter(r => partyIdSet.has(r.partyId) || partyNameSet.has((r.partyName || "").trim().toLowerCase())),
+        imsTransactions: (data.imsTransactions || []).slice(0, 1000),
+        imsSummary
       });
     }
-    res.json(data);
+    res.json({
+      ...data,
+      imsTransactions: (data.imsTransactions || []).slice(0, 1000),
+      imsSummary
+    });
   }
 });
 
@@ -3147,9 +3247,10 @@ app.delete("/api/crm/party-remarks/:id", async (req, res) => {
 
 // ==================== IMS (INVENTORY MANAGEMENT SYSTEM) ENDPOINTS ====================
 
-// 1. GET /api/ims/transactions - Query IMS Stock Movements
+// 1. GET /api/ims/transactions - Query IMS Stock Movements (Latest 6 months by default, or all / filtered)
 app.get("/api/ims/transactions", async (req, res) => {
-  const { itemId, itemName, partyName, isMissingId, startDate, endDate } = req.query;
+  const { itemId, itemName, partyName, isMissingId, startDate, endDate, range, limit } = req.query;
+  const imsSummary = await calculateImsFullSummary();
   if (isPg) {
     try {
       let query = "SELECT * FROM ims_transactions";
@@ -3176,6 +3277,13 @@ app.get("/api/ims/transactions", async (req, res) => {
       if (startDate) {
         conditions.push(`"date" >= $${idx++}`);
         values.push(startDate);
+      } else if (range === "6months" || (!startDate && !endDate && range !== "all" && !itemId && !itemName && !partyName)) {
+        // By default, query up to 6 months of historical transactions for high performance
+        const d = new Date();
+        d.setMonth(d.getMonth() - 6);
+        const sixMonthsAgo = d.toISOString().split("T")[0];
+        conditions.push(`"date" >= $${idx++}`);
+        values.push(sixMonthsAgo);
       }
       if (endDate) {
         conditions.push(`"date" <= $${idx++}`);
@@ -3187,13 +3295,25 @@ app.get("/api/ims/transactions", async (req, res) => {
       }
       query += " ORDER BY \"date\" DESC, \"createdAt\" DESC";
 
+      if (limit) {
+        const limitNum = parseInt(limit);
+        if (!isNaN(limitNum) && limitNum > 0) {
+          query += ` LIMIT ${limitNum}`;
+        }
+      }
+
       const result = await pool.query(query, values);
       const rows = result.rows.map(r => ({
         ...r,
         stockQty: r.stockQty ? parseInt(r.stockQty) : 0,
         isMissingId: !!r.isMissingId
       }));
-      res.json({ success: true, transactions: rows });
+      res.json({
+        success: true,
+        transactions: rows,
+        imsSummary,
+        range: range || (startDate ? "custom" : "6months")
+      });
     } catch (err) {
       console.error("GET /api/ims/transactions error:", err.message);
       res.status(500).json({ error: "Failed to fetch IMS transactions." });
@@ -3208,9 +3328,38 @@ app.get("/api/ims/transactions", async (req, res) => {
       const matchBool = isMissingId === "true";
       list = list.filter(t => !!t.isMissingId === matchBool);
     }
-    if (startDate) list = list.filter(t => (t.date || "") >= startDate);
+    if (startDate) {
+      list = list.filter(t => (t.date || "") >= startDate);
+    } else if (range === "6months" || (!startDate && !endDate && range !== "all" && !itemId && !itemName && !partyName)) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 6);
+      const sixMonthsAgo = d.toISOString().split("T")[0];
+      list = list.filter(t => (t.date || "") >= sixMonthsAgo);
+    }
     if (endDate) list = list.filter(t => (t.date || "") <= endDate);
-    res.json({ success: true, transactions: list });
+    if (limit) {
+      const limitNum = parseInt(limit);
+      if (!isNaN(limitNum) && limitNum > 0) {
+        list = list.slice(0, limitNum);
+      }
+    }
+    res.json({
+      success: true,
+      transactions: list,
+      imsSummary,
+      range: range || (startDate ? "custom" : "6months")
+    });
+  }
+});
+
+// 1.1 GET /api/ims/summary - Standalone Precalculated Stock Summary across all database records
+app.get("/api/ims/summary", async (req, res) => {
+  try {
+    const summary = await calculateImsFullSummary();
+    res.json({ success: true, summary });
+  } catch (err) {
+    console.error("GET /api/ims/summary error:", err.message);
+    res.status(500).json({ error: "Failed to calculate IMS summary." });
   }
 });
 
