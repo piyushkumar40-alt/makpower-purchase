@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { Layers, Plus, Upload, Trash2, Search, CheckSquare, Square, FileSpreadsheet, Package, AlertCircle, RefreshCw, GitMerge, Edit3, Info, Download, Image, ListPlus, Eye, User, Camera, Copy, Check } from "lucide-react";
+import { Layers, Plus, Upload, Trash2, Search, CheckSquare, Square, FileSpreadsheet, Package, AlertCircle, RefreshCw, GitMerge, Edit3, Info, Download, Image, ListPlus, Eye, User, Camera, Copy, Check, ShieldAlert } from "lucide-react";
 import ItemDetailModal from "./ItemDetailModal";
 import { useSortableData } from "../utils/useSortableData";
 import Pagination, { SmartSelectionBar } from "./Pagination";
@@ -28,7 +28,9 @@ export default function ItemCatalogPanel({
   vendors = [],
   users = [],
   cargoCompanies = [],
-  onViewItemDetail
+  onViewItemDetail,
+  imsTransactions = [],
+  crmDispatches = []
 }) {
   const isSuperAdmin = currentUser && currentUser.role === "superadmin";
 
@@ -38,6 +40,72 @@ export default function ItemCatalogPanel({
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [copiedId, setCopiedId] = useState(null);
+
+  // Alert State for Dispatched Items not in Master Catalog
+  const [showAlertDrawer, setShowAlertDrawer] = useState(true);
+
+  // Dispatched items missing from Master Item Catalog Alert
+  const uncatalogedDispatches = useMemo(() => {
+    const catalogIds = new Set();
+    const catalogNames = new Set();
+
+    (items || []).forEach(it => {
+      if (it.id !== undefined && it.id !== null) {
+        const rawId = String(it.id).trim().toLowerCase();
+        const cleanId = rawId.replace(/^#+/, "");
+        catalogIds.add(rawId);
+        catalogIds.add(cleanId);
+        catalogIds.add('#' + cleanId);
+      }
+      if (it.name) {
+        const rawName = String(it.name).trim().toLowerCase();
+        const cleanName = rawName.replace(/\s+/g, ' ');
+        catalogNames.add(rawName);
+        catalogNames.add(cleanName);
+      }
+    });
+
+    const uncatalogedMap = new Map();
+
+    // Scan IMS transactions where stockQty < 0 (Dispatches / Outflows)
+    (imsTransactions || []).forEach(tx => {
+      const q = parseInt(tx.stockQty) || 0;
+      if (q >= 0) return; // Only interested in dispatched items
+
+      const rawId = String(tx.itemId || "").trim().toLowerCase();
+      const cleanId = rawId.replace(/^#+/, "");
+      const rawName = String(tx.itemName || "").trim().toLowerCase();
+      const cleanName = rawName.replace(/\s+/g, ' ');
+
+      const isFound = (rawId && catalogIds.has(rawId)) || 
+                      (cleanId && catalogIds.has(cleanId)) || 
+                      (rawName && catalogNames.has(rawName)) || 
+                      (cleanName && catalogNames.has(cleanName));
+
+      if (!isFound) {
+        const itemKey = (tx.itemName || (tx.itemId ? `Item #${tx.itemId}` : "Unknown Model")).trim();
+        if (!uncatalogedMap.has(itemKey)) {
+          uncatalogedMap.set(itemKey, {
+            name: itemKey,
+            totalDispatchedQty: 0,
+            dispatchCount: 0,
+            sampleParty: tx.partyName || tx.party || "—",
+            sampleDate: tx.date || "—",
+            sampleItemId: tx.itemId || ""
+          });
+        }
+        const entry = uncatalogedMap.get(itemKey);
+        entry.totalDispatchedQty += Math.abs(q);
+        entry.dispatchCount += 1;
+        if (tx.date && (!entry.sampleDate || tx.date > entry.sampleDate)) {
+          entry.sampleDate = tx.date;
+          entry.sampleParty = tx.partyName || tx.party || entry.sampleParty;
+        }
+      }
+    });
+
+    return Array.from(uncatalogedMap.values()).sort((a, b) => b.totalDispatchedQty - a.totalDispatchedQty);
+  }, [items, imsTransactions]);
 
   // Pagination states (Default 50 rows per page)
   const [currentPage, setCurrentPage] = useState(1);
@@ -190,6 +258,37 @@ export default function ItemCatalogPanel({
     }
 
     setNewItemId(generatedId);
+    setFormMsg("");
+    setShowAddForm(true);
+  };
+
+  const handleQuickAddUncataloged = (item) => {
+    const existingIds = new Set(items.map(i => String(i.id).trim().toUpperCase()));
+    const numericIds = items
+      .map(i => parseInt(String(i.id).replace(/\D/g, ""), 10))
+      .filter(n => !isNaN(n));
+    let nextNum = numericIds.length > 0 ? Math.max(...numericIds) + 1 : 1;
+    while (existingIds.has(String(nextNum))) {
+      nextNum++;
+    }
+    
+    // Auto-detect FG category from name keywords
+    let autoCat = "General";
+    const nameLower = (item.name || "").toLowerCase();
+    if (nameLower.includes("neckband") || nameLower.includes("soldier") || nameLower.includes("bt")) autoCat = "NECKBAND";
+    else if (nameLower.includes("cable") || nameLower.includes("usb") || nameLower.includes("type-c") || nameLower.includes("v8")) autoCat = "DATA CABLE";
+    else if (nameLower.includes("charger") || nameLower.includes("adapter")) autoCat = "CHARGER";
+    else if (nameLower.includes("tws") || nameLower.includes("earbuds")) autoCat = "TWS";
+    else if (nameLower.includes("battery") || nameLower.includes("polymer")) autoCat = "BATTERY";
+
+    setNewItemId(item.sampleItemId ? String(item.sampleItemId).replace(/^#+/, "") : String(nextNum));
+    setNewItemName(item.name);
+    setNewItemCategory(autoCat);
+    setNewItemType("FG");
+    setNewItemNature("Consumables");
+    setNewItemUnit("Pcs");
+    setNewItemDescription(`Created from dispatched item ledger (${item.totalDispatchedQty} Pcs dispatched)`);
+    setNewItemPhoto("");
     setFormMsg("");
     setShowAddForm(true);
   };
@@ -745,6 +844,103 @@ export default function ItemCatalogPanel({
           </button>
         </div>
       </div>
+
+      {/* 🚨 Dispatched Items Not in Catalog Alert Banner */}
+      {uncatalogedDispatches.length > 0 && (
+        <div style={{
+          background: "linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(245, 158, 11, 0.12) 100%)",
+          border: "1px solid rgba(239, 68, 68, 0.35)",
+          borderRadius: "12px",
+          padding: "16px 20px",
+          marginBottom: "20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+          boxShadow: "0 4px 20px rgba(239, 68, 68, 0.12)"
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: "rgba(239, 68, 68, 0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "#f87171", flexShrink: 0 }}>
+                <ShieldAlert size={24} />
+              </div>
+              <div>
+                <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#f87171", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <span>🚨 Dispatched Items Alert: {uncatalogedDispatches.length} Model{uncatalogedDispatches.length > 1 ? "s" : ""} Found in Stock Ledger but Missing in Master Catalog</span>
+                  <span className="badge badge-danger" style={{ fontSize: "0.75rem", padding: "2px 8px" }}>
+                    -{uncatalogedDispatches.reduce((sum, it) => sum + it.totalDispatchedQty, 0).toLocaleString()} Pcs Dispatched
+                  </span>
+                </div>
+                <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                  These items have active sales/dispatch outflows in the stock ledger. Click below to review and add them into the master catalog in 1-click!
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <button
+                type="button"
+                onClick={() => setShowAlertDrawer(!showAlertDrawer)}
+                className="btn btn-sm"
+                style={{
+                  background: showAlertDrawer ? "rgba(239, 68, 68, 0.25)" : "rgba(255, 255, 255, 0.08)",
+                  border: "1px solid rgba(239, 68, 68, 0.4)",
+                  color: "#fca5a5",
+                  fontWeight: 700,
+                  fontSize: "0.82rem",
+                  padding: "6px 14px"
+                }}
+              >
+                {showAlertDrawer ? "Hide Missing Items ▲" : `Review & Add ${uncatalogedDispatches.length} Items ▼`}
+              </button>
+            </div>
+          </div>
+
+          {/* Expanded Table of Missing Dispatched Items */}
+          {showAlertDrawer && (
+            <div style={{ marginTop: "8px", borderTop: "1px solid rgba(239, 68, 68, 0.2)", paddingTop: "12px" }}>
+              <div className="table-container" style={{ maxHeight: "300px", overflowY: "auto" }}>
+                <table className="custom-table" style={{ fontSize: "0.84rem" }}>
+                  <thead>
+                    <tr>
+                      <th>Dispatched Item / Model Name</th>
+                      <th style={{ textAlign: "right" }}>Total Dispatched Qty</th>
+                      <th style={{ textAlign: "center" }}>Dispatches Count</th>
+                      <th>Last Dispatched Date & Party</th>
+                      <th style={{ textAlign: "center" }}>Quick Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {uncatalogedDispatches.map(item => (
+                      <tr key={item.name}>
+                        <td style={{ fontWeight: 700, color: "#fca5a5" }}>{item.name}</td>
+                        <td style={{ textAlign: "right", fontWeight: 800, color: "#f87171" }}>
+                          -{item.totalDispatchedQty.toLocaleString()} Pcs
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <span className="badge badge-warning">{item.dispatchCount} Dispatches</span>
+                        </td>
+                        <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                          {item.sampleDate} • {item.sampleParty}
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <button
+                            type="button"
+                            onClick={() => handleQuickAddUncataloged(item)}
+                            className="btn btn-primary btn-sm"
+                            style={{ fontSize: "0.78rem", padding: "4px 10px", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}
+                          >
+                            <Plus size={13} /> Add to Catalog
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Catalog Database Switcher Tabs: FG Database vs RM Database */}
       <div style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "1px solid var(--border-color)", paddingBottom: "12px", flexWrap: "wrap", alignItems: "center" }}>

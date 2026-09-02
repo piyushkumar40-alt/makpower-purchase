@@ -2802,6 +2802,7 @@ export default function SuperAdminDashboard({
               vendors={vendors}
               users={users}
               cargoCompanies={cargoCompanies}
+              imsTransactions={imsTransactions}
               onViewItemDetail={(item) => {
                 if (onNavigateView) onNavigateView("itemcatalog");
               }}

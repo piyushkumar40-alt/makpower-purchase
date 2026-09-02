@@ -2464,6 +2464,8 @@ export default function App() {
               cargoCompanies={cargoCompanies}
               onViewItemDetail={handleOpenItemDetail}
               onUpdateItemPhoto={updateItemPhoto}
+              imsTransactions={imsTransactions}
+              crmDispatches={crmDispatches}
             />
           </div>
         )}
