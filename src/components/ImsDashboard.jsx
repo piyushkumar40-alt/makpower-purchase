@@ -171,6 +171,32 @@ export default function ImsDashboard({
   const [locationFilter, setLocationFilter] = useState("all"); // "all" | "Delhi" | "Mumbai"
   const [selectedItemFilter, setSelectedItemFilter] = useState("all");
 
+  // In-Memory Loaded Date Range Cache Tracker
+  const loadedRangeRef = useRef({
+    minDate: null,
+    maxDate: null,
+    isAll: false
+  });
+
+  useEffect(() => {
+    if (imsRange === "all") {
+      loadedRangeRef.current.isAll = true;
+    }
+    if (transactions && transactions.length > 0) {
+      let min = loadedRangeRef.current.minDate;
+      let max = loadedRangeRef.current.maxDate;
+      transactions.forEach(t => {
+        if (t.date) {
+          const d = String(t.date).trim();
+          if (!min || d < min) min = d;
+          if (!max || d > max) max = d;
+        }
+      });
+      loadedRangeRef.current.minDate = min;
+      loadedRangeRef.current.maxDate = max;
+    }
+  }, [transactions, imsRange]);
+
   // Dynamic backend fetch whenever user changes date range in DateRangeFilter
   const isInitialMount = useRef(true);
   useEffect(() => {
@@ -178,6 +204,21 @@ export default function ImsDashboard({
       isInitialMount.current = false;
       return;
     }
+
+    // 1. If all data is already loaded in memory, no need to pull from database
+    if (loadedRangeRef.current.isAll) {
+      return;
+    }
+
+    // 2. If the newly selected range is entirely within the already fetched range in memory, skip database query
+    const { minDate, maxDate } = loadedRangeRef.current;
+    if (startDate && endDate && minDate && maxDate) {
+      if (startDate >= minDate && endDate <= maxDate) {
+        return;
+      }
+    }
+
+    // Otherwise, pull requested date range from database
     if (onPullModuleData) {
       onPullModuleData("imsTransactions", { startDate, endDate });
     }
@@ -1638,7 +1679,6 @@ export default function ImsDashboard({
                   setStartDate("");
                   setEndDate("");
                 }}
-                align="right"
               />
 
               {hasActiveFilters && (

@@ -376,60 +376,73 @@ export default function DateRangeFilter({
   const displayText = useMemo(() => {
     if (!startDate && !endDate) return placeholder;
     if (startDate && endDate) {
-      if (startDate === endDate) return formatDisplayDate(startDate);
+    if (startDate === endDate) return formatDisplayDate(startDate);
       return `${formatDisplayDate(startDate)} – ${formatDisplayDate(endDate)}`;
     }
     if (startDate) return `From ${formatDisplayDate(startDate)}`;
     return `Up to ${formatDisplayDate(endDate)}`;
   }, [startDate, endDate, placeholder]);
 
-  const [effectiveAlign, setEffectiveAlign] = useState(align || "left");
+  const [popoverPos, setPopoverPos] = useState({ left: 0, right: "auto" });
 
   useEffect(() => {
     if (isOpen && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
-      if (align === "right" || (rect.left + 640 > window.innerWidth - 20)) {
-        setEffectiveAlign("right");
-      } else {
-        setEffectiveAlign("left");
+      const popoverWidth = 640;
+      const screenWidth = window.innerWidth;
+      const padding = 16;
+
+      // 1. If left: 0 fits on the screen (does not overflow right edge):
+      if (rect.left + popoverWidth <= screenWidth - padding) {
+        setPopoverPos({ left: 0, right: "auto" });
+      }
+      // 2. Else if right: 0 fits on the screen (does not overflow left edge):
+      else if (rect.right - popoverWidth >= padding) {
+        setPopoverPos({ right: 0, left: "auto" });
+      }
+      // 3. If neither fits cleanly from button edges, clamp relative offset within screen
+      else {
+        const idealLeftInViewport = Math.max(padding, Math.min(rect.left, screenWidth - popoverWidth - padding));
+        const relativeLeft = idealLeftInViewport - rect.left;
+        setPopoverPos({ left: `${relativeLeft}px`, right: "auto" });
       }
     }
-  }, [isOpen, align]);
+  }, [isOpen]);
 
   return (
     <div style={{ position: "relative", display: "inline-block", userSelect: "none" }}>
       
-      {/* TRIGGER BUTTON (Matches Screenshot 1) */}
+      {/* TRIGGER BUTTON (Matches Screenshot 1 Pill Format) */}
       <button
         ref={triggerRef}
         type="button"
         onClick={() => setIsOpen(prev => !prev)}
+        className="form-control"
         style={{
           display: "inline-flex",
           alignItems: "center",
-          justifyContent: "space-between",
-          gap: "10px",
-          padding: "7px 14px",
-          background: hasActiveFilter ? "rgba(56, 189, 248, 0.08)" : "rgba(255, 255, 255, 0.04)",
-          border: hasActiveFilter ? "1px solid rgba(56, 189, 248, 0.5)" : "1px solid var(--border-glass)",
-          borderRadius: "8px",
-          color: hasActiveFilter ? "var(--primary)" : "var(--text)",
-          fontSize: "0.85rem",
-          fontWeight: 600,
+          gap: "8px",
           cursor: "pointer",
-          minWidth: "210px",
-          transition: "all 0.2s ease",
-          boxShadow: hasActiveFilter ? "0 0 10px rgba(56, 189, 248, 0.15)" : "none",
+          background: (startDate || endDate) ? "rgba(56, 189, 248, 0.12)" : "rgba(15, 23, 42, 0.6)",
+          border: isOpen ? "1px solid var(--primary, #38bdf8)" : (startDate || endDate) ? "1px solid rgba(56, 189, 248, 0.4)" : "1px solid var(--border-glass, rgba(255, 255, 255, 0.15))",
+          borderRadius: "10px",
+          padding: "6px 12px",
+          color: (startDate || endDate) ? "#38bdf8" : "var(--text-muted)",
+          fontSize: "0.82rem",
+          fontWeight: 700,
+          height: "36px",
+          transition: "all 0.2s",
+          boxShadow: isOpen ? "0 0 12px rgba(56, 189, 248, 0.25)" : "none",
           ...buttonStyle
         }}
-        title="Click to select custom date range or preset"
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <Calendar size={15} style={{ color: hasActiveFilter ? "var(--primary)" : "var(--text-muted)" }} />
-          <span>{displayText}</span>
-        </div>
+        <Calendar size={14} style={{ color: (startDate || endDate) ? "#38bdf8" : "var(--text-muted)" }} />
+        
+        <span style={{ letterSpacing: "0.2px" }}>
+          {displayText}
+        </span>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "4px", marginLeft: "4px" }}>
           {hasActiveFilter && (
             <span
               onClick={handleClear}
@@ -455,14 +468,15 @@ export default function DateRangeFilter({
       </button>
 
       {/* DROPDOWN POPOVER MODAL (Matches Screenshots 2, 3, 4, 5) */}
-      {isOpen && <div
+      {isOpen && (
+        <div
           ref={popoverRef}
           className="card-fade-in"
           style={{
             position: "absolute",
             top: "calc(100% + 8px)",
-            right: effectiveAlign === "right" ? 0 : "auto",
-            left: effectiveAlign === "right" ? "auto" : 0,
+            right: popoverPos.right,
+            left: popoverPos.left,
             zIndex: 9999,
             background: "#0f172a",
             color: "var(--text, #f3f4f6)",
