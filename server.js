@@ -1849,19 +1849,38 @@ async function syncPartyCategoryMonthlySales() {
       });
 
       // Clear & Upsert into crm_party_category_monthly_sales table
-      await pool.query(`DELETE FROM crm_party_category_monthly_sales WHERE "month" >= $1`, [minMonth]);
-      for (const val of agg.values()) {
-        const id = `pcs_${crypto.createHash('md5').update(`${val.partyName}___${val.category}___${val.month}`).digest('hex')}`;
+      await pool.query(`TRUNCATE TABLE crm_party_category_monthly_sales`);
+      
+      const valuesList = Array.from(agg.values());
+      const nowIso = new Date().toISOString();
+      const batchSize = 100;
+      
+      for (let i = 0; i < valuesList.length; i += batchSize) {
+        const chunk = valuesList.slice(i, i + batchSize);
+        const params = [];
+        const valueClauses = chunk.map((val, cIdx) => {
+          const id = `pcs_${crypto.createHash('md5').update(`${val.partyName}___${val.category}___${val.month}`).digest('hex')}`;
+          const offset = cIdx * 8;
+          params.push(id, val.partyName, val.category, val.month, val.qty, val.revenue, val.orderCount, nowIso);
+          return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`;
+        });
+        
         await pool.query(`
           INSERT INTO crm_party_category_monthly_sales ("id", "partyName", "category", "month", "salesQty", "salesRevenue", "orderCount", "updatedAt")
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          ON CONFLICT ("id") DO UPDATE SET "salesQty" = EXCLUDED."salesQty", "salesRevenue" = EXCLUDED."salesRevenue", "orderCount" = EXCLUDED."orderCount", "updatedAt" = EXCLUDED."updatedAt"
-        `, [id, val.partyName, val.category, val.month, val.qty, val.revenue, val.orderCount, new Date().toISOString()]);
+          VALUES ${valueClauses.join(", ")}
+          ON CONFLICT ("id") DO UPDATE SET 
+            "salesQty" = EXCLUDED."salesQty", 
+            "salesRevenue" = EXCLUDED."salesRevenue", 
+            "orderCount" = EXCLUDED."orderCount", 
+            "updatedAt" = EXCLUDED."updatedAt"
+        `, params);
       }
 
       console.log(`Synced ${agg.size} party category monthly sales records across 4 months (${minMonth} to ${targetMonths[3].key})`);
+      return { success: true, recordCount: agg.size };
     } catch (err) {
       console.error("Error in syncPartyCategoryMonthlySales (PG):", err.message);
+      throw err;
     }
   } else {
     // Local JSON
