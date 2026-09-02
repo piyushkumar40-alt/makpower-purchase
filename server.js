@@ -2874,14 +2874,27 @@ app.post("/api/cargo-companies", async (req, res) => {
 // 7. POST /api/users - Adds purchasers or staff users
 app.post("/api/users", async (req, res) => {
   const u = req.body;
+  if (!u || !u.name || !u.email) {
+    return res.status(400).json({ error: "Name and email are required." });
+  }
   if (isPg) {
     try {
       await pool.query(
-        `INSERT INTO users ("id", "name", "email", "password", "role", "designation", "status") VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name", "email" = EXCLUDED."email", "password" = EXCLUDED."password", "role" = EXCLUDED."role", "designation" = EXCLUDED."designation", "status" = EXCLUDED."status"`,
-        [u.id, u.name, u.email, u.password, u.role, u.designation || "Purchaser", u.status]
+        `INSERT INTO users ("id", "name", "email", "password", "role", "designation", "status", "phone", "territory", "parentCrmId") 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         ON CONFLICT ("id") DO UPDATE SET 
+           "name" = EXCLUDED."name", 
+           "email" = EXCLUDED."email", 
+           "password" = EXCLUDED."password", 
+           "role" = EXCLUDED."role", 
+           "designation" = EXCLUDED."designation", 
+           "status" = EXCLUDED."status",
+           "phone" = EXCLUDED."phone",
+           "territory" = EXCLUDED."territory",
+           "parentCrmId" = EXCLUDED."parentCrmId"`,
+        [u.id, u.name, u.email, u.password, u.role, u.designation || "Purchaser", u.status || "active", u.phone || "", u.territory || "", u.parentCrmId || ""]
       );
-      res.json({ success: true });
+      res.json({ success: true, user: u });
     } catch (err) {
       console.error("POST /api/users error:", err.message);
       res.status(500).json({ error: "Failed to upsert user." });
@@ -2890,12 +2903,12 @@ app.post("/api/users", async (req, res) => {
     const data = readLocalJson();
     const index = data.users.findIndex(x => x.id === u.id);
     if (index !== -1) {
-      data.users[index] = u;
+      data.users[index] = { ...data.users[index], ...u };
     } else {
       data.users.push(u);
     }
     writeLocalJson(data);
-    res.json({ success: true });
+    res.json({ success: true, user: u });
   }
 });
 

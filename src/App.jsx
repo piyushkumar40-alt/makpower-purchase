@@ -967,7 +967,7 @@ export default function App() {
     logSystemActivity("UPDATE_CARGO", `Updated Cargo Shipment #${updatedCargo.id} (${updatedCargo.cargoDetail || "Cargo"})`, "Cargo", updatedCargo.id, oldCargo, cargoWithDate);
   };
 
-  const addPurchaser = async (name, email, password, designation = "Purchaser", explicitRole = null) => {
+  const addPurchaser = async (name, email, password, designation = "Purchaser", explicitRole = null, phone = "", territory = "", parentCrmId = "") => {
     const cleanName = sanitizeUserName(name);
     const exists = users.some(u => u.email.toLowerCase() === email.toLowerCase());
     if (exists) return { success: false, message: "User with this email already exists." };
@@ -992,10 +992,13 @@ export default function App() {
       password,
       role,
       designation: designation || "Purchaser",
+      phone: phone || "",
+      territory: territory || "",
+      parentCrmId: parentCrmId || "",
       status: "active"
     };
     const dbRes = await postData("/api/users", newUser);
-    if (dbRes && (dbRes.success || dbRes.id)) {
+    if (dbRes && (dbRes.success || dbRes.id || dbRes.user)) {
       setUsers(prev => [...prev, newUser]);
       return { success: true, user: newUser, message: `✅ Staff account "${newUser.name}" saved to database successfully!` };
     }

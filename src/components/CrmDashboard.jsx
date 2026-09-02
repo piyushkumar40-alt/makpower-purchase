@@ -257,7 +257,7 @@ export default function CrmDashboard({
       if (u.status === "inactive" || u.status === "deleted") return false;
       if (["u-asm-vikram", "u-asm-rohit", "u-tsm-manoj", "u-tsm-suresh"].includes(u.id)) return false;
       if (selectedExecutiveId === "all") return true;
-      return u.parentCrmId === selectedExecutiveId || u.id === selectedExecutiveId;
+      return u.parentCrmId === selectedExecutiveId || (!u.parentCrmId) || u.id === selectedExecutiveId;
     });
   }, [users, selectedExecutiveId]);
 
@@ -2475,7 +2475,21 @@ export default function CrmDashboard({
                 showSuccessToast(`✅ Saved successfully! Updated user ${memberData.name}.`);
                 setEditingTeamMember(null);
               } else {
-                await onAddUser(memberData.name, memberData.email, memberData.password, memberData.designation, memberData.role);
+                const parentId = memberData.parentCrmId || activeExecutive?.id || currentUser?.id || "u-ankita";
+                const res = await onAddUser(
+                  memberData.name, 
+                  memberData.email, 
+                  memberData.password, 
+                  memberData.designation, 
+                  memberData.role, 
+                  memberData.phone, 
+                  memberData.territory, 
+                  parentId
+                );
+                if (res && res.success === false) {
+                  showErrorToast(res.message || "Failed to create user account.");
+                  return;
+                }
                 showSuccessToast(`✅ Saved successfully! Created team member ${memberData.name}.`);
                 setShowAddTeamModal(false);
               }
