@@ -430,7 +430,7 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
   const [salutation, setSalutation] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("MakPower#2026!");
+  const [password, setPassword] = useState("Pass#2026!");
   const [designation, setDesignation] = useState("Purchaser");
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -543,7 +543,7 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
             <input 
               type="email" 
               className="form-control" 
-              placeholder="e.g. rajesh@makpowerindia.com"
+              placeholder="e.g. rajesh@company.com"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required

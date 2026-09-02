@@ -1038,6 +1038,11 @@ export default function App() {
     return { success: true };
   };
 
+  const updateUserInfo = async (userId, updatedFields) => {
+    const finalFields = { ...updatedFields };
+    if (finalFields.name) {
+      finalFields.name = sanitizeUserName(finalFields.name);
+    }
     await postData("/api/users/update", { id: userId, updates: finalFields });
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...finalFields } : u));
     return { success: true };

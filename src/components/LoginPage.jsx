@@ -22,7 +22,7 @@ export default function LoginPage({ onLogin, onEnterAsGuest, users }) {
         {/* Title */}
         <div style={{ textAlign: "center", marginBottom: "30px" }}>
           <h2 style={{ fontSize: "2rem", color: "var(--primary)", textShadow: "0 0 15px var(--primary-glow)", marginBottom: "4px" }}>
-            Mak Power Portal
+            Operations & Supply Portal
           </h2>
           <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
             Purchase Operations & CRM Command Center
@@ -47,7 +47,7 @@ export default function LoginPage({ onLogin, onEnterAsGuest, users }) {
                 name="user_login_email"
                 autoComplete="off"
                 className="form-control" 
-                placeholder="you@makpowerindia.com" 
+                placeholder="user@company.com" 
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 required

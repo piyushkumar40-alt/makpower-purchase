@@ -1734,17 +1734,17 @@ export default function SuperAdminDashboard({
                     </div>
                   </div>
 
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Email Address</label>
-                    <input 
-                      type="email" 
-                      className="form-control"
-                      placeholder="e.g. name@makpowerindia.com"
-                      value={pEmail}
-                      onChange={e => setPEmail(e.target.value)}
-                      required
-                    />
-                  </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">Email Address</label>
+                      <input 
+                        type="email" 
+                        className="form-control"
+                        placeholder="e.g. name@company.com"
+                        value={pEmail}
+                        onChange={e => setPEmail(e.target.value)}
+                        required
+                      />
+                    </div>
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">System Role*</label>
@@ -2092,7 +2092,7 @@ export default function SuperAdminDashboard({
               <div className="glass-panel" style={{ padding: "24px" }}>
                 <h3 style={{ fontSize: "1.2rem", marginBottom: "12px", color: "var(--primary)" }}>Import State</h3>
                 <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: "20px" }}>
-                  Upload a previously saved Mak Power backup file. This will restore the entire database state. 
+                  Upload a previously saved system backup file. This will restore the entire database state. 
                   <strong style={{ color: "var(--danger)" }}> WARNING: This will overwrite your current browser data.</strong>
                 </p>
 
@@ -2359,16 +2359,16 @@ export default function SuperAdminDashboard({
                 <h3 style={{ fontSize: "1.2rem", marginBottom: "16px", color: "var(--primary)" }}>Panic Redirect Settings</h3>
                 
                 <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Redirect Target URL</label>
-                    <input 
-                      type="url" 
-                      className="form-control" 
-                      placeholder="https://www.instagram.com/makpowerofficial/"
-                      value={redirectUrlInput}
-                      onChange={e => setRedirectUrlInput(e.target.value)}
-                    />
-                  </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">Redirect Target URL</label>
+                      <input 
+                        type="url" 
+                        className="form-control" 
+                        placeholder="https://example.com"
+                        value={redirectUrlInput}
+                        onChange={e => setRedirectUrlInput(e.target.value)}
+                      />
+                    </div>
 
                   <button 
                     onClick={async () => {

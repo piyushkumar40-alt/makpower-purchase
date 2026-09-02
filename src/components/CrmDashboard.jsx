@@ -3910,7 +3910,7 @@ function TeamMemberModal({ member, currentExecutive, onSave, onClose }) {
 
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Email Address *</label>
-            <input type="email" required placeholder="e.g. vikram.asm@makpowerindia.com" value={email} onChange={e => setEmail(e.target.value)} className="form-control" />
+            <input type="email" required placeholder="e.g. user.sales@company.com" value={email} onChange={e => setEmail(e.target.value)} className="form-control" />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -3935,7 +3935,7 @@ function TeamMemberModal({ member, currentExecutive, onSave, onClose }) {
 
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">{member ? "New Password (optional)" : "Account Password"}</label>
-            <input type="text" placeholder={member ? "Leave blank to keep current" : "Default: MakPower#Sales2026!"} value={password} onChange={e => setPassword(e.target.value)} className="form-control" />
+            <input type="text" placeholder={member ? "Leave blank to keep current" : "Default: Sales#2026!"} value={password} onChange={e => setPassword(e.target.value)} className="form-control" />
           </div>
 
           <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>

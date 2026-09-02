@@ -118,8 +118,8 @@ export default function HomePage({
           </div>
           <p style={{ color: "var(--text-muted)", fontSize: "0.92rem", margin: 0 }}>
             {["crm", "asm", "tsm"].includes(currentUser?.role)
-              ? "Mak Power CRM & Field Sales Command Center"
-              : "Mak Power Purchase Ledger & Operations Command Center"} • Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{currentUser?.role || "Staff"}</strong>
+              ? "CRM & Field Sales Command Center"
+              : "Purchase Ledger & Operations Command Center"} • Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{currentUser?.role || "Staff"}</strong>
           </p>
         </div>
 

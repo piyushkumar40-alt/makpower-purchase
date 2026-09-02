@@ -769,7 +769,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
       {/* Header Info */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-glass)", paddingBottom: "16px", marginBottom: "20px", flexWrap: "wrap", gap: "15px" }}>
         <div>
-          <h2 style={{ fontSize: "1.6rem" }}>Mak Power Purchase Request 2026</h2>
+          <h2 style={{ fontSize: "1.6rem" }}>Purchase Requisition Portal</h2>
           <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "2px" }}>
             Enter multiple purchase items below or copy-paste directly from your tracking Excel sheets.
           </p>
