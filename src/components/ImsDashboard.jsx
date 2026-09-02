@@ -182,10 +182,10 @@ export default function ImsDashboard({
     if (imsRange === "all") {
       loadedRangeRef.current.isAll = true;
     }
-    if (transactions && transactions.length > 0) {
+    if (effectiveTransactions && effectiveTransactions.length > 0) {
       let min = loadedRangeRef.current.minDate;
       let max = loadedRangeRef.current.maxDate;
-      transactions.forEach(t => {
+      effectiveTransactions.forEach(t => {
         if (t.date) {
           const d = String(t.date).trim();
           if (!min || d < min) min = d;
@@ -195,7 +195,7 @@ export default function ImsDashboard({
       loadedRangeRef.current.minDate = min;
       loadedRangeRef.current.maxDate = max;
     }
-  }, [transactions, imsRange]);
+  }, [effectiveTransactions, imsRange]);
 
   // Dynamic backend fetch whenever user changes date range in DateRangeFilter
   const isInitialMount = useRef(true);
