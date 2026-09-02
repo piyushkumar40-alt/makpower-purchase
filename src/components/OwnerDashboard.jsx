@@ -96,6 +96,9 @@ export default function OwnerDashboard({
       onPullModuleData("itemPrices");
       onPullModuleData("requests");
       onPullModuleData("crmSalesOrders");
+      onPullModuleData("crmDispatches");
+      onPullModuleData("partyCategoryMonthlySales");
+      onPullModuleData("imsTransactions");
     }
   }, []);
 
@@ -164,6 +167,15 @@ export default function OwnerDashboard({
 
   // 3. Compute 4-Month Period Labels (Current Month M0, M1, M2, M3)
   const monthLabels = useMemo(() => {
+    if (Array.isArray(partyCategoryMonths) && partyCategoryMonths.length >= 4) {
+      const last4 = partyCategoryMonths.slice(-4).reverse();
+      return last4.map((m, idx) => ({
+        key: m.key || m.fullMonth,
+        label: m.label || m.key,
+        isCurrent: idx === 0
+      }));
+    }
+
     const months = [];
     const now = new Date();
     for (let i = 0; i < 4; i++) {
@@ -178,7 +190,7 @@ export default function OwnerDashboard({
       });
     }
     return months;
-  }, []);
+  }, [partyCategoryMonths]);
 
   // 4. Comprehensive 360° Category Intelligence Matrix
   const categoryMatrix = useMemo(() => {
@@ -256,40 +268,81 @@ export default function OwnerDashboard({
     });
 
     // B. Aggregate China Procurement Pipeline (Pending Orders in `requests`)
-    const exchangeRate = parseFloat(settings?.exchangeRate) || 12.5; // RMB to INR
+    const rmbRate = parseFloat(settings?.exchangeRate) || 12.5;
+    const usdRate = parseFloat(settings?.usdRate) || 86.5;
+
     (requests || []).forEach(r => {
-      // If order not fully received in India
-      const isReceived = r.isMaterialRec === "Yes" || r.status === "Received";
+      const isReceived = r.isMaterialRec === "Yes" || r.status === "Received" || r.status === "Cancelled";
       if (isReceived) return;
 
-      const catObj = getOrCreateCategory(r.category || r.itemModel);
-      const orderedQty = parseInt(r.vendorOrderQuantity || r.quantity || r.orderQty) || 0;
+      const modelName = r.model || r.itemModel || r.type || "";
+      const catObj = getOrCreateCategory(r.category || modelName);
+      const orderedQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || r.quantity || 0) || 0;
       if (orderedQty <= 0) return;
 
-      let unitPriceInr = itemPriceMap.get(String(r.itemId || "").toLowerCase()) || 
-                         itemPriceMap.get(String(r.itemModel || "").toLowerCase()) || 
-                         0;
+      let orderInr = 0;
+      const rawTotal = parseFloat(r.totalRmb);
+      const rawPrice = parseFloat(r.priceRmb || r.price);
+      const cur = (r.currency || "RMB").toUpperCase();
 
-      if (unitPriceInr === 0 && r.price) {
-        const p = parseFloat(r.price) || 0;
-        const curr = String(r.currency || "RMB").toUpperCase();
-        if (curr === "RMB" || curr === "CNY") unitPriceInr = p * exchangeRate;
-        else if (curr === "USD") unitPriceInr = p * 86.5;
-        else unitPriceInr = p;
+      if (!isNaN(rawTotal) && rawTotal > 0) {
+        if (cur === "USD") orderInr = rawTotal * usdRate;
+        else if (cur === "INR") orderInr = rawTotal;
+        else orderInr = rawTotal * rmbRate;
+      } else if (!isNaN(rawPrice) && rawPrice > 0) {
+        let priceInr = rawPrice;
+        if (cur === "USD") priceInr = rawPrice * usdRate;
+        else if (cur === "RMB" || cur === "CNY") priceInr = rawPrice * rmbRate;
+        orderInr = orderedQty * priceInr;
+      } else {
+        const unitPriceInr = itemPriceMap.get(String(r.itemId || "").toLowerCase()) || 
+                             itemPriceMap.get(String(modelName).toLowerCase()) || 
+                             0;
+        if (unitPriceInr > 0) {
+          orderInr = orderedQty * unitPriceInr;
+        } else {
+          const avgUnitCost = catObj.totalLiveQty > 0 ? (catObj.totalLiveCost / catObj.totalLiveQty) : 0;
+          orderInr = orderedQty * (avgUnitCost || 120);
+        }
       }
 
-      const totalOrderInr = orderedQty * unitPriceInr;
       catObj.chinaPendingQty += orderedQty;
-      catObj.chinaCommittedCost += totalOrderInr;
+      catObj.chinaCommittedCost += orderInr;
     });
 
-    // C. Aggregate 4-Month Sales Performance from `crmSalesOrders` & `partyCategoryMonthlySales`
+    // C. Aggregate 4-Month Sales Performance
     const m0Key = monthLabels[0]?.key;
     const m1Key = monthLabels[1]?.key;
     const m2Key = monthLabels[2]?.key;
     const m3Key = monthLabels[3]?.key;
 
-    // Use unified sales orders
+    // 1. From Server Aggregated Monthly Sales (`partyCategoryMonthlySales`)
+    if (Array.isArray(partyCategoryMonthlySales) && partyCategoryMonthlySales.length > 0) {
+      partyCategoryMonthlySales.forEach(row => {
+        const catName = row.category || row.cat || "";
+        if (!catName) return;
+        const catObj = getOrCreateCategory(catName);
+        const mKey = row.month;
+        const qty = Number(row.salesQty || row.qty || 0);
+        const rev = Number(row.salesRevenue || row.revenue || row.totalInr || 0);
+
+        if (mKey === m0Key) {
+          catObj.m0SalesQty += qty;
+          catObj.m0SalesRev += rev;
+        } else if (mKey === m1Key) {
+          catObj.m1SalesQty += qty;
+          catObj.m1SalesRev += rev;
+        } else if (mKey === m2Key) {
+          catObj.m2SalesQty += qty;
+          catObj.m2SalesRev += rev;
+        } else if (mKey === m3Key) {
+          catObj.m3SalesQty += qty;
+          catObj.m3SalesRev += rev;
+        }
+      });
+    }
+
+    // 2. From CRM Sales Orders (`crmSalesOrders`)
     (crmSalesOrders || []).forEach(o => {
       const orderDate = (o.orderDate || "").slice(0, 7);
       const catObj = getOrCreateCategory(o.category || o.itemModel);
@@ -311,42 +364,95 @@ export default function OwnerDashboard({
       }
     });
 
-    // Also integrate partyCategoryMonthlySales if provided from server
-    if (Array.isArray(partyCategoryMonthlySales) && partyCategoryMonthlySales.length > 0) {
-      partyCategoryMonthlySales.forEach(entry => {
-        if (!entry.categories) return;
-        Object.entries(entry.categories).forEach(([rawCat, mData]) => {
-          const catObj = getOrCreateCategory(rawCat);
-          if (mData[m0Key]) catObj.m0SalesQty = Math.max(catObj.m0SalesQty, parseFloat(mData[m0Key].qty) || 0);
-          if (mData[m1Key]) catObj.m1SalesQty = Math.max(catObj.m1SalesQty, parseFloat(mData[m1Key].qty) || 0);
-          if (mData[m2Key]) catObj.m2SalesQty = Math.max(catObj.m2SalesQty, parseFloat(mData[m2Key].qty) || 0);
-          if (mData[m3Key]) catObj.m3SalesQty = Math.max(catObj.m3SalesQty, parseFloat(mData[m3Key].qty) || 0);
-        });
-      });
-    }
+    // 3. From CRM Dispatches (`crmDispatches`)
+    (crmDispatches || []).forEach(d => {
+      const dispatchDate = (d.dispatchDate || "").slice(0, 7);
+      const catObj = getOrCreateCategory(d.category || d.itemModel);
+      const qty = parseInt(d.dispatchedQty || d.totalPcs) || 0;
+      const rev = parseFloat(d.totalInr) || 0;
+
+      if (dispatchDate === m0Key) {
+        catObj.m0SalesQty += qty;
+        catObj.m0SalesRev += rev;
+      } else if (dispatchDate === m1Key) {
+        catObj.m1SalesQty += qty;
+        catObj.m1SalesRev += rev;
+      } else if (dispatchDate === m2Key) {
+        catObj.m2SalesQty += qty;
+        catObj.m2SalesRev += rev;
+      } else if (dispatchDate === m3Key) {
+        catObj.m3SalesQty += qty;
+        catObj.m3SalesRev += rev;
+      }
+    });
+
+    // 4. From IMS Outward Transactions to Customer Parties
+    (imsTransactions || []).forEach(tx => {
+      const q = parseInt(tx.stockQty) || 0;
+      if (q >= 0) return; // Only outward movements
+      const party = (tx.partyName || "").trim();
+      if (!party || party === "—") return;
+
+      const dateStr = String(tx.date || "");
+      let month = "";
+      if (dateStr.includes("-") || dateStr.includes("/")) {
+        const parts = dateStr.split(/[-\/\.]/);
+        if (parts[0].length === 4) month = `${parts[0]}-${parts[1].padStart(2, "0")}`;
+        else if (parts[2] && parts[2].length === 4) month = `${parts[2]}-${parts[1].padStart(2, "0")}`;
+      }
+      if (!month) return;
+
+      const rawItemId = String(tx.itemId || "").toLowerCase();
+      const rawName = String(tx.itemName || "").toLowerCase();
+      const matchedItem = (items || []).find(i => String(i.id).toLowerCase() === rawItemId || String(i.name).toLowerCase() === rawName);
+      const catObj = getOrCreateCategory(matchedItem?.category || tx.category || tx.itemName);
+
+      const qty = Math.abs(q);
+      const unitPrice = itemPriceMap.get(rawItemId) || itemPriceMap.get(rawName) || parseFloat(matchedItem?.purchasePrice) || 0;
+      const rev = qty * unitPrice;
+
+      if (month === m0Key) {
+        catObj.m0SalesQty += qty;
+        catObj.m0SalesRev += rev;
+      } else if (month === m1Key) {
+        catObj.m1SalesQty += qty;
+        catObj.m1SalesRev += rev;
+      } else if (month === m2Key) {
+        catObj.m2SalesQty += qty;
+        catObj.m2SalesRev += rev;
+      } else if (month === m3Key) {
+        catObj.m3SalesQty += qty;
+        catObj.m3SalesRev += rev;
+      }
+    });
 
     // D. Final Calculations & Performance Rating Score
     const list = Array.from(map.values()).map(row => {
+      const avgUnitPrice = row.totalLiveQty > 0 ? (row.totalLiveCost / row.totalLiveQty) : 100;
+      if (row.m0SalesRev === 0 && row.m0SalesQty > 0) row.m0SalesRev = row.m0SalesQty * avgUnitPrice;
+      if (row.m1SalesRev === 0 && row.m1SalesQty > 0) row.m1SalesRev = row.m1SalesQty * avgUnitPrice;
+      if (row.m2SalesRev === 0 && row.m2SalesQty > 0) row.m2SalesRev = row.m2SalesQty * avgUnitPrice;
+      if (row.m3SalesRev === 0 && row.m3SalesQty > 0) row.m3SalesRev = row.m3SalesQty * avgUnitPrice;
+
       row.totalCapitalInvested = row.totalLiveCost + row.chinaCommittedCost;
       row.total4MoSalesQty = row.m0SalesQty + row.m1SalesQty + row.m2SalesQty + row.m3SalesQty;
       row.total4MoSalesRev = row.m0SalesRev + row.m1SalesRev + row.m2SalesRev + row.m3SalesRev;
 
-      // Turnover & Performance Health Rating
       const turnoverRatio = row.totalCapitalInvested > 0 ? (row.total4MoSalesRev / row.totalCapitalInvested) : 0;
       
       let performanceTag = "steady";
       let performanceLabel = "🟢 Steady Performer";
       let performanceScore = 70;
 
-      if (row.total4MoSalesQty > 25000 || row.total4MoSalesRev > 3000000) {
+      if (row.total4MoSalesQty > 20000 || row.total4MoSalesRev > 2000000) {
         performanceTag = "star";
         performanceLabel = "🌟 Star Performer";
         performanceScore = 95;
-      } else if (row.totalCapitalInvested > 1500000 && row.total4MoSalesQty < 5000) {
+      } else if (row.totalCapitalInvested > 1500000 && row.total4MoSalesQty < 3000) {
         performanceTag = "overstocked";
         performanceLabel = "⚠️ Capital Tied Up";
         performanceScore = 40;
-      } else if (row.total4MoSalesQty > 10000 && row.totalLiveQty < 2000 && row.chinaPendingQty === 0) {
+      } else if (row.total4MoSalesQty > 5000 && row.totalLiveQty < 2000 && row.chinaPendingQty === 0) {
         performanceTag = "reorder";
         performanceLabel = "🚨 Reorder Urgently";
         performanceScore = 60;
@@ -362,7 +468,7 @@ export default function OwnerDashboard({
     });
 
     return list;
-  }, [items, itemPriceMap, warehouseStockMap, requests, crmSalesOrders, partyCategoryMonthlySales, monthLabels, settings]);
+  }, [items, itemPriceMap, warehouseStockMap, requests, crmSalesOrders, crmDispatches, imsTransactions, partyCategoryMonthlySales, monthLabels, settings]);
 
   // Overall Company Grand Totals
   const companyTotals = useMemo(() => {
