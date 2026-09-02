@@ -370,10 +370,77 @@ export default function ImsDashboard({
     locationFilter !== "all" ||
     movementFilter !== "all" ||
     missingIdFilter !== "all" ||
-    selectedItemFilter !== "all" ||
-    startDate ||
-    endDate
+    selectedItemFilter !== "all"
   );
+
+  // Dynamic Item-Aware KPI Metrics (Accurately resolves item true stock for DC55 or any model)
+  const kpiMetrics = useMemo(() => {
+    let matchingStocks = [];
+    if (selectedItemFilter !== "all") {
+      matchingStocks = (imsItemStocks || []).filter(is => is.itemId === selectedItemFilter || is.itemName === selectedItemFilter);
+    } else if (activeSearchTerms.length > 0 && Array.isArray(imsItemStocks) && imsItemStocks.length > 0) {
+      matchingStocks = (imsItemStocks || []).filter(is => {
+        const item = (is.itemName || "").toLowerCase();
+        const id = (is.itemId || "").toLowerCase();
+        return activeSearchTerms.some(term => {
+          const words = term.split(/\s+/).filter(Boolean);
+          if (words.length > 1) {
+            return words.every(w => item.includes(w) || id.includes(w));
+          }
+          return item.includes(term) || id.includes(term);
+        });
+      });
+    }
+
+    if (matchingStocks.length > 0) {
+      // User searched / filtered for specific item model(s) (e.g. DC55)
+      const itemTotalStock = matchingStocks.reduce((sum, s) => sum + (s.currentStock || 0), 0);
+      const itemDelhiStock = matchingStocks.reduce((sum, s) => sum + (s.delhiStock || 0), 0);
+      const itemMumbaiStock = matchingStocks.reduce((sum, s) => sum + (s.mumbaiStock || 0), 0);
+      const itemLabel = matchingStocks.length === 1 ? matchingStocks[0].itemName : `${matchingStocks.length} Selected Models`;
+
+      return {
+        onHandStock: locationFilter === "Mumbai" ? itemMumbaiStock : locationFilter === "Delhi" ? itemDelhiStock : itemTotalStock,
+        delhiStock: itemDelhiStock,
+        mumbaiStock: itemMumbaiStock,
+        inwardUnits: filteredInwardUnits,
+        outwardUnits: filteredOutwardUnits,
+        onHandSubtitle: locationFilter !== "all" ? `${locationFilter} On-Hand (${itemLabel})` : `Physical Stock (${itemLabel})`,
+        delhiSubtitle: `Delhi Balance (${itemLabel})`,
+        mumbaiSubtitle: `Mumbai Balance (${itemLabel})`,
+        inwardSubtitle: `Period Inflows (${itemLabel})`,
+        outwardSubtitle: `Period Outflows (${itemLabel})`
+      };
+    }
+
+    // Global / Warehouse / Party View
+    return {
+      onHandStock: locationFilter === "Mumbai" ? mumbaiStock : locationFilter === "Delhi" ? delhiStock : totalNetStock,
+      delhiStock: delhiStock,
+      mumbaiStock: mumbaiStock,
+      inwardUnits: hasActiveFilters ? filteredInwardUnits : (imsPeriodSummary ? imsPeriodSummary.periodInward : filteredInwardUnits),
+      outwardUnits: hasActiveFilters ? filteredOutwardUnits : (imsPeriodSummary ? imsPeriodSummary.periodOutward : filteredOutwardUnits),
+      onHandSubtitle: locationFilter !== "all" ? `${locationFilter} Physical Stock` : (hasActiveFilters ? "Total Physical Stock (Combined)" : "Combined Physical Stock"),
+      delhiSubtitle: "Delhi Warehouse Balance",
+      mumbaiSubtitle: "Mumbai Warehouse Balance",
+      inwardSubtitle: hasActiveFilters ? "Filtered Period Inflows" : (startDate || endDate ? "Period Inflows" : "Factory & Vendor Inflows"),
+      outwardSubtitle: hasActiveFilters ? "Filtered Period Outflows" : (startDate || endDate ? "Period Outflows" : "Party & Dealer Outflows")
+    };
+  }, [
+    activeSearchTerms,
+    selectedItemFilter,
+    imsItemStocks,
+    locationFilter,
+    mumbaiStock,
+    delhiStock,
+    totalNetStock,
+    filteredInwardUnits,
+    filteredOutwardUnits,
+    hasActiveFilters,
+    imsPeriodSummary,
+    startDate,
+    endDate
+  ]);
 
   // Paginated Transactions Slice (100 rows per page)
   const paginatedTransactions = useMemo(() => {
@@ -1423,7 +1490,7 @@ export default function ImsDashboard({
             </div>
           </div>
 
-          {/* ==================== 5 DYNAMIC KPI SUMMARY CARDS (Server Precalculated Physical Stock & Period In/Out) ==================== */}
+          {/* ==================== 5 DYNAMIC KPI SUMMARY CARDS (Item-Aware True Stock & Period In/Out) ==================== */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px" }}>
             
             {/* Card 1: Total Physical Stock */}
@@ -1433,17 +1500,17 @@ export default function ImsDashboard({
               </div>
               <div>
                 <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total All On-Hand</div>
-                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: (locationFilter === "Mumbai" ? mumbaiStock : locationFilter === "Delhi" ? delhiStock : totalNetStock) >= 0 ? "var(--text-main)" : "var(--danger)" }}>
+                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: kpiMetrics.onHandStock >= 0 ? "var(--text-main)" : "var(--danger)" }}>
                   {isDataLoading ? (
                     <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
                       <RefreshCw size={14} className="spin" /> Loading...
                     </span>
                   ) : (
-                    <>{(locationFilter === "Mumbai" ? mumbaiStock : locationFilter === "Delhi" ? delhiStock : totalNetStock).toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                    <>{kpiMetrics.onHandStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
                   )}
                 </div>
                 <div style={{ fontSize: "0.68rem", color: "#38bdf8", marginTop: "1px" }}>
-                  {locationFilter !== "all" ? `${locationFilter} Physical Stock` : "Total Physical Stock (Combined)"}
+                  {kpiMetrics.onHandSubtitle}
                 </div>
               </div>
             </div>
@@ -1455,17 +1522,17 @@ export default function ImsDashboard({
               </div>
               <div>
                 <div style={{ fontSize: "0.74rem", color: "#38bdf8", fontWeight: 700 }}>🏢 Delhi Warehouse</div>
-                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: delhiStock >= 0 ? "#38bdf8" : "var(--danger)" }}>
+                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: kpiMetrics.delhiStock >= 0 ? "#38bdf8" : "var(--danger)" }}>
                   {isDataLoading ? (
                     <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
                       <RefreshCw size={14} className="spin" /> Loading...
                     </span>
                   ) : (
-                    <>{delhiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                    <>{kpiMetrics.delhiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
                   )}
                 </div>
                 <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>
-                  Delhi Warehouse Balance
+                  {kpiMetrics.delhiSubtitle}
                 </div>
               </div>
             </div>
@@ -1477,17 +1544,17 @@ export default function ImsDashboard({
               </div>
               <div>
                 <div style={{ fontSize: "0.74rem", color: "#c084fc", fontWeight: 700 }}>🏢 Mumbai Warehouse</div>
-                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: mumbaiStock >= 0 ? "#c084fc" : "var(--danger)" }}>
+                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: kpiMetrics.mumbaiStock >= 0 ? "#c084fc" : "var(--danger)" }}>
                   {isDataLoading ? (
                     <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
                       <RefreshCw size={14} className="spin" /> Loading...
                     </span>
                   ) : (
-                    <>{mumbaiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                    <>{kpiMetrics.mumbaiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
                   )}
                 </div>
                 <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>
-                  Mumbai Warehouse Balance
+                  {kpiMetrics.mumbaiSubtitle}
                 </div>
               </div>
             </div>
@@ -1505,11 +1572,11 @@ export default function ImsDashboard({
                       <RefreshCw size={14} className="spin" /> Loading...
                     </span>
                   ) : (
-                    <>+{(imsPeriodSummary ? imsPeriodSummary.periodInward : filteredInwardUnits).toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                    <>+{kpiMetrics.inwardUnits.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
                   )}
                 </div>
                 <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>
-                  {startDate || endDate ? "Period Inflows" : "Factory & Vendor Inflows"}
+                  {kpiMetrics.inwardSubtitle}
                 </div>
               </div>
             </div>
@@ -1527,11 +1594,11 @@ export default function ImsDashboard({
                       <RefreshCw size={14} className="spin" /> Loading...
                     </span>
                   ) : (
-                    <>-{(imsPeriodSummary ? imsPeriodSummary.periodOutward : filteredOutwardUnits).toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                    <>-{kpiMetrics.outwardUnits.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
                   )}
                 </div>
                 <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>
-                  {startDate || endDate ? "Period Outflows" : "Party & Dealer Outflows"}
+                  {kpiMetrics.outwardSubtitle}
                 </div>
               </div>
             </div>
