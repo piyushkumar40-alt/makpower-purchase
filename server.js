@@ -1749,10 +1749,22 @@ function normalizeFgCategory(cat = "", itemDesc = "", itemType = "") {
   const rawDescLower = (itemDesc || "").toLowerCase();
   const combined = `${rawCatLower} ${rawDescLower}`;
 
-  // Battery Segments: Polymer Battery (merge all polymer into Polymer Battery), Eco Battery, Pouch Battery, etc.
-  if (combined.includes("polymer") || combined.includes("li-poly") || combined.includes("lithium poly")) return "Polymer Battery";
-  if (combined.includes("eco battery") || combined.includes("eco cell") || combined.startsWith("eco-") || combined.startsWith("eco ") || rawCatLower.includes("eco")) return "Eco Battery";
-  if (combined.includes("pouch")) return "Pouch Battery";
+  // 1. Polymer Batteries: merge any polymer items (POLYMER ASUS BATTERY, S POLYMER BATTERY, Z POLYMER, etc.)
+  if (combined.includes("polymer") || combined.includes("li-poly") || combined.includes("lithium poly")) {
+    return "Polymer Batteries";
+  }
+
+  // 2. Eco Battery: must contain 'eco' word and NOT contain 'cell', 'body', etc.
+  const hasEco = /\beco\b/i.test(combined) || combined.startsWith("eco-") || combined.startsWith("eco ") || combined.includes("eco battery");
+  const isExcludedRawOrPart = combined.includes("cell") || combined.includes("body") || combined.includes("pcb") || combined.includes("bottom") || combined.includes("top") || combined.includes("inner") || combined.includes("housing") || combined.includes("raw");
+  if (hasEco && !isExcludedRawOrPart) {
+    return "Eco Battery";
+  }
+
+  // 3. Pouch Battery
+  if (combined.includes("pouch")) {
+    return "Pouch Battery";
+  }
 
   // If item is FG, use its master catalog category name directly
   if (rawCat && rawCat !== "General" && rawCat !== "Unspecified" && rawCat !== "RM" && rawCat !== "PCB" && rawCat !== "Bottom" && rawCat !== "Top" && rawCat !== "Inner" && rawCat !== "Blister") {
@@ -1762,7 +1774,7 @@ function normalizeFgCategory(cat = "", itemDesc = "", itemType = "") {
     if (rawCatLower.includes("tws") || rawCatLower.includes("earbuds") || rawCatLower.includes("buds")) return "TWS Earbuds";
     if (rawCatLower.includes("power bank") || rawCatLower.includes("powerbank")) return "Power Bank";
     if (rawCatLower.includes("handsfree") || rawCatLower.includes("headphone") || rawCatLower.includes("earphone")) return "Earphones";
-    if (rawCatLower.includes("cell") || rawCatLower.includes("battery") || rawCatLower.includes("batteries")) return "Batteries";
+    if (rawCatLower.includes("battery") || rawCatLower.includes("batteries")) return "Batteries";
     if (rawCatLower.includes("charger") || rawCatLower.includes("adapter")) {
       if (rawCatLower.includes("car")) return "Car Charger";
       return "Fast Charger";
@@ -1782,7 +1794,7 @@ function normalizeFgCategory(cat = "", itemDesc = "", itemType = "") {
     if (combined.includes("tws") || combined.includes("earbuds") || combined.includes("airpods") || combined.includes("buds")) return "TWS Earbuds";
     if (combined.includes("power bank") || combined.includes("powerbank")) return "Power Bank";
     if (combined.includes("earphone") || combined.includes("headphone") || combined.includes("handsfree")) return "Earphones";
-    if (combined.includes("battery") || combined.includes("batteries") || combined.includes("cell") || combined.includes("bf3")) return "Batteries";
+    if (combined.includes("battery") || combined.includes("batteries") || combined.includes("bf3")) return "Batteries";
     if (combined.includes("speaker") || combined.includes("soundbar") || combined.includes("audio")) return "Speaker";
     if (combined.includes("car charge") || combined.includes("car")) return "Car Charger";
     if (combined.includes("watch")) return "Smart Watch";
