@@ -1749,9 +1749,13 @@ function normalizeFgCategory(cat = "", itemDesc = "", itemType = "") {
   const rawDescLower = (itemDesc || "").toLowerCase();
   const combined = `${rawCatLower} ${rawDescLower}`;
 
+  // Battery Segments: Polymer Battery (merge all polymer into Polymer Battery), Eco Battery, Pouch Battery, etc.
+  if (combined.includes("polymer") || combined.includes("li-poly") || combined.includes("lithium poly")) return "Polymer Battery";
+  if (combined.includes("eco battery") || combined.includes("eco cell") || combined.startsWith("eco-") || combined.startsWith("eco ") || rawCatLower.includes("eco")) return "Eco Battery";
+  if (combined.includes("pouch")) return "Pouch Battery";
+
   // If item is FG, use its master catalog category name directly
   if (rawCat && rawCat !== "General" && rawCat !== "Unspecified" && rawCat !== "RM" && rawCat !== "PCB" && rawCat !== "Bottom" && rawCat !== "Top" && rawCat !== "Inner" && rawCat !== "Blister") {
-    if (rawCatLower.includes("polymer")) return "Polymer";
     if (rawCatLower.includes("cable") || rawCatLower.includes("aux")) return "Data Cable";
     if (rawCatLower.includes("neckband")) return "Neckband";
     if (rawCatLower.includes("tempered") || rawCatLower.includes("soldier") || rawCatLower.includes("glass")) return "TEMPERED SOLDIER";
@@ -1771,7 +1775,6 @@ function normalizeFgCategory(cat = "", itemDesc = "", itemType = "") {
 
   // Fallback keyword matching on itemDesc only for FG items
   if (typeUpper === "FG" || typeUpper === "FINISHED GOODS" || !typeUpper) {
-    if (combined.includes("polymer")) return "Polymer";
     if (combined.includes("fast charge") || combined.includes("charger") || combined.includes("adapter")) return "Fast Charger";
     if (combined.includes("cable") || combined.includes("usb") || combined.includes("type-c") || combined.includes("micro")) return "Data Cable";
     if (combined.includes("neckband")) return "Neckband";

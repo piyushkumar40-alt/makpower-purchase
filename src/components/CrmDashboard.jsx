@@ -2518,30 +2518,56 @@ function Party360Modal({
   }, [last4MoDispatches]);
 
   const normalizeCategory = (cat, itemDesc = "") => {
-    const raw = `${cat || ""} ${itemDesc || ""}`.toLowerCase();
-    if (raw.includes("polymer") || raw.includes("li-poly") || raw.includes("lithium poly") || raw.includes("pouch battery")) return "Polymer";
-    if (raw.includes("fast charge") || raw.includes("adapter") || raw.includes("charger") || raw.includes("wall charge")) return "Fast Charger";
-    if (raw.includes("cable") || raw.includes("usb") || raw.includes("type-c") || raw.includes("micro") || raw.includes("lightning")) return "Data Cable";
-    if (raw.includes("neckband") || raw.includes("neck band") || raw.includes("nb-") || raw.includes("nb ")) return "Neckband";
-    if (raw.includes("tws") || raw.includes("earbuds") || raw.includes("airpods") || raw.includes("ear buds") || raw.includes("buds")) return "TWS Earbuds";
-    if (raw.includes("power bank") || raw.includes("powerbank") || raw.includes("pb-") || raw.includes("pb ")) return "Power Bank";
-    if (raw.includes("earphone") || raw.includes("headphone") || raw.includes("handsfree") || raw.includes("ear phone")) return "Earphones";
-    if (raw.includes("battery") || raw.includes("batteries") || raw.includes("cell") || raw.includes("bf3") || raw.includes("b-f3") || raw.includes("bm4") || raw.includes("bn4") || raw.includes("bl-") || raw.includes("blp") || raw.includes("li-ion")) return "Batteries";
-    if (raw.includes("speaker") || raw.includes("soundbar") || raw.includes("audio")) return "Speaker";
-    if (raw.includes("watch") || raw.includes("smartwatch") || raw.includes("smart watch") || raw.includes("band")) return "Smart Watch";
-    if (raw.includes("car charge") || raw.includes("car")) return "Car Charger";
-    if (cat && cat.trim() && cat !== "General" && cat !== "Unspecified" && !cat.toLowerCase().includes("raw")) return cat.trim();
+    const rawCat = (cat || "").trim();
+    const rawCatLower = rawCat.toLowerCase();
+    const rawDescLower = (itemDesc || "").toLowerCase();
+    const combined = `${rawCatLower} ${rawDescLower}`;
+
+    // Battery Segments: Polymer Battery (merge all polymer into Polymer Battery), Eco Battery, Pouch Battery, etc.
+    if (combined.includes("polymer") || combined.includes("li-poly") || combined.includes("lithium poly")) return "Polymer Battery";
+    if (combined.includes("eco battery") || combined.includes("eco cell") || combined.startsWith("eco-") || combined.startsWith("eco ") || rawCatLower.includes("eco")) return "Eco Battery";
+    if (combined.includes("pouch")) return "Pouch Battery";
+
+    if (rawCat && rawCat !== "General" && rawCat !== "Unspecified" && !rawCat.toLowerCase().includes("raw")) {
+      if (rawCatLower.includes("cable") || rawCatLower.includes("aux")) return "Data Cable";
+      if (rawCatLower.includes("neckband")) return "Neckband";
+      if (rawCatLower.includes("tempered") || rawCatLower.includes("soldier") || rawCatLower.includes("glass")) return "TEMPERED SOLDIER";
+      if (rawCatLower.includes("tws") || rawCatLower.includes("earbuds") || rawCatLower.includes("buds")) return "TWS Earbuds";
+      if (rawCatLower.includes("power bank") || rawCatLower.includes("powerbank")) return "Power Bank";
+      if (rawCatLower.includes("handsfree") || rawCatLower.includes("headphone") || rawCatLower.includes("earphone")) return "Earphones";
+      if (rawCatLower.includes("charger") || rawCatLower.includes("adapter")) {
+        if (rawCatLower.includes("car")) return "Car Charger";
+        return "Fast Charger";
+      }
+      if (rawCatLower.includes("car")) return "Car Charger";
+      if (rawCatLower.includes("speaker") || rawCatLower.includes("soundbar") || rawCatLower.includes("audio")) return "Speaker";
+      if (rawCatLower.includes("watch")) return "Smart Watch";
+      if (rawCatLower.includes("cell") || rawCatLower.includes("battery") || rawCatLower.includes("batteries")) return "Batteries";
+      return rawCat;
+    }
+
+    if (combined.includes("fast charge") || combined.includes("adapter") || combined.includes("charger") || combined.includes("wall charge")) return "Fast Charger";
+    if (combined.includes("cable") || combined.includes("usb") || combined.includes("type-c") || combined.includes("micro") || combined.includes("lightning")) return "Data Cable";
+    if (combined.includes("neckband") || combined.includes("neck band")) return "Neckband";
+    if (combined.includes("tempered") || combined.includes("soldier") || combined.includes("glass")) return "TEMPERED SOLDIER";
+    if (combined.includes("tws") || combined.includes("earbuds") || combined.includes("airpods") || combined.includes("buds")) return "TWS Earbuds";
+    if (combined.includes("power bank") || combined.includes("powerbank")) return "Power Bank";
+    if (combined.includes("earphone") || combined.includes("headphone") || combined.includes("handsfree")) return "Earphones";
+    if (combined.includes("battery") || combined.includes("batteries") || combined.includes("cell") || combined.includes("bf3")) return "Batteries";
+    if (combined.includes("speaker") || combined.includes("soundbar") || combined.includes("audio")) return "Speaker";
+    if (combined.includes("watch") || combined.includes("smartwatch") || combined.includes("smart watch") || combined.includes("band")) return "Smart Watch";
+    if (combined.includes("car charge") || combined.includes("car")) return "Car Charger";
     return "Mobile Accessories";
   };
 
-  // 4-Month Category-Wise aggregation for this party (FG only, Polymer consolidated)
+  // 4-Month Category-Wise aggregation for this party (FG only, Polymer Battery consolidated)
   const partyCategoryRows = useMemo(() => {
     const map = new Map();
 
     const standardFgCategories = [
-      "Fast Charger", "Data Cable", "Neckband", "TWS Earbuds", 
-      "Polymer", "Power Bank", "Earphones", "Batteries", 
-      "Speaker", "Smart Watch", "Car Charger", "Mobile Accessories"
+      "Fast Charger", "Data Cable", "Neckband", "TEMPERED SOLDIER", "TWS Earbuds", 
+      "Polymer Battery", "Eco Battery", "Pouch Battery", "Batteries", 
+      "Power Bank", "Earphones", "Speaker", "Smart Watch", "Car Charger", "Mobile Accessories"
     ];
 
     standardFgCategories.forEach(cat => {
@@ -2641,6 +2667,18 @@ function Party360Modal({
     return Array.from(map.values()).sort((a, b) => b.totalQty - a.totalQty || a.category.localeCompare(b.category));
   }, [partyCategoryMonthlySales, salesOrders, crmPartyRemarks, items, party, last4Months]);
 
+  const partyCategoryTotals = useMemo(() => {
+    return partyCategoryRows.reduce((acc, r) => {
+      acc.m0 += (r.m0 || 0);
+      acc.m1 += (r.m1 || 0);
+      acc.m2 += (r.m2 || 0);
+      acc.m3 += (r.m3 || 0);
+      acc.totalQty += (r.totalQty || 0);
+      acc.totalRevenue += (r.totalRevenue || 0);
+      return acc;
+    }, { m0: 0, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
+  }, [partyCategoryRows]);
+
   const totalSpend = useMemo(() => {
     return partyCategoryRows.reduce((sum, r) => sum + (r.totalRevenue || 0), 0) || last4MoOrders.reduce((a, b) => a + (parseFloat(b.totalInr) || 0), 0);
   }, [partyCategoryRows, last4MoOrders]);
@@ -2731,6 +2769,31 @@ function Party360Modal({
                 </tr>
               </thead>
               <tbody>
+                {/* Grand Total Summary Row (Between Category header and first category) */}
+                <tr style={{ background: "rgba(56, 189, 248, 0.12)", borderBottom: "2px solid rgba(56, 189, 248, 0.35)", fontWeight: 800 }}>
+                  <td style={{ padding: "10px 12px" }}>
+                    <strong style={{ color: "#38bdf8", fontSize: "0.92rem", letterSpacing: "0.5px" }}>TOTAL</strong>
+                  </td>
+                  <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
+                    {partyCategoryTotals.m0 > 0 ? `${partyCategoryTotals.m0.toLocaleString()} Pcs` : "—"}
+                  </td>
+                  <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
+                    {partyCategoryTotals.m1 > 0 ? `${partyCategoryTotals.m1.toLocaleString()} Pcs` : "—"}
+                  </td>
+                  <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
+                    {partyCategoryTotals.m2 > 0 ? `${partyCategoryTotals.m2.toLocaleString()} Pcs` : "—"}
+                  </td>
+                  <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
+                    {partyCategoryTotals.m3 > 0 ? `${partyCategoryTotals.m3.toLocaleString()} Pcs` : "—"}
+                  </td>
+                  <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 900, fontSize: "0.92rem" }}>
+                    {partyCategoryTotals.totalQty > 0 ? `${partyCategoryTotals.totalQty.toLocaleString()} Pcs` : "0 Pcs"}
+                  </td>
+                  <td style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.78rem" }}>
+                    —
+                  </td>
+                </tr>
+
                 {partyCategoryRows.map(row => {
                   const categoryRemarks = (crmPartyRemarks || []).filter(r => 
                     (r.partyId === party.id || (r.partyName && r.partyName.trim().toLowerCase() === (party.name || "").trim().toLowerCase())) && 
