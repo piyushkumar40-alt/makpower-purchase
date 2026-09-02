@@ -1747,8 +1747,7 @@ function normalizeFgCategory(cat, itemDesc = "") {
   if (raw.includes("speaker") || raw.includes("soundbar") || raw.includes("audio")) return "Speaker";
   if (raw.includes("watch") || raw.includes("smartwatch") || raw.includes("smart watch") || raw.includes("band")) return "Smart Watch";
   if (raw.includes("car charge") || raw.includes("car")) return "Car Charger";
-  if (raw.includes("raw") || raw.includes("material") || raw.includes("pcb") || raw.includes("ic ") || raw.includes("packing") || raw.includes("box") || raw.includes("carton") || raw.includes("wire") || raw.includes("hardware") || raw.includes("connector")) return "";
-  if (cat && cat.trim() && cat !== "General" && cat !== "Unspecified") return cat.trim();
+  if (cat && cat.trim() && cat !== "General" && cat !== "Unspecified" && !cat.toLowerCase().includes("raw")) return cat.trim();
   return "Mobile Accessories";
 }
 
