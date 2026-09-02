@@ -2924,7 +2924,8 @@ function PartyMonthlyCategoryStudioModal({
     const ddmmyyyy = s.match(/(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
     if (ddmmyyyy) {
       return `${ddmmyyyy[3]}-${ddmmyyyy[2].padStart(2, "0")}`;
-const parsed = new Date(s);
+    }
+    const parsed = new Date(s);
     if (!isNaN(parsed.getTime())) {
       const yr = parsed.getFullYear();
       const mo = String(parsed.getMonth() + 1).padStart(2, "0");
