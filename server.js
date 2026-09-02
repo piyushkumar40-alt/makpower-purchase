@@ -1544,6 +1544,21 @@ async function calculateImsFullSummary() {
         LIMIT 500
       `);
 
+      const itemStocksRes = await pool.query(`
+        SELECT
+          "itemId",
+          "itemName",
+          COALESCE(SUM("stockQty"), 0)::bigint AS "currentStock",
+          COALESCE(SUM(CASE WHEN "stockQty" > 0 THEN "stockQty" ELSE 0 END), 0)::bigint AS "inward",
+          COALESCE(SUM(CASE WHEN "stockQty" < 0 THEN ABS("stockQty") ELSE 0 END), 0)::bigint AS "outward",
+          COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE("location", 'Delhi'))) <> 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "delhiStock",
+          COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE("location", 'Delhi'))) = 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "mumbaiStock",
+          COUNT(*)::int AS "txCount",
+          MAX("date") AS "lastDate"
+        FROM ims_transactions
+        GROUP BY "itemId", "itemName"
+      `);
+
       return {
         totalNetStock: Number(row.totalNetStock || 0),
         totalInwardUnits: Number(row.totalInwardUnits || 0),
@@ -1556,6 +1571,17 @@ async function calculateImsFullSummary() {
           name: r.name || "Unknown Item",
           count: Number(r.count || 0),
           totalQty: Number(r.totalQty || 0)
+        })),
+        itemStocks: (itemStocksRes.rows || []).map(r => ({
+          itemId: r.itemId || "",
+          itemName: r.itemName || "",
+          currentStock: Number(r.currentStock || 0),
+          inward: Number(r.inward || 0),
+          outward: Number(r.outward || 0),
+          delhiStock: Number(r.delhiStock || 0),
+          mumbaiStock: Number(r.mumbaiStock || 0),
+          txCount: Number(r.txCount || 0),
+          lastDate: r.lastDate || ""
         }))
       };
     } catch (err) {
@@ -1568,7 +1594,8 @@ async function calculateImsFullSummary() {
         mumbaiStock: 0,
         missingIdsCount: 0,
         totalTransactionsCount: 0,
-        distinctMissingItems: []
+        distinctMissingItems: [],
+        itemStocks: []
       };
     }
   } else {
@@ -1576,13 +1603,16 @@ async function calculateImsFullSummary() {
     const list = data.imsTransactions || [];
     let net = 0, inUnits = 0, outUnits = 0, delhiNet = 0, mumbaiNet = 0, missingCount = 0;
     const missingMap = new Map();
+    const itemMap = new Map();
+
     list.forEach(tx => {
       const q = parseInt(tx.stockQty) || 0;
       const loc = (tx.location || "Delhi").trim().toLowerCase();
+      const isMumbai = loc === "mumbai";
       net += q;
       if (q > 0) inUnits += q;
       else outUnits += Math.abs(q);
-      if (loc === "mumbai") mumbaiNet += q;
+      if (isMumbai) mumbaiNet += q;
       else delhiNet += q;
       if (tx.isMissingId || !tx.itemId) {
         missingCount++;
@@ -1594,7 +1624,33 @@ async function calculateImsFullSummary() {
         e.count++;
         e.totalQty += q;
       }
+
+      const itemKey = `${tx.itemId || ''}_${tx.itemName || ''}`;
+      if (!itemMap.has(itemKey)) {
+        itemMap.set(itemKey, {
+          itemId: tx.itemId || "",
+          itemName: tx.itemName || "",
+          currentStock: 0,
+          inward: 0,
+          outward: 0,
+          delhiStock: 0,
+          mumbaiStock: 0,
+          txCount: 0,
+          lastDate: ""
+        });
+      }
+      const itemRec = itemMap.get(itemKey);
+      itemRec.currentStock += q;
+      if (q > 0) itemRec.inward += q;
+      else itemRec.outward += Math.abs(q);
+      if (isMumbai) itemRec.mumbaiStock += q;
+      else itemRec.delhiStock += q;
+      itemRec.txCount++;
+      if (!itemRec.lastDate || (tx.date && tx.date > itemRec.lastDate)) {
+        itemRec.lastDate = tx.date;
+      }
     });
+
     return {
       totalNetStock: net,
       totalInwardUnits: inUnits,
@@ -1603,7 +1659,8 @@ async function calculateImsFullSummary() {
       mumbaiStock: mumbaiNet,
       missingIdsCount: missingCount,
       totalTransactionsCount: list.length,
-      distinctMissingItems: Array.from(missingMap.values())
+      distinctMissingItems: Array.from(missingMap.values()),
+      itemStocks: Array.from(itemMap.values())
     };
   }
 }
@@ -3245,12 +3302,24 @@ app.delete("/api/crm/party-remarks/:id", async (req, res) => {
   }
 });
 
-// ==================== IMS (INVENTORY MANAGEMENT SYSTEM) ENDPOINTS ====================
-
-// 1. GET /api/ims/transactions - Query IMS Stock Movements (Latest 6 months by default, or all / filtered)
+// 1. GET /api/ims/transactions - Query IMS Stock Movements (Latest 3 days by default, or custom range / all)
 app.get("/api/ims/transactions", async (req, res) => {
   const { itemId, itemName, partyName, isMissingId, startDate, endDate, range, limit } = req.query;
   const imsSummary = await calculateImsFullSummary();
+
+  let effectiveStartDate = startDate;
+  let effectiveEndDate = endDate;
+
+  // By default, if no specific date filter and not range=all and not searching item/party, load last 3 days
+  if (!effectiveStartDate && range !== "all" && !itemId && !itemName && !partyName) {
+    const d = new Date();
+    d.setDate(d.getDate() - 3);
+    effectiveStartDate = d.toISOString().split("T")[0];
+    if (!effectiveEndDate) {
+      effectiveEndDate = (new Date()).toISOString().split("T")[0];
+    }
+  }
+
   if (isPg) {
     try {
       let query = "SELECT * FROM ims_transactions";
@@ -3274,20 +3343,13 @@ app.get("/api/ims/transactions", async (req, res) => {
         conditions.push(`"isMissingId" = $${idx++}`);
         values.push(isMissingId === "true");
       }
-      if (startDate) {
+      if (effectiveStartDate) {
         conditions.push(`"date" >= $${idx++}`);
-        values.push(startDate);
-      } else if (range === "6months" || (!startDate && !endDate && range !== "all" && !itemId && !itemName && !partyName)) {
-        // By default, query up to 6 months of historical transactions for high performance
-        const d = new Date();
-        d.setMonth(d.getMonth() - 6);
-        const sixMonthsAgo = d.toISOString().split("T")[0];
-        conditions.push(`"date" >= $${idx++}`);
-        values.push(sixMonthsAgo);
+        values.push(effectiveStartDate);
       }
-      if (endDate) {
+      if (effectiveEndDate) {
         conditions.push(`"date" <= $${idx++}`);
-        values.push(endDate);
+        values.push(effectiveEndDate);
       }
 
       if (conditions.length > 0) {
@@ -3308,11 +3370,44 @@ app.get("/api/ims/transactions", async (req, res) => {
         stockQty: r.stockQty ? parseInt(r.stockQty) : 0,
         isMissingId: !!r.isMissingId
       }));
+
+      // Calculate Period Opening & Closing Balance
+      let periodSummary = {
+        openingStock: 0,
+        periodInward: 0,
+        periodOutward: 0,
+        periodNetChange: 0,
+        closingStock: imsSummary.totalNetStock
+      };
+
+      if (effectiveStartDate) {
+        const periodRes = await pool.query(`
+          SELECT
+            COALESCE(SUM(CASE WHEN "date" < $1 THEN "stockQty" ELSE 0 END), 0)::bigint AS "openingStock",
+            COALESCE(SUM(CASE WHEN "date" >= $1 AND ($2::text IS NULL OR "date" <= $2) AND "stockQty" > 0 THEN "stockQty" ELSE 0 END), 0)::bigint AS "periodInward",
+            COALESCE(SUM(CASE WHEN "date" >= $1 AND ($2::text IS NULL OR "date" <= $2) AND "stockQty" < 0 THEN ABS("stockQty") ELSE 0 END), 0)::bigint AS "periodOutward",
+            COALESCE(SUM(CASE WHEN ($2::text IS NULL OR "date" <= $2) THEN "stockQty" ELSE 0 END), 0)::bigint AS "closingStock"
+          FROM ims_transactions;
+        `, [effectiveStartDate, effectiveEndDate || null]);
+        const pr = periodRes.rows[0] || {};
+        periodSummary = {
+          openingStock: Number(pr.openingStock || 0),
+          periodInward: Number(pr.periodInward || 0),
+          periodOutward: Number(pr.periodOutward || 0),
+          periodNetChange: Number(pr.periodInward || 0) - Number(pr.periodOutward || 0),
+          closingStock: Number(pr.closingStock || 0)
+        };
+      }
+
       res.json({
         success: true,
         transactions: rows,
         imsSummary,
-        range: range || (startDate ? "custom" : "6months")
+        periodSummary,
+        itemStocks: imsSummary.itemStocks || [],
+        startDate: effectiveStartDate || "",
+        endDate: effectiveEndDate || "",
+        range: range || (effectiveStartDate ? "custom" : "3days")
       });
     } catch (err) {
       console.error("GET /api/ims/transactions error:", err.message);
@@ -3328,26 +3423,47 @@ app.get("/api/ims/transactions", async (req, res) => {
       const matchBool = isMissingId === "true";
       list = list.filter(t => !!t.isMissingId === matchBool);
     }
-    if (startDate) {
-      list = list.filter(t => (t.date || "") >= startDate);
-    } else if (range === "6months" || (!startDate && !endDate && range !== "all" && !itemId && !itemName && !partyName)) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - 6);
-      const sixMonthsAgo = d.toISOString().split("T")[0];
-      list = list.filter(t => (t.date || "") >= sixMonthsAgo);
+    if (effectiveStartDate) {
+      list = list.filter(t => (t.date || "") >= effectiveStartDate);
     }
-    if (endDate) list = list.filter(t => (t.date || "") <= endDate);
+    if (effectiveEndDate) list = list.filter(t => (t.date || "") <= effectiveEndDate);
     if (limit) {
       const limitNum = parseInt(limit);
       if (!isNaN(limitNum) && limitNum > 0) {
         list = list.slice(0, limitNum);
       }
     }
+
+    let opening = 0, pIn = 0, pOut = 0;
+    (data.imsTransactions || []).forEach(tx => {
+      const q = parseInt(tx.stockQty) || 0;
+      const d = tx.date || "";
+      if (effectiveStartDate && d < effectiveStartDate) {
+        opening += q;
+      }
+      if (effectiveStartDate && d >= effectiveStartDate && (!effectiveEndDate || d <= effectiveEndDate)) {
+        if (q > 0) pIn += q;
+        else pOut += Math.abs(q);
+      }
+    });
+
+    const periodSummary = {
+      openingStock: opening,
+      periodInward: pIn,
+      periodOutward: pOut,
+      periodNetChange: pIn - pOut,
+      closingStock: opening + pIn - pOut
+    };
+
     res.json({
       success: true,
       transactions: list,
       imsSummary,
-      range: range || (startDate ? "custom" : "6months")
+      periodSummary,
+      itemStocks: imsSummary.itemStocks || [],
+      startDate: effectiveStartDate || "",
+      endDate: effectiveEndDate || "",
+      range: range || (effectiveStartDate ? "custom" : "3days")
     });
   }
 });

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { 
   Package, TrendingUp, TrendingDown, Layers, Search, Filter, Download, 
   Plus, UploadCloud, AlertTriangle, CheckCircle2, RefreshCw, X, Edit2, 
@@ -15,7 +15,9 @@ export default function ImsDashboard({
   items = [],
   imsTransactions = [],
   imsSummary = null,
-  imsRange = "1000",
+  imsPeriodSummary = null,
+  imsItemStocks = [],
+  imsRange = "3days",
   onFetchFullHistory,
   onRefreshImsSummary,
   crmParties = [],
@@ -48,9 +50,17 @@ export default function ImsDashboard({
 
   const isDataLoading = Boolean(loading) || !initialLoadComplete || Boolean(loadingModules?.imsTransactions) || Boolean(loadingModules?.ims_transactions) || (!hasReceivedData && effectiveTransactions.length === 0);
 
+  // Date Range Defaults to Last 3 Days
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 3);
+    return d.toISOString().split("T")[0];
+  });
+  const [endDate, setEndDate] = useState(() => (new Date()).toISOString().split("T")[0]);
+
   useEffect(() => {
     if (onPullModuleData) {
-      onPullModuleData("imsTransactions", true);
+      onPullModuleData("imsTransactions", { startDate, endDate });
     }
     if (onRefreshImsSummary) {
       onRefreshImsSummary();
@@ -114,12 +124,22 @@ export default function ImsDashboard({
   }, [effectiveTransactions]);
 
   const [selectedPartyFilter, setSelectedPartyFilter] = useState("all");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
   const [movementFilter, setMovementFilter] = useState("all"); // "all" | "IN" | "OUT"
   const [missingIdFilter, setMissingIdFilter] = useState("all"); // "all" | "missing" | "linked"
   const [locationFilter, setLocationFilter] = useState("all"); // "all" | "Delhi" | "Mumbai"
   const [selectedItemFilter, setSelectedItemFilter] = useState("all");
+
+  // Dynamic backend fetch whenever user changes date range in DateRangeFilter
+  const isInitialMount = useRef(true);
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    if (onPullModuleData) {
+      onPullModuleData("imsTransactions", { startDate, endDate });
+    }
+  }, [startDate, endDate]);
 
   // Pagination States (Default 50 rows per page)
   const [currentPage, setCurrentPage] = useState(1);
@@ -385,49 +405,82 @@ export default function ImsDashboard({
       });
     });
 
-    // Aggregate transactions
-    effectiveTransactions.forEach(tx => {
-      const q = parseInt(tx.stockQty) || 0;
-      const loc = (tx.location || "Delhi").trim();
-      let key = tx.itemId;
-      if (!key || !map.has(key)) {
-        key = `unlinked_${tx.itemName}`;
-        if (!map.has(key)) {
-          map.set(key, {
-            id: tx.itemId || "(Unlinked)",
-            name: tx.itemName,
-            category: "Uncategorized (Missing ID)",
-            inward: 0,
-            outward: 0,
-            delhiStock: 0,
-            mumbaiStock: 0,
-            currentStock: 0,
-            txCount: 0,
-            lastDate: "",
-            isUnlinked: true
-          });
+    // Populate with authoritative server-precalculated lifetime item balances
+    if (Array.isArray(imsItemStocks) && imsItemStocks.length > 0) {
+      imsItemStocks.forEach(is => {
+        let key = is.itemId;
+        if (!key || !map.has(key)) {
+          key = is.itemId || `unlinked_${is.itemName}`;
+          if (!map.has(key)) {
+            map.set(key, {
+              id: is.itemId || "(Unlinked)",
+              name: is.itemName,
+              category: is.itemId ? "General" : "Uncategorized (Missing ID)",
+              inward: 0,
+              outward: 0,
+              delhiStock: 0,
+              mumbaiStock: 0,
+              currentStock: 0,
+              txCount: 0,
+              lastDate: "",
+              isUnlinked: !is.itemId
+            });
+          }
         }
-      }
+        const rec = map.get(key);
+        rec.inward = is.inward || 0;
+        rec.outward = is.outward || 0;
+        rec.delhiStock = is.delhiStock || 0;
+        rec.mumbaiStock = is.mumbaiStock || 0;
+        rec.currentStock = is.currentStock || 0;
+        rec.txCount = is.txCount || 0;
+        rec.lastDate = is.lastDate || "";
+      });
+    } else {
+      // Fallback: aggregate effectiveTransactions
+      effectiveTransactions.forEach(tx => {
+        const q = parseInt(tx.stockQty) || 0;
+        const loc = (tx.location || "Delhi").trim();
+        let key = tx.itemId;
+        if (!key || !map.has(key)) {
+          key = `unlinked_${tx.itemName}`;
+          if (!map.has(key)) {
+            map.set(key, {
+              id: tx.itemId || "(Unlinked)",
+              name: tx.itemName,
+              category: "Uncategorized (Missing ID)",
+              inward: 0,
+              outward: 0,
+              delhiStock: 0,
+              mumbaiStock: 0,
+              currentStock: 0,
+              txCount: 0,
+              lastDate: "",
+              isUnlinked: true
+            });
+          }
+        }
 
-      const rec = map.get(key);
-      if (q > 0) rec.inward += q;
-      else rec.outward += Math.abs(q);
+        const rec = map.get(key);
+        if (q > 0) rec.inward += q;
+        else rec.outward += Math.abs(q);
 
-      if (loc.toLowerCase() === "mumbai") {
-        rec.mumbaiStock = (rec.mumbaiStock || 0) + q;
-      } else {
-        rec.delhiStock = (rec.delhiStock || 0) + q;
-      }
+        if (loc.toLowerCase() === "mumbai") {
+          rec.mumbaiStock = (rec.mumbaiStock || 0) + q;
+        } else {
+          rec.delhiStock = (rec.delhiStock || 0) + q;
+        }
 
-      rec.currentStock += q;
-      rec.txCount++;
-      if (!rec.lastDate || (tx.date && tx.date > rec.lastDate)) {
-        rec.lastDate = tx.date;
-      }
-    });
+        rec.currentStock += q;
+        rec.txCount++;
+        if (!rec.lastDate || (tx.date && tx.date > rec.lastDate)) {
+          rec.lastDate = tx.date;
+        }
+      });
+    }
 
     return Array.from(map.values());
-  }, [items, effectiveTransactions]);
+  }, [items, imsItemStocks, effectiveTransactions]);
 
   // Paginated Matrix Slice (100 rows per page)
   const paginatedMatrix = useMemo(() => {
@@ -1347,19 +1400,17 @@ export default function ImsDashboard({
               <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                 {imsRange !== "all" && (
                   <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                    <span>Showing <strong>latest {imsRange === "1000" ? "1,000" : "6 months"}</strong> ({effectiveTransactions.length.toLocaleString()} rows)</span>
-                    {imsSummary?.totalTransactionsCount > effectiveTransactions.length && (
-                      <button
-                        onClick={() => {
-                          if (onFetchFullHistory) onFetchFullHistory();
-                        }}
-                        className="btn btn-secondary btn-sm"
-                        style={{ height: "28px", padding: "0 8px", fontSize: "0.74rem", fontWeight: 700, borderColor: "rgba(56, 189, 248, 0.4)", color: "#38bdf8" }}
-                        title={`Load all ${imsSummary.totalTransactionsCount.toLocaleString()} historical database transactions`}
-                      >
-                        Load All ({imsSummary.totalTransactionsCount.toLocaleString()})
-                      </button>
-                    )}
+                    <span>Showing <strong>{startDate && endDate ? `${formatDisplayDate(startDate)} - ${formatDisplayDate(endDate)}` : "latest transactions"}</strong> ({effectiveTransactions.length.toLocaleString()} rows)</span>
+                    <button
+                      onClick={() => {
+                        if (onFetchFullHistory) onFetchFullHistory();
+                      }}
+                      className="btn btn-secondary btn-sm"
+                      style={{ height: "28px", padding: "0 8px", fontSize: "0.74rem", fontWeight: 700, borderColor: "rgba(56, 189, 248, 0.4)", color: "#38bdf8" }}
+                      title="Load all historical database transactions"
+                    >
+                      Load All History
+                    </button>
                   </span>
                 )}
                 {imsRange === "all" && (
@@ -1372,7 +1423,7 @@ export default function ImsDashboard({
             </div>
           </div>
 
-          {/* ==================== 5 DYNAMIC KPI SUMMARY CARDS (Server-Precalculated Full Stock & Filtered) ==================== */}
+          {/* ==================== 5 DYNAMIC KPI SUMMARY CARDS (Server Precalculated Physical Stock & Period In/Out) ==================== */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px" }}>
             
             {/* Card 1: Total Physical Stock */}
@@ -1382,17 +1433,17 @@ export default function ImsDashboard({
               </div>
               <div>
                 <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total All On-Hand</div>
-                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: (hasActiveFilters ? filteredNetStock : totalNetStock) >= 0 ? "var(--text-main)" : "var(--danger)" }}>
+                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: (locationFilter === "Mumbai" ? mumbaiStock : locationFilter === "Delhi" ? delhiStock : totalNetStock) >= 0 ? "var(--text-main)" : "var(--danger)" }}>
                   {isDataLoading ? (
                     <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
                       <RefreshCw size={14} className="spin" /> Loading...
                     </span>
                   ) : (
-                    <>{(hasActiveFilters ? filteredNetStock : totalNetStock).toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                    <>{(locationFilter === "Mumbai" ? mumbaiStock : locationFilter === "Delhi" ? delhiStock : totalNetStock).toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
                   )}
                 </div>
                 <div style={{ fontSize: "0.68rem", color: "#38bdf8", marginTop: "1px" }}>
-                  {hasActiveFilters ? "Filtered Subset" : "Combined Warehouses (Full Stock)"}
+                  {locationFilter !== "all" ? `${locationFilter} Physical Stock` : "Total Physical Stock (Combined)"}
                 </div>
               </div>
             </div>
@@ -1404,17 +1455,17 @@ export default function ImsDashboard({
               </div>
               <div>
                 <div style={{ fontSize: "0.74rem", color: "#38bdf8", fontWeight: 700 }}>🏢 Delhi Warehouse</div>
-                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: (hasActiveFilters ? filteredDelhiStock : delhiStock) >= 0 ? "#38bdf8" : "var(--danger)" }}>
+                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: delhiStock >= 0 ? "#38bdf8" : "var(--danger)" }}>
                   {isDataLoading ? (
                     <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
                       <RefreshCw size={14} className="spin" /> Loading...
                     </span>
                   ) : (
-                    <>{(hasActiveFilters ? filteredDelhiStock : delhiStock).toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                    <>{delhiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
                   )}
                 </div>
                 <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>
-                  {hasActiveFilters ? "Filtered Delhi Stock" : "Delhi On-Hand Stock (Full)"}
+                  Delhi Warehouse Balance
                 </div>
               </div>
             </div>
@@ -1426,17 +1477,17 @@ export default function ImsDashboard({
               </div>
               <div>
                 <div style={{ fontSize: "0.74rem", color: "#c084fc", fontWeight: 700 }}>🏢 Mumbai Warehouse</div>
-                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: (hasActiveFilters ? filteredMumbaiStock : mumbaiStock) >= 0 ? "#c084fc" : "var(--danger)" }}>
+                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: mumbaiStock >= 0 ? "#c084fc" : "var(--danger)" }}>
                   {isDataLoading ? (
                     <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
                       <RefreshCw size={14} className="spin" /> Loading...
                     </span>
                   ) : (
-                    <>{(hasActiveFilters ? filteredMumbaiStock : mumbaiStock).toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                    <>{mumbaiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
                   )}
                 </div>
                 <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>
-                  {hasActiveFilters ? "Filtered Mumbai Stock" : "Mumbai On-Hand Stock (Full)"}
+                  Mumbai Warehouse Balance
                 </div>
               </div>
             </div>
@@ -1454,11 +1505,11 @@ export default function ImsDashboard({
                       <RefreshCw size={14} className="spin" /> Loading...
                     </span>
                   ) : (
-                    <>+{(hasActiveFilters ? filteredInwardUnits : totalInwardUnits).toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                    <>+{(imsPeriodSummary ? imsPeriodSummary.periodInward : filteredInwardUnits).toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
                   )}
                 </div>
                 <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>
-                  {hasActiveFilters ? "Filtered Inflow" : "Factory & Vendor Inflows (Full)"}
+                  {startDate || endDate ? "Period Inflows" : "Factory & Vendor Inflows"}
                 </div>
               </div>
             </div>
@@ -1476,11 +1527,11 @@ export default function ImsDashboard({
                       <RefreshCw size={14} className="spin" /> Loading...
                     </span>
                   ) : (
-                    <>-{(hasActiveFilters ? filteredOutwardUnits : totalOutwardUnits).toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
+                    <>-{(imsPeriodSummary ? imsPeriodSummary.periodOutward : filteredOutwardUnits).toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
                   )}
                 </div>
                 <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "1px" }}>
-                  {hasActiveFilters ? "Filtered Outflow" : "Party & Dealer Outflows (Full)"}
+                  {startDate || endDate ? "Period Outflows" : "Party & Dealer Outflows"}
                 </div>
               </div>
             </div>

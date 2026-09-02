@@ -185,15 +185,36 @@ export default function App() {
           const data = await res.json();
           if (Array.isArray(data)) setCrmDispatches(data);
         } else if (moduleKey === TRACKABLE_MODULES.IMS_TRANSACTIONS || moduleKey === "imsTransactions") {
-          const rangeQuery = force === "all" ? "?range=all" : "?range=6months";
-          const res = await fetch(`/api/ims/transactions${rangeQuery}`);
+          let query = "";
+          if (typeof force === "object" && force !== null) {
+            const params = new URLSearchParams();
+            if (force.startDate) params.append("startDate", force.startDate);
+            if (force.endDate) params.append("endDate", force.endDate);
+            if (force.range) params.append("range", force.range);
+            query = `?${params.toString()}`;
+          } else if (force === "all") {
+            query = "?range=all";
+          } else {
+            const d = new Date();
+            d.setDate(d.getDate() - 3);
+            const start3Days = d.toISOString().split("T")[0];
+            const todayStr = (new Date()).toISOString().split("T")[0];
+            query = `?startDate=${start3Days}&endDate=${todayStr}`;
+          }
+          const res = await fetch(`/api/ims/transactions${query}`);
           const data = await res.json();
           const list = Array.isArray(data) ? data : (data.transactions || []);
           setImsTransactions(list);
           if (data?.imsSummary) {
             setImsSummary(data.imsSummary);
           }
-          setImsRange(force === "all" ? "all" : "6months");
+          if (data?.periodSummary) {
+            setImsPeriodSummary(data.periodSummary);
+          }
+          if (data?.itemStocks) {
+            setImsItemStocks(data.itemStocks);
+          }
+          setImsRange(data?.range || (force === "all" ? "all" : "3days"));
         } else if (moduleKey === TRACKABLE_MODULES.AUDIT_LOGS) {
           const res = await fetch("/api/audit-logs");
           const data = await res.json();
@@ -2313,6 +2334,8 @@ export default function App() {
             items={items}
             imsTransactions={imsTransactions}
             imsSummary={imsSummary}
+            imsPeriodSummary={imsPeriodSummary}
+            imsItemStocks={imsItemStocks}
             imsRange={imsRange}
             onFetchFullHistory={handleFetchFullImsHistory}
             onRefreshImsSummary={refreshImsSummary}
