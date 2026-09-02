@@ -1038,13 +1038,19 @@ export default function App() {
     return { success: true };
   };
 
-  const updateUserInfo = async (userId, updatedFields) => {
-    const finalFields = { ...updatedFields };
-    if (finalFields.name) {
-      finalFields.name = sanitizeUserName(finalFields.name);
-    }
     await postData("/api/users/update", { id: userId, updates: finalFields });
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...finalFields } : u));
+    return { success: true };
+  };
+
+  const handleDeleteUser = async (userId) => {
+    try {
+      await fetch(`/api/users/${userId}`, { method: "DELETE" });
+    } catch (e) {
+      console.error("DELETE user API error:", e);
+    }
+    setUsers(prev => prev.filter(u => u.id !== userId));
+    logSystemActivity("DELETE_USER", `Deleted user account #${userId}`, "User Account", userId);
     return { success: true };
   };
 
@@ -2329,6 +2335,7 @@ export default function App() {
             onExportBackup={exportBackupData}
             onImportBackup={importBackupData}
             onUpdateUserInfo={updateUserInfo}
+            onDeleteUser={handleDeleteUser}
             settings={settings}
             onUpdateSettings={handleUpdateSystemSettings}
             onBatchUpdateRequests={batchUpdateRequests}
@@ -2423,6 +2430,7 @@ export default function App() {
             onDeleteDispatch={handleDeleteDispatch}
             onAddUser={addPurchaser}
             onUpdateUser={updateUserInfo}
+            onDeleteUser={handleDeleteUser}
             onLogout={handleLogout}
             onPullModuleData={pullModuleData}
             loadingModules={loadingModules}

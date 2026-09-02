@@ -614,19 +614,22 @@ async function setupPgDatabase() {
       );
     `);
 
-    // Ensure all standard initial users exist in PG with active status & designations
+    // Clean up deprecated dummy sample ASM/TSM users
+    try {
+      await pool.query(`DELETE FROM users WHERE "id" IN ('u-asm-vikram', 'u-asm-rohit', 'u-tsm-manoj', 'u-tsm-suresh')`);
+    } catch (e) {
+      console.log("Cleanup dummy users error:", e.message);
+    }
+
+    // Ensure all standard initial users exist in PG (DO NOT overwrite or resurrect deleted accounts)
     for (const u of initialUsers) {
       await pool.query(
         `INSERT INTO users ("id", "name", "email", "password", "role", "designation", "status", "phone", "territory", "parentCrmId")
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-         ON CONFLICT ("id") DO UPDATE SET
-           "status" = 'active',
-           "designation" = COALESCE(users."designation", EXCLUDED."designation"),
-           "role" = COALESCE(users."role", EXCLUDED."role")`,
+         ON CONFLICT ("id") DO NOTHING`,
         [u.id, u.name, u.email, u.password, u.role, u.designation || "Staff", "active", u.phone || "", u.territory || "", u.parentCrmId || ""]
       );
     }
-    await pool.query(`UPDATE users SET "status" = 'active' WHERE "status" IS NULL OR "status" = ''`);
 
     // Auto-seed items table from requests if empty
     try {
@@ -2924,6 +2927,32 @@ app.post("/api/users/update", async (req, res) => {
     const index = data.users.findIndex(x => x.id === id);
     if (index !== -1) {
       data.users[index] = { ...data.users[index], ...updates };
+      writeLocalJson(data);
+    }
+    res.json({ success: true });
+  }
+});
+
+// 8b. DELETE /api/users/:id - Permanently deletes or deactivates a user
+app.delete("/api/users/:id", async (req, res) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ error: "User ID is required." });
+
+  if (isPg) {
+    try {
+      await pool.query('DELETE FROM users WHERE "id" = $1', [id]);
+      // Also unassign this user from crm_parties
+      await pool.query('UPDATE crm_parties SET "assignedAsmId" = NULL, "assignedAsmName" = NULL WHERE "assignedAsmId" = $1', [id]);
+      await pool.query('UPDATE crm_parties SET "assignedTsmId" = NULL, "assignedTsmName" = NULL WHERE "assignedTsmId" = $1', [id]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/users/:id error:", err.message);
+      res.status(500).json({ error: "Failed to delete user." });
+    }
+  } else {
+    const data = readLocalJson();
+    if (data.users) {
+      data.users = data.users.filter(u => u.id !== id);
       writeLocalJson(data);
     }
     res.json({ success: true });

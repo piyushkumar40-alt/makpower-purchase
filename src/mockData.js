@@ -108,56 +108,6 @@ export const initialUsers = [
     phone: "+91 98101 23405",
     territory: "UP & Bihar Region",
     status: "active"
-  },
-  // Sample ASMs (Area Sales Managers)
-  {
-    id: "u-asm-vikram",
-    name: "Vikram Sharma",
-    email: "vikram.asm@makpowerindia.com",
-    password: "MakPower#ASM2026!",
-    role: "asm",
-    designation: "Area Sales Manager (ASM)",
-    parentCrmId: "u-ankita",
-    phone: "+91 98765 11001",
-    territory: "Rajasthan & Punjab Area",
-    status: "active"
-  },
-  {
-    id: "u-asm-rohit",
-    name: "Rohit Verma",
-    email: "rohit.asm@makpowerindia.com",
-    password: "MakPower#ASM2026!",
-    role: "asm",
-    designation: "Area Sales Manager (ASM)",
-    parentCrmId: "u-ajit",
-    phone: "+91 98765 11002",
-    territory: "Kolkata & Odisha Area",
-    status: "active"
-  },
-  // Sample TSMs (Territory Sales Managers)
-  {
-    id: "u-tsm-manoj",
-    name: "Manoj Kumar",
-    email: "manoj.tsm@makpowerindia.com",
-    password: "MakPower#TSM2026!",
-    role: "tsm",
-    designation: "Territory Sales Manager (TSM)",
-    parentCrmId: "u-ankita",
-    phone: "+91 98765 22001",
-    territory: "Jaipur City & Alwar",
-    status: "active"
-  },
-  {
-    id: "u-tsm-suresh",
-    name: "Suresh Gupta",
-    email: "suresh.tsm@makpowerindia.com",
-    password: "MakPower#TSM2026!",
-    role: "tsm",
-    designation: "Territory Sales Manager (TSM)",
-    parentCrmId: "u-simran",
-    phone: "+91 98765 22002",
-    territory: "East Delhi & Noida",
-    status: "active"
   }
 ];
 

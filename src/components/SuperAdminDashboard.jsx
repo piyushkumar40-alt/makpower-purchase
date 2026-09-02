@@ -34,6 +34,7 @@ export default function SuperAdminDashboard({
   onExportBackup,
   onImportBackup,
   onUpdateUserInfo,
+  onDeleteUser,
   settings = { isHidden: false, redirectUrl: "" },
   onUpdateSettings,
   onBatchUpdateRequests,
@@ -1479,13 +1480,17 @@ export default function SuperAdminDashboard({
                                   if (isPurchaser) {
                                     setSelectedDeactivateUser(staff);
                                   } else {
-                                    if (window.confirm(`Are you sure you want to deactivate account "${staff.name}"?`)) {
-                                      onUpdateUserInfo(staff.id, { status: "inactive" });
+                                    if (window.confirm(`Are you sure you want to delete / remove account "${staff.name}"?`)) {
+                                      if (onDeleteUser) {
+                                        onDeleteUser(staff.id);
+                                      } else {
+                                        onUpdateUserInfo(staff.id, { status: "inactive" });
+                                      }
                                     }
                                   }
                                 }}
                                 className="btn btn-danger btn-sm"
-                                title="Deactivate user account"
+                                title="Remove user account"
                                 style={{ padding: "6px 10px", fontSize: "0.75rem" }}
                               >
                                 <UserMinus size={12} /> Remove

@@ -250,17 +250,19 @@ export default function CrmDashboard({
     return list;
   }, [allUnifiedDispatches, selectedExecutiveId, currentParties, globalStartDate, globalEndDate, isAsmOrTsm, isCrmUser, activeExecutive]);
 
-  // ASMs and TSMs under this executive or all
+  // ASMs and TSMs under this executive or all (only active and non-deleted accounts)
   const teamMembers = useMemo(() => {
     return users.filter(u => {
       if (u.role !== "asm" && u.role !== "tsm") return false;
+      if (u.status === "inactive" || u.status === "deleted") return false;
+      if (["u-asm-vikram", "u-asm-rohit", "u-tsm-manoj", "u-tsm-suresh"].includes(u.id)) return false;
       if (selectedExecutiveId === "all") return true;
       return u.parentCrmId === selectedExecutiveId || u.id === selectedExecutiveId;
     });
   }, [users, selectedExecutiveId]);
 
-  const asmList = useMemo(() => users.filter(u => u.role === "asm" && u.status === "active"), [users]);
-  const tsmList = useMemo(() => users.filter(u => u.role === "tsm" && u.status === "active"), [users]);
+  const asmList = useMemo(() => users.filter(u => u.role === "asm" && u.status === "active" && !["u-asm-vikram", "u-asm-rohit"].includes(u.id)), [users]);
+  const tsmList = useMemo(() => users.filter(u => u.role === "tsm" && u.status === "active" && !["u-tsm-manoj", "u-tsm-suresh"].includes(u.id)), [users]);
 
   // KPI Metrics Calculation
   const totalPartiesCount = currentParties.length;
