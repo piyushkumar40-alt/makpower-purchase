@@ -76,7 +76,6 @@ export default function ImsDashboard({
 
   // Filter States for Ledger - Multi-Search with Field Target Scope (Party, Category, Item, Location, ID, All)
   const [searchFilters, setSearchFilters] = useState([{ query: "", scope: "all" }]);
-  const [activeSearchDropdownIndex, setActiveSearchDropdownIndex] = useState(null);
 
   const handleAddSearchQuery = () => {
     setSearchFilters(prev => [...prev, { query: "", scope: "all" }]);
@@ -88,11 +87,6 @@ export default function ImsDashboard({
       next[index] = { ...next[index], query: val };
       return next;
     });
-    if (val && val.trim()) {
-      setActiveSearchDropdownIndex(index);
-    } else {
-      setActiveSearchDropdownIndex(null);
-    }
   };
 
   const handleSetSearchScope = (index, scope) => {
@@ -101,7 +95,6 @@ export default function ImsDashboard({
       next[index] = { ...next[index], scope };
       return next;
     });
-    setActiveSearchDropdownIndex(null);
   };
 
   const handleRemoveSearchQuery = (index) => {
@@ -109,7 +102,6 @@ export default function ImsDashboard({
       if (prev.length <= 1) return [{ query: "", scope: "all" }];
       return prev.filter((_, i) => i !== index);
     });
-    setActiveSearchDropdownIndex(null);
   };
 
   const activeSearchItems = useMemo(() => {
@@ -1427,8 +1419,6 @@ export default function ImsDashboard({
                         }
                         value={sf.query}
                         onChange={e => handleUpdateSearchQuery(idx, e.target.value)}
-                        onFocus={() => { if (sf.query && sf.query.trim()) setActiveSearchDropdownIndex(idx); }}
-                        className="form-control"
                         style={{ 
                           borderRadius: "0 8px 8px 0",
                           paddingLeft: "12px", 
@@ -1458,93 +1448,6 @@ export default function ImsDashboard({
                         </button>
                       )}
                     </div>
-
-                    {/* Interactive "Where to search" suggestion popover */}
-                    {activeSearchDropdownIndex === idx && sf.query && sf.query.trim() && (
-                      <div 
-                        style={{
-                          position: "absolute",
-                          top: "calc(100% + 4px)",
-                          left: 0,
-                          right: 0,
-                          zIndex: 100,
-                          background: "#0f172a",
-                          border: "1px solid rgba(56, 189, 248, 0.4)",
-                          borderRadius: "8px",
-                          boxShadow: "0 10px 25px rgba(0,0,0,0.6)",
-                          padding: "6px",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "2px",
-                          minWidth: "260px"
-                        }}
-                      >
-                        <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", padding: "4px 8px", fontWeight: 700, borderBottom: "1px solid rgba(255,255,255,0.08)", marginBottom: "3px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span>Where to search for "{sf.query}"?</span>
-                          <button 
-                            type="button" 
-                            onClick={() => setActiveSearchDropdownIndex(null)}
-                            style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: "0.7rem" }}
-                          >
-                            ✕
-                          </button>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => handleSetSearchScope(idx, "all")}
-                          className="btn btn-ghost btn-sm"
-                          style={{ justifyContent: "flex-start", fontSize: "0.8rem", textAlign: "left", padding: "6px 8px", background: sf.scope === "all" ? "rgba(56, 189, 248, 0.15)" : "transparent", color: sf.scope === "all" ? "#38bdf8" : "inherit" }}
-                        >
-                          🌐 <span>Search in <strong>All Fields</strong> (Global Match)</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleSetSearchScope(idx, "category")}
-                          className="btn btn-ghost btn-sm"
-                          style={{ justifyContent: "flex-start", fontSize: "0.8rem", textAlign: "left", padding: "6px 8px", background: sf.scope === "category" ? "rgba(56, 189, 248, 0.15)" : "transparent", color: sf.scope === "category" ? "#38bdf8" : "#38bdf8" }}
-                        >
-                          🏷️ <span>Search in <strong>Category Only</strong></span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleSetSearchScope(idx, "party")}
-                          className="btn btn-ghost btn-sm"
-                          style={{ justifyContent: "flex-start", fontSize: "0.8rem", textAlign: "left", padding: "6px 8px", background: sf.scope === "party" ? "rgba(192, 132, 252, 0.15)" : "transparent", color: sf.scope === "party" ? "#c084fc" : "#c084fc" }}
-                        >
-                          👤 <span>Search in <strong>Party Name Only</strong></span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleSetSearchScope(idx, "item")}
-                          className="btn btn-ghost btn-sm"
-                          style={{ justifyContent: "flex-start", fontSize: "0.8rem", textAlign: "left", padding: "6px 8px", background: sf.scope === "item" ? "rgba(52, 211, 153, 0.15)" : "transparent", color: sf.scope === "item" ? "#34d399" : "#34d399" }}
-                        >
-                          📦 <span>Search in <strong>Item Name & Model Only</strong></span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleSetSearchScope(idx, "location")}
-                          className="btn btn-ghost btn-sm"
-                          style={{ justifyContent: "flex-start", fontSize: "0.8rem", textAlign: "left", padding: "6px 8px", background: sf.scope === "location" ? "rgba(251, 191, 36, 0.15)" : "transparent", color: sf.scope === "location" ? "#fbbf24" : "#fbbf24" }}
-                        >
-                          🏢 <span>Search in <strong>Location / Warehouse</strong></span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleSetSearchScope(idx, "id")}
-                          className="btn btn-ghost btn-sm"
-                          style={{ justifyContent: "flex-start", fontSize: "0.8rem", textAlign: "left", padding: "6px 8px", background: sf.scope === "id" ? "rgba(244, 63, 94, 0.15)" : "transparent", color: sf.scope === "id" ? "#f43f5e" : "#f43f5e" }}
-                        >
-                          🆔 <span>Search in <strong>Item ID Only</strong></span>
-                        </button>
-                      </div>
-                    )}
                   </div>
                 ))}
 
