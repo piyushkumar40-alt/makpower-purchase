@@ -3890,9 +3890,6 @@ function CategoryRemarksHistoryModal({ target, crmPartyRemarks = [], currentUser
             })
           )}
         </div>
-            })
-          )}
-        </div>
 
         <div style={{ marginTop: "14px", display: "flex", justifyContent: "flex-end" }}>
           <button onClick={onClose} className="btn btn-secondary btn-sm">Close</button>
