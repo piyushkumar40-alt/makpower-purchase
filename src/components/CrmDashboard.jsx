@@ -1697,6 +1697,9 @@ export default function CrmDashboard({
             )}
           </div>
 
+        </div>
+      )}
+
       {/* ==================== TAB 3: ITEM-WISE SALE REPORT ==================== */}
       {activeTab === "salesreport" && (
         <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
