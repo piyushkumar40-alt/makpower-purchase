@@ -149,6 +149,24 @@ export default function ImsDashboard({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [items]);
 
+  // Fast Item Catalog Map for category & item metadata lookups
+  const itemCatalogMap = useMemo(() => {
+    const map = new Map();
+    (items || []).forEach(it => {
+      if (it.id) {
+        const rawId = String(it.id).trim().toLowerCase();
+        const cleanId = rawId.replace(/^#+/, "");
+        map.set(rawId, it);
+        map.set(cleanId, it);
+        map.set('#' + cleanId, it);
+      }
+      if (it.name) {
+        map.set(it.name.trim().toLowerCase(), it);
+      }
+    });
+    return map;
+  }, [items]);
+
   const [selectedPartyFilter, setSelectedPartyFilter] = useState("all");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("all");
   const [movementFilter, setMovementFilter] = useState("all"); // "all" | "IN" | "OUT"
@@ -609,24 +627,6 @@ export default function ImsDashboard({
 
     return Array.from(map.values());
   }, [items, imsItemStocks, effectiveTransactions]);
-
-  // Fast Item Catalog Map for category & item metadata lookups
-  const itemCatalogMap = useMemo(() => {
-    const map = new Map();
-    (items || []).forEach(it => {
-      if (it.id) {
-        const rawId = String(it.id).trim().toLowerCase();
-        const cleanId = rawId.replace(/^#+/, "");
-        map.set(rawId, it);
-        map.set(cleanId, it);
-        map.set('#' + cleanId, it);
-      }
-      if (it.name) {
-        map.set(it.name.trim().toLowerCase(), it);
-      }
-    });
-    return map;
-  }, [items]);
 
   // Paginated Matrix Slice (100 rows per page)
   const paginatedMatrix = useMemo(() => {
