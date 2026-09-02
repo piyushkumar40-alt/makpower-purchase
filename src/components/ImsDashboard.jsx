@@ -549,6 +549,24 @@ export default function ImsDashboard({
     return Array.from(map.values());
   }, [items, imsItemStocks, effectiveTransactions]);
 
+  // Fast Item Catalog Map for category & item metadata lookups
+  const itemCatalogMap = useMemo(() => {
+    const map = new Map();
+    (items || []).forEach(it => {
+      if (it.id) {
+        const rawId = String(it.id).trim().toLowerCase();
+        const cleanId = rawId.replace(/^#+/, "");
+        map.set(rawId, it);
+        map.set(cleanId, it);
+        map.set('#' + cleanId, it);
+      }
+      if (it.name) {
+        map.set(it.name.trim().toLowerCase(), it);
+      }
+    });
+    return map;
+  }, [items]);
+
   // Paginated Matrix Slice (100 rows per page)
   const paginatedMatrix = useMemo(() => {
     const start = (matrixPage - 1) * matrixPerPage;
@@ -1663,7 +1681,11 @@ export default function ImsDashboard({
                         Item Name & Model <ArrowUpDown size={12} />
                       </div>
                     </th>
-                    <th style={{ width: "10%" }}>Item ID</th>
+                    <th style={{ width: "12%", cursor: "pointer" }} onClick={() => { setSortField("category"); setSortAsc(!sortAsc); }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        Category <ArrowUpDown size={12} />
+                      </div>
+                    </th>
                     <th style={{ width: "12%", cursor: "pointer" }} onClick={() => { setSortField("location"); setSortAsc(!sortAsc); }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                         Location <ArrowUpDown size={12} />
@@ -1736,28 +1758,26 @@ export default function ImsDashboard({
                           )}
                         </td>
 
-                        {/* 3. Item ID */}
+                        {/* 3. Category */}
                         <td>
-                          {tx.itemId ? (
-                            <span className="badge badge-secondary" style={{ fontFamily: "monospace", fontSize: "0.78rem", fontWeight: 700, color: "#38bdf8" }}>
-                              #{tx.itemId}
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => setResolvingMissingItemName(tx.itemName)}
-                              className="badge"
-                              style={{ 
-                                background: "rgba(239, 68, 68, 0.15)", 
-                                color: "var(--danger)", 
-                                border: "1px dashed rgba(239, 68, 68, 0.4)",
-                                cursor: "pointer",
-                                fontSize: "0.72rem",
-                                fontWeight: 700
-                              }}
-                            >
-                              + Create / Link ID
-                            </button>
-                          )}
+                          {(() => {
+                            const rawId = String(tx.itemId || "").trim().toLowerCase();
+                            const cleanId = rawId.replace(/^#+/, "");
+                            const foundItem = itemCatalogMap.get(rawId) || itemCatalogMap.get(cleanId) || itemCatalogMap.get('#' + cleanId) || itemCatalogMap.get((tx.itemName || "").trim().toLowerCase());
+                            const cat = tx.category || foundItem?.category || "General";
+                            return (
+                              <span className="badge badge-secondary" style={{ 
+                                fontWeight: 700, 
+                                fontSize: "0.78rem", 
+                                color: "#38bdf8",
+                                background: "rgba(56, 189, 248, 0.12)",
+                                border: "1px solid rgba(56, 189, 248, 0.25)",
+                                whiteSpace: "nowrap"
+                              }}>
+                                {cat}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {/* 4. Warehouse Location */}
