@@ -86,7 +86,9 @@ export default function App() {
     return [];
   });
   const [imsSummary, setImsSummary] = useState(() => cachedState?.imsSummary || null);
-  const [imsRange, setImsRange] = useState("1000"); // "1000" (initial preview) | "6months" | "all"
+  const [imsPeriodSummary, setImsPeriodSummary] = useState(null);
+  const [imsItemStocks, setImsItemStocks] = useState(() => cachedState?.imsSummary?.itemStocks || []);
+  const [imsRange, setImsRange] = useState("3days");
   const [itemPrices, setItemPrices] = useState(() => {
     if (cachedState?.itemPrices && Array.isArray(cachedState.itemPrices)) {
       return cachedState.itemPrices;
