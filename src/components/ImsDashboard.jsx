@@ -153,7 +153,7 @@ export default function ImsDashboard({
   const itemCatalogMap = useMemo(() => {
     const map = new Map();
     (items || []).forEach(it => {
-      if (it.id) {
+      if (it.id !== undefined && it.id !== null) {
         const rawId = String(it.id).trim().toLowerCase();
         const cleanId = rawId.replace(/^#+/, "");
         map.set(rawId, it);
@@ -161,7 +161,10 @@ export default function ImsDashboard({
         map.set('#' + cleanId, it);
       }
       if (it.name) {
-        map.set(it.name.trim().toLowerCase(), it);
+        const rawName = String(it.name).trim().toLowerCase();
+        const cleanName = rawName.replace(/\s+/g, ' ');
+        map.set(rawName, it);
+        map.set(cleanName, it);
       }
     });
     return map;
@@ -303,17 +306,26 @@ export default function ImsDashboard({
   // ==================== FILTERED TRANSACTIONS ====================
   const filteredTransactions = useMemo(() => {
     return effectiveTransactions.filter(tx => {
-      // Category resolution for search & filtering
+      // Category resolution for search & filtering: Prioritize master items catalog
       const rawId = String(tx.itemId || "").trim().toLowerCase();
       const cleanId = rawId.replace(/^#+/, "");
-      const foundItem = itemCatalogMap.get(rawId) || itemCatalogMap.get(cleanId) || itemCatalogMap.get('#' + cleanId) || itemCatalogMap.get((tx.itemName || "").trim().toLowerCase());
-      const cat = (tx.category || foundItem?.category || "").trim().toLowerCase();
+      const rawName = String(tx.itemName || "").trim().toLowerCase();
+      const cleanName = rawName.replace(/\s+/g, ' ');
+      
+      const foundItem = itemCatalogMap.get(rawId) || 
+                        itemCatalogMap.get(cleanId) || 
+                        itemCatalogMap.get('#' + cleanId) || 
+                        itemCatalogMap.get(rawName) || 
+                        itemCatalogMap.get(cleanName);
+
+      const resolvedCategory = (foundItem?.category || (tx.category && tx.category !== "General" ? tx.category : "") || "").trim();
+      const cat = resolvedCategory.toLowerCase();
 
       // Field-Scoped Search Matching
       if (activeSearchItems.length > 0) {
         const party = (tx.partyName || tx.party || tx.customer || tx.vendorName || tx.vendor || "").toLowerCase();
-        const item = (tx.itemName || tx.item || tx.name || "").toLowerCase();
-        const id = (tx.itemId || tx.id || "").toLowerCase();
+        const item = cleanName;
+        const id = cleanId;
         const remarks = (tx.remarks || tx.narration || "").toLowerCase();
         const loc = (tx.location || tx.godown || tx.warehouse || "").toLowerCase();
         const date = tx.date || "";
@@ -324,7 +336,7 @@ export default function ImsDashboard({
           const words = term.split(/\s+/).filter(Boolean);
 
           if (scope === "category") {
-            return words.length > 1 ? words.every(w => cat.includes(w)) : cat.includes(term);
+            return words.length > 1 ? words.every(w => cat.includes(w) || cleanName.includes(w)) : (cat.includes(term) || cleanName.includes(term));
           }
           if (scope === "party") {
             return words.length > 1 ? words.every(w => party.includes(w)) : party.includes(term);
@@ -336,7 +348,7 @@ export default function ImsDashboard({
             return words.length > 1 ? words.every(w => loc.includes(w)) : loc.includes(term);
           }
           if (scope === "id") {
-            return words.length > 1 ? words.every(w => id.includes(w)) : id.includes(term);
+            return words.length > 1 ? words.every(w => id.includes(w) || rawId.includes(w)) : (id.includes(term) || rawId.includes(term));
           }
 
           // scope === "all"
@@ -351,7 +363,12 @@ export default function ImsDashboard({
 
       // Category Quick Filter
       if (selectedCategoryFilter !== "all") {
-        if (cat !== selectedCategoryFilter.trim().toLowerCase()) return false;
+        const selectedCatLower = selectedCategoryFilter.trim().toLowerCase();
+        const isCatMatch = cat === selectedCatLower || 
+                           cat.includes(selectedCatLower) || 
+                           selectedCatLower.includes(cat) ||
+                           cleanName.includes(selectedCatLower);
+        if (!isCatMatch) return false;
       }
 
       // Party Name Quick Filter
@@ -1970,8 +1987,14 @@ export default function ImsDashboard({
                           {(() => {
                             const rawId = String(tx.itemId || "").trim().toLowerCase();
                             const cleanId = rawId.replace(/^#+/, "");
-                            const foundItem = itemCatalogMap.get(rawId) || itemCatalogMap.get(cleanId) || itemCatalogMap.get('#' + cleanId) || itemCatalogMap.get((tx.itemName || "").trim().toLowerCase());
-                            const cat = tx.category || foundItem?.category || "General";
+                            const rawName = String(tx.itemName || "").trim().toLowerCase();
+                            const cleanName = rawName.replace(/\s+/g, ' ');
+                            const foundItem = itemCatalogMap.get(rawId) || 
+                                              itemCatalogMap.get(cleanId) || 
+                                              itemCatalogMap.get('#' + cleanId) || 
+                                              itemCatalogMap.get(rawName) || 
+                                              itemCatalogMap.get(cleanName);
+                            const cat = foundItem?.category || (tx.category && tx.category !== "General" ? tx.category : "") || (tx.itemId ? `Item #${tx.itemId}` : "General");
                             return (
                               <span className="badge badge-secondary" style={{ 
                                 fontWeight: 700, 
