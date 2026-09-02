@@ -483,15 +483,17 @@ export default function DateRangeFilter({
             border: "1px solid rgba(56, 189, 248, 0.35)",
             borderRadius: "16px",
             boxShadow: "0 25px 60px rgba(0, 0, 0, 0.8), 0 0 1px rgba(255, 255, 255, 0.2)",
-            padding: "24px 28px",
-            minWidth: "640px",
-            maxWidth: "calc(100vw - 32px)",
+            padding: "18px 20px",
+            minWidth: "min(640px, calc(100vw - 24px))",
+            maxWidth: "calc(100vw - 20px)",
+            maxHeight: "88vh",
+            overflowY: "auto",
             backdropFilter: "blur(25px)",
             WebkitBackdropFilter: "blur(25px)"
           }}
         >
           {/* Top Auto Date Range Preset Selector Bar */}
-          <div style={{ marginBottom: "20px", position: "relative" }}>
+          <div style={{ marginBottom: "16px", position: "relative" }}>
             <button
               type="button"
               onClick={() => setShowAutoMenu(prev => !prev)}
@@ -508,54 +510,36 @@ export default function DateRangeFilter({
                 fontSize: "0.88rem",
                 fontWeight: 700,
                 cursor: "pointer",
-                minWidth: "190px"
+                width: "100%"
               }}
             >
-              <span>{rangeLabel}</span>
-              <ChevronDown size={15} style={{ color: "var(--text-muted)" }} />
+              <span>{PRESET_LABELS[selectedPreset] || "Auto"}</span>
+              <ChevronDown size={14} style={{ color: "var(--text-muted)" }} />
             </button>
 
-            {/* NESTED PRESETS MENU (Screenshots 3, 4, 5) */}
+            {/* Auto Dropdown Menu */}
             {showAutoMenu && (
               <div
                 style={{
                   position: "absolute",
-                  top: "calc(100% + 6px)",
+                  top: "calc(100% + 4px)",
                   left: 0,
                   zIndex: 10000,
-                  background: "#1e293b",
-                  border: "1px solid rgba(255, 255, 255, 0.18)",
-                  borderRadius: "10px",
-                  boxShadow: "0 15px 35px rgba(0,0,0,0.6)",
+                  background: "var(--bg-panel, #1e293b)",
+                  border: "1px solid var(--border-glass, rgba(255, 255, 255, 0.15))",
+                  borderRadius: "8px",
+                  boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
                   padding: "6px 0",
-                  minWidth: "200px",
-                  display: "flex",
-                  flexDirection: "column"
+                  minWidth: "220px",
+                  width: "100%"
                 }}
               >
                 <div 
-                  onClick={() => { setRangeLabel("Fixed"); setShowAutoMenu(false); }}
-                  style={{ padding: "8px 14px", fontSize: "0.83rem", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                  onClick={() => handleSelectPreset("auto")}
+                  style={{ padding: "8px 14px", fontSize: "0.83rem", cursor: "pointer", fontWeight: 700, color: "var(--primary)" }}
                   className="menu-item-hover"
                 >
-                  Fixed (Custom)
-                  {rangeLabel === "Fixed" && <Check size={14} style={{ color: "var(--primary)" }} />}
-                </div>
-
-                <div 
-                  onClick={() => handleSelectPreset("today")}
-                  style={{ padding: "8px 14px", fontSize: "0.83rem", cursor: "pointer" }}
-                  className="menu-item-hover"
-                >
-                  Today
-                </div>
-
-                <div 
-                  onClick={() => handleSelectPreset("yesterday")}
-                  style={{ padding: "8px 14px", fontSize: "0.83rem", cursor: "pointer" }}
-                  className="menu-item-hover"
-                >
-                  Yesterday
+                  Auto
                 </div>
 
                 {/* Submenu 1: This Month */}
@@ -592,7 +576,9 @@ export default function DateRangeFilter({
                         minWidth: "240px"
                       }}
                     >
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_month"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer", fontWeight: 700 }} className="menu-item-hover">This month</div>
+                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("last_7_days"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer", fontWeight: 700 }} className="menu-item-hover">Last 7 days</div>
+                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("last_14_days"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">Last 14 days</div>
+                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("last_28_days"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">Last 28 days</div>
                       <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_month_td"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This month to date</div>
                       <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_week_sun"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This week (starts Sunday)</div>
                       <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_week_sun_td"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This week to date (starts Sunday)</div>
@@ -665,7 +651,7 @@ export default function DateRangeFilter({
           </div>
 
           {/* DUAL CALENDARS CONTAINER */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "36px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "24px" }}>
             
             {/* LEFT CALENDAR (Start date) */}
             <div>

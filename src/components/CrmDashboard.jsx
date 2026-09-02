@@ -745,20 +745,21 @@ export default function CrmDashboard({
         )}
 
         {/* Global Date Filter */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginLeft: isElevated ? "0" : "auto" }}>
-          <DateRangeFilter
-            startDate={globalStartDate}
-            endDate={globalEndDate}
-            onStartDateChange={setGlobalStartDate}
-            onEndDateChange={setGlobalEndDate}
-            onClear={() => {
-              setGlobalStartDate("");
-              setGlobalEndDate("");
-            }}
-            placeholder="Filter by Date"
-            align="right"
-          />
-          <div style={{ display: "flex", gap: "4px" }}>
+        <div className="crm-top-date-bar" style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginLeft: isElevated ? "0" : "auto" }}>
+          <div className="date-filter-wrapper">
+            <DateRangeFilter
+              startDate={globalStartDate}
+              endDate={globalEndDate}
+              onStartDateChange={setGlobalStartDate}
+              onEndDateChange={setGlobalEndDate}
+              onClear={() => {
+                setGlobalStartDate("");
+                setGlobalEndDate("");
+              }}
+              placeholder="Filter by Date"
+            />
+          </div>
+          <div className="date-btn-group" style={{ display: "flex", gap: "6px" }}>
             <button
               onClick={() => {
                 const now = new Date();
@@ -768,7 +769,7 @@ export default function CrmDashboard({
                 setGlobalEndDate(lastDay);
               }}
               className="btn btn-secondary btn-sm"
-              style={{ fontSize: "0.75rem", padding: "5px 10px" }}
+              style={{ fontSize: "0.78rem", padding: "6px 12px", fontWeight: 600 }}
             >
               This Month
             </button>
@@ -781,7 +782,7 @@ export default function CrmDashboard({
                 setGlobalEndDate(lastDay);
               }}
               className="btn btn-secondary btn-sm"
-              style={{ fontSize: "0.75rem", padding: "5px 10px" }}
+              style={{ fontSize: "0.78rem", padding: "6px 12px", fontWeight: 600 }}
             >
               Last Month
             </button>
@@ -792,9 +793,9 @@ export default function CrmDashboard({
                   setGlobalEndDate("");
                 }}
                 className="btn btn-secondary btn-sm"
-                style={{ fontSize: "0.75rem", padding: "5px 10px" }}
+                style={{ fontSize: "0.78rem", padding: "6px 10px" }}
               >
-                Clear Date
+                Clear
               </button>
             )}
           </div>
@@ -891,7 +892,7 @@ export default function CrmDashboard({
       </div>
 
       {/* ==================== TAB NAVIGATION BAR ==================== */}
-      <div style={{ display: "flex", gap: "12px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px", overflowX: "auto" }}>
+      <div className="crm-tabs-bar" style={{ display: "flex", gap: "10px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "10px" }}>
         <button
           onClick={() => setActiveTab("parties")}
           className={`nav-tab-item ${activeTab === "parties" ? "active" : ""}`}
@@ -1031,8 +1032,8 @@ export default function CrmDashboard({
             </div>
           </div>
 
-          {/* Parties Table */}
-          <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
+          {/* Parties Table & Mobile Cards */}
+          <div className="glass-panel" style={{ padding: "16px" }}>
             {filteredParties.length === 0 ? (
               <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
                 <Building2 size={36} style={{ marginBottom: "12px", opacity: 0.5 }} />
@@ -1040,112 +1041,215 @@ export default function CrmDashboard({
                 <p style={{ fontSize: "0.85rem" }}>Click "Add New Party" to create and assign customer/dealer accounts.</p>
               </div>
             ) : (
-              <table className="table" style={{ width: "100%", minWidth: "900px" }}>
-                <thead>
-                  <tr>
-                    <th>Party Name & Location</th>
-                    <th>Contact Person</th>
-                    <th>Assigned CRM / ASM / TSM</th>
-                    <th>Status</th>
-                    <th style={{ textAlign: "center" }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedParties.map(party => {
-                    return (
-                      <tr key={party.id}>
-                        <td>
-                          <div style={{ display: "flex", flexDirection: "column" }}>
-                            <span style={{ fontWeight: 700, color: "var(--primary)", fontSize: "0.95rem" }}>
-                              {party.name}
-                            </span>
-                            {([party.city, party.state].filter(Boolean).length > 0 || party.gstin) && (
-                              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
-                                {[party.city, party.state].filter(Boolean).length > 0 && (
-                                  <>
-                                    <MapPin size={12} /> {[party.city, party.state].filter(Boolean).join(", ")}
-                                  </>
-                                )}
-                                {party.gstin && ` • GST: ${party.gstin}`}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td>
-                          <div style={{ display: "flex", flexDirection: "column", fontSize: "0.85rem" }}>
-                            <span style={{ fontWeight: 600 }}>{party.contactPerson || "—"}</span>
-                            <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>{party.phone || "—"}</span>
-                          </div>
-                        </td>
-
-                        <td>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-                            <span className="badge" style={{ fontSize: "0.72rem", background: "rgba(99, 102, 241, 0.15)", color: "#a5b4fc", border: "1px solid rgba(99, 102, 241, 0.3)", width: "fit-content" }}>
-                              CRM: {party.assignedCrmName || crmExecutives.find(c => c.id === party.assignedCrmId)?.name || "Unassigned"}
-                            </span>
-                            {party.assignedAsmName && (
-                              <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(16, 185, 129, 0.12)", color: "#6ee7b7", border: "1px solid rgba(16, 185, 129, 0.3)", width: "fit-content" }}>
-                                ASM: {party.assignedAsmName}
-                              </span>
-                            )}
-                            {party.assignedTsmName && (
-                              <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(245, 158, 11, 0.12)", color: "#fcd34d", border: "1px solid rgba(245, 158, 11, 0.3)", width: "fit-content" }}>
-                                TSM: {party.assignedTsmName}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td>
-                          <span className={`badge ${party.status === "Active" ? "badge-success" : "badge-secondary"}`}>
-                            {party.status || "Active"}
-                          </span>
-                        </td>
-
-                        <td style={{ textAlign: "center" }}>
-                          <div style={{ display: "flex", gap: "6px", justifyContent: "center" }}>
-                            <button
-                              onClick={() => setSelectedPartyFor360(party)}
-                              className="btn btn-secondary btn-sm"
-                              title="View 3-Month Sales & Category Remarks"
-                              style={{ padding: "4px 10px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 600 }}
-                            >
-                              <Eye size={13} /> {isAsmOrTsm ? "View Sales & Remarks" : "360° Profile"}
-                            </button>
-
-                            {!isAsmOrTsm && (
-                              <button
-                                onClick={() => setEditingParty(party)}
-                                className="btn btn-secondary btn-sm"
-                                title="Edit Party Details"
-                                style={{ padding: "4px 8px", fontSize: "0.78rem" }}
-                              >
-                                <Edit2 size={13} />
-                              </button>
-                            )}
-
-                            {isAdminOrOwner && (
-                              <button
-                                onClick={() => {
-                                  if (window.confirm(`Are you sure you want to delete party "${party.name}"?`)) {
-                                    onDeleteParty(party.id);
-                                  }
-                                }}
-                                className="btn btn-danger btn-sm"
-                                title="Delete Party"
-                                style={{ padding: "4px 8px", fontSize: "0.78rem" }}
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            )}
-                          </div>
-                        </td>
+              <>
+                {/* Desktop View Table */}
+                <div className="desktop-table-view" style={{ overflowX: "auto" }}>
+                  <table className="table" style={{ width: "100%", minWidth: "900px" }}>
+                    <thead>
+                      <tr>
+                        <th>Party Name & Location</th>
+                        <th>Contact Person</th>
+                        <th>Assigned CRM / ASM / TSM</th>
+                        <th>Status</th>
+                        <th style={{ textAlign: "center" }}>Actions</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody>
+                      {paginatedParties.map(party => {
+                        return (
+                          <tr key={party.id}>
+                            <td>
+                              <div style={{ display: "flex", flexDirection: "column" }}>
+                                <span style={{ fontWeight: 700, color: "var(--primary)", fontSize: "0.95rem" }}>
+                                  {party.name}
+                                </span>
+                                {([party.city, party.state].filter(Boolean).length > 0 || party.gstin) && (
+                                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
+                                    {[party.city, party.state].filter(Boolean).length > 0 && (
+                                      <>
+                                        <MapPin size={12} /> {[party.city, party.state].filter(Boolean).join(", ")}
+                                      </>
+                                    )}
+                                    {party.gstin && ` • GST: ${party.gstin}`}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            <td>
+                              <div style={{ display: "flex", flexDirection: "column", fontSize: "0.85rem" }}>
+                                <span style={{ fontWeight: 600 }}>{party.contactPerson || "—"}</span>
+                                <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>{party.phone || "—"}</span>
+                              </div>
+                            </td>
+
+                            <td>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                                <span className="badge" style={{ fontSize: "0.72rem", background: "rgba(99, 102, 241, 0.15)", color: "#a5b4fc", border: "1px solid rgba(99, 102, 241, 0.3)", width: "fit-content" }}>
+                                  CRM: {party.assignedCrmName || crmExecutives.find(c => c.id === party.assignedCrmId)?.name || "Unassigned"}
+                                </span>
+                                {party.assignedAsmName && (
+                                  <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(16, 185, 129, 0.12)", color: "#6ee7b7", border: "1px solid rgba(16, 185, 129, 0.3)", width: "fit-content" }}>
+                                    ASM: {party.assignedAsmName}
+                                  </span>
+                                )}
+                                {party.assignedTsmName && (
+                                  <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(245, 158, 11, 0.12)", color: "#fcd34d", border: "1px solid rgba(245, 158, 11, 0.3)", width: "fit-content" }}>
+                                    TSM: {party.assignedTsmName}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            <td>
+                              <span className={`badge ${party.status === "Active" ? "badge-success" : "badge-secondary"}`}>
+                                {party.status || "Active"}
+                              </span>
+                            </td>
+
+                            <td style={{ textAlign: "center" }}>
+                              <div style={{ display: "flex", gap: "6px", justifyContent: "center" }}>
+                                <button
+                                  onClick={() => setSelectedPartyFor360(party)}
+                                  className="btn btn-secondary btn-sm"
+                                  title="View 3-Month Sales & Category Remarks"
+                                  style={{ padding: "4px 10px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 600 }}
+                                >
+                                  <Eye size={13} /> {isAsmOrTsm ? "View Sales & Remarks" : "360° Profile"}
+                                </button>
+
+                                {!isAsmOrTsm && (
+                                  <button
+                                    onClick={() => setEditingParty(party)}
+                                    className="btn btn-secondary btn-sm"
+                                    title="Edit Party Details"
+                                    style={{ padding: "4px 8px", fontSize: "0.78rem" }}
+                                  >
+                                    <Edit2 size={13} />
+                                  </button>
+                                )}
+
+                                {isAdminOrOwner && (
+                                  <button
+                                    onClick={() => {
+                                      if (window.confirm(`Are you sure you want to delete party "${party.name}"?`)) {
+                                        onDeleteParty(party.id);
+                                      }
+                                    }}
+                                    className="btn btn-danger btn-sm"
+                                    title="Delete Party"
+                                    style={{ padding: "4px 8px", fontSize: "0.78rem" }}
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile View Card Grid (Zero Horizontal Scroll) */}
+                <div className="mobile-card-view">
+                  {paginatedParties.map(party => (
+                    <div 
+                      key={party.id}
+                      style={{
+                        padding: "14px",
+                        borderRadius: "12px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "10px",
+                        border: "1px solid var(--border-glass)",
+                        background: "rgba(15, 23, 42, 0.65)"
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                        <div>
+                          <div style={{ fontWeight: 800, color: "var(--primary)", fontSize: "1.02rem" }}>
+                            {party.name}
+                          </div>
+                          {([party.city, party.state].filter(Boolean).length > 0 || party.gstin) && (
+                            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "2px", display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" }}>
+                              {[party.city, party.state].filter(Boolean).length > 0 && (
+                                <span><MapPin size={11} style={{ display: "inline", verticalAlign: "middle" }} /> {[party.city, party.state].filter(Boolean).join(", ")}</span>
+                              )}
+                              {party.gstin && <span>• GST: {party.gstin}</span>}
+                            </div>
+                          )}
+                        </div>
+                        <span className={`badge ${party.status === "Active" ? "badge-success" : "badge-secondary"}`} style={{ fontSize: "0.7rem", flexShrink: 0 }}>
+                          {party.status || "Active"}
+                        </span>
+                      </div>
+
+                      {(party.contactPerson || party.phone) && (
+                        <div style={{ fontSize: "0.82rem", display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.03)", padding: "7px 10px", borderRadius: "8px" }}>
+                          <span style={{ fontWeight: 600, color: "var(--text-main)" }}>{party.contactPerson || "Contact"}</span>
+                          {party.phone && (
+                            <a href={`tel:${party.phone}`} style={{ color: "#38bdf8", textDecoration: "none", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                              <Phone size={12} /> {party.phone}
+                            </a>
+                          )}
+                        </div>
+                      )}
+
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                        <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(99, 102, 241, 0.15)", color: "#a5b4fc", border: "1px solid rgba(99, 102, 241, 0.3)" }}>
+                          CRM: {party.assignedCrmName || crmExecutives.find(c => c.id === party.assignedCrmId)?.name || "Unassigned"}
+                        </span>
+                        {party.assignedAsmName && (
+                          <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(16, 185, 129, 0.12)", color: "#6ee7b7", border: "1px solid rgba(16, 185, 129, 0.3)" }}>
+                            ASM: {party.assignedAsmName}
+                          </span>
+                        )}
+                        {party.assignedTsmName && (
+                          <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(245, 158, 11, 0.12)", color: "#fcd34d", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
+                            TSM: {party.assignedTsmName}
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
+                        <button
+                          onClick={() => setSelectedPartyFor360(party)}
+                          className="btn btn-primary btn-sm"
+                          style={{ flex: 1, padding: "8px 12px", fontSize: "0.82rem", fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+                        >
+                          <Eye size={14} /> View Sales & Remarks
+                        </button>
+                        {!isAsmOrTsm && (
+                          <button
+                            onClick={() => setEditingParty(party)}
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: "8px 12px" }}
+                            title="Edit"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                        )}
+                        {isAdminOrOwner && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Are you sure you want to delete party "${party.name}"?`)) {
+                                onDeleteParty(party.id);
+                              }
+                            }}
+                            className="btn btn-danger btn-sm"
+                            style={{ padding: "8px 12px" }}
+                            title="Delete"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
 
             {/* Parties Pagination (100 rows per page) */}
@@ -2701,18 +2805,18 @@ function Party360Modal({
   }, [partyCategoryRows, last4MoDispatchedQty]);
 
   return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1050, position: "fixed", top: 0, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(5px)" }}>
-      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "920px", width: "100%", padding: "26px", maxHeight: "90vh", overflowY: "auto", margin: "auto" }}>
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1050, position: "fixed", top: 0, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0, 0, 0, 0.8)", backdropFilter: "blur(6px)" }}>
+      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "960px", width: "100%", maxHeight: "94vh", overflowY: "auto", margin: "auto", WebkitOverflowScrolling: "touch" }}>
         
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
           <div>
-            <span className="badge badge-primary" style={{ marginBottom: "6px" }}>Party Performance & Remarks Studio</span>
-            <h2 style={{ fontSize: "1.45rem", fontWeight: 800, color: "var(--primary)", margin: 0 }}>{party.name}</h2>
+            <span className="badge badge-primary" style={{ marginBottom: "4px", fontSize: "0.72rem" }}>Party Performance & Remarks Studio</span>
+            <h2 style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--primary)", margin: 0 }}>{party.name}</h2>
             {([party.city, party.state].filter(Boolean).length > 0 || party.contactPerson || party.phone) && (
-              <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px" }}>
+              <div style={{ color: "var(--text-muted)", fontSize: "0.82rem", marginTop: "3px" }}>
                 {[party.city, party.state].filter(Boolean).length > 0 && (
-                  <span><MapPin size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: "4px" }} />{[party.city, party.state].filter(Boolean).join(", ")}</span>
+                  <span><MapPin size={11} style={{ display: "inline", verticalAlign: "middle", marginRight: "3px" }} />{[party.city, party.state].filter(Boolean).join(", ")}</span>
                 )}
                 {(party.contactPerson || party.phone) && (
                   <span>{[party.city, party.state].filter(Boolean).length > 0 ? " • " : ""}Contact: {[party.contactPerson, party.phone ? `(${party.phone})` : ""].filter(Boolean).join(" ")}</span>
@@ -2720,55 +2824,57 @@ function Party360Modal({
               </div>
             )}
           </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={22} /></button>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "4px" }}><X size={22} /></button>
         </div>
 
         {/* Overview Stats (Last 4 Months) */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "12px", marginBottom: "18px" }}>
-          <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total Ordered (4-Mo)</div>
-            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "var(--primary)" }}>{last4MoOrders.length} Orders</div>
-            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{last4MoOrderedQty.toLocaleString()} Pcs total</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(95px, 1fr))", gap: "8px", marginBottom: "14px" }}>
+          <div className="glass-panel" style={{ padding: "8px 6px", textAlign: "center", borderRadius: "10px" }}>
+            <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Ordered (4-Mo)</div>
+            <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--primary)" }}>{last4MoOrders.length} Orders</div>
+            <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>{last4MoOrderedQty.toLocaleString()} Pcs</div>
           </div>
-          <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Dispatched (4-Mo)</div>
-            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#f59e0b" }}>{totalCalculatedDispatchedQty.toLocaleString()} Pcs</div>
-            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Across 4 months sales</div>
+          <div className="glass-panel" style={{ padding: "8px 6px", textAlign: "center", borderRadius: "10px" }}>
+            <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Dispatched</div>
+            <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "#f59e0b" }}>{totalCalculatedDispatchedQty.toLocaleString()} Pcs</div>
+            <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>4-Month Sales</div>
           </div>
-          <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Categories Active</div>
-            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#a855f7" }}>{partyCategoryRows.filter(r => r.totalQty > 0).length} Categories</div>
+          <div className="glass-panel" style={{ padding: "8px 6px", textAlign: "center", borderRadius: "10px" }}>
+            <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Active Categories</div>
+            <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "#a855f7" }}>{partyCategoryRows.filter(r => r.totalQty > 0).length} Cat.</div>
+            <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Portfolio Breadth</div>
           </div>
         </div>
 
         {/* Tab Switcher inside Party Modal */}
-        <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "10px", marginBottom: "16px" }}>
+        <div style={{ display: "flex", gap: "6px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "8px", marginBottom: "14px", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <button
             onClick={() => setModalTab("category_matrix")}
             className={`tab-btn ${modalTab === "category_matrix" ? "active" : ""}`}
-            style={{ fontSize: "0.85rem", padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
+            style={{ fontSize: "0.82rem", padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: "5px", fontWeight: 700, whiteSpace: "nowrap" }}
           >
-            <MessageSquare size={14} /> 4-Month Category Sales & Remarks
+            <MessageSquare size={13} /> 4-Month Category Sales & Remarks
           </button>
           <button
             onClick={() => setModalTab("orders")}
             className={`tab-btn ${modalTab === "orders" ? "active" : ""}`}
-            style={{ fontSize: "0.85rem", padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: "6px" }}
+            style={{ fontSize: "0.82rem", padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: "5px", whiteSpace: "nowrap" }}
           >
-            <FileText size={14} /> Order History & Dispatches ({salesOrders.length})
+            <FileText size={13} /> Order History ({salesOrders.length})
           </button>
         </div>
 
         {/* TAB 1: 4-Month Category-Wise Sales & Remarks Matrix */}
         {modalTab === "category_matrix" && (
-          <div style={{ overflowX: "auto" }}>
-            <div style={{ marginBottom: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
-                Track order volumes across 4 months (including current month) and record field remarks category-wise.
+          <div>
+            <div style={{ marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                Swipe horizontally to compare monthly trends & record category remarks.
               </span>
             </div>
 
-            <table className="table" style={{ width: "100%", fontSize: "0.84rem" }}>
+            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%", borderRadius: "10px", border: "1px solid var(--border-glass)" }}>
+              <table className="table" style={{ width: "100%", minWidth: "580px", fontSize: "0.82rem", margin: 0 }}>
               <thead>
                 <tr>
                   <th style={{ width: "20%" }}>Category</th>
@@ -2873,13 +2979,14 @@ function Party360Modal({
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
         {/* TAB 2: Order History & Dispatches */}
         {modalTab === "orders" && (
-          <div style={{ overflowX: "auto" }}>
-            <table className="table" style={{ width: "100%", fontSize: "0.84rem" }}>
+          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%", borderRadius: "10px", border: "1px solid var(--border-glass)" }}>
+            <table className="table" style={{ width: "100%", minWidth: "540px", fontSize: "0.82rem", margin: 0 }}>
               <thead>
                 <tr>
                   <th>Date</th>
