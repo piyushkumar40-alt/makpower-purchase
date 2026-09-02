@@ -1368,38 +1368,80 @@ export default function SuperAdminDashboard({
                             </div>
                             <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "2px" }}>{staff.email}</div>
                             
-                            {/* Super Admin User Password Viewer */}
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "6px", fontSize: "0.78rem", background: "var(--bg-card-hover, rgba(0,0,0,0.03))", padding: "4px 8px", borderRadius: "6px", width: "fit-content", border: "1px solid var(--border-glass)" }}>
-                              <span style={{ color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "0.74rem" }}>
-                                <Key size={12} style={{ color: "var(--primary)" }} /> Password:
-                              </span>
-                              <code style={{ 
-                                fontSize: "0.82rem", 
-                                fontWeight: 700, 
+                            {/* Super Admin User Password Pill (Sleek Modern Tag) */}
+                            <div style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              marginTop: "8px",
+                              padding: "4px 10px",
+                              borderRadius: "8px",
+                              background: "rgba(99, 102, 241, 0.05)",
+                              border: "1px solid rgba(99, 102, 241, 0.16)",
+                              fontSize: "0.78rem"
+                            }}>
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", color: "var(--text-muted)", fontWeight: 600 }}>
+                                <Key size={13} style={{ color: "#6366f1" }} />
+                                <span>Password</span>
+                              </div>
+
+                              <div style={{
+                                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                                fontWeight: 700,
+                                fontSize: visiblePasswords[staff.id] ? "0.84rem" : "1.05rem",
+                                lineHeight: 1,
                                 color: visiblePasswords[staff.id] ? "var(--primary)" : "var(--text-muted)",
-                                letterSpacing: visiblePasswords[staff.id] ? "normal" : "2px"
+                                letterSpacing: visiblePasswords[staff.id] ? "normal" : "3px",
+                                userSelect: "all",
+                                padding: "0 4px"
                               }}>
                                 {visiblePasswords[staff.id] ? (staff.password || "(Not set)") : "••••••••"}
-                              </code>
-                              <button
-                                type="button"
-                                onClick={() => togglePasswordVisibility(staff.id)}
-                                style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "2px", display: "inline-flex", alignItems: "center" }}
-                                title={visiblePasswords[staff.id] ? "Hide password" : "Show password"}
-                              >
-                                {visiblePasswords[staff.id] ? <EyeOff size={13} /> : <Eye size={13} />}
-                              </button>
-                              {staff.password && (
+                              </div>
+
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: "3px", borderLeft: "1px solid rgba(99, 102, 241, 0.15)", paddingLeft: "6px", marginLeft: "2px" }}>
                                 <button
                                   type="button"
-                                  onClick={() => handleCopyPassword(staff.id, staff.password, staff.name)}
-                                  style={{ background: "none", border: "none", color: copiedPasswordId === staff.id ? "var(--success)" : "var(--text-muted)", cursor: "pointer", padding: "2px", display: "inline-flex", alignItems: "center", gap: "2px", fontSize: "0.72rem" }}
-                                  title="Copy password to clipboard"
+                                  onClick={() => togglePasswordVisibility(staff.id)}
+                                  style={{
+                                    background: "transparent",
+                                    border: "none",
+                                    color: visiblePasswords[staff.id] ? "#6366f1" : "var(--text-muted)",
+                                    cursor: "pointer",
+                                    padding: "4px 5px",
+                                    borderRadius: "4px",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    transition: "all 0.15s ease"
+                                  }}
+                                  title={visiblePasswords[staff.id] ? "Hide password" : "Show password"}
                                 >
-                                  {copiedPasswordId === staff.id ? <Check size={12} /> : <Copy size={12} />}
-                                  {copiedPasswordId === staff.id && <span style={{ color: "var(--success)", fontWeight: 700 }}>Copied!</span>}
+                                  {visiblePasswords[staff.id] ? <EyeOff size={14} /> : <Eye size={14} />}
                                 </button>
-                              )}
+                                {staff.password && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyPassword(staff.id, staff.password, staff.name)}
+                                    style={{
+                                      background: copiedPasswordId === staff.id ? "rgba(16, 185, 129, 0.12)" : "transparent",
+                                      border: "none",
+                                      color: copiedPasswordId === staff.id ? "#10b981" : "var(--text-muted)",
+                                      cursor: "pointer",
+                                      padding: "4px 6px",
+                                      borderRadius: "4px",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                      fontSize: "0.72rem",
+                                      fontWeight: 600,
+                                      transition: "all 0.15s ease"
+                                    }}
+                                    title="Copy password"
+                                  >
+                                    {copiedPasswordId === staff.id ? <Check size={13} /> : <Copy size={13} />}
+                                    {copiedPasswordId === staff.id && <span>Copied</span>}
+                                  </button>
+                                )}
+                              </div>
                             </div>
 
                             {isPurchaser && (
@@ -1457,19 +1499,35 @@ export default function SuperAdminDashboard({
                           <div style={{ background: "rgba(0,0,0,0.25)", border: "1px solid var(--border-glass)", borderRadius: "8px", padding: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
                             <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--primary)" }}>Edit Staff Account</div>
                             
-                            {/* Current Password Display */}
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "var(--bg-card-hover, rgba(0,0,0,0.04))", padding: "6px 10px", borderRadius: "6px", border: "1px solid var(--border-glass)", fontSize: "0.78rem" }}>
-                              <span style={{ color: "var(--text-muted)" }}>Current Password:</span>
-                              <code style={{ fontWeight: 700, color: "var(--primary)", letterSpacing: visiblePasswords[`edit_${staff.id}`] ? "normal" : "2px" }}>
+                            {/* Current Password Display (Clean) */}
+                            <div style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              padding: "6px 10px",
+                              borderRadius: "8px",
+                              background: "rgba(99, 102, 241, 0.05)",
+                              border: "1px solid rgba(99, 102, 241, 0.16)",
+                              fontSize: "0.78rem",
+                              width: "fit-content"
+                            }}>
+                              <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>Current Password:</span>
+                              <span style={{
+                                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                                fontWeight: 700,
+                                color: visiblePasswords[`edit_${staff.id}`] ? "var(--primary)" : "var(--text-muted)",
+                                letterSpacing: visiblePasswords[`edit_${staff.id}`] ? "normal" : "3px",
+                                fontSize: visiblePasswords[`edit_${staff.id}`] ? "0.84rem" : "1.05rem"
+                              }}>
                                 {visiblePasswords[`edit_${staff.id}`] ? (staff.password || "(Not set)") : "••••••••"}
-                              </code>
+                              </span>
                               <button
                                 type="button"
                                 onClick={() => togglePasswordVisibility(`edit_${staff.id}`)}
-                                style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "2px" }}
+                                style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "2px", display: "inline-flex", alignItems: "center" }}
                                 title={visiblePasswords[`edit_${staff.id}`] ? "Hide" : "Show"}
                               >
-                                {visiblePasswords[`edit_${staff.id}`] ? <EyeOff size={13} /> : <Eye size={13} />}
+                                {visiblePasswords[`edit_${staff.id}`] ? <EyeOff size={14} /> : <Eye size={14} />}
                               </button>
                             </div>
 
