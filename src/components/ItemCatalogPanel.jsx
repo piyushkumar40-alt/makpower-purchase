@@ -845,103 +845,6 @@ export default function ItemCatalogPanel({
         </div>
       </div>
 
-      {/* 🚨 Dispatched Items Not in Catalog Alert Banner */}
-      {uncatalogedDispatches.length > 0 && (
-        <div style={{
-          background: "linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(245, 158, 11, 0.12) 100%)",
-          border: "1px solid rgba(239, 68, 68, 0.35)",
-          borderRadius: "12px",
-          padding: "16px 20px",
-          marginBottom: "20px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "12px",
-          boxShadow: "0 4px 20px rgba(239, 68, 68, 0.12)"
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: "rgba(239, 68, 68, 0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "#f87171", flexShrink: 0 }}>
-                <ShieldAlert size={24} />
-              </div>
-              <div>
-                <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#f87171", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                  <span>🚨 Dispatched Items Alert: {uncatalogedDispatches.length} Model{uncatalogedDispatches.length > 1 ? "s" : ""} Found in Stock Ledger but Missing in Master Catalog</span>
-                  <span className="badge badge-danger" style={{ fontSize: "0.75rem", padding: "2px 8px" }}>
-                    -{uncatalogedDispatches.reduce((sum, it) => sum + it.totalDispatchedQty, 0).toLocaleString()} Pcs Dispatched
-                  </span>
-                </div>
-                <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                  These items have active sales/dispatch outflows in the stock ledger. Click below to review and add them into the master catalog in 1-click!
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <button
-                type="button"
-                onClick={() => setShowAlertDrawer(!showAlertDrawer)}
-                className="btn btn-sm"
-                style={{
-                  background: showAlertDrawer ? "rgba(239, 68, 68, 0.25)" : "rgba(255, 255, 255, 0.08)",
-                  border: "1px solid rgba(239, 68, 68, 0.4)",
-                  color: "#fca5a5",
-                  fontWeight: 700,
-                  fontSize: "0.82rem",
-                  padding: "6px 14px"
-                }}
-              >
-                {showAlertDrawer ? "Hide Missing Items ▲" : `Review & Add ${uncatalogedDispatches.length} Items ▼`}
-              </button>
-            </div>
-          </div>
-
-          {/* Expanded Table of Missing Dispatched Items */}
-          {showAlertDrawer && (
-            <div style={{ marginTop: "8px", borderTop: "1px solid rgba(239, 68, 68, 0.2)", paddingTop: "12px" }}>
-              <div className="table-container" style={{ maxHeight: "300px", overflowY: "auto" }}>
-                <table className="custom-table" style={{ fontSize: "0.84rem" }}>
-                  <thead>
-                    <tr>
-                      <th>Dispatched Item / Model Name</th>
-                      <th style={{ textAlign: "right" }}>Total Dispatched Qty</th>
-                      <th style={{ textAlign: "center" }}>Dispatches Count</th>
-                      <th>Last Dispatched Date & Party</th>
-                      <th style={{ textAlign: "center" }}>Quick Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {uncatalogedDispatches.map(item => (
-                      <tr key={item.name}>
-                        <td style={{ fontWeight: 700, color: "#fca5a5" }}>{item.name}</td>
-                        <td style={{ textAlign: "right", fontWeight: 800, color: "#f87171" }}>
-                          -{item.totalDispatchedQty.toLocaleString()} Pcs
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <span className="badge badge-warning">{item.dispatchCount} Dispatches</span>
-                        </td>
-                        <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                          {item.sampleDate} • {item.sampleParty}
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <button
-                            type="button"
-                            onClick={() => handleQuickAddUncataloged(item)}
-                            className="btn btn-primary btn-sm"
-                            style={{ fontSize: "0.78rem", padding: "4px 10px", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}
-                          >
-                            <Plus size={13} /> Add to Catalog
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Catalog Database Switcher Tabs: FG Database vs RM Database */}
       <div style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "1px solid var(--border-color)", paddingBottom: "12px", flexWrap: "wrap", alignItems: "center" }}>
         <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 700, marginRight: "4px" }}>
@@ -1766,6 +1669,83 @@ export default function ItemCatalogPanel({
           }}
           perPageOptions={[50, 100, 200, 500]}
         />
+      </div>
+
+      {/* ==================== MISSING ITEMS FROM MASTER CATALOG (BELOW CATALOG TABLE) ==================== */}
+      <div className="glass-panel" style={{ marginTop: "28px", padding: "24px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
+          <div>
+            <h3 style={{ fontSize: "1.25rem", fontWeight: 800, color: uncatalogedDispatches.length > 0 ? "#f87171" : "var(--success)", display: "flex", alignItems: "center", gap: "10px", margin: 0 }}>
+              <ShieldAlert size={22} /> Missing Items from Master Catalog
+              {uncatalogedDispatches.length > 0 ? (
+                <span className="badge badge-danger" style={{ fontSize: "0.78rem", padding: "3px 10px", fontWeight: 700 }}>
+                  {uncatalogedDispatches.length} Uncataloged Dispatched Model{uncatalogedDispatches.length > 1 ? "s" : ""} (-{uncatalogedDispatches.reduce((sum, it) => sum + it.totalDispatchedQty, 0).toLocaleString()} Pcs)
+                </span>
+              ) : (
+                <span className="badge badge-success" style={{ fontSize: "0.78rem", padding: "3px 10px", fontWeight: 700 }}>
+                  ✓ 100% Catalog Synced
+                </span>
+              )}
+            </h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.84rem", marginTop: "4px", margin: 0 }}>
+              These items were found in IMS Stock Ledger sales/dispatch movements but are missing in the Master Item Catalog. You can add them to the master catalog with 1-click.
+            </p>
+          </div>
+        </div>
+
+        {uncatalogedDispatches.length === 0 ? (
+          <div style={{ padding: "30px", textAlign: "center", background: "rgba(16, 185, 129, 0.06)", border: "1px solid rgba(16, 185, 129, 0.2)", borderRadius: "10px", color: "var(--success)" }}>
+            <Check size={28} style={{ marginBottom: "8px" }} />
+            <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>All Dispatched Items are Present in Master Item Catalog!</div>
+            <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "4px" }}>No unlinked or missing SKU models detected in recent ledger dispatches.</div>
+          </div>
+        ) : (
+          <div className="table-container" style={{ maxHeight: "380px", overflowY: "auto", border: "1px solid rgba(239, 68, 68, 0.25)", borderRadius: "10px" }}>
+            <table className="custom-table" style={{ fontSize: "0.84rem" }}>
+              <thead style={{ position: "sticky", top: 0, zIndex: 2, background: "var(--bg-panel, #1e293b)" }}>
+                <tr>
+                  <th style={{ width: "26%" }}>Dispatched Item / Model Name</th>
+                  <th style={{ width: "16%" }}>Inferred Category</th>
+                  <th style={{ width: "16%", textAlign: "right" }}>Total Dispatched Qty</th>
+                  <th style={{ width: "14%", textAlign: "center" }}>Dispatches Count</th>
+                  <th style={{ width: "16%" }}>Sample Date & Party</th>
+                  <th style={{ width: "12%", textAlign: "center" }}>Quick Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {uncatalogedDispatches.map(item => (
+                  <tr key={item.name}>
+                    <td style={{ fontWeight: 700, color: "#fca5a5" }}>{item.name}</td>
+                    <td>
+                      <span className="badge badge-secondary" style={{ fontSize: "0.75rem" }}>
+                        {item.inferredCategory}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: "right", fontWeight: 800, color: "#f87171" }}>
+                      -{item.totalDispatchedQty.toLocaleString()} Pcs
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      <span className="badge badge-warning">{item.dispatchCount} Dispatches</span>
+                    </td>
+                    <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                      {item.sampleDate} • {item.sampleParty}
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickAddUncataloged(item)}
+                        className="btn btn-primary btn-sm"
+                        style={{ fontSize: "0.78rem", padding: "4px 10px", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}
+                      >
+                        <Plus size={13} /> Add to Catalog
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Item Detail Modal Popup */}

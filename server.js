@@ -4387,6 +4387,172 @@ app.post("/api/ims/resolve-missing-id", async (req, res) => {
     res.json({ success: true, resolvedCount: count });
   }
 });
+
+// ==================== IMS CATEGORY REBINDING ENGINE WITH MASTER CATALOG ====================
+
+async function rebindAllImsCategoriesWithMasterCatalog() {
+  console.log(`[IMS Rebind] Starting Category Rebinding with Master Catalog at ${new Date().toISOString()}...`);
+  let updatedCount = 0;
+  
+  if (isPg) {
+    try {
+      // 1. Fetch items catalog
+      const itemsRes = await pool.query('SELECT "id", "name", "category", "itemType" FROM items');
+      const itemMap = new Map();
+      (itemsRes.rows || []).forEach(it => {
+        const cat = (it.category || "").trim();
+        if (it.id) {
+          const rawId = String(it.id).trim().toLowerCase();
+          const cleanId = rawId.replace(/^#+/, "");
+          itemMap.set(rawId, cat);
+          itemMap.set(cleanId, cat);
+          itemMap.set('#' + cleanId, cat);
+        }
+        if (it.name) {
+          const rawName = String(it.name).trim().toLowerCase();
+          const cleanName = rawName.replace(/\s+/g, ' ');
+          itemMap.set(rawName, cat);
+          itemMap.set(cleanName, cat);
+        }
+      });
+
+      // 2. Fetch all transactions
+      const txRes = await pool.query('SELECT "id", "itemId", "itemName", "category" FROM ims_transactions');
+      const toUpdate = [];
+
+      (txRes.rows || []).forEach(tx => {
+        const rawId = String(tx.itemId || "").trim().toLowerCase();
+        const cleanId = rawId.replace(/^#+/, "");
+        const rawName = String(tx.itemName || "").trim().toLowerCase();
+        const cleanName = rawName.replace(/\s+/g, ' ');
+
+        const foundCat = itemMap.get(rawId) || 
+                         itemMap.get(cleanId) || 
+                         itemMap.get('#' + cleanId) || 
+                         itemMap.get(rawName) || 
+                         itemMap.get(cleanName);
+
+        const targetCat = (foundCat && foundCat !== "General" && foundCat !== "Unspecified") ? foundCat : "Other";
+        const currentCat = (tx.category || "").trim();
+
+        if (currentCat !== targetCat) {
+          toUpdate.push({ id: tx.id, category: targetCat });
+        }
+      });
+
+      if (toUpdate.length > 0) {
+        // Chunked bulk update in batches of 200
+        const CHUNK = 200;
+        for (let i = 0; i < toUpdate.length; i += CHUNK) {
+          const batch = toUpdate.slice(i, i + CHUNK);
+          const cases = batch.map((u, idx) => `WHEN "id" = $${idx * 2 + 1} THEN $${idx * 2 + 2}`).join(" ");
+          const ids = batch.map((u, idx) => `$${idx * 2 + 1}`).join(", ");
+          const params = [];
+          batch.forEach(u => {
+            params.push(u.id, u.category);
+          });
+
+          await pool.query(`
+            UPDATE ims_transactions
+            SET "category" = CASE ${cases} ELSE "category" END
+            WHERE "id" IN (${ids})
+          `, params);
+        }
+        updatedCount = toUpdate.length;
+      }
+      imsFullSummaryCache = null;
+      console.log(`[IMS Rebind] ✅ Completed: Updated ${updatedCount} transaction categories.`);
+      return { success: true, updatedCount, totalProcessed: txRes.rows.length };
+    } catch (err) {
+      console.error("[IMS Rebind] Error in PostgreSQL category rebinding:", err.message);
+      return { success: false, error: err.message };
+    }
+  } else {
+    const data = readLocalJson();
+    const items = data.items || [];
+    const itemMap = new Map();
+    items.forEach(it => {
+      const cat = (it.category || "").trim();
+      if (it.id) {
+        const rawId = String(it.id).trim().toLowerCase();
+        const cleanId = rawId.replace(/^#+/, "");
+        itemMap.set(rawId, cat);
+        itemMap.set(cleanId, cat);
+        itemMap.set('#' + cleanId, cat);
+      }
+      if (it.name) {
+        const rawName = String(it.name).trim().toLowerCase();
+        const cleanName = rawName.replace(/\s+/g, ' ');
+        itemMap.set(rawName, cat);
+        itemMap.set(cleanName, cat);
+      }
+    });
+
+    let count = 0;
+    (data.imsTransactions || []).forEach(tx => {
+      const rawId = String(tx.itemId || "").trim().toLowerCase();
+      const cleanId = rawId.replace(/^#+/, "");
+      const rawName = String(tx.itemName || "").trim().toLowerCase();
+      const cleanName = rawName.replace(/\s+/g, ' ');
+
+      const foundCat = itemMap.get(rawId) || 
+                       itemMap.get(cleanId) || 
+                       itemMap.get('#' + cleanId) || 
+                       itemMap.get(rawName) || 
+                       itemMap.get(cleanName);
+
+      const targetCat = (foundCat && foundCat !== "General" && foundCat !== "Unspecified") ? foundCat : "Other";
+      if ((tx.category || "").trim() !== targetCat) {
+        tx.category = targetCat;
+        count++;
+      }
+    });
+
+    writeLocalJson(data);
+    return { success: true, updatedCount: count, totalProcessed: (data.imsTransactions || []).length };
+  }
+}
+
+// Function to check if current time is within 8:00 AM to 7:00 PM IST (UTC+5:30)
+function isWithinRebindTimeWindowIST() {
+  const now = new Date();
+  // IST is UTC + 5.5 hours
+  const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+  const istHour = istTime.getUTCHours(); // 0 - 23
+  // 8:00 AM to 7:00 PM IST (Hour 8 to 18 inclusive; 19:00 = 7:00 PM cutoff)
+  return istHour >= 8 && istHour < 19;
+}
+
+// Background scheduler: runs every 2 hours
+const REBIND_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours
+setInterval(async () => {
+  if (isWithinRebindTimeWindowIST()) {
+    console.log("[IMS Scheduled Rebind] Inside 8:00 AM - 7:00 PM IST window. Executing category rebind...");
+    await rebindAllImsCategoriesWithMasterCatalog();
+  } else {
+    console.log("[IMS Scheduled Rebind] Outside business hours (7:00 PM - 8:00 AM IST). Skipping rebind.");
+  }
+}, REBIND_INTERVAL_MS);
+
+// POST /api/ims/rebind-categories - Manual trigger endpoint
+app.post("/api/ims/rebind-categories", async (req, res) => {
+  try {
+    const result = await rebindAllImsCategoriesWithMasterCatalog();
+    if (result.success) {
+      res.json({
+        success: true,
+        updatedCount: result.updatedCount,
+        message: `Successfully rebound categories with Master Catalog! Updated ${result.updatedCount} transaction(s).`
+      });
+    } else {
+      res.status(500).json({ error: result.error || "Failed to rebind categories." });
+    }
+  } catch (err) {
+    console.error("POST /api/ims/rebind-categories error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/audit-logs - Retrieve all activity logs
 app.get("/api/audit-logs", async (req, res) => {
   if (isPg) {

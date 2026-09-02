@@ -1232,9 +1232,44 @@ export default function ImsDashboard({
     setMapExistingItemId("");
   };
 
+  const [isRebindingCategories, setIsRebindingCategories] = useState(false);
+  const [rebindSuccessMsg, setRebindSuccessMsg] = useState("");
+
+  const handleRebindCategories = async () => {
+    setIsRebindingCategories(true);
+    setRebindSuccessMsg("");
+    try {
+      const res = await fetch("/api/ims/rebind-categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRebindSuccessMsg(`✅ ${data.message || `Rebound categories with Master Catalog! Updated ${data.updatedCount} items.`}`);
+        if (onPullModuleData) onPullModuleData("imsTransactions", true);
+        if (onRefreshImsSummary) onRefreshImsSummary();
+        setTimeout(() => setRebindSuccessMsg(""), 6000);
+      } else {
+        alert(`Failed to rebind categories: ${data.error || "Server error"}`);
+      }
+    } catch (err) {
+      alert(`Error rebinding categories: ${err.message}`);
+    } finally {
+      setIsRebindingCategories(false);
+    }
+  };
+
   return (
     <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "22px", padding: "20px 24px", maxWidth: "1500px", margin: "0 auto", width: "100%" }}>
       
+      {/* Rebind Notification Banner */}
+      {rebindSuccessMsg && (
+        <div className="alert-strip alert-success card-fade-in" style={{ fontSize: "0.92rem", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span>{rebindSuccessMsg}</span>
+          <button type="button" onClick={() => setRebindSuccessMsg("")} style={{ background: "none", border: "none", cursor: "pointer", color: "inherit" }}><X size={16} /></button>
+        </div>
+      )}
+
       {/* ==================== IMS TOP HEADER BAR ==================== */}
       <div className="glass-panel" style={{ padding: "18px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
@@ -1248,6 +1283,17 @@ export default function ImsDashboard({
 
         {/* Global Action Buttons */}
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          <button 
+            onClick={handleRebindCategories}
+            disabled={isRebindingCategories || isDataLoading}
+            className="btn btn-secondary"
+            style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 700, color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.45)", background: "rgba(56, 189, 248, 0.08)" }}
+            title="Re-evaluate all IMS transaction categories against the Master Item Catalog (updates to catalog category or 'Other')"
+          >
+            <RefreshCw size={16} className={isRebindingCategories ? "spin" : ""} />
+            {isRebindingCategories ? "Rebinding Categories..." : "Bind Category with Master Catalog"}
+          </button>
+
           <button 
             onClick={async () => {
               if (onPullModuleData) onPullModuleData("imsTransactions", true);

@@ -442,8 +442,7 @@ export default function DateRangeFilter({
       </button>
 
       {/* DROPDOWN POPOVER MODAL (Matches Screenshots 2, 3, 4, 5) */}
-      {isOpen && (
-        <div
+      {isOpen && <div
           ref={popoverRef}
           className="card-fade-in"
           style={{
@@ -452,21 +451,20 @@ export default function DateRangeFilter({
             right: align === "right" ? 0 : undefined,
             left: align === "right" ? "auto" : 0,
             zIndex: 9999,
-            background: "var(--bg-panel, #111827)",
+            background: "#0f172a",
             color: "var(--text, #f3f4f6)",
-            border: "1px solid var(--border-glass, rgba(255, 255, 255, 0.15))",
-            borderRadius: "14px",
-            boxShadow: "0 20px 50px rgba(0, 0, 0, 0.6), 0 0 1px rgba(255, 255, 255, 0.2)",
-            padding: "20px",
-            maxWidth: "calc(100vw - 24px)",
-            width: "max-content",
-            backdropFilter: "blur(20px)",
-            WebkitBackdropFilter: "blur(20px)",
-            overflowX: "auto"
+            border: "1px solid rgba(56, 189, 248, 0.35)",
+            borderRadius: "16px",
+            boxShadow: "0 25px 60px rgba(0, 0, 0, 0.8), 0 0 1px rgba(255, 255, 255, 0.2)",
+            padding: "24px 28px",
+            minWidth: "640px",
+            maxWidth: "calc(100vw - 32px)",
+            backdropFilter: "blur(25px)",
+            WebkitBackdropFilter: "blur(25px)"
           }}
         >
           {/* Top Auto Date Range Preset Selector Bar */}
-          <div style={{ marginBottom: "16px", position: "relative" }}>
+          <div style={{ marginBottom: "20px", position: "relative" }}>
             <button
               type="button"
               onClick={() => setShowAutoMenu(prev => !prev)}
@@ -474,20 +472,20 @@ export default function DateRangeFilter({
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                gap: "8px",
-                padding: "6px 12px",
-                background: "rgba(255, 255, 255, 0.05)",
-                border: "1px solid var(--border-glass)",
-                borderRadius: "6px",
+                gap: "10px",
+                padding: "8px 16px",
+                background: "rgba(255, 255, 255, 0.06)",
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+                borderRadius: "8px",
                 color: "var(--text)",
-                fontSize: "0.85rem",
-                fontWeight: 600,
+                fontSize: "0.88rem",
+                fontWeight: 700,
                 cursor: "pointer",
-                minWidth: "170px"
+                minWidth: "190px"
               }}
             >
               <span>{rangeLabel}</span>
-              <ChevronDown size={14} style={{ color: "var(--text-muted)" }} />
+              <ChevronDown size={15} style={{ color: "var(--text-muted)" }} />
             </button>
 
             {/* NESTED PRESETS MENU (Screenshots 3, 4, 5) */}
@@ -495,15 +493,15 @@ export default function DateRangeFilter({
               <div
                 style={{
                   position: "absolute",
-                  top: "calc(100% + 4px)",
+                  top: "calc(100% + 6px)",
                   left: 0,
                   zIndex: 10000,
-                  background: "var(--bg-panel, #1e293b)",
-                  border: "1px solid var(--border-glass, rgba(255, 255, 255, 0.15))",
-                  borderRadius: "8px",
-                  boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+                  background: "#1e293b",
+                  border: "1px solid rgba(255, 255, 255, 0.18)",
+                  borderRadius: "10px",
+                  boxShadow: "0 15px 35px rgba(0,0,0,0.6)",
                   padding: "6px 0",
-                  minWidth: "180px",
+                  minWidth: "200px",
                   display: "flex",
                   flexDirection: "column"
                 }}
@@ -564,15 +562,15 @@ export default function DateRangeFilter({
                         borderRadius: "8px",
                         boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
                         padding: "6px 0",
-                        minWidth: "220px"
+                        minWidth: "240px"
                       }}
                     >
+                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_month"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer", fontWeight: 700 }} className="menu-item-hover">This month</div>
+                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_month_td"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This month to date</div>
                       <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_week_sun"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This week (starts Sunday)</div>
                       <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_week_sun_td"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This week to date (starts Sunday)</div>
                       <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_week_mon"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This week (starts Monday)</div>
                       <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_week_mon_td"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This week to date (starts Monday)</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_month"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer", fontWeight: 700 }} className="menu-item-hover">This month</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_month_td"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This month to date</div>
                       <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_quarter"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This quarter</div>
                       <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_quarter_td"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This quarter to date</div>
                       <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_year"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This year</div>
@@ -581,7 +579,7 @@ export default function DateRangeFilter({
                   )}
                 </div>
 
-                {/* Submenu 2: Last 7 days */}
+                {/* Submenu 2: Last 7 Days */}
                 <div
                   onMouseEnter={() => setActiveSubmenu("last7Days")}
                   onClick={() => setActiveSubmenu(activeSubmenu === "last7Days" ? null : "last7Days")}
@@ -639,21 +637,21 @@ export default function DateRangeFilter({
             )}
           </div>
 
-          {/* DUAL CALENDARS CONTAINER (Screenshot 2) */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px" }}>
+          {/* DUAL CALENDARS CONTAINER */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "36px" }}>
             
             {/* LEFT CALENDAR (Start date) */}
             <div>
-              <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px", textAlign: "center" }}>
+              <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 700, marginBottom: "10px", textAlign: "center", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                 Start date
               </div>
 
               {/* Month Navigation Header */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-                <span style={{ fontSize: "0.88rem", fontWeight: 800, letterSpacing: "0.03em" }}>
-                  {MONTH_NAMES[leftCal.month]} {leftCal.year} ▾
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", padding: "0 4px" }}>
+                <span style={{ fontSize: "0.95rem", fontWeight: 800, letterSpacing: "0.03em", color: "#38bdf8" }}>
+                  {MONTH_NAMES[leftCal.month]} {leftCal.year}
                 </span>
-                <div style={{ display: "flex", gap: "4px" }}>
+                <div style={{ display: "flex", gap: "6px" }}>
                   <button type="button" onClick={() => prevMonth("left")} className="cal-nav-btn" title="Previous Month">
                     <ChevronLeft size={16} />
                   </button>
@@ -664,18 +662,18 @@ export default function DateRangeFilter({
               </div>
 
               {/* Weekday Headers: M T W T F S S */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px", textAlign: "center", marginBottom: "6px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 36px)", gap: "4px", justifyContent: "center", textAlign: "center", marginBottom: "8px" }}>
                 {WEEKDAYS.map((w, i) => (
-                  <span key={i} style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600 }}>
+                  <span key={i} style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700 }}>
                     {w}
                   </span>
                 ))}
               </div>
 
               {/* Days Grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px", textAlign: "center" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 36px)", gap: "4px", justifyContent: "center", textAlign: "center" }}>
                 {leftDays.map((item, idx) => {
-                  if (!item) return <div key={`blank-l-${idx}`} style={{ height: "32px" }}></div>;
+                  if (!item) return <div key={`blank-l-${idx}`} style={{ width: "36px", height: "36px" }}></div>;
                   
                   const isSelected = item.ymd === tempStart;
                   const isToday = item.ymd === todayYMD;
@@ -687,16 +685,17 @@ export default function DateRangeFilter({
                       type="button"
                       onClick={() => handleLeftDayClick(item.ymd)}
                       style={{
-                        height: "32px",
+                        width: "36px",
+                        height: "36px",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontSize: "0.82rem",
+                        fontSize: "0.85rem",
                         fontWeight: isSelected || isToday ? 800 : 500,
-                        borderRadius: isSelected ? "50%" : inRange ? "4px" : "50%",
-                        background: isSelected ? "var(--primary, #38bdf8)" : inRange ? "rgba(56, 189, 248, 0.15)" : "transparent",
-                        color: isSelected ? "#000" : inRange ? "var(--primary)" : "var(--text)",
-                        border: isToday && !isSelected ? "1px solid var(--text-muted)" : "none",
+                        borderRadius: isSelected ? "50%" : inRange ? "6px" : "50%",
+                        background: isSelected ? "var(--primary, #38bdf8)" : inRange ? "rgba(56, 189, 248, 0.18)" : "transparent",
+                        color: isSelected ? "#0f172a" : inRange ? "#38bdf8" : "var(--text)",
+                        border: isToday && !isSelected ? "1px solid rgba(255, 255, 255, 0.4)" : "none",
                         cursor: "pointer",
                         transition: "all 0.15s"
                       }}
@@ -711,16 +710,16 @@ export default function DateRangeFilter({
 
             {/* RIGHT CALENDAR (End date) */}
             <div>
-              <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px", textAlign: "center" }}>
+              <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 700, marginBottom: "10px", textAlign: "center", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                 End date
               </div>
 
               {/* Month Navigation Header */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-                <span style={{ fontSize: "0.88rem", fontWeight: 800, letterSpacing: "0.03em" }}>
-                  {MONTH_NAMES[rightCal.month]} {rightCal.year} ▾
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", padding: "0 4px" }}>
+                <span style={{ fontSize: "0.95rem", fontWeight: 800, letterSpacing: "0.03em", color: "#38bdf8" }}>
+                  {MONTH_NAMES[rightCal.month]} {rightCal.year}
                 </span>
-                <div style={{ display: "flex", gap: "4px" }}>
+                <div style={{ display: "flex", gap: "6px" }}>
                   <button type="button" onClick={() => prevMonth("right")} className="cal-nav-btn" title="Previous Month">
                     <ChevronLeft size={16} />
                   </button>
@@ -731,18 +730,18 @@ export default function DateRangeFilter({
               </div>
 
               {/* Weekday Headers: M T W T F S S */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px", textAlign: "center", marginBottom: "6px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 36px)", gap: "4px", justifyContent: "center", textAlign: "center", marginBottom: "8px" }}>
                 {WEEKDAYS.map((w, i) => (
-                  <span key={i} style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600 }}>
+                  <span key={i} style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700 }}>
                     {w}
                   </span>
                 ))}
               </div>
 
               {/* Days Grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px", textAlign: "center" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 36px)", gap: "4px", justifyContent: "center", textAlign: "center" }}>
                 {rightDays.map((item, idx) => {
-                  if (!item) return <div key={`blank-r-${idx}`} style={{ height: "32px" }}></div>;
+                  if (!item) return <div key={`blank-r-${idx}`} style={{ width: "36px", height: "36px" }}></div>;
                   
                   const isSelected = item.ymd === tempEnd;
                   const isToday = item.ymd === todayYMD;
@@ -754,16 +753,17 @@ export default function DateRangeFilter({
                       type="button"
                       onClick={() => handleRightDayClick(item.ymd)}
                       style={{
-                        height: "32px",
+                        width: "36px",
+                        height: "36px",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontSize: "0.82rem",
+                        fontSize: "0.85rem",
                         fontWeight: isSelected || isToday ? 800 : 500,
-                        borderRadius: isSelected ? "50%" : inRange ? "4px" : "50%",
-                        background: isSelected ? "var(--primary, #38bdf8)" : inRange ? "rgba(56, 189, 248, 0.15)" : "transparent",
-                        color: isSelected ? "#000" : inRange ? "var(--primary)" : "var(--text)",
-                        border: isToday && !isSelected ? "1px solid var(--text-muted)" : "none",
+                        borderRadius: isSelected ? "50%" : inRange ? "6px" : "50%",
+                        background: isSelected ? "var(--primary, #38bdf8)" : inRange ? "rgba(56, 189, 248, 0.18)" : "transparent",
+                        color: isSelected ? "#0f172a" : inRange ? "#38bdf8" : "var(--text)",
+                        border: isToday && !isSelected ? "1px solid rgba(255, 255, 255, 0.4)" : "none",
                         cursor: "pointer",
                         transition: "all 0.15s"
                       }}
@@ -779,27 +779,26 @@ export default function DateRangeFilter({
           </div>
 
           {/* FOOTER ACTIONS (Cancel & Apply buttons) */}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px", paddingTop: "14px", borderTop: "1px solid var(--border-glass)" }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "22px", paddingTop: "16px", borderTop: "1px solid rgba(255, 255, 255, 0.1)" }}>
             <button
               type="button"
               onClick={handleCancel}
-              className="btn btn-secondary btn-sm"
-              style={{ padding: "6px 16px", fontSize: "0.85rem", fontWeight: 600 }}
+              className="btn btn-secondary"
+              style={{ padding: "7px 18px", fontSize: "0.86rem", fontWeight: 600 }}
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={handleApply}
-              className="btn btn-primary btn-sm"
-              style={{ padding: "6px 20px", fontSize: "0.85rem", fontWeight: 700 }}
+              className="btn btn-primary"
+              style={{ padding: "7px 22px", fontSize: "0.86rem", fontWeight: 700 }}
             >
               Apply
             </button>
           </div>
 
-        </div>
-      )}
+        </div>}
 
       <style>{`
         .menu-item-hover:hover {

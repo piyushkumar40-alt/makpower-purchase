@@ -2444,6 +2444,7 @@ export default function App() {
             onDeleteItems={deleteItems}
             onUpdateItem={updateItem}
             onMergeItems={mergeItems}
+            onNavigateView={setActiveView}
           />
         )}
 

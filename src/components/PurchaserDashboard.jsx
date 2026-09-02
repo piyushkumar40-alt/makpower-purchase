@@ -343,7 +343,8 @@ export default function PurchaserDashboard({
   onBulkAddItems,
   onDeleteItems,
   onUpdateItem,
-  onMergeItems
+  onMergeItems,
+  onNavigateView
 }) {
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem("makpower_purchaser_tab") || "alerts";
@@ -667,7 +668,13 @@ export default function PurchaserDashboard({
               { value: "studiopipeline", label: "📊 Purchase Report" }
             ]}
             value={["alerts", "docs", "vendors", "cargocompanies", "itemmaster", "auditlogs", "studiopipeline"].includes(activeTab) ? activeTab : ""}
-            onChange={(val) => setActiveTab(val)}
+            onChange={(val) => {
+              if (val === "itemmaster" && onNavigateView) {
+                onNavigateView("itemcatalog");
+              } else {
+                setActiveTab(val);
+              }
+            }}
             placeholder="-- Select Directory / Module --"
             accentColor="#818cf8"
           />
