@@ -372,6 +372,7 @@ async function setupPgDatabase() {
       await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "date" TEXT;`);
       await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "itemName" TEXT;`);
       await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "itemId" TEXT;`);
+      await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "category" TEXT;`);
       await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "stockQty" INTEGER;`);
       await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "movementType" TEXT;`);
       await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "partyName" TEXT;`);
@@ -385,6 +386,7 @@ async function setupPgDatabase() {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_date ON ims_transactions("date" DESC, "createdAt" DESC);`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_item_id ON ims_transactions("itemId");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_item_name ON ims_transactions("itemName");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_category ON ims_transactions("category");`);
 
       // CRM Database Indexes for instant sub-millisecond querying
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_parties_asm ON crm_parties("assignedAsmId");`);
@@ -4396,6 +4398,10 @@ async function rebindAllImsCategoriesWithMasterCatalog() {
   
   if (isPg) {
     try {
+      // Ensure category column exists in ims_transactions
+      await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "category" TEXT;`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_category ON ims_transactions("category");`);
+
       // 1. Fetch items catalog
       const itemsRes = await pool.query('SELECT "id", "name", "category", "itemType" FROM items');
       const itemMap = new Map();
