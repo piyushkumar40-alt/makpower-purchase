@@ -513,7 +513,7 @@ export default function DateRangeFilter({
                 width: "100%"
               }}
             >
-              <span>{PRESET_LABELS[selectedPreset] || "Auto"}</span>
+              <span>{rangeLabel || "Auto"}</span>
               <ChevronDown size={14} style={{ color: "var(--text-muted)" }} />
             </button>
 
