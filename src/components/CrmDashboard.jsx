@@ -3780,6 +3780,7 @@ function PartyMonthlyCategoryStudioModal({
         {historyCategoryTarget && (
           <CategoryRemarksHistoryModal
             target={historyCategoryTarget}
+            crmPartyRemarks={crmPartyRemarks}
             currentUser={currentUser}
             onDelete={onDeletePartyRemark}
             onClose={() => setHistoryCategoryTarget(null)}
@@ -3791,8 +3792,25 @@ function PartyMonthlyCategoryStudioModal({
 }
 
 // ==================== SUB-COMPONENT: CATEGORY REMARKS HISTORY MODAL ====================
-function CategoryRemarksHistoryModal({ target, currentUser, onDelete, onClose }) {
+function CategoryRemarksHistoryModal({ target, crmPartyRemarks = [], currentUser, onDelete, onClose }) {
   const { showSuccessToast, showErrorToast } = useLoading();
+  const [deletedIds, setDeletedIds] = useState(new Set());
+
+  // Compute live list of remarks from crmPartyRemarks or target snapshot, filtering out deleted
+  const activeRemarks = useMemo(() => {
+    let list = [];
+    if (crmPartyRemarks && crmPartyRemarks.length > 0) {
+      list = crmPartyRemarks.filter(r => 
+        (r.partyId === target.partyId || (r.partyName && target.partyName && r.partyName.trim().toLowerCase() === target.partyName.trim().toLowerCase())) &&
+        (r.category === target.category || (!target.category && !r.category))
+      );
+    }
+    if (list.length === 0 && target.remarks && target.remarks.length > 0) {
+      list = target.remarks;
+    }
+    return list.filter(r => !deletedIds.has(r.id));
+  }, [crmPartyRemarks, target, deletedIds]);
+
   return (
     <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1100, position: "fixed", top: 0, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(5px)" }}>
       <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "600px", width: "100%", padding: "24px", maxHeight: "85vh", display: "flex", flexDirection: "column", margin: "auto" }}>
@@ -3802,7 +3820,7 @@ function CategoryRemarksHistoryModal({ target, currentUser, onDelete, onClose })
               <span className="badge" style={{ background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", fontWeight: 800 }}>
                 {target.category}
               </span>
-              <span className="badge badge-secondary">Remarks History</span>
+              <span className="badge badge-secondary">Remarks History ({activeRemarks.length})</span>
             </div>
             <h3 style={{ fontSize: "1.2rem", fontWeight: 800, color: "var(--text-main)", margin: 0 }}>
               {target.partyName}
@@ -3812,13 +3830,13 @@ function CategoryRemarksHistoryModal({ target, currentUser, onDelete, onClose })
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "10px", padding: "4px" }}>
-          {target.remarks.length === 0 ? (
+          {activeRemarks.length === 0 ? (
             <div style={{ padding: "30px", textAlign: "center", color: "var(--text-muted)" }}>
               <MessageSquare size={32} style={{ marginBottom: "8px", opacity: 0.4 }} />
               <p style={{ fontSize: "0.85rem", margin: 0 }}>No past remarks recorded for this category yet.</p>
             </div>
           ) : (
-            target.remarks.map(r => {
+            activeRemarks.map(r => {
               const isAuthor = currentUser?.id === r.authorId || currentUser?.name === r.authorName;
               const canDelete = isAuthor || currentUser?.role === "superadmin" || currentUser?.role === "crm" || currentUser?.role === "owner";
 
@@ -3844,6 +3862,7 @@ function CategoryRemarksHistoryModal({ target, currentUser, onDelete, onClose })
                         onClick={async () => {
                           if (window.confirm("Delete this remark?")) {
                             try {
+                              setDeletedIds(prev => new Set([...prev, r.id]));
                               if (onDelete) await onDelete(r.id);
                               showSuccessToast("Remark deleted.");
                             } catch (err) {
@@ -3868,6 +3887,9 @@ function CategoryRemarksHistoryModal({ target, currentUser, onDelete, onClose })
                   </div>
                 </div>
               );
+            })
+          )}
+        </div>
             })
           )}
         </div>
@@ -4905,6 +4927,10 @@ function AsmSalesDetailModal({
 function PartyCategoryRemarkModal({ target, remarks = [], currentUser, formatInr, onSave, onDelete, onClose }) {
   const [remarkText, setRemarkText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletedIds, setDeletedIds] = useState(new Set());
+  const { showSuccessToast, showErrorToast } = useLoading();
+
+  const activeRemarks = remarks.filter(r => !deletedIds.has(r.id));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -4945,15 +4971,15 @@ function PartyCategoryRemarkModal({ target, remarks = [], currentUser, formatInr
         {/* Existing Remarks Thread */}
         <div style={{ flex: 1, overflowY: "auto", border: "1px solid var(--border-glass)", borderRadius: "10px", padding: "14px", display: "flex", flexDirection: "column", gap: "10px", background: "rgba(0,0,0,0.15)", marginBottom: "16px", minHeight: "160px", maxHeight: "300px" }}>
           <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            Remarks History ({remarks.length})
+            Remarks History ({activeRemarks.length})
           </div>
 
-          {remarks.length === 0 ? (
+          {activeRemarks.length === 0 ? (
             <div style={{ padding: "26px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.86rem" }}>
               You can log remarks, dealer commitments, and observations below.
             </div>
           ) : (
-            remarks.map(r => {
+            activeRemarks.map(r => {
               const isAuthor = currentUser?.id === r.authorId || currentUser?.name === r.authorName;
               const canDelete = isAuthor || currentUser?.role === "superadmin" || currentUser?.role === "crm" || currentUser?.role === "owner";
 
@@ -4981,7 +5007,17 @@ function PartyCategoryRemarkModal({ target, remarks = [], currentUser, formatInr
                       </span>
                       {canDelete && (
                         <button
-                          onClick={() => onDelete(r.id)}
+                          onClick={async () => {
+                            if (window.confirm("Delete this remark?")) {
+                              try {
+                                setDeletedIds(prev => new Set([...prev, r.id]));
+                                if (onDelete) await onDelete(r.id);
+                                showSuccessToast("Remark deleted.");
+                              } catch (err) {
+                                showErrorToast("Failed to delete remark.");
+                              }
+                            }
+                          }}
                           className="btn btn-ghost btn-sm"
                           style={{ color: "var(--danger)", padding: "2px 6px" }}
                           title="Delete remark"
