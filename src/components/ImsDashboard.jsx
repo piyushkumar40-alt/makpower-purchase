@@ -144,9 +144,11 @@ export default function ImsDashboard({
     const set = new Set();
     (items || []).forEach(it => {
       const c = (it.category || "").trim();
-      if (c && c !== "General" && c !== "Unspecified") set.add(c);
+      if (c && c !== "General" && c !== "Unspecified" && c.toLowerCase() !== "other") set.add(c);
     });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
+    const list = Array.from(set).sort((a, b) => a.localeCompare(b));
+    list.push("Other");
+    return list;
   }, [items]);
 
   // Fast Item Catalog Map for category & item metadata lookups
@@ -318,7 +320,8 @@ export default function ImsDashboard({
                         itemCatalogMap.get(rawName) || 
                         itemCatalogMap.get(cleanName);
 
-      const resolvedCategory = (foundItem?.category || (tx.category && tx.category !== "General" ? tx.category : "") || "").trim();
+      const rawItemCat = (foundItem?.category || (tx.category && tx.category !== "General" ? tx.category : "") || "").trim();
+      const resolvedCategory = (rawItemCat && rawItemCat !== "General" && rawItemCat !== "Unspecified") ? rawItemCat : "Other";
       const cat = resolvedCategory.toLowerCase();
 
       // Field-Scoped Search Matching
@@ -1994,14 +1997,17 @@ export default function ImsDashboard({
                                               itemCatalogMap.get('#' + cleanId) || 
                                               itemCatalogMap.get(rawName) || 
                                               itemCatalogMap.get(cleanName);
-                            const cat = foundItem?.category || (tx.category && tx.category !== "General" ? tx.category : "") || (tx.itemId ? `Item #${tx.itemId}` : "General");
+                            const rawItemCat = (foundItem?.category || (tx.category && tx.category !== "General" ? tx.category : "") || "").trim();
+                            const cat = (rawItemCat && rawItemCat !== "General" && rawItemCat !== "Unspecified") ? rawItemCat : "Other";
+                            const isOther = cat.toLowerCase() === "other";
+
                             return (
                               <span className="badge badge-secondary" style={{ 
                                 fontWeight: 700, 
                                 fontSize: "0.78rem", 
-                                color: "#38bdf8",
-                                background: "rgba(56, 189, 248, 0.12)",
-                                border: "1px solid rgba(56, 189, 248, 0.25)",
+                                color: isOther ? "#fb923c" : "#38bdf8",
+                                background: isOther ? "rgba(251, 146, 60, 0.12)" : "rgba(56, 189, 248, 0.12)",
+                                border: isOther ? "1px solid rgba(251, 146, 60, 0.3)" : "1px solid rgba(56, 189, 248, 0.25)",
                                 whiteSpace: "nowrap"
                               }}>
                                 {cat}

@@ -1779,9 +1779,10 @@ function normalizeFgCategory(cat = "", itemDesc = "", itemType = "") {
     if (combined.includes("speaker") || combined.includes("soundbar") || combined.includes("audio")) return "Speaker";
     if (combined.includes("car charge") || combined.includes("car")) return "Car Charger";
     if (combined.includes("watch")) return "Smart Watch";
+    return "Other";
   }
 
-  return "";
+  return "Other";
 }
 
 async function syncPartyCategoryMonthlySales() {
