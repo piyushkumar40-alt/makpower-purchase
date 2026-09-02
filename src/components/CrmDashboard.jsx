@@ -2522,11 +2522,11 @@ function Party360Modal({
     if (raw.includes("polymer") || raw.includes("li-poly") || raw.includes("lithium poly") || raw.includes("pouch battery")) return "Polymer";
     if (raw.includes("fast charge") || raw.includes("adapter") || raw.includes("charger") || raw.includes("wall charge")) return "Fast Charger";
     if (raw.includes("cable") || raw.includes("usb") || raw.includes("type-c") || raw.includes("micro") || raw.includes("lightning")) return "Data Cable";
-    if (raw.includes("neckband") || raw.includes("neck band")) return "Neckband";
-    if (raw.includes("tws") || raw.includes("earbuds") || raw.includes("airpods") || raw.includes("ear buds")) return "TWS Earbuds";
-    if (raw.includes("power bank") || raw.includes("powerbank")) return "Power Bank";
+    if (raw.includes("neckband") || raw.includes("neck band") || raw.includes("nb-") || raw.includes("nb ")) return "Neckband";
+    if (raw.includes("tws") || raw.includes("earbuds") || raw.includes("airpods") || raw.includes("ear buds") || raw.includes("buds")) return "TWS Earbuds";
+    if (raw.includes("power bank") || raw.includes("powerbank") || raw.includes("pb-") || raw.includes("pb ")) return "Power Bank";
     if (raw.includes("earphone") || raw.includes("headphone") || raw.includes("handsfree") || raw.includes("ear phone")) return "Earphones";
-    if (raw.includes("battery") || raw.includes("batteries") || raw.includes("cell")) return "Batteries";
+    if (raw.includes("battery") || raw.includes("batteries") || raw.includes("cell") || raw.includes("bf3") || raw.includes("b-f3") || raw.includes("bm4") || raw.includes("bn4") || raw.includes("bl-") || raw.includes("blp") || raw.includes("li-ion")) return "Batteries";
     if (raw.includes("speaker") || raw.includes("soundbar") || raw.includes("audio")) return "Speaker";
     if (raw.includes("watch") || raw.includes("smartwatch") || raw.includes("smart watch") || raw.includes("band")) return "Smart Watch";
     if (raw.includes("car charge") || raw.includes("car")) return "Car Charger";
@@ -2558,10 +2558,11 @@ function Party360Modal({
     });
 
     // 1. Populate from server-precalculated partyCategoryMonthlySales
-    const partyNameNorm = (party?.name || "").trim().toLowerCase();
+    const norm = s => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const partyNorm = norm(party?.name);
     const relevantSales = (partyCategoryMonthlySales || []).filter(s => {
-      const sNorm = (s.partyName || "").trim().toLowerCase();
-      return (party?.id && s.partyId === party.id) || sNorm === partyNameNorm || sNorm.includes(partyNameNorm) || partyNameNorm.includes(sNorm);
+      const sNorm = norm(s.partyName);
+      return (party?.id && s.partyId === party.id) || sNorm === partyNorm || (sNorm && partyNorm && (sNorm.includes(partyNorm) || partyNorm.includes(sNorm)));
     });
 
     relevantSales.forEach(s => {
@@ -2606,7 +2607,28 @@ function Party360Modal({
       row.totalRevenue += parseFloat(o.totalInr) || 0;
     });
 
-    // 3. Include categories from existing remarks
+    // 3. Include client dispatches if not already populated
+    (dispatches || []).forEach(d => {
+      const found = items.find(it => it.name === d.itemModel || it.id === d.itemId || it.id === String(d.itemId).replace(/^#+/, ""));
+      const cat = normalizeCategory(found?.category || "", d.itemModel || "");
+      if (!cat) return;
+
+      const dMonth = extractYearMonth(d.dispatchDate) || last4Months[3].key;
+      if (!map.has(cat)) {
+        map.set(cat, { category: cat, m0: 0, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
+      }
+      const row = map.get(cat);
+      const qty = parseInt(d.dispatchedQty) || 0;
+      if (row.totalQty === 0) {
+        if (dMonth === last4Months[0].key) row.m0 += qty;
+        else if (dMonth === last4Months[1].key) row.m1 += qty;
+        else if (dMonth === last4Months[2].key) row.m2 += qty;
+        else if (dMonth === last4Months[3].key) row.m3 += qty;
+        row.totalQty += qty;
+      }
+    });
+
+    // 4. Include categories from existing remarks
     (crmPartyRemarks || []).forEach(r => {
       const matchP = r.partyId === party.id || (r.partyName && r.partyName.trim().toLowerCase() === (party.name || "").trim().toLowerCase());
       if (matchP && r.category) {
@@ -2902,9 +2924,7 @@ function PartyMonthlyCategoryStudioModal({
     const ddmmyyyy = s.match(/(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
     if (ddmmyyyy) {
       return `${ddmmyyyy[3]}-${ddmmyyyy[2].padStart(2, "0")}`;
-    }
-    // Date object / timestamp fallback
-    const parsed = new Date(s);
+const parsed = new Date(s);
     if (!isNaN(parsed.getTime())) {
       const yr = parsed.getFullYear();
       const mo = String(parsed.getMonth() + 1).padStart(2, "0");
@@ -2918,11 +2938,11 @@ function PartyMonthlyCategoryStudioModal({
     if (raw.includes("polymer") || raw.includes("li-poly") || raw.includes("lithium poly") || raw.includes("pouch battery")) return "Polymer";
     if (raw.includes("fast charge") || raw.includes("adapter") || raw.includes("charger") || raw.includes("wall charge")) return "Fast Charger";
     if (raw.includes("cable") || raw.includes("usb") || raw.includes("type-c") || raw.includes("micro") || raw.includes("lightning")) return "Data Cable";
-    if (raw.includes("neckband") || raw.includes("neck band")) return "Neckband";
-    if (raw.includes("tws") || raw.includes("earbuds") || raw.includes("airpods") || raw.includes("ear buds")) return "TWS Earbuds";
-    if (raw.includes("power bank") || raw.includes("powerbank")) return "Power Bank";
+    if (raw.includes("neckband") || raw.includes("neck band") || raw.includes("nb-") || raw.includes("nb ")) return "Neckband";
+    if (raw.includes("tws") || raw.includes("earbuds") || raw.includes("airpods") || raw.includes("ear buds") || raw.includes("buds")) return "TWS Earbuds";
+    if (raw.includes("power bank") || raw.includes("powerbank") || raw.includes("pb-") || raw.includes("pb ")) return "Power Bank";
     if (raw.includes("earphone") || raw.includes("headphone") || raw.includes("handsfree") || raw.includes("ear phone")) return "Earphones";
-    if (raw.includes("battery") || raw.includes("batteries") || raw.includes("cell")) return "Batteries";
+    if (raw.includes("battery") || raw.includes("batteries") || raw.includes("cell") || raw.includes("bf3") || raw.includes("b-f3") || raw.includes("bm4") || raw.includes("bn4") || raw.includes("bl-") || raw.includes("blp") || raw.includes("li-ion")) return "Batteries";
     if (raw.includes("speaker") || raw.includes("soundbar") || raw.includes("audio")) return "Speaker";
     if (raw.includes("watch") || raw.includes("smartwatch") || raw.includes("smart watch") || raw.includes("band")) return "Smart Watch";
     if (raw.includes("car charge") || raw.includes("car")) return "Car Charger";
@@ -2955,10 +2975,11 @@ function PartyMonthlyCategoryStudioModal({
     });
 
     // 1. Populate from server-precalculated partyCategoryMonthlySales
-    const partyNameNorm = (party?.name || "").trim().toLowerCase();
+    const norm = s => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const partyNorm = norm(party?.name);
     const relevantSales = (partyCategoryMonthlySales || []).filter(s => {
-      const sNorm = (s.partyName || "").trim().toLowerCase();
-      return (party?.id && s.partyId === party.id) || sNorm === partyNameNorm || sNorm.includes(partyNameNorm) || partyNameNorm.includes(sNorm);
+      const sNorm = norm(s.partyName);
+      return (party?.id && s.partyId === party.id) || sNorm === partyNorm || (sNorm && partyNorm && (sNorm.includes(partyNorm) || partyNorm.includes(sNorm)));
     });
 
     relevantSales.forEach(s => {
@@ -3004,7 +3025,29 @@ function PartyMonthlyCategoryStudioModal({
       row.totalRevenue += parseFloat(o.totalInr) || 0;
     });
 
-    // 3. Merge from party precalculated category history if present
+    // 3. Populate from client dispatches if row has 0
+    (dispatches || []).forEach(d => {
+      const found = items.find(it => it.name === d.itemModel || it.id === d.itemId || it.id === String(d.itemId).replace(/^#+/, ""));
+      const cat = normalizeCategory(found?.category || "", d.itemModel || "");
+      if (!cat) return;
+
+      if (!map.has(cat)) {
+        map.set(cat, { category: cat, m0: 0, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
+      }
+      const row = map.get(cat);
+      const dMonth = extractYearMonth(d.dispatchDate) || last4Months[3].key;
+      const qty = parseInt(d.dispatchedQty) || 0;
+
+      if (row.totalQty === 0) {
+        if (dMonth === last4Months[0].key) row.m0 += qty;
+        else if (dMonth === last4Months[1].key) row.m1 += qty;
+        else if (dMonth === last4Months[2].key) row.m2 += qty;
+        else if (dMonth === last4Months[3].key) row.m3 += qty;
+        row.totalQty += qty;
+      }
+    });
+
+    // 4. Merge from party precalculated category history if present
     if (party.categorySales && typeof party.categorySales === "object") {
       Object.entries(party.categorySales).forEach(([cName, cData]) => {
         const cat = normalizeCategory(cName);

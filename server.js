@@ -1714,16 +1714,36 @@ function get4TargetMonths() {
   return months;
 }
 
+function extractYearMonthFromAnyDate(dStr) {
+  if (!dStr) return "";
+  const s = String(dStr).trim();
+  const ymd = s.match(/^(\d{4})[\/\-\.](\d{1,2})/);
+  if (ymd) {
+    return `${ymd[1]}-${ymd[2].padStart(2, "0")}`;
+  }
+  const dmy = s.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
+  if (dmy) {
+    return `${dmy[3]}-${dmy[2].padStart(2, "0")}`;
+  }
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    const yr = parsed.getFullYear();
+    const mo = String(parsed.getMonth() + 1).padStart(2, "0");
+    return `${yr}-${mo}`;
+  }
+  return "";
+}
+
 function normalizeFgCategory(cat, itemDesc = "") {
   const raw = `${cat || ""} ${itemDesc || ""}`.toLowerCase();
   if (raw.includes("polymer") || raw.includes("li-poly") || raw.includes("lithium poly") || raw.includes("pouch battery")) return "Polymer";
   if (raw.includes("fast charge") || raw.includes("adapter") || raw.includes("charger") || raw.includes("wall charge")) return "Fast Charger";
   if (raw.includes("cable") || raw.includes("usb") || raw.includes("type-c") || raw.includes("micro") || raw.includes("lightning")) return "Data Cable";
-  if (raw.includes("neckband") || raw.includes("neck band")) return "Neckband";
-  if (raw.includes("tws") || raw.includes("earbuds") || raw.includes("airpods") || raw.includes("ear buds")) return "TWS Earbuds";
-  if (raw.includes("power bank") || raw.includes("powerbank")) return "Power Bank";
+  if (raw.includes("neckband") || raw.includes("neck band") || raw.includes("nb-") || raw.includes("nb ")) return "Neckband";
+  if (raw.includes("tws") || raw.includes("earbuds") || raw.includes("airpods") || raw.includes("ear buds") || raw.includes("buds")) return "TWS Earbuds";
+  if (raw.includes("power bank") || raw.includes("powerbank") || raw.includes("pb-") || raw.includes("pb ")) return "Power Bank";
   if (raw.includes("earphone") || raw.includes("headphone") || raw.includes("handsfree") || raw.includes("ear phone")) return "Earphones";
-  if (raw.includes("battery") || raw.includes("batteries") || raw.includes("cell")) return "Batteries";
+  if (raw.includes("battery") || raw.includes("batteries") || raw.includes("cell") || raw.includes("bf3") || raw.includes("b-f3") || raw.includes("bm4") || raw.includes("bn4") || raw.includes("bl-") || raw.includes("blp") || raw.includes("li-ion")) return "Batteries";
   if (raw.includes("speaker") || raw.includes("soundbar") || raw.includes("audio")) return "Speaker";
   if (raw.includes("watch") || raw.includes("smartwatch") || raw.includes("smart watch") || raw.includes("band")) return "Smart Watch";
   if (raw.includes("car charge") || raw.includes("car")) return "Car Charger";
@@ -1734,44 +1754,55 @@ function normalizeFgCategory(cat, itemDesc = "") {
 
 async function syncPartyCategoryMonthlySales() {
   const targetMonths = get4TargetMonths();
+  const targetMonthKeys = new Set(targetMonths.map(m => m.key));
   const minMonth = targetMonths[0].key; // 4 months ago start
-  const minDate = `${minMonth}-01`;
 
   if (isPg) {
     try {
-      // Query dispatches from ims_transactions for past 4 months
+      // Items category lookup
+      const itemMap = new Map();
+      const itemsRes = await pool.query(`SELECT "id", "name", "category" FROM items`);
+      (itemsRes.rows || []).forEach(it => {
+        const cat = it.category || "";
+        if (it.id) {
+          const rawId = String(it.id).trim();
+          const cleanId = rawId.replace(/^#+/, "");
+          itemMap.set(rawId.toLowerCase(), cat);
+          itemMap.set(cleanId.toLowerCase(), cat);
+          itemMap.set(('#' + cleanId).toLowerCase(), cat);
+        }
+        if (it.name) {
+          itemMap.set(it.name.trim().toLowerCase(), cat);
+        }
+      });
+
+      // Query dispatches from ims_transactions
       const imsRes = await pool.query(`
         SELECT 
           TRIM("partyName") AS "partyName",
           "itemName",
           "itemId",
-          SUBSTRING("date", 1, 7) AS "month",
+          "date",
           ABS("stockQty") AS "qty"
         FROM ims_transactions
         WHERE "partyName" IS NOT NULL 
           AND TRIM("partyName") <> '' 
           AND TRIM("partyName") <> '—'
           AND "stockQty" < 0
-          AND "date" >= $1
-      `, [minDate]);
-
-      // Items category lookup
-      const itemMap = new Map();
-      const itemsRes = await pool.query(`SELECT "id", "name", "category" FROM items`);
-      (itemsRes.rows || []).forEach(it => {
-        if (it.id) itemMap.set(it.id, it.category || "");
-        if (it.name) itemMap.set(it.name.trim().toLowerCase(), it.category || "");
-      });
+      `);
 
       // Party category month aggregation map
       const agg = new Map();
 
       (imsRes.rows || []).forEach(r => {
-        const pName = r.partyName;
-        const month = r.month;
-        if (!targetMonths.some(m => m.key === month)) return;
+        const pName = (r.partyName || "").trim();
+        if (!pName) return;
+        const month = extractYearMonthFromAnyDate(r.date);
+        if (!targetMonthKeys.has(month)) return;
 
-        const rawCat = itemMap.get(r.itemId) || itemMap.get((r.itemName || "").trim().toLowerCase()) || "";
+        const rawItemId = String(r.itemId || "").trim().toLowerCase();
+        const cleanItemId = rawItemId.replace(/^#+/, "");
+        const rawCat = itemMap.get(rawItemId) || itemMap.get(cleanItemId) || itemMap.get('#' + cleanItemId) || itemMap.get((r.itemName || "").trim().toLowerCase()) || "";
         const cat = normalizeFgCategory(rawCat, r.itemName || "");
         if (!cat) return;
 
@@ -1790,17 +1821,17 @@ async function syncPartyCategoryMonthlySales() {
           TRIM("partyName") AS "partyName",
           "category",
           "itemModel",
-          SUBSTRING("orderDate", 1, 7) AS "month",
+          "orderDate",
           "orderQty",
           "totalInr"
         FROM crm_sales_orders
-        WHERE "orderDate" >= $1
-      `, [minDate]);
+      `);
 
       (ordersRes.rows || []).forEach(o => {
-        const pName = o.partyName;
-        const month = o.month;
-        if (!pName || !targetMonths.some(m => m.key === month)) return;
+        const pName = (o.partyName || "").trim();
+        if (!pName) return;
+        const month = extractYearMonthFromAnyDate(o.orderDate);
+        if (!targetMonthKeys.has(month)) return;
 
         const cat = normalizeFgCategory(o.category, o.itemModel || "");
         if (!cat) return;
@@ -1836,27 +1867,35 @@ async function syncPartyCategoryMonthlySales() {
     // Local JSON
     const data = readLocalJson();
     const targetMonths = get4TargetMonths();
+    const targetMonthKeys = new Set(targetMonths.map(m => m.key));
     const minMonth = targetMonths[0].key;
     const agg = new Map();
 
+    const itemMap = new Map();
+    (data.items || []).forEach(it => {
+      const cat = it.category || "";
+      if (it.id) itemMap.set(String(it.id).trim().toLowerCase(), cat);
+      if (it.name) itemMap.set(it.name.trim().toLowerCase(), cat);
+    });
+
     (data.imsTransactions || []).forEach(tx => {
       const pName = (tx.partyName || "").trim();
-      const d = tx.date || "";
-      const month = d.slice(0, 7);
+      const month = extractYearMonthFromAnyDate(tx.date);
       const q = parseInt(tx.stockQty) || 0;
-      if (!pName || pName === "—" || q >= 0) return;
-      if (!targetMonths.some(m => m.key === month)) return;
-
-      const cat = normalizeFgCategory("", tx.itemName || "");
-      if (!cat) return;
-
-      const key = `${pName}___${cat}___${month}`;
-      if (!agg.has(key)) {
-        agg.set(key, { partyName: pName, category: cat, month, salesQty: 0, salesRevenue: 0, orderCount: 0 });
+      if (pName && pName !== "—" && q < 0 && targetMonthKeys.has(month)) {
+        const rawItemId = String(tx.itemId || "").trim().toLowerCase();
+        const rawCat = itemMap.get(rawItemId) || itemMap.get(rawItemId.replace(/^#+/, "")) || itemMap.get((tx.itemName || "").trim().toLowerCase()) || "";
+        const cat = normalizeFgCategory(rawCat, tx.itemName || "");
+        if (cat) {
+          const key = `${pName}___${cat}___${month}`;
+          if (!agg.has(key)) {
+            agg.set(key, { partyName: pName, category: cat, month, salesQty: 0, salesRevenue: 0, orderCount: 0 });
+          }
+          const e = agg.get(key);
+          e.salesQty += Math.abs(q);
+          e.orderCount += 1;
+        }
       }
-      const entry = agg.get(key);
-      entry.salesQty += Math.abs(q);
-      entry.orderCount += 1;
     });
 
     data.crmPartyCategoryMonthlySales = Array.from(agg.values()).map(v => ({
