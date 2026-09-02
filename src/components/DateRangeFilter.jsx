@@ -811,7 +811,8 @@ export default function DateRangeFilter({
             </button>
           </div>
 
-        </div>}
+        </div>
+      )}
 
       <style>{`
         .menu-item-hover:hover {
