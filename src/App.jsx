@@ -2289,10 +2289,24 @@ export default function App() {
               vendors={vendors}
               users={users}
               items={items}
+              itemPrices={itemPrices}
+              imsTransactions={imsTransactions}
+              imsSummary={imsSummary}
+              imsPeriodSummary={imsPeriodSummary}
+              imsItemStocks={imsItemStocks}
+              crmSalesOrders={crmSalesOrders}
+              crmDispatches={crmDispatches}
+              crmParties={crmParties}
+              partyCategoryMonthlySales={partyCategoryMonthlySales}
+              partyCategoryMonths={partyCategoryMonths}
               cargoCompanies={cargoCompanies}
               settings={settings}
               onUpdateSettings={handleUpdateSystemSettings}
               onLogout={handleLogout}
+              onPullModuleData={pullModuleData}
+              loadingModules={loadingModules}
+              recordSectionVisit={recordSectionVisit}
+              currentUserId={currentUser?.id}
             />
           </div>
         )}
