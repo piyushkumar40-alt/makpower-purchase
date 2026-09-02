@@ -2,6 +2,7 @@ import express from "express";
 import pg from "pg";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { v2 as cloudinary } from "cloudinary";
 import { 
@@ -1850,11 +1851,11 @@ async function syncPartyCategoryMonthlySales() {
       // Clear & Upsert into crm_party_category_monthly_sales table
       await pool.query(`DELETE FROM crm_party_category_monthly_sales WHERE "month" >= $1`, [minMonth]);
       for (const val of agg.values()) {
-        const id = `pcs-${Buffer.from(`${val.partyName}-${val.category}-${val.month}`).toString('hex').slice(0, 32)}`;
+        const id = `pcs_${crypto.createHash('md5').update(`${val.partyName}___${val.category}___${val.month}`).digest('hex')}`;
         await pool.query(`
           INSERT INTO crm_party_category_monthly_sales ("id", "partyName", "category", "month", "salesQty", "salesRevenue", "orderCount", "updatedAt")
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          ON CONFLICT ("id") DO UPDATE SET "salesQty" = EXCLUDED."salesQty", "orderCount" = EXCLUDED."orderCount", "updatedAt" = EXCLUDED."updatedAt"
+          ON CONFLICT ("id") DO UPDATE SET "salesQty" = EXCLUDED."salesQty", "salesRevenue" = EXCLUDED."salesRevenue", "orderCount" = EXCLUDED."orderCount", "updatedAt" = EXCLUDED."updatedAt"
         `, [id, val.partyName, val.category, val.month, val.qty, val.revenue, val.orderCount, new Date().toISOString()]);
       }
 
