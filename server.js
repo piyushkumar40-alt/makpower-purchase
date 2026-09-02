@@ -4432,11 +4432,9 @@ async function rebindAllImsCategoriesWithMasterCatalog() {
         const rawName = String(tx.itemName || "").trim().toLowerCase();
         const cleanName = rawName.replace(/\s+/g, ' ');
 
-        const foundCat = itemMap.get(rawId) || 
-                         itemMap.get(cleanId) || 
-                         itemMap.get('#' + cleanId) || 
-                         itemMap.get(rawName) || 
-                         itemMap.get(cleanName);
+        const foundByName = itemMap.get(rawName) || itemMap.get(cleanName);
+        const foundById = itemMap.get(rawId) || itemMap.get(cleanId) || itemMap.get('#' + cleanId);
+        const foundCat = foundByName || foundById;
 
         const targetCat = (foundCat && foundCat !== "General" && foundCat !== "Unspecified") ? foundCat : "Other";
         const currentCat = (tx.category || "").trim();
@@ -4501,11 +4499,9 @@ async function rebindAllImsCategoriesWithMasterCatalog() {
       const rawName = String(tx.itemName || "").trim().toLowerCase();
       const cleanName = rawName.replace(/\s+/g, ' ');
 
-      const foundCat = itemMap.get(rawId) || 
-                       itemMap.get(cleanId) || 
-                       itemMap.get('#' + cleanId) || 
-                       itemMap.get(rawName) || 
-                       itemMap.get(cleanName);
+      const foundByName = itemMap.get(rawName) || itemMap.get(cleanName);
+      const foundById = itemMap.get(rawId) || itemMap.get(cleanId) || itemMap.get('#' + cleanId);
+      const foundCat = foundByName || foundById;
 
       const targetCat = (foundCat && foundCat !== "General" && foundCat !== "Unspecified") ? foundCat : "Other";
       if ((tx.category || "").trim() !== targetCat) {

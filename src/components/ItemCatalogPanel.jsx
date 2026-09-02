@@ -1504,18 +1504,18 @@ export default function ItemCatalogPanel({
                   const isSelected = selectedIds.includes(item.id);
                   const isFG = item.itemType === "FG";
 
-                  // Resolve Creator Name (e.g. Mr. Anees vs Super Admin)
+                  // Resolve Creator Name (e.g. Admin, Super Admin, Mr. Anees)
                   const creatorName = (() => {
-                    // 1. If explicit createdBy exists and is a valid purchaser name (not Super Admin), use it
-                    if (item.createdBy && !["Super Admin", "u-admin", "System Admin", "Admin"].includes(item.createdBy.trim())) return item.createdBy;
-                    if (item.entryBy && !["Super Admin", "u-admin", "System Admin", "Admin"].includes(item.entryBy.trim())) return item.entryBy;
+                    // 1. If explicit createdBy exists, use it
+                    if (item.createdBy && item.createdBy.trim()) return item.createdBy.trim();
+                    if (item.entryBy && item.entryBy.trim()) return item.entryBy.trim();
 
                     // 2. Check item ID prefix (e.g. "AN-1" -> "AN" -> "Mr. Anees")
                     if (item.id && typeof item.id === "string") {
                       const idUpper = item.id.toUpperCase().trim();
                       for (const u of (users || [])) {
                         const prefix = (u.name || "").trim().toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
-                        if (prefix && (idUpper.startsWith(`${prefix}-`) || idUpper.startsWith(prefix))) {
+                        if (prefix && prefix.length >= 2 && (idUpper.startsWith(`${prefix}-`) || idUpper.startsWith(`${prefix}_`))) {
                           return u.name;
                         }
                       }
@@ -1526,10 +1526,10 @@ export default function ItemCatalogPanel({
                     if (reqMatch) {
                       const purchaserObj = (users || []).find(u => u.id === reqMatch.purchaserId);
                       if (purchaserObj) return purchaserObj.name;
-                      if (reqMatch.entryBy && !["Super Admin", "u-admin", "Guest"].includes(reqMatch.entryBy)) return reqMatch.entryBy;
+                      if (reqMatch.entryBy) return reqMatch.entryBy;
                     }
 
-                    return item.createdBy || item.entryBy || "Mr. Anees";
+                    return "Admin";
                   })();
 
                   return (

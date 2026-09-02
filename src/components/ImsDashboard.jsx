@@ -306,11 +306,9 @@ export default function ImsDashboard({
       const rawName = String(tx.itemName || "").trim().toLowerCase();
       const cleanName = rawName.replace(/\s+/g, ' ');
       
-      const foundItem = itemCatalogMap.get(rawId) || 
-                        itemCatalogMap.get(cleanId) || 
-                        itemCatalogMap.get('#' + cleanId) || 
-                        itemCatalogMap.get(rawName) || 
-                        itemCatalogMap.get(cleanName);
+      const foundByName = itemCatalogMap.get(rawName) || itemCatalogMap.get(cleanName);
+      const foundById = itemCatalogMap.get(rawId) || itemCatalogMap.get(cleanId) || itemCatalogMap.get('#' + cleanId);
+      const foundItem = foundByName || foundById;
 
       const rawItemCat = (foundItem?.category || "").trim();
       const resolvedCategory = (foundItem && rawItemCat && rawItemCat !== "General" && rawItemCat !== "Unspecified") ? rawItemCat : "Other";
@@ -1941,11 +1939,9 @@ export default function ImsDashboard({
                             const cleanId = rawId.replace(/^#+/, "");
                             const rawName = String(tx.itemName || "").trim().toLowerCase();
                             const cleanName = rawName.replace(/\s+/g, ' ');
-                            const foundItem = itemCatalogMap.get(rawId) || 
-                                              itemCatalogMap.get(cleanId) || 
-                                              itemCatalogMap.get('#' + cleanId) || 
-                                              itemCatalogMap.get(rawName) || 
-                                              itemCatalogMap.get(cleanName);
+                            const foundByName = itemCatalogMap.get(rawName) || itemCatalogMap.get(cleanName);
+                            const foundById = itemCatalogMap.get(rawId) || itemCatalogMap.get(cleanId) || itemCatalogMap.get('#' + cleanId);
+                            const foundItem = foundByName || foundById;
                             const rawItemCat = (foundItem?.category || "").trim();
                             const cat = (foundItem && rawItemCat && rawItemCat !== "General" && rawItemCat !== "Unspecified") ? rawItemCat : "Other";
                             const isOther = cat.toLowerCase() === "other";
