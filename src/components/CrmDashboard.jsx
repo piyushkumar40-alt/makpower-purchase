@@ -17,6 +17,8 @@ export default function CrmDashboard({
   crmSalesOrders = [],
   crmDispatches = [],
   crmPartyRemarks = [],
+  partyCategoryMonthlySales = [],
+  partyCategoryMonths = [],
   imsTransactions = [],
   items = [],
   itemPrices = [],
@@ -2099,6 +2101,8 @@ export default function CrmDashboard({
           salesOrders={allUnifiedSalesOrders.filter(o => matchParty(o.partyName, selectedPartyFor360.name, o.partyId, selectedPartyFor360.id))}
           dispatches={allUnifiedDispatches.filter(d => matchParty(d.partyName, selectedPartyFor360.name, d.partyId, selectedPartyFor360.id))}
           crmPartyRemarks={crmPartyRemarks}
+          partyCategoryMonthlySales={partyCategoryMonthlySales}
+          partyCategoryMonths={partyCategoryMonths}
           items={items}
           currentUser={currentUser}
           onSavePartyRemark={onSavePartyRemark}
@@ -2115,6 +2119,8 @@ export default function CrmDashboard({
           salesOrders={allUnifiedSalesOrders.filter(o => matchParty(o.partyName, selectedPartyForCategoryStudio.name, o.partyId, selectedPartyForCategoryStudio.id))}
           dispatches={allUnifiedDispatches.filter(d => matchParty(d.partyName, selectedPartyForCategoryStudio.name, d.partyId, selectedPartyForCategoryStudio.id))}
           crmPartyRemarks={crmPartyRemarks}
+          partyCategoryMonthlySales={partyCategoryMonthlySales}
+          partyCategoryMonths={partyCategoryMonths}
           items={items}
           currentUser={currentUser}
           onSavePartyRemark={onSavePartyRemark}
@@ -2434,6 +2440,8 @@ function Party360Modal({
   salesOrders = [], 
   dispatches = [], 
   crmPartyRemarks = [],
+  partyCategoryMonthlySales = [],
+  partyCategoryMonths = [],
   items = [],
   currentUser,
   onSavePartyRemark,
@@ -2444,11 +2452,14 @@ function Party360Modal({
   const [modalTab, setModalTab] = useState("category_matrix"); // "category_matrix" | "orders"
   const [activeRemarkModalTarget, setActiveRemarkModalTarget] = useState(null);
 
-  // Dynamic Last 3 Months
-  const last3Months = useMemo(() => {
+  // Dynamic Last 4 Months (including current month)
+  const last4Months = useMemo(() => {
+    if (partyCategoryMonths && partyCategoryMonths.length === 4) {
+      return partyCategoryMonths;
+    }
     const months = [];
     const now = new Date();
-    for (let i = 2; i >= 0; i--) {
+    for (let i = 3; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const yr = d.getFullYear();
       const mo = String(d.getMonth() + 1).padStart(2, "0");
@@ -2457,11 +2468,11 @@ function Party360Modal({
       months.push({ key, label, fullMonth: key });
     }
     return months;
-  }, []);
+  }, [partyCategoryMonths]);
 
-  const last3MonthKeys = useMemo(() => new Set(last3Months.map(m => m.key)), [last3Months]);
+  const last4MonthKeys = useMemo(() => new Set(last4Months.map(m => m.key)), [last4Months]);
 
-  // Helper to extract YYYY-MM from any date format (YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, etc.)
+  // Helper to extract YYYY-MM from any date format
   const extractYearMonth = (dateVal) => {
     if (!dateVal) return "";
     const s = String(dateVal).trim();
@@ -2478,29 +2489,27 @@ function Party360Modal({
     return "";
   };
 
-  const last3MoOrders = useMemo(() => {
+  const last4MoOrders = useMemo(() => {
     return salesOrders.filter(o => {
       const m = extractYearMonth(o.orderDate);
-      return last3MonthKeys.has(m);
+      return last4MonthKeys.has(m);
     });
-  }, [salesOrders, last3MonthKeys]);
+  }, [salesOrders, last4MonthKeys]);
 
-  const last3MoOrderedQty = useMemo(() => {
-    return last3MoOrders.reduce((a, b) => a + (parseInt(b.orderQty) || 0), 0);
-  }, [last3MoOrders]);
+  const last4MoOrderedQty = useMemo(() => {
+    return last4MoOrders.reduce((a, b) => a + (parseInt(b.orderQty) || 0), 0);
+  }, [last4MoOrders]);
 
-  const last3MoDispatches = useMemo(() => {
+  const last4MoDispatches = useMemo(() => {
     return dispatches.filter(d => {
       const m = extractYearMonth(d.dispatchDate);
-      return last3MonthKeys.has(m);
+      return last4MonthKeys.has(m);
     });
-  }, [dispatches, last3MonthKeys]);
+  }, [dispatches, last4MonthKeys]);
 
-  const last3MoDispatchedQty = useMemo(() => {
-    return last3MoDispatches.reduce((a, b) => a + (parseInt(b.dispatchedQty) || 0), 0);
-  }, [last3MoDispatches]);
-
-  const totalSpend = last3MoOrders.reduce((a, b) => a + (parseFloat(b.totalInr) || 0), 0);
+  const last4MoDispatchedQty = useMemo(() => {
+    return last4MoDispatches.reduce((a, b) => a + (parseInt(b.dispatchedQty) || 0), 0);
+  }, [last4MoDispatches]);
 
   const normalizeCategory = (cat, itemDesc = "") => {
     const raw = `${cat || ""} ${itemDesc || ""}`.toLowerCase();
@@ -2520,11 +2529,10 @@ function Party360Modal({
     return "Mobile Accessories";
   };
 
-  // 3-Month Category-Wise aggregation for this party (FG only, Polymer consolidated)
+  // 4-Month Category-Wise aggregation for this party (FG only, Polymer consolidated)
   const partyCategoryRows = useMemo(() => {
     const map = new Map();
 
-    // Standard Makpower FG Categories
     const standardFgCategories = [
       "Fast Charger", "Data Cable", "Neckband", "TWS Earbuds", 
       "Polymer", "Power Bank", "Earphones", "Batteries", 
@@ -2534,6 +2542,7 @@ function Party360Modal({
     standardFgCategories.forEach(cat => {
       map.set(cat, {
         category: cat,
+        m0: 0,
         m1: 0,
         m2: 0,
         m3: 0,
@@ -2542,6 +2551,30 @@ function Party360Modal({
       });
     });
 
+    // 1. Populate from server-precalculated partyCategoryMonthlySales
+    const partyNameNorm = (party?.name || "").trim().toLowerCase();
+    const relevantSales = (partyCategoryMonthlySales || []).filter(s => {
+      const sNorm = (s.partyName || "").trim().toLowerCase();
+      return (party?.id && s.partyId === party.id) || sNorm === partyNameNorm || sNorm.includes(partyNameNorm) || partyNameNorm.includes(sNorm);
+    });
+
+    relevantSales.forEach(s => {
+      const cat = normalizeCategory(s.category);
+      if (!cat) return;
+      if (!map.has(cat)) {
+        map.set(cat, { category: cat, m0: 0, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
+      }
+      const row = map.get(cat);
+      const qty = parseInt(s.salesQty) || 0;
+      if (s.month === last4Months[0].key) row.m0 += qty;
+      else if (s.month === last4Months[1].key) row.m1 += qty;
+      else if (s.month === last4Months[2].key) row.m2 += qty;
+      else if (s.month === last4Months[3].key) row.m3 += qty;
+      row.totalQty += qty;
+      row.totalRevenue += parseFloat(s.salesRevenue) || 0;
+    });
+
+    // 2. Include client sales orders if not already populated
     (salesOrders || []).forEach(o => {
       let rawCat = o.category;
       if (!rawCat || rawCat === "General" || rawCat === "Unspecified") {
@@ -2551,61 +2584,48 @@ function Party360Modal({
       const cat = normalizeCategory(rawCat, o.itemModel || "");
       if (!cat) return;
 
-      const oMonth = extractYearMonth(o.orderDate) || last3Months[2].key;
+      const oMonth = extractYearMonth(o.orderDate) || last4Months[3].key;
       if (!map.has(cat)) {
-        map.set(cat, {
-          category: cat,
-          m1: 0,
-          m2: 0,
-          m3: 0,
-          totalQty: 0,
-          totalRevenue: 0
-        });
+        map.set(cat, { category: cat, m0: 0, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
       }
       const row = map.get(cat);
       const qty = parseInt(o.orderQty) || 0;
-      if (oMonth === last3Months[0].key) row.m1 += qty;
-      else if (oMonth === last3Months[1].key) row.m2 += qty;
-      else if (oMonth === last3Months[2].key) row.m3 += qty;
-      row.totalQty += qty;
+      if (row.totalQty === 0) {
+        if (oMonth === last4Months[0].key) row.m0 += qty;
+        else if (oMonth === last4Months[1].key) row.m1 += qty;
+        else if (oMonth === last4Months[2].key) row.m2 += qty;
+        else if (oMonth === last4Months[3].key) row.m3 += qty;
+        row.totalQty += qty;
+      }
       row.totalRevenue += parseFloat(o.totalInr) || 0;
     });
 
-    // Also include dispatches
-    (dispatches || []).forEach(d => {
-      const found = items.find(it => it.name === d.itemModel || it.id === d.itemId);
-      const cat = normalizeCategory(found?.category || "", d.itemModel || "");
-      if (!cat) return;
-
-      const dMonth = extractYearMonth(d.dispatchDate) || last3Months[2].key;
-      if (!map.has(cat)) {
-        map.set(cat, { category: cat, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
-      }
-      const row = map.get(cat);
-      const qty = parseInt(d.dispatchedQty) || 0;
-      if (dMonth === last3Months[0].key) row.m1 += qty;
-      else if (dMonth === last3Months[1].key) row.m2 += qty;
-      else if (dMonth === last3Months[2].key) row.m3 += qty;
-      row.totalQty += qty;
-    });
-
-    // Also include categories from existing remarks
+    // 3. Include categories from existing remarks
     (crmPartyRemarks || []).forEach(r => {
       const matchP = r.partyId === party.id || (r.partyName && r.partyName.trim().toLowerCase() === (party.name || "").trim().toLowerCase());
       if (matchP && r.category) {
         const cat = normalizeCategory(r.category);
         if (cat && !map.has(cat)) {
-          map.set(cat, { category: cat, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
+          map.set(cat, { category: cat, m0: 0, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
         }
       }
     });
 
     return Array.from(map.values()).sort((a, b) => b.totalQty - a.totalQty || a.category.localeCompare(b.category));
-  }, [salesOrders, dispatches, crmPartyRemarks, items, party, last3Months]);
+  }, [partyCategoryMonthlySales, salesOrders, crmPartyRemarks, items, party, last4Months]);
+
+  const totalSpend = useMemo(() => {
+    return partyCategoryRows.reduce((sum, r) => sum + (r.totalRevenue || 0), 0) || last4MoOrders.reduce((a, b) => a + (parseFloat(b.totalInr) || 0), 0);
+  }, [partyCategoryRows, last4MoOrders]);
+
+  const totalCalculatedDispatchedQty = useMemo(() => {
+    const fromRows = partyCategoryRows.reduce((sum, r) => sum + (r.totalQty || 0), 0);
+    return Math.max(fromRows, last4MoDispatchedQty);
+  }, [partyCategoryRows, last4MoDispatchedQty]);
 
   return (
     <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1050, position: "fixed", top: 0, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(5px)" }}>
-      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "880px", width: "100%", padding: "26px", maxHeight: "90vh", overflowY: "auto", margin: "auto" }}>
+      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "920px", width: "100%", padding: "26px", maxHeight: "90vh", overflowY: "auto", margin: "auto" }}>
         
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px" }}>
@@ -2626,23 +2646,23 @@ function Party360Modal({
           <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={22} /></button>
         </div>
 
-        {/* Overview Stats (Last 3 Months) */}
+        {/* Overview Stats (Last 4 Months) */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "12px", marginBottom: "18px" }}>
           {canViewFinancials && (
             <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total Business (3-Mo)</div>
+              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total Business (4-Mo)</div>
               <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "var(--success)" }}>₹{totalSpend.toLocaleString()}</div>
             </div>
           )}
           <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total Ordered (3-Mo)</div>
-            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "var(--primary)" }}>{last3MoOrders.length} Orders</div>
-            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{last3MoOrderedQty.toLocaleString()} Pcs total</div>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total Ordered (4-Mo)</div>
+            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "var(--primary)" }}>{last4MoOrders.length} Orders</div>
+            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{last4MoOrderedQty.toLocaleString()} Pcs total</div>
           </div>
           <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Dispatched (3-Mo)</div>
-            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#f59e0b" }}>{last3MoDispatchedQty.toLocaleString()} Pcs</div>
-            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Across {last3MoDispatches.length} dispatches</div>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Dispatched (4-Mo)</div>
+            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#f59e0b" }}>{totalCalculatedDispatchedQty.toLocaleString()} Pcs</div>
+            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Across 4 months sales</div>
           </div>
           <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Categories Active</div>
@@ -2657,7 +2677,7 @@ function Party360Modal({
             className={`tab-btn ${modalTab === "category_matrix" ? "active" : ""}`}
             style={{ fontSize: "0.85rem", padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
           >
-            <MessageSquare size={14} /> 3-Month Category Sales & Remarks
+            <MessageSquare size={14} /> 4-Month Category Sales & Remarks
           </button>
           <button
             onClick={() => setModalTab("orders")}
@@ -2668,12 +2688,12 @@ function Party360Modal({
           </button>
         </div>
 
-        {/* TAB 1: 3-Month Category-Wise Sales & Remarks Matrix */}
+        {/* TAB 1: 4-Month Category-Wise Sales & Remarks Matrix */}
         {modalTab === "category_matrix" && (
           <div style={{ overflowX: "auto" }}>
             <div style={{ marginBottom: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
-                Track order volumes across the last 3 months and record field remarks category-wise.
+                Track order volumes across 4 months (including current month) and record field remarks category-wise.
               </span>
             </div>
 
@@ -2681,11 +2701,12 @@ function Party360Modal({
               <thead>
                 <tr>
                   <th style={{ width: "20%" }}>Category</th>
-                  <th style={{ width: "12%", textAlign: "right" }}>{last3Months[0].label}</th>
-                  <th style={{ width: "12%", textAlign: "right" }}>{last3Months[1].label}</th>
-                  <th style={{ width: "12%", textAlign: "right" }}>{last3Months[2].label}</th>
-                  <th style={{ width: "12%", textAlign: "right" }}>3-Mo Total</th>
-                  <th style={{ width: "32%", textAlign: "center" }}>Remarks</th>
+                  <th style={{ width: "11%", textAlign: "right" }}>{last4Months[0].label}</th>
+                  <th style={{ width: "11%", textAlign: "right" }}>{last4Months[1].label}</th>
+                  <th style={{ width: "11%", textAlign: "right" }}>{last4Months[2].label}</th>
+                  <th style={{ width: "12%", textAlign: "right", color: "var(--primary)" }}>{last4Months[3].label} (Current)</th>
+                  <th style={{ width: "12%", textAlign: "right" }}>4-Mo Total</th>
+                  <th style={{ width: "23%", textAlign: "center" }}>Remarks</th>
                 </tr>
               </thead>
               <tbody>
@@ -2701,13 +2722,16 @@ function Party360Modal({
                       <td>
                         <strong style={{ color: "var(--text-main)" }}>{row.category}</strong>
                       </td>
+                      <td style={{ textAlign: "right", color: row.m0 > 0 ? "var(--text-main)" : "var(--text-muted)" }}>
+                        {row.m0 > 0 ? `${row.m0.toLocaleString()} Pcs` : "—"}
+                      </td>
                       <td style={{ textAlign: "right", color: row.m1 > 0 ? "var(--text-main)" : "var(--text-muted)" }}>
                         {row.m1 > 0 ? `${row.m1.toLocaleString()} Pcs` : "—"}
                       </td>
                       <td style={{ textAlign: "right", color: row.m2 > 0 ? "var(--text-main)" : "var(--text-muted)" }}>
                         {row.m2 > 0 ? `${row.m2.toLocaleString()} Pcs` : "—"}
                       </td>
-                      <td style={{ textAlign: "right", color: row.m3 > 0 ? "var(--text-main)" : "var(--text-muted)" }}>
+                      <td style={{ textAlign: "right", fontWeight: 700, color: row.m3 > 0 ? "var(--primary)" : "var(--text-muted)" }}>
                         {row.m3 > 0 ? `${row.m3.toLocaleString()} Pcs` : "—"}
                       </td>
                       <td style={{ textAlign: "right", fontWeight: 800, color: row.totalQty > 0 ? "var(--primary)" : "var(--text-muted)" }}>
@@ -2735,7 +2759,7 @@ function Party360Modal({
                               partyId: party.id,
                               partyName: party.name,
                               category: row.category,
-                              month: last3Months[2].key,
+                              month: last4Months[3].key,
                               totalOrderQty: row.totalQty,
                               totalRevenue: row.totalRevenue
                             })}
@@ -2831,6 +2855,8 @@ function PartyMonthlyCategoryStudioModal({
   salesOrders = [],
   dispatches = [],
   crmPartyRemarks = [],
+  partyCategoryMonthlySales = [],
+  partyCategoryMonths = [],
   items = [],
   currentUser,
   onSavePartyRemark,
@@ -2846,6 +2872,9 @@ function PartyMonthlyCategoryStudioModal({
 
   // Dynamic Last 4 Months e.g. [Jun 26, Jul 26, Aug 26, Sep 26]
   const last4Months = useMemo(() => {
+    if (partyCategoryMonths && partyCategoryMonths.length === 4) {
+      return partyCategoryMonths;
+    }
     const months = [];
     const now = new Date();
     for (let i = 3; i >= 0; i--) {
@@ -2855,10 +2884,10 @@ function PartyMonthlyCategoryStudioModal({
       const key = `${yr}-${mo}`;
       const monthName = d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
       const fullMonthName = d.toLocaleDateString("en-IN", { month: "long" });
-      months.push({ key, monthName, fullMonthName });
+      months.push({ key, monthName, fullMonthName, label: monthName });
     }
     return months;
-  }, []);
+  }, [partyCategoryMonths]);
 
   // Helper to extract YYYY-MM from any date format (YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, etc.)
   const extractYearMonth = (dateVal) => {
@@ -2925,7 +2954,30 @@ function PartyMonthlyCategoryStudioModal({
       });
     });
 
-    // Populate from sales orders
+    // 1. Populate from server-precalculated partyCategoryMonthlySales
+    const partyNameNorm = (party?.name || "").trim().toLowerCase();
+    const relevantSales = (partyCategoryMonthlySales || []).filter(s => {
+      const sNorm = (s.partyName || "").trim().toLowerCase();
+      return (party?.id && s.partyId === party.id) || sNorm === partyNameNorm || sNorm.includes(partyNameNorm) || partyNameNorm.includes(sNorm);
+    });
+
+    relevantSales.forEach(s => {
+      const cat = normalizeCategory(s.category);
+      if (!cat) return;
+      if (!map.has(cat)) {
+        map.set(cat, { category: cat, m0: 0, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
+      }
+      const row = map.get(cat);
+      const qty = parseInt(s.salesQty) || 0;
+      if (s.month === last4Months[0].key) row.m0 += qty;
+      else if (s.month === last4Months[1].key) row.m1 += qty;
+      else if (s.month === last4Months[2].key) row.m2 += qty;
+      else if (s.month === last4Months[3].key) row.m3 += qty;
+      row.totalQty += qty;
+      row.totalRevenue += parseFloat(s.salesRevenue) || 0;
+    });
+
+    // 2. Populate from sales orders if row has 0
     (salesOrders || []).forEach(o => {
       let rawCat = o.category;
       if (!rawCat || rawCat === "General" || rawCat === "Unspecified") {
@@ -2942,52 +2994,35 @@ function PartyMonthlyCategoryStudioModal({
       const oMonth = extractYearMonth(o.orderDate) || last4Months[3].key;
       const qty = parseInt(o.orderQty) || 0;
 
-      if (oMonth === last4Months[0].key) row.m0 += qty;
-      else if (oMonth === last4Months[1].key) row.m1 += qty;
-      else if (oMonth === last4Months[2].key) row.m2 += qty;
-      else if (oMonth === last4Months[3].key) row.m3 += qty;
-
-      row.totalQty += qty;
+      if (row.totalQty === 0) {
+        if (oMonth === last4Months[0].key) row.m0 += qty;
+        else if (oMonth === last4Months[1].key) row.m1 += qty;
+        else if (oMonth === last4Months[2].key) row.m2 += qty;
+        else if (oMonth === last4Months[3].key) row.m3 += qty;
+        row.totalQty += qty;
+      }
       row.totalRevenue += parseFloat(o.totalInr) || 0;
     });
 
-    // Also populate from dispatches
-    (dispatches || []).forEach(d => {
-      const found = items.find(it => it.name === d.itemModel || it.id === d.itemId);
-      const cat = normalizeCategory(found?.category || "", d.itemModel || "");
-      if (!cat) return;
-
-      if (!map.has(cat)) {
-        map.set(cat, { category: cat, m0: 0, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
-      }
-      const row = map.get(cat);
-      const dMonth = extractYearMonth(d.dispatchDate) || last4Months[3].key;
-      const qty = parseInt(d.dispatchedQty) || 0;
-
-      if (dMonth === last4Months[0].key) row.m0 += qty;
-      else if (dMonth === last4Months[1].key) row.m1 += qty;
-      else if (dMonth === last4Months[2].key) row.m2 += qty;
-      else if (dMonth === last4Months[3].key) row.m3 += qty;
-
-      row.totalQty += qty;
-    });
-
-    // Also merge from party precalculated category history if present
+    // 3. Merge from party precalculated category history if present
     if (party.categorySales && typeof party.categorySales === "object") {
       Object.entries(party.categorySales).forEach(([cName, cData]) => {
         const cat = normalizeCategory(cName);
         if (cat && map.has(cat) && typeof cData === "object") {
           const row = map.get(cat);
-          if (cData[last4Months[0].key]) row.m0 += parseInt(cData[last4Months[0].key]) || 0;
-          if (cData[last4Months[1].key]) row.m1 += parseInt(cData[last4Months[1].key]) || 0;
-          if (cData[last4Months[2].key]) row.m2 += parseInt(cData[last4Months[2].key]) || 0;
-          if (cData[last4Months[3].key]) row.m3 += parseInt(cData[last4Months[3].key]) || 0;
+          if (row.totalQty === 0) {
+            if (cData[last4Months[0].key]) row.m0 += parseInt(cData[last4Months[0].key]) || 0;
+            if (cData[last4Months[1].key]) row.m1 += parseInt(cData[last4Months[1].key]) || 0;
+            if (cData[last4Months[2].key]) row.m2 += parseInt(cData[last4Months[2].key]) || 0;
+            if (cData[last4Months[3].key]) row.m3 += parseInt(cData[last4Months[3].key]) || 0;
+            row.totalQty = row.m0 + row.m1 + row.m2 + row.m3;
+          }
         }
       });
     }
 
     return Array.from(map.values()).sort((a, b) => b.totalQty - a.totalQty || a.category.localeCompare(b.category));
-  }, [salesOrders, dispatches, items, last4Months, party]);
+  }, [partyCategoryMonthlySales, salesOrders, dispatches, items, last4Months, party]);
 
   const handleSaveCategoryRemark = async (catName) => {
     const text = (remarkInputs[catName] || "").trim();

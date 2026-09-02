@@ -101,6 +101,8 @@ export default function App() {
     }
     return [];
   });
+  const [partyCategoryMonthlySales, setPartyCategoryMonthlySales] = useState(() => cachedState?.partyCategoryMonthlySales || []);
+  const [partyCategoryMonths, setPartyCategoryMonths] = useState(() => cachedState?.partyCategoryMonths || []);
   const [settings, setSettings] = useState(() => cachedState?.settings || { isHidden: false, redirectUrl: "https://www.instagram.com/makpowerofficial/" });
   const [loading, setLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
@@ -170,12 +172,24 @@ export default function App() {
           const res = await fetch("/api/items");
           const data = await res.json();
           if (Array.isArray(data)) setItems(data);
-        } else if (moduleKey === TRACKABLE_MODULES.CRM_PARTIES) {
+        } else if (moduleKey === TRACKABLE_MODULES.CRM_PARTIES || moduleKey === "crmParties") {
           const q = currentUser ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(currentUser.role)}&userName=${encodeURIComponent(currentUser.name || '')}` : "";
-          const res = await fetch(`/api/crm/parties${q}`);
-          const data = await res.json();
+          const [resParties, resCatSales] = await Promise.all([
+            fetch(`/api/crm/parties${q}`),
+            fetch(`/api/crm/party-category-sales`)
+          ]);
+          const data = await resParties.json();
           const list = Array.isArray(data) ? data : (data.parties || []);
           setCrmParties(list);
+          try {
+            const catSalesData = await resCatSales.json();
+            if (Array.isArray(catSalesData?.sales)) {
+              setPartyCategoryMonthlySales(catSalesData.sales);
+            }
+            if (Array.isArray(catSalesData?.months)) {
+              setPartyCategoryMonths(catSalesData.months);
+            }
+          } catch (e) {}
         } else if (moduleKey === TRACKABLE_MODULES.CRM_SALES_ORDERS) {
           const q = currentUser ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(currentUser.role)}&userName=${encodeURIComponent(currentUser.name || '')}` : "";
           const res = await fetch(`/api/crm/sales-orders${q}`);
@@ -434,6 +448,12 @@ export default function App() {
         }
         if (Array.isArray(data.crmPartyRemarks)) {
           setCrmPartyRemarks(data.crmPartyRemarks);
+        }
+        if (Array.isArray(data.partyCategoryMonthlySales)) {
+          setPartyCategoryMonthlySales(data.partyCategoryMonthlySales);
+        }
+        if (Array.isArray(data.partyCategoryMonths)) {
+          setPartyCategoryMonths(data.partyCategoryMonths);
         }
         
         if (data.settings) {
@@ -2367,6 +2387,8 @@ export default function App() {
             crmSalesOrders={crmSalesOrders}
             crmDispatches={crmDispatches}
             crmPartyRemarks={crmPartyRemarks}
+            partyCategoryMonthlySales={partyCategoryMonthlySales}
+            partyCategoryMonths={partyCategoryMonths}
             imsTransactions={imsTransactions}
             items={items}
             itemPrices={itemPrices}
