@@ -8,7 +8,7 @@ import {
 import Pagination, { SmartSelectionBar } from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
 import { initialImsTransactions } from "../mockData";
-import DateRangeFilter, { isDateInBetween, parseDateTimestamp } from "./DateRangeFilter";
+import DateRangeFilter, { isDateInBetween, parseDateTimestamp, formatDisplayDate } from "./DateRangeFilter";
 
 export default function ImsDashboard({
   currentUser,
