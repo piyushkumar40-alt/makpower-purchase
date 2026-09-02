@@ -312,8 +312,8 @@ export default function ImsDashboard({
                         itemCatalogMap.get(rawName) || 
                         itemCatalogMap.get(cleanName);
 
-      const rawItemCat = (foundItem?.category || (tx.category && tx.category !== "General" ? tx.category : "") || "").trim();
-      const resolvedCategory = (rawItemCat && rawItemCat !== "General" && rawItemCat !== "Unspecified") ? rawItemCat : "Other";
+      const rawItemCat = (foundItem?.category || "").trim();
+      const resolvedCategory = (foundItem && rawItemCat && rawItemCat !== "General" && rawItemCat !== "Unspecified") ? rawItemCat : "Other";
       const cat = resolvedCategory.toLowerCase();
 
       // Field-Scoped Search Matching
@@ -1900,8 +1900,8 @@ export default function ImsDashboard({
                                               itemCatalogMap.get('#' + cleanId) || 
                                               itemCatalogMap.get(rawName) || 
                                               itemCatalogMap.get(cleanName);
-                            const rawItemCat = (foundItem?.category || (tx.category && tx.category !== "General" ? tx.category : "") || "").trim();
-                            const cat = (rawItemCat && rawItemCat !== "General" && rawItemCat !== "Unspecified") ? rawItemCat : "Other";
+                            const rawItemCat = (foundItem?.category || "").trim();
+                            const cat = (foundItem && rawItemCat && rawItemCat !== "General" && rawItemCat !== "Unspecified") ? rawItemCat : "Other";
                             const isOther = cat.toLowerCase() === "other";
 
                             return (
