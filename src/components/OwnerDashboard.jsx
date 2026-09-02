@@ -89,6 +89,41 @@ export default function OwnerDashboard({
   const [sortBy, setSortBy] = useState("capital"); // "capital" | "sales" | "inventory" | "china" | "turnover"
   const [selectedCategoryDetail, setSelectedCategoryDetail] = useState(null);
 
+  // Live Exchange Rate State for Owner Customization
+  const defaultRmb = parseFloat(settings?.exchangeRate) || parseFloat(settings?.rmbToInrRate) || 12.5;
+  const defaultUsd = parseFloat(settings?.usdRate) || parseFloat(settings?.usdToInrRate) || 86.5;
+
+  const [rmbRateInput, setRmbRateInput] = useState(String(defaultRmb));
+  const [usdRateInput, setUsdRateInput] = useState(String(defaultUsd));
+  const [isRateSaved, setIsRateSaved] = useState(false);
+
+  useEffect(() => {
+    if (settings?.exchangeRate || settings?.rmbToInrRate) {
+      const val = parseFloat(settings?.exchangeRate) || parseFloat(settings?.rmbToInrRate) || 12.5;
+      setRmbRateInput(String(val));
+    }
+    if (settings?.usdRate || settings?.usdToInrRate) {
+      const val = parseFloat(settings?.usdRate) || parseFloat(settings?.usdToInrRate) || 86.5;
+      setUsdRateInput(String(val));
+    }
+  }, [settings?.exchangeRate, settings?.rmbToInrRate, settings?.usdRate, settings?.usdToInrRate]);
+
+  const activeRmbRate = parseFloat(rmbRateInput) || defaultRmb;
+  const activeUsdRate = parseFloat(usdRateInput) || defaultUsd;
+
+  const handleSaveRates = async () => {
+    if (onUpdateSettings) {
+      await onUpdateSettings({
+        exchangeRate: activeRmbRate,
+        rmbToInrRate: activeRmbRate,
+        usdRate: activeUsdRate,
+        usdToInrRate: activeUsdRate
+      });
+      setIsRateSaved(true);
+      setTimeout(() => setIsRateSaved(false), 2500);
+    }
+  };
+
   // Automatically fetch modules if needed
   useEffect(() => {
     if (onPullModuleData) {
@@ -268,9 +303,6 @@ export default function OwnerDashboard({
     });
 
     // B. Aggregate China Procurement Pipeline (Pending Orders in `requests`)
-    const rmbRate = parseFloat(settings?.exchangeRate) || 12.5;
-    const usdRate = parseFloat(settings?.usdRate) || 86.5;
-
     (requests || []).forEach(r => {
       const isReceived = r.isMaterialRec === "Yes" || r.status === "Received" || r.status === "Cancelled";
       if (isReceived) return;
@@ -286,13 +318,13 @@ export default function OwnerDashboard({
       const cur = (r.currency || "RMB").toUpperCase();
 
       if (!isNaN(rawTotal) && rawTotal > 0) {
-        if (cur === "USD") orderInr = rawTotal * usdRate;
+        if (cur === "USD") orderInr = rawTotal * activeUsdRate;
         else if (cur === "INR") orderInr = rawTotal;
-        else orderInr = rawTotal * rmbRate;
+        else orderInr = rawTotal * activeRmbRate;
       } else if (!isNaN(rawPrice) && rawPrice > 0) {
         let priceInr = rawPrice;
-        if (cur === "USD") priceInr = rawPrice * usdRate;
-        else if (cur === "RMB" || cur === "CNY") priceInr = rawPrice * rmbRate;
+        if (cur === "USD") priceInr = rawPrice * activeUsdRate;
+        else if (cur === "RMB" || cur === "CNY") priceInr = rawPrice * activeRmbRate;
         orderInr = orderedQty * priceInr;
       } else {
         const unitPriceInr = itemPriceMap.get(String(r.itemId || "").toLowerCase()) || 
@@ -570,6 +602,60 @@ export default function OwnerDashboard({
             Logout
           </button>
         )}
+      </div>
+
+      {/* Top Currency Conversion Control Bar */}
+      <div className="glass-panel" style={{ padding: "12px 18px", borderRadius: "12px", marginBottom: "18px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", border: "1px solid rgba(56, 189, 248, 0.25)", background: "rgba(15, 23, 42, 0.55)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", fontWeight: 700, color: "var(--text-main)" }}>
+            <Globe size={18} style={{ color: "#38bdf8" }} />
+            <span>Currency Conversion & Rates:</span>
+          </div>
+
+          {/* RMB Input */}
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.3)", padding: "4px 10px", borderRadius: "8px" }}>
+            <span style={{ fontSize: "0.82rem", fontWeight: 800, color: "#f59e0b" }}>🇨🇳 1 RMB (¥) = ₹</span>
+            <input
+              type="number"
+              step="0.05"
+              min="1"
+              max="50"
+              value={rmbRateInput}
+              onChange={e => setRmbRateInput(e.target.value)}
+              style={{ width: "65px", padding: "3px 6px", fontSize: "0.88rem", fontWeight: 800, textAlign: "center", background: "#0f172a", border: "1px solid #f59e0b", borderRadius: "6px", color: "#f59e0b" }}
+            />
+          </div>
+
+          {/* USD Input */}
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(56, 189, 248, 0.1)", border: "1px solid rgba(56, 189, 248, 0.3)", padding: "4px 10px", borderRadius: "8px" }}>
+            <span style={{ fontSize: "0.82rem", fontWeight: 800, color: "#38bdf8" }}>🇺🇸 1 USD ($) = ₹</span>
+            <input
+              type="number"
+              step="0.1"
+              min="50"
+              max="150"
+              value={usdRateInput}
+              onChange={e => setUsdRateInput(e.target.value)}
+              style={{ width: "70px", padding: "3px 6px", fontSize: "0.88rem", fontWeight: 800, textAlign: "center", background: "#0f172a", border: "1px solid #38bdf8", borderRadius: "6px", color: "#38bdf8" }}
+            />
+          </div>
+
+          {/* Save Button */}
+          {onUpdateSettings && (
+            <button
+              onClick={handleSaveRates}
+              className="btn btn-sm btn-primary"
+              style={{ fontSize: "0.78rem", padding: "5px 14px", display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
+            >
+              {isRateSaved ? <><CheckCircle2 size={14} style={{ color: "#34d399" }} /> Rates Saved!</> : <><RefreshCw size={13} /> Save Default</>}
+            </button>
+          )}
+        </div>
+
+        <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "6px" }}>
+          <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10b981", display: "inline-block", boxShadow: "0 0 6px #10b981" }}></span>
+          Live calculations update instantly on rate change
+        </div>
       </div>
 
       {/* Primary Executive Navigation Tabs */}
@@ -972,7 +1058,13 @@ export default function OwnerDashboard({
           cargos={cargos}
           vendors={vendors}
           users={users}
-          settings={settings}
+          settings={{
+            ...settings,
+            exchangeRate: activeRmbRate,
+            rmbToInrRate: activeRmbRate,
+            usdRate: activeUsdRate,
+            usdToInrRate: activeUsdRate
+          }}
         />
       )}
 
