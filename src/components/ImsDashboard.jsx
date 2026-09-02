@@ -123,7 +123,18 @@ export default function ImsDashboard({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [effectiveTransactions]);
 
+  // Distinct Categories found in item catalog for dropdown filter
+  const distinctCategories = useMemo(() => {
+    const set = new Set();
+    (items || []).forEach(it => {
+      const c = (it.category || "").trim();
+      if (c && c !== "General" && c !== "Unspecified") set.add(c);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
   const [selectedPartyFilter, setSelectedPartyFilter] = useState("all");
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("all");
   const [movementFilter, setMovementFilter] = useState("all"); // "all" | "IN" | "OUT"
   const [missingIdFilter, setMissingIdFilter] = useState("all"); // "all" | "missing" | "linked"
   const [locationFilter, setLocationFilter] = useState("all"); // "all" | "Delhi" | "Mumbai"
@@ -154,7 +165,7 @@ export default function ImsDashboard({
   // Reset current page whenever filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQueries, selectedPartyFilter, startDate, endDate, movementFilter, missingIdFilter, locationFilter, selectedItemFilter]);
+  }, [searchQueries, selectedPartyFilter, selectedCategoryFilter, startDate, endDate, movementFilter, missingIdFilter, locationFilter, selectedItemFilter]);
 
   // Multi-row Checkbox Selection
   const [selectedTxIds, setSelectedTxIds] = useState([]);
@@ -258,7 +269,13 @@ export default function ImsDashboard({
   // ==================== FILTERED TRANSACTIONS ====================
   const filteredTransactions = useMemo(() => {
     return effectiveTransactions.filter(tx => {
-      // Fast Multi-term Search without allocating massive string arrays per row
+      // Category resolution for search & filtering
+      const rawId = String(tx.itemId || "").trim().toLowerCase();
+      const cleanId = rawId.replace(/^#+/, "");
+      const foundItem = itemCatalogMap.get(rawId) || itemCatalogMap.get(cleanId) || itemCatalogMap.get('#' + cleanId) || itemCatalogMap.get((tx.itemName || "").trim().toLowerCase());
+      const cat = (tx.category || foundItem?.category || "").trim().toLowerCase();
+
+      // Fast Multi-term Search across Item, Category, Party, Location, ID, Remarks
       if (activeSearchTerms.length > 0) {
         const party = (tx.partyName || tx.party || tx.customer || tx.vendorName || tx.vendor || "").toLowerCase();
         const item = (tx.itemName || tx.item || tx.name || "").toLowerCase();
@@ -270,11 +287,16 @@ export default function ImsDashboard({
         const match = activeSearchTerms.some(term => {
           const words = term.split(/\s+/).filter(Boolean);
           if (words.length > 1) {
-            return words.every(w => party.includes(w) || item.includes(w) || id.includes(w) || remarks.includes(w) || loc.includes(w) || date.includes(w));
+            return words.every(w => party.includes(w) || item.includes(w) || id.includes(w) || cat.includes(w) || remarks.includes(w) || loc.includes(w) || date.includes(w));
           }
-          return party.includes(term) || item.includes(term) || id.includes(term) || remarks.includes(term) || loc.includes(term) || date.includes(term);
+          return party.includes(term) || item.includes(term) || id.includes(term) || cat.includes(term) || remarks.includes(term) || loc.includes(term) || date.includes(term);
         });
         if (!match) return false;
+      }
+
+      // Category Quick Filter
+      if (selectedCategoryFilter !== "all") {
+        if (cat !== selectedCategoryFilter.trim().toLowerCase()) return false;
       }
 
       // Party Name Quick Filter
@@ -325,7 +347,7 @@ export default function ImsDashboard({
       if (valA > valB) return sortAsc ? 1 : -1;
       return 0;
     });
-  }, [effectiveTransactions, activeSearchTerms, selectedPartyFilter, locationFilter, startDate, endDate, movementFilter, missingIdFilter, selectedItemFilter, sortField, sortAsc]);
+  }, [effectiveTransactions, itemCatalogMap, activeSearchTerms, selectedCategoryFilter, selectedPartyFilter, locationFilter, startDate, endDate, movementFilter, missingIdFilter, selectedItemFilter, sortField, sortAsc]);
 
   // Dynamic metrics calculated from filtered transactions
   const {
@@ -367,6 +389,7 @@ export default function ImsDashboard({
   const hasActiveFilters = Boolean(
     activeSearchTerms.length > 0 ||
     selectedPartyFilter !== "all" ||
+    selectedCategoryFilter !== "all" ||
     locationFilter !== "all" ||
     movementFilter !== "all" ||
     missingIdFilter !== "all" ||
@@ -1308,7 +1331,7 @@ export default function ImsDashboard({
                     <Search size={14} style={{ position: "absolute", left: "12px", color: "var(--text-muted)", pointerEvents: "none" }} />
                     <input
                       type="text"
-                      placeholder={idx === 0 ? "Search item, party, location, ID..." : `Search condition #${idx + 1}...`}
+                      placeholder={idx === 0 ? "Search item, category, party, location, ID..." : `Search condition #${idx + 1}...`}
                       value={query}
                       onChange={e => handleUpdateSearchQuery(idx, e.target.value)}
                       className="form-control"
@@ -1399,6 +1422,22 @@ export default function ImsDashboard({
             {/* Row 2: Neatly Grouped Filter Controls & Date Range */}
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", paddingTop: "10px", borderTop: "1px solid var(--border-glass)" }}>
               
+              {/* Category Dropdown Filter */}
+              {distinctCategories.length > 0 && (
+                <select
+                  value={selectedCategoryFilter}
+                  onChange={e => setSelectedCategoryFilter(e.target.value)}
+                  className="form-control"
+                  style={{ width: "auto", maxWidth: "200px", height: "36px", fontSize: "0.82rem", fontWeight: 600 }}
+                  title="Filter directly by Product Category"
+                >
+                  <option value="all">🏷️ All Categories ({distinctCategories.length})</option>
+                  {distinctCategories.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              )}
+
               {/* Warehouse Location Filter */}
               <select
                 value={locationFilter}
