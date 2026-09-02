@@ -74,44 +74,60 @@ export default function ImsDashboard({
   // Active Tab: "ledger" | "matrix" | "bulk" | "missingids"
   const [activeTab, setActiveTab] = useState("ledger");
 
-  // Filter States for Ledger - Multi-Search support (2 or more terms via + button)
-  const [searchQueries, setSearchQueries] = useState([""]);
+  // Filter States for Ledger - Multi-Search with Field Target Scope (Party, Category, Item, Location, ID, All)
+  const [searchFilters, setSearchFilters] = useState([{ query: "", scope: "all" }]);
+  const [activeSearchDropdownIndex, setActiveSearchDropdownIndex] = useState(null);
 
   const handleAddSearchQuery = () => {
-    setSearchQueries(prev => [...prev, ""]);
+    setSearchFilters(prev => [...prev, { query: "", scope: "all" }]);
   };
 
   const handleUpdateSearchQuery = (index, val) => {
-    setSearchQueries(prev => {
+    setSearchFilters(prev => {
       const next = [...prev];
-      next[index] = val;
+      next[index] = { ...next[index], query: val };
       return next;
     });
+    if (val && val.trim()) {
+      setActiveSearchDropdownIndex(index);
+    } else {
+      setActiveSearchDropdownIndex(null);
+    }
+  };
+
+  const handleSetSearchScope = (index, scope) => {
+    setSearchFilters(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], scope };
+      return next;
+    });
+    setActiveSearchDropdownIndex(null);
   };
 
   const handleRemoveSearchQuery = (index) => {
-    setSearchQueries(prev => {
-      if (prev.length <= 1) return [""];
+    setSearchFilters(prev => {
+      if (prev.length <= 1) return [{ query: "", scope: "all" }];
       return prev.filter((_, i) => i !== index);
     });
+    setActiveSearchDropdownIndex(null);
   };
 
-  const activeSearchTerms = useMemo(() => {
-    const terms = [];
-    searchQueries.forEach(q => {
+  const activeSearchItems = useMemo(() => {
+    const list = [];
+    searchFilters.forEach(sf => {
+      const q = (sf.query || "").trim().toLowerCase();
       if (!q) return;
       if (q.includes(",")) {
         q.split(",").forEach(part => {
-          const trimmed = part.trim().toLowerCase();
-          if (trimmed && !terms.includes(trimmed)) terms.push(trimmed);
+          const trimmed = part.trim();
+          if (trimmed) list.push({ query: trimmed, scope: sf.scope || "all" });
         });
       } else {
-        const trimmed = q.trim().toLowerCase();
-        if (trimmed && !terms.includes(trimmed)) terms.push(trimmed);
+        list.push({ query: q, scope: sf.scope || "all" });
       }
     });
-    return terms;
-  }, [searchQueries]);
+    return list;
+  }, [searchFilters]);
 
   // Distinct Parties found across all transactions for quick dropdown filter
   const distinctParties = useMemo(() => {
@@ -275,8 +291,8 @@ export default function ImsDashboard({
       const foundItem = itemCatalogMap.get(rawId) || itemCatalogMap.get(cleanId) || itemCatalogMap.get('#' + cleanId) || itemCatalogMap.get((tx.itemName || "").trim().toLowerCase());
       const cat = (tx.category || foundItem?.category || "").trim().toLowerCase();
 
-      // Fast Multi-term Search across Item, Category, Party, Location, ID, Remarks
-      if (activeSearchTerms.length > 0) {
+      // Field-Scoped Search Matching
+      if (activeSearchItems.length > 0) {
         const party = (tx.partyName || tx.party || tx.customer || tx.vendorName || tx.vendor || "").toLowerCase();
         const item = (tx.itemName || tx.item || tx.name || "").toLowerCase();
         const id = (tx.itemId || tx.id || "").toLowerCase();
@@ -284,14 +300,35 @@ export default function ImsDashboard({
         const loc = (tx.location || tx.godown || tx.warehouse || "").toLowerCase();
         const date = tx.date || "";
 
-        const match = activeSearchTerms.some(term => {
+        const matchesAll = activeSearchItems.every(search => {
+          const term = search.query;
+          const scope = search.scope || "all";
           const words = term.split(/\s+/).filter(Boolean);
+
+          if (scope === "category") {
+            return words.length > 1 ? words.every(w => cat.includes(w)) : cat.includes(term);
+          }
+          if (scope === "party") {
+            return words.length > 1 ? words.every(w => party.includes(w)) : party.includes(term);
+          }
+          if (scope === "item") {
+            return words.length > 1 ? words.every(w => item.includes(w)) : item.includes(term);
+          }
+          if (scope === "location") {
+            return words.length > 1 ? words.every(w => loc.includes(w)) : loc.includes(term);
+          }
+          if (scope === "id") {
+            return words.length > 1 ? words.every(w => id.includes(w)) : id.includes(term);
+          }
+
+          // scope === "all"
           if (words.length > 1) {
             return words.every(w => party.includes(w) || item.includes(w) || id.includes(w) || cat.includes(w) || remarks.includes(w) || loc.includes(w) || date.includes(w));
           }
           return party.includes(term) || item.includes(term) || id.includes(term) || cat.includes(term) || remarks.includes(term) || loc.includes(term) || date.includes(term);
         });
-        if (!match) return false;
+
+        if (!matchesAll) return false;
       }
 
       // Category Quick Filter
@@ -347,7 +384,7 @@ export default function ImsDashboard({
       if (valA > valB) return sortAsc ? 1 : -1;
       return 0;
     });
-  }, [effectiveTransactions, itemCatalogMap, activeSearchTerms, selectedCategoryFilter, selectedPartyFilter, locationFilter, startDate, endDate, movementFilter, missingIdFilter, selectedItemFilter, sortField, sortAsc]);
+  }, [effectiveTransactions, itemCatalogMap, activeSearchItems, selectedCategoryFilter, selectedPartyFilter, locationFilter, startDate, endDate, movementFilter, missingIdFilter, selectedItemFilter, sortField, sortAsc]);
 
   // Dynamic metrics calculated from filtered transactions
   const {
@@ -387,7 +424,7 @@ export default function ImsDashboard({
   }, [filteredTransactions]);
 
   const hasActiveFilters = Boolean(
-    activeSearchTerms.length > 0 ||
+    activeSearchItems.length > 0 ||
     selectedPartyFilter !== "all" ||
     selectedCategoryFilter !== "all" ||
     locationFilter !== "all" ||
@@ -401,11 +438,12 @@ export default function ImsDashboard({
     let matchingStocks = [];
     if (selectedItemFilter !== "all") {
       matchingStocks = (imsItemStocks || []).filter(is => is.itemId === selectedItemFilter || is.itemName === selectedItemFilter);
-    } else if (activeSearchTerms.length > 0 && Array.isArray(imsItemStocks) && imsItemStocks.length > 0) {
+    } else if (activeSearchItems.length > 0 && Array.isArray(imsItemStocks) && imsItemStocks.length > 0) {
       matchingStocks = (imsItemStocks || []).filter(is => {
         const item = (is.itemName || "").toLowerCase();
         const id = (is.itemId || "").toLowerCase();
-        return activeSearchTerms.some(term => {
+        return activeSearchItems.some(search => {
+          const term = search.query;
           const words = term.split(/\s+/).filter(Boolean);
           if (words.length > 1) {
             return words.every(w => item.includes(w) || id.includes(w));
@@ -450,7 +488,7 @@ export default function ImsDashboard({
       outwardSubtitle: hasActiveFilters ? "Filtered Period Outflows" : (startDate || endDate ? "Period Outflows" : "Party & Dealer Outflows")
     };
   }, [
-    activeSearchTerms,
+    activeSearchItems,
     selectedItemFilter,
     imsItemStocks,
     locationFilter,
@@ -1324,38 +1362,168 @@ export default function ImsDashboard({
             {/* Row 1: Search Inputs Group (Left) & Actions (Right) */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
               
-              {/* Multi-Search Inputs Group with [+] Add button */}
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: "1 1 360px", minWidth: "280px", flexWrap: "wrap" }}>
-                {searchQueries.map((query, idx) => (
-                  <div key={idx} style={{ position: "relative", display: "flex", alignItems: "center", minWidth: "200px", flex: 1 }}>
-                    <Search size={14} style={{ position: "absolute", left: "12px", color: "var(--text-muted)", pointerEvents: "none" }} />
-                    <input
-                      type="text"
-                      placeholder={idx === 0 ? "Search item, category, party, location, ID..." : `Search condition #${idx + 1}...`}
-                      value={query}
-                      onChange={e => handleUpdateSearchQuery(idx, e.target.value)}
+              {/* Multi-Search Inputs Group with Scope Target Selector & Popup */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: "1 1 400px", minWidth: "300px", flexWrap: "wrap" }}>
+                {searchFilters.map((sf, idx) => (
+                  <div key={idx} style={{ position: "relative", display: "flex", alignItems: "center", minWidth: "260px", flex: 1 }}>
+                    
+                    {/* Inline Scope Selector */}
+                    <select
+                      value={sf.scope || "all"}
+                      onChange={e => handleSetSearchScope(idx, e.target.value)}
                       className="form-control"
-                      style={{ paddingLeft: "34px", paddingRight: searchQueries.length > 1 || query ? "28px" : "12px", height: "38px", fontSize: "0.85rem" }}
-                    />
-                    {(query || searchQueries.length > 1) && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveSearchQuery(idx)}
+                      style={{
+                        width: "auto",
+                        height: "38px",
+                        fontSize: "0.8rem",
+                        fontWeight: 700,
+                        borderRadius: "8px 0 0 8px",
+                        borderRight: "none",
+                        background: "rgba(15, 23, 42, 0.6)",
+                        color: sf.scope === "category" ? "#38bdf8" : sf.scope === "party" ? "#c084fc" : sf.scope === "item" ? "#34d399" : sf.scope === "location" ? "#fbbf24" : sf.scope === "id" ? "#f43f5e" : "var(--text-main)",
+                        padding: "0 8px",
+                        cursor: "pointer"
+                      }}
+                      title="Select where to search (All, Category, Party, Item, Location, ID)"
+                    >
+                      <option value="all">🌐 All</option>
+                      <option value="category">🏷️ Category</option>
+                      <option value="party">👤 Party</option>
+                      <option value="item">📦 Item</option>
+                      <option value="location">🏢 Location</option>
+                      <option value="id">🆔 ID</option>
+                    </select>
+
+                    <div style={{ position: "relative", display: "flex", alignItems: "center", flex: 1 }}>
+                      <input
+                        type="text"
+                        placeholder={
+                          sf.scope === "category" ? "Search Category (e.g. Neckband, Charger)..." :
+                          sf.scope === "party" ? "Search Party Name (e.g. Azam)..." :
+                          sf.scope === "item" ? "Search Item Name / Model..." :
+                          sf.scope === "location" ? "Search Warehouse Location..." :
+                          sf.scope === "id" ? "Search Item ID..." :
+                          "Search anywhere (item, party, category, ID)..."
+                        }
+                        value={sf.query}
+                        onChange={e => handleUpdateSearchQuery(idx, e.target.value)}
+                        onFocus={() => { if (sf.query && sf.query.trim()) setActiveSearchDropdownIndex(idx); }}
+                        className="form-control"
+                        style={{ 
+                          borderRadius: "0 8px 8px 0",
+                          paddingLeft: "12px", 
+                          paddingRight: searchFilters.length > 1 || sf.query ? "28px" : "12px", 
+                          height: "38px", 
+                          fontSize: "0.85rem" 
+                        }}
+                      />
+                      {(sf.query || searchFilters.length > 1) && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSearchQuery(idx)}
+                          style={{
+                            position: "absolute",
+                            right: "8px",
+                            background: "none",
+                            border: "none",
+                            color: "var(--text-muted)",
+                            cursor: "pointer",
+                            padding: "2px",
+                            display: "flex",
+                            alignItems: "center"
+                          }}
+                          title={searchFilters.length > 1 ? "Remove this search box" : "Clear search"}
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Interactive "Where to search" suggestion popover */}
+                    {activeSearchDropdownIndex === idx && sf.query && sf.query.trim() && (
+                      <div 
                         style={{
                           position: "absolute",
-                          right: "8px",
-                          background: "none",
-                          border: "none",
-                          color: "var(--text-muted)",
-                          cursor: "pointer",
-                          padding: "2px",
+                          top: "calc(100% + 4px)",
+                          left: 0,
+                          right: 0,
+                          zIndex: 100,
+                          background: "#0f172a",
+                          border: "1px solid rgba(56, 189, 248, 0.4)",
+                          borderRadius: "8px",
+                          boxShadow: "0 10px 25px rgba(0,0,0,0.6)",
+                          padding: "6px",
                           display: "flex",
-                          alignItems: "center"
+                          flexDirection: "column",
+                          gap: "2px",
+                          minWidth: "260px"
                         }}
-                        title={searchQueries.length > 1 ? "Remove this search box" : "Clear search"}
                       >
-                        <X size={14} />
-                      </button>
+                        <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", padding: "4px 8px", fontWeight: 700, borderBottom: "1px solid rgba(255,255,255,0.08)", marginBottom: "3px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span>Where to search for "{sf.query}"?</span>
+                          <button 
+                            type="button" 
+                            onClick={() => setActiveSearchDropdownIndex(null)}
+                            style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: "0.7rem" }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSetSearchScope(idx, "all")}
+                          className="btn btn-ghost btn-sm"
+                          style={{ justifyContent: "flex-start", fontSize: "0.8rem", textAlign: "left", padding: "6px 8px", background: sf.scope === "all" ? "rgba(56, 189, 248, 0.15)" : "transparent", color: sf.scope === "all" ? "#38bdf8" : "inherit" }}
+                        >
+                          🌐 <span>Search in <strong>All Fields</strong> (Global Match)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSetSearchScope(idx, "category")}
+                          className="btn btn-ghost btn-sm"
+                          style={{ justifyContent: "flex-start", fontSize: "0.8rem", textAlign: "left", padding: "6px 8px", background: sf.scope === "category" ? "rgba(56, 189, 248, 0.15)" : "transparent", color: sf.scope === "category" ? "#38bdf8" : "#38bdf8" }}
+                        >
+                          🏷️ <span>Search in <strong>Category Only</strong></span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSetSearchScope(idx, "party")}
+                          className="btn btn-ghost btn-sm"
+                          style={{ justifyContent: "flex-start", fontSize: "0.8rem", textAlign: "left", padding: "6px 8px", background: sf.scope === "party" ? "rgba(192, 132, 252, 0.15)" : "transparent", color: sf.scope === "party" ? "#c084fc" : "#c084fc" }}
+                        >
+                          👤 <span>Search in <strong>Party Name Only</strong></span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSetSearchScope(idx, "item")}
+                          className="btn btn-ghost btn-sm"
+                          style={{ justifyContent: "flex-start", fontSize: "0.8rem", textAlign: "left", padding: "6px 8px", background: sf.scope === "item" ? "rgba(52, 211, 153, 0.15)" : "transparent", color: sf.scope === "item" ? "#34d399" : "#34d399" }}
+                        >
+                          📦 <span>Search in <strong>Item Name & Model Only</strong></span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSetSearchScope(idx, "location")}
+                          className="btn btn-ghost btn-sm"
+                          style={{ justifyContent: "flex-start", fontSize: "0.8rem", textAlign: "left", padding: "6px 8px", background: sf.scope === "location" ? "rgba(251, 191, 36, 0.15)" : "transparent", color: sf.scope === "location" ? "#fbbf24" : "#fbbf24" }}
+                        >
+                          🏢 <span>Search in <strong>Location / Warehouse</strong></span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSetSearchScope(idx, "id")}
+                          className="btn btn-ghost btn-sm"
+                          style={{ justifyContent: "flex-start", fontSize: "0.8rem", textAlign: "left", padding: "6px 8px", background: sf.scope === "id" ? "rgba(244, 63, 94, 0.15)" : "transparent", color: sf.scope === "id" ? "#f43f5e" : "#f43f5e" }}
+                        >
+                          🆔 <span>Search in <strong>Item ID Only</strong></span>
+                        </button>
+                      </div>
                     )}
                   </div>
                 ))}
