@@ -1443,7 +1443,15 @@ export default function CrmDashboard({
                     })
                     .map(party => {
                       const partyOrders = allUnifiedSalesOrders.filter(o => matchParty(o.partyName, party.name, o.partyId, party.id));
-                      const totalQty = partyOrders.reduce((acc, o) => acc + (parseInt(o.orderQty) || 0), 0);
+                      const partyNameNorm = (party.name || "").trim().toLowerCase();
+                      const relevantCatSales = (partyCategoryMonthlySales || []).filter(s => {
+                        const sNorm = (s.partyName || "").trim().toLowerCase();
+                        return (party.id && s.partyId === party.id) || sNorm === partyNameNorm || sNorm.includes(partyNameNorm) || partyNameNorm.includes(sNorm);
+                      });
+                      const totalCatSalesQty = relevantCatSales.reduce((acc, s) => acc + (parseInt(s.salesQty) || 0), 0);
+                      const rawTotalQty = partyOrders.reduce((acc, o) => acc + (parseInt(o.orderQty) || 0), 0);
+                      const effective4MoQty = Math.max(totalCatSalesQty, rawTotalQty);
+                      const activeCatsCount = new Set(relevantCatSales.filter(s => (s.salesQty || 0) > 0).map(s => s.category)).size;
                       const partyRemarks = (crmPartyRemarks || []).filter(r => matchParty(r.partyName, party.name, r.partyId, party.id));
 
                       return (
@@ -1485,11 +1493,11 @@ export default function CrmDashboard({
                           </td>
 
                           <td style={{ textAlign: "right" }}>
-                            <span style={{ fontWeight: 800, fontSize: "0.95rem", color: totalQty > 0 ? "var(--text-main)" : "var(--text-muted)" }}>
-                              {totalQty > 0 ? `${totalQty.toLocaleString()} Pcs` : "0 Pcs"}
+                            <span style={{ fontWeight: 800, fontSize: "0.95rem", color: effective4MoQty > 0 ? "var(--primary)" : "var(--text-muted)" }}>
+                              {effective4MoQty > 0 ? `${effective4MoQty.toLocaleString()} Pcs` : "0 Pcs"}
                             </span>
                             <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>
-                              {partyOrders.length} {partyOrders.length === 1 ? "order" : "orders"}
+                              {activeCatsCount > 0 ? `${activeCatsCount} active categories` : `${partyOrders.length} orders`}
                             </div>
                           </td>
 
@@ -2646,12 +2654,6 @@ function Party360Modal({
 
         {/* Overview Stats (Last 4 Months) */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "12px", marginBottom: "18px" }}>
-          {canViewFinancials && (
-            <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total Business (4-Mo)</div>
-              <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "var(--success)" }}>₹{totalSpend.toLocaleString()}</div>
-            </div>
-          )}
           <div className="glass-panel" style={{ padding: "12px", textAlign: "center" }}>
             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total Ordered (4-Mo)</div>
             <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "var(--primary)" }}>{last4MoOrders.length} Orders</div>
