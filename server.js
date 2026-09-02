@@ -1754,6 +1754,7 @@ function normalizeFgCategory(cat = "", itemDesc = "", itemType = "") {
     if (rawCatLower.includes("polymer")) return "Polymer";
     if (rawCatLower.includes("cable") || rawCatLower.includes("aux")) return "Data Cable";
     if (rawCatLower.includes("neckband")) return "Neckband";
+    if (rawCatLower.includes("tempered") || rawCatLower.includes("soldier") || rawCatLower.includes("glass")) return "TEMPERED SOLDIER";
     if (rawCatLower.includes("tws") || rawCatLower.includes("earbuds") || rawCatLower.includes("buds")) return "TWS Earbuds";
     if (rawCatLower.includes("power bank") || rawCatLower.includes("powerbank")) return "Power Bank";
     if (rawCatLower.includes("handsfree") || rawCatLower.includes("headphone") || rawCatLower.includes("earphone")) return "Earphones";
@@ -1773,7 +1774,8 @@ function normalizeFgCategory(cat = "", itemDesc = "", itemType = "") {
     if (combined.includes("polymer")) return "Polymer";
     if (combined.includes("fast charge") || combined.includes("charger") || combined.includes("adapter")) return "Fast Charger";
     if (combined.includes("cable") || combined.includes("usb") || combined.includes("type-c") || combined.includes("micro")) return "Data Cable";
-    if (combined.includes("neckband") || combined.includes("soldier")) return "Neckband";
+    if (combined.includes("neckband")) return "Neckband";
+    if (combined.includes("tempered") || combined.includes("soldier") || combined.includes("glass")) return "TEMPERED SOLDIER";
     if (combined.includes("tws") || combined.includes("earbuds") || combined.includes("airpods") || combined.includes("buds")) return "TWS Earbuds";
     if (combined.includes("power bank") || combined.includes("powerbank")) return "Power Bank";
     if (combined.includes("earphone") || combined.includes("headphone") || combined.includes("handsfree")) return "Earphones";
@@ -1809,7 +1811,10 @@ async function syncPartyCategoryMonthlySales() {
           itemMap.set('#' + cleanId, obj);
         }
         if (it.name) {
-          itemMap.set(it.name.trim().toLowerCase(), obj);
+          const rawName = String(it.name).trim().toLowerCase();
+          const cleanName = rawName.replace(/\s+/g, ' ');
+          itemMap.set(rawName, obj);
+          itemMap.set(cleanName, obj);
         }
       });
 
@@ -1837,9 +1842,13 @@ async function syncPartyCategoryMonthlySales() {
         const month = extractYearMonthFromAnyDate(r.date);
         if (!targetMonthKeys.has(month)) return;
 
+        const rawName = (r.itemName || "").trim().toLowerCase();
+        const cleanName = rawName.replace(/\s+/g, ' ');
         const rawItemId = String(r.itemId || "").trim().toLowerCase();
         const cleanItemId = rawItemId.replace(/^#+/, "");
-        const itInfo = itemMap.get(rawItemId) || itemMap.get(cleanItemId) || itemMap.get('#' + cleanItemId) || itemMap.get((r.itemName || "").trim().toLowerCase()) || { category: "", itemType: "" };
+        
+        // Prioritize exact item name match over item ID
+        const itInfo = itemMap.get(rawName) || itemMap.get(cleanName) || itemMap.get(rawItemId) || itemMap.get(cleanItemId) || itemMap.get('#' + cleanItemId) || { category: "", itemType: "" };
         
         // Take category from Item Catalog & Stock, take only FG
         const cat = normalizeFgCategory(itInfo.category, r.itemName || "", itInfo.itemType);
@@ -4466,6 +4475,15 @@ async function rebindAllImsCategoriesWithMasterCatalog() {
       }
       imsFullSummaryCache = null;
       console.log(`[IMS Rebind] ✅ Completed: Updated ${updatedCount} transaction categories.`);
+      
+      // Also automatically resync CRM 4-month party category sales table
+      try {
+        await syncPartyCategoryMonthlySales();
+        console.log(`[IMS Rebind] ✅ Automatically resynced CRM party category sales.`);
+      } catch (syncErr) {
+        console.warn("[IMS Rebind] Notice on syncPartyCategoryMonthlySales:", syncErr.message);
+      }
+
       return { success: true, updatedCount, totalProcessed: txRes.rows.length };
     } catch (err) {
       console.error("[IMS Rebind] Error in PostgreSQL category rebinding:", err.message);
@@ -4514,27 +4532,6 @@ async function rebindAllImsCategoriesWithMasterCatalog() {
     return { success: true, updatedCount: count, totalProcessed: (data.imsTransactions || []).length };
   }
 }
-
-// Function to check if current time is within 8:00 AM to 7:00 PM IST (UTC+5:30)
-function isWithinRebindTimeWindowIST() {
-  const now = new Date();
-  // IST is UTC + 5.5 hours
-  const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
-  const istHour = istTime.getUTCHours(); // 0 - 23
-  // 8:00 AM to 7:00 PM IST (Hour 8 to 18 inclusive; 19:00 = 7:00 PM cutoff)
-  return istHour >= 8 && istHour < 19;
-}
-
-// Background scheduler: runs every 2 hours
-const REBIND_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours
-setInterval(async () => {
-  if (isWithinRebindTimeWindowIST()) {
-    console.log("[IMS Scheduled Rebind] Inside 8:00 AM - 7:00 PM IST window. Executing category rebind...");
-    await rebindAllImsCategoriesWithMasterCatalog();
-  } else {
-    console.log("[IMS Scheduled Rebind] Outside business hours (7:00 PM - 8:00 AM IST). Skipping rebind.");
-  }
-}, REBIND_INTERVAL_MS);
 
 // POST /api/ims/rebind-categories - Manual trigger endpoint
 app.post("/api/ims/rebind-categories", async (req, res) => {

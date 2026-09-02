@@ -383,6 +383,19 @@ export default function DateRangeFilter({
     return `Up to ${formatDisplayDate(endDate)}`;
   }, [startDate, endDate, placeholder]);
 
+  const [effectiveAlign, setEffectiveAlign] = useState(align || "left");
+
+  useEffect(() => {
+    if (isOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      if (align === "right" || (rect.left + 640 > window.innerWidth - 20)) {
+        setEffectiveAlign("right");
+      } else {
+        setEffectiveAlign("left");
+      }
+    }
+  }, [isOpen, align]);
+
   return (
     <div style={{ position: "relative", display: "inline-block", userSelect: "none" }}>
       
@@ -448,8 +461,8 @@ export default function DateRangeFilter({
           style={{
             position: "absolute",
             top: "calc(100% + 8px)",
-            right: align === "right" ? 0 : undefined,
-            left: align === "right" ? "auto" : 0,
+            right: effectiveAlign === "right" ? 0 : "auto",
+            left: effectiveAlign === "right" ? "auto" : 0,
             zIndex: 9999,
             background: "#0f172a",
             color: "var(--text, #f3f4f6)",

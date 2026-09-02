@@ -1435,7 +1435,7 @@ export default function ImsDashboard({
                         fontWeight: 700,
                         borderRadius: "8px 0 0 8px",
                         borderRight: "none",
-                        background: "rgba(15, 23, 42, 0.6)",
+                        background: "var(--bg-input, var(--bg-card, rgba(255, 255, 255, 0.08)))",
                         color: sf.scope === "category" ? "#38bdf8" : sf.scope === "party" ? "#c084fc" : sf.scope === "item" ? "#34d399" : sf.scope === "location" ? "#fbbf24" : sf.scope === "id" ? "#f43f5e" : "var(--text-main)",
                         padding: "0 8px",
                         cursor: "pointer"
@@ -1453,6 +1453,7 @@ export default function ImsDashboard({
                     <div style={{ position: "relative", display: "flex", alignItems: "center", flex: 1 }}>
                       <input
                         type="text"
+                        className="form-control"
                         placeholder={
                           sf.scope === "category" ? "Search Category (e.g. Neckband, Charger)..." :
                           sf.scope === "party" ? "Search Party Name (e.g. Azam)..." :
@@ -1468,7 +1469,9 @@ export default function ImsDashboard({
                           paddingLeft: "12px", 
                           paddingRight: searchFilters.length > 1 || sf.query ? "28px" : "12px", 
                           height: "38px", 
-                          fontSize: "0.85rem" 
+                          fontSize: "0.85rem",
+                          background: "var(--bg-input, var(--bg-card, rgba(255, 255, 255, 0.08)))",
+                          color: "var(--text-main, inherit)"
                         }}
                       />
                       {(sf.query || searchFilters.length > 1) && (
@@ -1635,6 +1638,7 @@ export default function ImsDashboard({
                   setStartDate("");
                   setEndDate("");
                 }}
+                align="right"
               />
 
               {hasActiveFilters && (
