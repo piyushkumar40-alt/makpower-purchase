@@ -3536,6 +3536,74 @@ app.post("/api/crm/party-category-sales/sync", async (req, res) => {
   }
 });
 
+// GET /api/debug/party-transactions - Inspect raw transactions & category mapping for a party
+app.get("/api/debug/party-transactions", async (req, res) => {
+  const pSearch = (req.query.partyName || "azam").trim();
+  const targetMonths = get4TargetMonths();
+  try {
+    if (isPg) {
+      const itemsRes = await pool.query(`SELECT "id", "name", "category" FROM items`);
+      const itemMap = new Map();
+      (itemsRes.rows || []).forEach(it => {
+        const cat = it.category || "";
+        if (it.id) {
+          const rawId = String(it.id).trim();
+          const cleanId = rawId.replace(/^#+/, "");
+          itemMap.set(rawId.toLowerCase(), cat);
+          itemMap.set(cleanId.toLowerCase(), cat);
+          itemMap.set(('#' + cleanId).toLowerCase(), cat);
+        }
+        if (it.name) {
+          itemMap.set(it.name.trim().toLowerCase(), cat);
+        }
+      });
+
+      const txRes = await pool.query(`
+        SELECT * FROM ims_transactions 
+        WHERE "partyName" ILIKE $1
+        ORDER BY "date" DESC
+      `, [`%${pSearch}%`]);
+
+      const analyzed = (txRes.rows || []).map(r => {
+        const rawItemId = String(r.itemId || "").trim().toLowerCase();
+        const cleanItemId = rawItemId.replace(/^#+/, "");
+        const rawCat = itemMap.get(rawItemId) || itemMap.get(cleanItemId) || itemMap.get('#' + cleanItemId) || itemMap.get((r.itemName || "").trim().toLowerCase()) || "";
+        const normalizedCat = normalizeFgCategory(rawCat, r.itemName || "");
+        const extractedMonth = extractYearMonthFromAnyDate(r.date);
+        return {
+          id: r.id,
+          date: r.date,
+          extractedMonth,
+          partyName: r.partyName,
+          itemId: r.itemId,
+          itemName: r.itemName,
+          stockQty: r.stockQty,
+          itemMasterCategory: rawCat,
+          normalizedCategory: normalizedCat,
+          inTargetMonths: targetMonths.some(m => m.key === extractedMonth)
+        };
+      });
+
+      const salesRes = await pool.query(`
+        SELECT * FROM crm_party_category_monthly_sales 
+        WHERE "partyName" ILIKE $1
+      `, [`%${pSearch}%`]);
+
+      res.json({
+        success: true,
+        targetMonths,
+        transactionCount: txRes.rows.length,
+        analyzedTransactions: analyzed,
+        currentSyncedRecords: salesRes.rows
+      });
+    } else {
+      res.json({ success: true, message: "Local JSON mode" });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/crm/party-remarks
 app.post("/api/crm/party-remarks", async (req, res) => {
   const r = req.body;
