@@ -19,6 +19,15 @@ export function formatCr(val) {
   return `₹ ${Math.round(num).toLocaleString("en-IN")}`;
 }
 
+// Helper: Format amount into Cr number only without mentioning 'Cr' (e.g. ₹ 0.01 or ₹ 1.17)
+export function formatCrAmountOnly(val) {
+  const num = parseFloat(val) || 0;
+  const inCr = num / 10000000;
+  if (inCr === 0) return "₹ 0.00";
+  if (inCr < 0.01 && inCr > 0) return "₹ 0.01";
+  return `₹ ${inCr.toFixed(2)}`;
+}
+
 export function formatIndianQty(val) {
   const num = parseInt(val) || 0;
   return num.toLocaleString("en-IN");
@@ -865,10 +874,14 @@ export default function OwnerDashboard({
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "4px", textAlign: "center", fontSize: "0.72rem" }}>
                             {monthLabels.map((m, idx) => {
                               const qty = idx === 0 ? row.m0SalesQty : idx === 1 ? row.m1SalesQty : idx === 2 ? row.m2SalesQty : row.m3SalesQty;
+                              const rev = idx === 0 ? row.m0SalesRev : idx === 1 ? row.m1SalesRev : idx === 2 ? row.m2SalesRev : row.m3SalesRev;
+                              const amtCr = formatCrAmountOnly(rev);
+
                               return (
-                                <div key={m.key} style={{ background: m.isCurrent ? "rgba(56, 189, 248, 0.12)" : "rgba(255,255,255,0.03)", padding: "3px 2px", borderRadius: "4px" }}>
+                                <div key={m.key} style={{ background: m.isCurrent ? "rgba(56, 189, 248, 0.12)" : "rgba(255,255,255,0.03)", padding: "4px 2px", borderRadius: "5px", display: "flex", flexDirection: "column", gap: "1px" }}>
                                   <div style={{ color: "var(--text-muted)", fontSize: "0.65rem", fontWeight: m.isCurrent ? 700 : 500 }}>{m.label}</div>
-                                  <div style={{ fontWeight: 700, color: qty > 0 ? "var(--text-main)" : "var(--text-muted)" }}>{formatIndianQty(qty)}</div>
+                                  <div style={{ fontWeight: 700, color: qty > 0 ? "var(--text-main)" : "var(--text-muted)", fontSize: "0.78rem" }}>{formatIndianQty(qty)}</div>
+                                  <div style={{ fontSize: "0.66rem", color: rev > 0 ? "var(--success)" : "var(--text-muted)", fontWeight: 600 }}>({amtCr})</div>
                                 </div>
                               );
                             })}
@@ -1106,6 +1119,24 @@ export default function OwnerDashboard({
               <div className="glass-panel" style={{ padding: "10px", textAlign: "center", borderRadius: "8px" }}>
                 <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>4-Month Sales</div>
                 <div style={{ fontSize: "1.15rem", fontWeight: 800, color: "#8b5cf6" }}>{formatIndianQty(selectedCategoryDetail.total4MoSalesQty)} Pcs</div>
+              </div>
+            </div>
+
+            {/* Month-by-Month Sales Trend Strip */}
+            <div style={{ background: "rgba(0,0,0,0.2)", padding: "10px 14px", borderRadius: "8px", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+              <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--text-muted)" }}>4-Month Sales Trend:</span>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                {monthLabels.map((m, idx) => {
+                  const q = idx === 0 ? selectedCategoryDetail.m0SalesQty : idx === 1 ? selectedCategoryDetail.m1SalesQty : idx === 2 ? selectedCategoryDetail.m2SalesQty : selectedCategoryDetail.m3SalesQty;
+                  const r = idx === 0 ? selectedCategoryDetail.m0SalesRev : idx === 1 ? selectedCategoryDetail.m1SalesRev : idx === 2 ? selectedCategoryDetail.m2SalesRev : selectedCategoryDetail.m3SalesRev;
+                  return (
+                    <div key={m.key} style={{ background: m.isCurrent ? "rgba(56, 189, 248, 0.15)" : "rgba(255,255,255,0.04)", padding: "4px 10px", borderRadius: "6px", textAlign: "center", border: m.isCurrent ? "1px solid rgba(56, 189, 248, 0.3)" : "1px solid var(--border-glass)" }}>
+                      <span style={{ fontSize: "0.68rem", color: "var(--text-muted)", display: "block" }}>{m.label}</span>
+                      <strong style={{ fontSize: "0.82rem", color: q > 0 ? "var(--text-main)" : "var(--text-muted)" }}>{formatIndianQty(q)} Pcs</strong>
+                      <span style={{ fontSize: "0.72rem", color: r > 0 ? "var(--success)" : "var(--text-muted)", display: "block", fontWeight: 600 }}>({formatCrAmountOnly(r)})</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
