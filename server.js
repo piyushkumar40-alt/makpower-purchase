@@ -614,9 +614,11 @@ async function setupPgDatabase() {
       );
     `);
 
-    // Clean up deprecated dummy sample ASM/TSM users
+    // Clean up deprecated dummy sample ASM/TSM users and unassign from crm_parties
     try {
       await pool.query(`DELETE FROM users WHERE "id" IN ('u-asm-vikram', 'u-asm-rohit', 'u-tsm-manoj', 'u-tsm-suresh')`);
+      await pool.query(`UPDATE crm_parties SET "assignedTsmId" = '', "assignedTsmName" = '' WHERE "assignedTsmId" IN ('u-tsm-manoj', 'u-tsm-suresh') OR "assignedTsmName" ILIKE '%Manoj%' OR "assignedTsmName" ILIKE '%Suresh%'`);
+      await pool.query(`UPDATE crm_parties SET "assignedAsmId" = '', "assignedAsmName" = '' WHERE "assignedAsmId" IN ('u-asm-vikram', 'u-asm-rohit') OR "assignedAsmName" ILIKE '%Vikram%' OR "assignedAsmName" ILIKE '%Rohit%'`);
     } catch (e) {
       console.log("Cleanup dummy users error:", e.message);
     }

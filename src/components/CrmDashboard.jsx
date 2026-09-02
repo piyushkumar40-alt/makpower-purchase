@@ -264,6 +264,35 @@ export default function CrmDashboard({
   const asmList = useMemo(() => users.filter(u => u.role === "asm" && u.status === "active" && !["u-asm-vikram", "u-asm-rohit"].includes(u.id)), [users]);
   const tsmList = useMemo(() => users.filter(u => u.role === "tsm" && u.status === "active" && !["u-tsm-manoj", "u-tsm-suresh"].includes(u.id)), [users]);
 
+  // Helpers to strictly resolve active ASM and TSM names (never show deleted/dummy staff)
+  const getActiveAsmName = (party) => {
+    if (!party) return null;
+    const pId = party.assignedAsmId;
+    const pName = (party.assignedAsmName || "").trim().toLowerCase();
+    if (!pId && !pName) return null;
+    if (["u-asm-vikram", "u-asm-rohit"].includes(pId) || pName.includes("vikram") || pName.includes("rohit")) return null;
+    const match = users.find(u => 
+      (u.id === pId || (pName && (u.name || "").trim().toLowerCase() === pName)) &&
+      u.status !== "inactive" && u.status !== "deleted" &&
+      !["u-asm-vikram", "u-asm-rohit"].includes(u.id)
+    );
+    return match ? (match.name || party.assignedAsmName) : null;
+  };
+
+  const getActiveTsmName = (party) => {
+    if (!party) return null;
+    const pId = party.assignedTsmId;
+    const pName = (party.assignedTsmName || "").trim().toLowerCase();
+    if (!pId && !pName) return null;
+    if (["u-tsm-manoj", "u-tsm-suresh"].includes(pId) || pName.includes("manoj") || pName.includes("suresh")) return null;
+    const match = users.find(u => 
+      (u.id === pId || (pName && (u.name || "").trim().toLowerCase() === pName)) &&
+      u.status !== "inactive" && u.status !== "deleted" &&
+      !["u-tsm-manoj", "u-tsm-suresh"].includes(u.id)
+    );
+    return match ? (match.name || party.assignedTsmName) : null;
+  };
+
   // KPI Metrics Calculation
   const totalPartiesCount = currentParties.length;
   const activePartiesCount = currentParties.filter(p => p.status === "Active").length;
@@ -1092,14 +1121,14 @@ export default function CrmDashboard({
                                 <span className="badge" style={{ fontSize: "0.72rem", background: "rgba(99, 102, 241, 0.15)", color: "#a5b4fc", border: "1px solid rgba(99, 102, 241, 0.3)", width: "fit-content" }}>
                                   CRM: {party.assignedCrmName || crmExecutives.find(c => c.id === party.assignedCrmId)?.name || "Unassigned"}
                                 </span>
-                                {party.assignedAsmName && (
+                                {getActiveAsmName(party) && (
                                   <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(16, 185, 129, 0.12)", color: "#6ee7b7", border: "1px solid rgba(16, 185, 129, 0.3)", width: "fit-content" }}>
-                                    ASM: {party.assignedAsmName}
+                                    ASM: {getActiveAsmName(party)}
                                   </span>
                                 )}
-                                {party.assignedTsmName && (
+                                {getActiveTsmName(party) && (
                                   <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(245, 158, 11, 0.12)", color: "#fcd34d", border: "1px solid rgba(245, 158, 11, 0.3)", width: "fit-content" }}>
-                                    TSM: {party.assignedTsmName}
+                                    TSM: {getActiveTsmName(party)}
                                   </span>
                                 )}
                               </div>
@@ -1205,14 +1234,14 @@ export default function CrmDashboard({
                         <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(99, 102, 241, 0.15)", color: "#818cf8", border: "1px solid rgba(99, 102, 241, 0.3)" }}>
                           CRM: {party.assignedCrmName || crmExecutives.find(c => c.id === party.assignedCrmId)?.name || "Unassigned"}
                         </span>
-                        {party.assignedAsmName && (
+                        {getActiveAsmName(party) && (
                           <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(16, 185, 129, 0.12)", color: "#10b981", border: "1px solid rgba(16, 185, 129, 0.3)" }}>
-                            ASM: {party.assignedAsmName}
+                            ASM: {getActiveAsmName(party)}
                           </span>
                         )}
-                        {party.assignedTsmName && (
+                        {getActiveTsmName(party) && (
                           <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(245, 158, 11, 0.12)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
-                            TSM: {party.assignedTsmName}
+                            TSM: {getActiveTsmName(party)}
                           </span>
                         )}
                       </div>
@@ -1593,8 +1622,8 @@ export default function CrmDashboard({
                               <td>
                                 <div style={{ display: "flex", flexDirection: "column", gap: "2px", fontSize: "0.78rem" }}>
                                   <span style={{ color: "var(--text-muted)" }}>CRM: <strong style={{ color: "var(--text-main)" }}>{party.assignedCrmName || "—"}</strong></span>
-                                  {party.assignedAsmName && <span style={{ color: "var(--text-muted)" }}>ASM: <strong style={{ color: "#34d399" }}>{party.assignedAsmName}</strong></span>}
-                                  {party.assignedTsmName && <span style={{ color: "var(--text-muted)" }}>TSM: <strong style={{ color: "#fbbf24" }}>{party.assignedTsmName}</strong></span>}
+                                  {getActiveAsmName(party) && <span style={{ color: "var(--text-muted)" }}>ASM: <strong style={{ color: "#34d399" }}>{getActiveAsmName(party)}</strong></span>}
+                                  {getActiveTsmName(party) && <span style={{ color: "var(--text-muted)" }}>TSM: <strong style={{ color: "#fbbf24" }}>{getActiveTsmName(party)}</strong></span>}
                                 </div>
                               </td>
 
