@@ -1006,19 +1006,21 @@ export default function CrmDashboard({
             </div>
 
             <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-              <button 
-                onClick={() => {
-                  const headers = ["Party Name", "Contact Person", "Phone", "Email", "City", "State", "GSTIN", "Assigned CRM", "Assigned ASM", "Assigned TSM", "Status"];
-                  const rows = filteredParties.map(p => [
-                    p.name, p.contactPerson, p.phone, p.email, p.city, p.state, p.gstin, p.assignedCrmName, p.assignedAsmName, p.assignedTsmName, p.status
-                  ]);
-                  exportCsv(headers, rows, "makpower_parties_list");
-                }}
-                className="btn btn-secondary btn-sm"
-                style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-              >
-                <Download size={14} /> Export CSV
-              </button>
+              {isAdminOrOwner && (
+                <button 
+                  onClick={() => {
+                    const headers = ["Party Name", "Contact Person", "Phone", "Email", "City", "State", "GSTIN", "Assigned CRM", "Assigned ASM", "Assigned TSM", "Status"];
+                    const rows = filteredParties.map(p => [
+                      p.name, p.contactPerson, p.phone, p.email, p.city, p.state, p.gstin, p.assignedCrmName, p.assignedAsmName, p.assignedTsmName, p.status
+                    ]);
+                    exportCsv(headers, rows, "makpower_parties_list");
+                  }}
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+                >
+                  <Download size={14} /> Export CSV
+                </button>
+              )}
 
               {isAdminOrOwner && (
                 <button 
@@ -1428,25 +1430,27 @@ export default function CrmDashboard({
                 Select a party below to open its 4-month Finished Goods (FG) category breakdown, log new remarks, and view remarks history.
               </p>
             </div>
-
+            
             <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-              <button
-                onClick={() => {
-                  const headers = ["Party Name", "City", "State", "Assigned CRM", "Assigned ASM", "Assigned TSM", "Total Orders Count", "Total Remarks Count"];
-                  const rows = filteredParties.map(p => {
-                    const partyOrders = allUnifiedSalesOrders.filter(o => matchParty(o.partyName, p.name, o.partyId, p.id));
-                    const partyRemarks = (crmPartyRemarks || []).filter(r => matchParty(r.partyName, p.name, r.partyId, p.id));
-                    return [
-                      p.name, p.city, p.state, p.assignedCrmName, p.assignedAsmName, p.assignedTsmName, partyOrders.length, partyRemarks.length
-                    ];
-                  });
-                  exportCsv(headers, rows, "monthly_category_parties_list");
-                }}
-                className="btn btn-secondary"
-                style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.88rem" }}
-              >
-                <Download size={15} /> Export Parties CSV
-              </button>
+              {isAdminOrOwner && (
+                <button
+                  onClick={() => {
+                    const headers = ["Party Name", "City", "State", "Assigned CRM", "Assigned ASM", "Assigned TSM", "Total Orders Count", "Total Remarks Count"];
+                    const rows = filteredParties.map(p => {
+                      const partyOrders = allUnifiedSalesOrders.filter(o => matchParty(o.partyName, p.name, o.partyId, p.id));
+                      const partyRemarks = (crmPartyRemarks || []).filter(r => matchParty(r.partyName, p.name, r.partyId, p.id));
+                      return [
+                        p.name, p.city, p.state, p.assignedCrmName, p.assignedAsmName, p.assignedTsmName, partyOrders.length, partyRemarks.length
+                      ];
+                    });
+                    exportCsv(headers, rows, "monthly_category_parties_list");
+                  }}
+                  className="btn btn-secondary"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.88rem" }}
+                >
+                  <Download size={15} /> Export Parties CSV
+                </button>
+              )}
             </div>
           </div>
 
@@ -1676,13 +1680,15 @@ export default function CrmDashboard({
                 ))}
               </select>
 
-              <button
-                onClick={handleExportItemSalesCsv}
-                className="btn btn-secondary btn-sm"
-                style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-              >
-                <Download size={14} /> Export Report (CSV)
-              </button>
+              {isAdminOrOwner && (
+                <button
+                  onClick={handleExportItemSalesCsv}
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+                >
+                  <Download size={14} /> Export Report (CSV)
+                </button>
+              )}
             </div>
           </div>
 
@@ -1796,13 +1802,15 @@ export default function CrmDashboard({
                 <option value="Pending">Pending</option>
               </select>
 
-              <button
-                onClick={handleExportDispatchesCsv}
-                className="btn btn-secondary btn-sm"
-                style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-              >
-                <Download size={14} /> Export Dispatches (CSV)
-              </button>
+              {isAdminOrOwner && (
+                <button
+                  onClick={handleExportDispatchesCsv}
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+                >
+                  <Download size={14} /> Export Dispatches (CSV)
+                </button>
+              )}
             </div>
           </div>
 
