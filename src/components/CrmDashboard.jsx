@@ -1540,10 +1540,18 @@ export default function CrmDashboard({
                     <tbody>
                       {filteredParties
                         .filter(p => {
-                          if (categoryRemarksFilter === "all") return true;
-                          const partyRemarks = (crmPartyRemarks || []).filter(r => matchParty(r.partyName, p.name, r.partyId, p.id));
-                          if (categoryRemarksFilter === "with_remarks") return partyRemarks.length > 0;
-                          if (categoryRemarksFilter === "no_remarks") return partyRemarks.length === 0;
+                          if (matrixPartySearch.trim()) {
+                            const q = matrixPartySearch.toLowerCase();
+                            const match = p.name?.toLowerCase().includes(q) || p.city?.toLowerCase().includes(q) || p.gstin?.toLowerCase().includes(q);
+                            if (!match) return false;
+                          }
+                          if (matrixAsmFilter !== "all") {
+                            const matchAsm = p.assignedAsmId === matrixAsmFilter || p.assignedTsmId === matrixAsmFilter;
+                            if (!matchAsm) return false;
+                          }
+                          if (partyStateFilter !== "all" && p.state !== partyStateFilter) {
+                            return false;
+                          }
                           return true;
                         })
                         .map(party => {
@@ -1625,13 +1633,21 @@ export default function CrmDashboard({
                 </div>
 
                 {/* Mobile View Card Grid (Zero Horizontal Scroll) */}
-                <div className="mobile-card-view" style={{ display: "none", flexDirection: "column", gap: "10px" }}>
+                <div className="mobile-card-view" style={{ gap: "10px" }}>
                   {filteredParties
                     .filter(p => {
-                      if (categoryRemarksFilter === "all") return true;
-                      const partyRemarks = (crmPartyRemarks || []).filter(r => matchParty(r.partyName, p.name, r.partyId, p.id));
-                      if (categoryRemarksFilter === "with_remarks") return partyRemarks.length > 0;
-                      if (categoryRemarksFilter === "no_remarks") return partyRemarks.length === 0;
+                      if (matrixPartySearch.trim()) {
+                        const q = matrixPartySearch.toLowerCase();
+                        const match = p.name?.toLowerCase().includes(q) || p.city?.toLowerCase().includes(q) || p.gstin?.toLowerCase().includes(q);
+                        if (!match) return false;
+                      }
+                      if (matrixAsmFilter !== "all") {
+                        const matchAsm = p.assignedAsmId === matrixAsmFilter || p.assignedTsmId === matrixAsmFilter;
+                        if (!matchAsm) return false;
+                      }
+                      if (partyStateFilter !== "all" && p.state !== partyStateFilter) {
+                        return false;
+                      }
                       return true;
                     })
                     .map(party => {
@@ -3012,13 +3028,13 @@ function Party360Modal({
     <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1050, position: "fixed", top: 0, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0, 0, 0, 0.8)", backdropFilter: "blur(6px)" }}>
       <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "960px", width: "100%", maxHeight: "94vh", overflowY: "auto", margin: "auto", WebkitOverflowScrolling: "touch" }}>
         
-        {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
-          <div>
-            <span className="badge badge-primary" style={{ marginBottom: "4px", fontSize: "0.72rem" }}>Party Performance & Remarks Studio</span>
-            <h2 style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--primary)", margin: 0 }}>{party.name}</h2>
+        {/* Header (Center Aligned) */}
+        <div style={{ position: "relative", marginBottom: "16px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px", textAlign: "center" }}>
+          <div style={{ padding: "0 30px" }}>
+            <span className="badge badge-primary" style={{ marginBottom: "6px", fontSize: "0.72rem", display: "inline-block" }}>Party Performance & Remarks Studio</span>
+            <h2 style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--primary)", margin: 0, textAlign: "center" }}>{party.name}</h2>
             {([party.city, party.state].filter(Boolean).length > 0 || party.contactPerson || party.phone) && (
-              <div style={{ color: "var(--text-muted)", fontSize: "0.82rem", marginTop: "3px" }}>
+              <div style={{ color: "var(--text-muted)", fontSize: "0.82rem", marginTop: "4px", textAlign: "center" }}>
                 {[party.city, party.state].filter(Boolean).length > 0 && (
                   <span><MapPin size={11} style={{ display: "inline", verticalAlign: "middle", marginRight: "3px" }} />{[party.city, party.state].filter(Boolean).join(", ")}</span>
                 )}
@@ -3028,7 +3044,13 @@ function Party360Modal({
               </div>
             )}
           </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "4px" }}><X size={22} /></button>
+          <button 
+            onClick={onClose} 
+            style={{ position: "absolute", right: "0px", top: "0px", background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "4px" }}
+            title="Close modal"
+          >
+            <X size={22} />
+          </button>
         </div>
 
         {/* Overview Stats (Last 4 Months) */}
@@ -3050,19 +3072,19 @@ function Party360Modal({
           </div>
         </div>
 
-        {/* Tab Switcher inside Party Modal */}
-        <div style={{ display: "flex", gap: "6px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "8px", marginBottom: "14px", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+        {/* Tab Switcher inside Party Modal (Center Aligned) */}
+        <div style={{ display: "flex", justifyContent: "center", gap: "8px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "8px", marginBottom: "14px", flexWrap: "wrap" }}>
           <button
             onClick={() => setModalTab("category_matrix")}
             className={`tab-btn ${modalTab === "category_matrix" ? "active" : ""}`}
-            style={{ fontSize: "0.82rem", padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: "5px", fontWeight: 700, whiteSpace: "nowrap" }}
+            style={{ fontSize: "0.82rem", padding: "8px 14px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px", fontWeight: 700, whiteSpace: "nowrap", flex: "1 1 180px" }}
           >
             <MessageSquare size={13} /> 4-Month Category Sales & Remarks
           </button>
           <button
             onClick={() => setModalTab("orders")}
             className={`tab-btn ${modalTab === "orders" ? "active" : ""}`}
-            style={{ fontSize: "0.82rem", padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: "5px", whiteSpace: "nowrap" }}
+            style={{ fontSize: "0.82rem", padding: "8px 14px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px", whiteSpace: "nowrap", flex: "1 1 180px" }}
           >
             <FileText size={13} /> Order History ({salesOrders.length})
           </button>
