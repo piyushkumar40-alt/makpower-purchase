@@ -1926,6 +1926,39 @@ table th {
     flex-direction: column !important;
     gap: 12px !important;
   }
+
+  .pagination-container {
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    text-align: center !important;
+    gap: 12px !important;
+    padding: 14px 10px !important;
+    width: 100% !important;
+  }
+
+  .pagination-container .pagination-range-text {
+    width: 100% !important;
+    text-align: center !important;
+    font-size: 0.82rem !important;
+  }
+
+  .pagination-container .pagination-nav-group {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    gap: 5px !important;
+    width: 100% !important;
+  }
+
+  .pagination-container .pagination-page-size {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 100% !important;
+    font-size: 0.8rem !important;
+  }
 }
 
 @media (min-width: 769px) {
@@ -1936,3 +1969,43 @@ table th {
     display: block !important;
   }
 }
+
+/* Pagination Theme & Component Styles */
+.pagination-container {
+  background: var(--bg-card, rgba(15, 23, 42, 0.6)) !important;
+  border: 1px solid var(--border-glass) !important;
+  color: var(--text-main) !important;
+}
+
+[data-theme="light"] .pagination-container {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04) !important;
+}
+
+[data-theme="light"] .pagination-container .pagination-range-text {
+  color: #475569 !important;
+}
+
+[data-theme="light"] .pagination-container .pagination-range-text strong {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .pagination-container .btn-secondary {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #334155 !important;
+}
+
+[data-theme="light"] .pagination-container .btn-secondary:hover:not(:disabled) {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .pagination-container select.form-control,
+[data-theme="light"] .pagination-container input.form-control {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+

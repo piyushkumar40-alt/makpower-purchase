@@ -68,26 +68,28 @@ export default function Pagination({
   };
 
   return (
-    <div style={{ 
-      display: "flex", 
-      justifyContent: "space-between", 
-      alignItems: "center", 
-      flexWrap: "wrap", 
-      gap: "14px", 
-      marginTop: "16px", 
-      padding: "12px 18px", 
-      background: "rgba(15, 23, 42, 0.6)", 
-      borderRadius: "10px", 
-      border: "1px solid var(--border-glass)" 
-    }}>
+    <div 
+      className="pagination-container glass-panel"
+      style={{ 
+        display: "flex", 
+        justifyContent: "space-between", 
+        alignItems: "center", 
+        flexWrap: "wrap", 
+        gap: "12px", 
+        marginTop: "16px", 
+        padding: "12px 16px", 
+        borderRadius: "12px", 
+        border: "1px solid var(--border-glass)" 
+      }}
+    >
       
       {/* Items Range Display */}
-      <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 500 }}>
+      <div className="pagination-range-text" style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 500 }}>
         Showing <strong>{startItem.toLocaleString()}–{endItem.toLocaleString()}</strong> of <strong>{totalItems.toLocaleString()}</strong> rows (Page {currentPage} of {totalPages})
       </div>
 
       {/* Navigation Controls */}
-      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+      <div className="pagination-nav-group" style={{ display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
         <button 
           onClick={() => onPageChange(1)} 
           disabled={currentPage === 1}
@@ -150,7 +152,7 @@ export default function Pagination({
 
         {/* Jump To Page Box */}
         {totalPages > 3 && (
-          <form onSubmit={handleJumpSubmit} style={{ display: "flex", alignItems: "center", gap: "4px", marginLeft: "6px" }}>
+          <form onSubmit={handleJumpSubmit} style={{ display: "flex", alignItems: "center", gap: "4px", marginLeft: "4px" }}>
             <input
               type="number"
               min={1}
@@ -159,7 +161,7 @@ export default function Pagination({
               value={jumpPageInput}
               onChange={e => setJumpPageInput(e.target.value)}
               className="form-control"
-              style={{ width: "64px", height: "30px", fontSize: "0.8rem", padding: "2px 6px", textAlign: "center" }}
+              style={{ width: "60px", height: "30px", fontSize: "0.8rem", padding: "2px 6px", textAlign: "center" }}
               title={`Enter page 1 to ${totalPages}`}
             />
             <button type="submit" className="btn btn-sm btn-secondary" style={{ height: "30px", padding: "0 8px", fontSize: "0.75rem" }}>
@@ -171,7 +173,7 @@ export default function Pagination({
 
       {/* Items Per Page Selector */}
       {onItemsPerPageChange && (
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+        <div className="pagination-page-size" style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
           <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Rows per page:</span>
           
           <select 
