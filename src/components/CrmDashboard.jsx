@@ -20,6 +20,24 @@ export const matchParty = (p1, p2, id1, id2) => {
   return n1 === n2 || n1.includes(n2) || n2.includes(n1);
 };
 
+// Helper to normalize FG product categories consistently across CRM views and modals
+export const normalizeCategory = (cat, itemDesc = "") => {
+  const raw = `${cat || ""} ${itemDesc || ""}`.toLowerCase();
+  if (raw.includes("polymer") || raw.includes("li-poly") || raw.includes("lithium poly") || raw.includes("pouch battery")) return "Polymer";
+  if (raw.includes("fast charge") || raw.includes("adapter") || raw.includes("charger") || raw.includes("wall charge")) return "Fast Charger";
+  if (raw.includes("cable") || raw.includes("usb") || raw.includes("type-c") || raw.includes("micro") || raw.includes("lightning")) return "Data Cable";
+  if (raw.includes("neckband") || raw.includes("neck band") || raw.includes("nb-") || raw.includes("nb ")) return "Neckband";
+  if (raw.includes("tws") || raw.includes("earbuds") || raw.includes("airpods") || raw.includes("ear buds") || raw.includes("buds")) return "TWS Earbuds";
+  if (raw.includes("power bank") || raw.includes("powerbank") || raw.includes("pb-") || raw.includes("pb ")) return "Power Bank";
+  if (raw.includes("earphone") || raw.includes("headphone") || raw.includes("handsfree") || raw.includes("ear phone")) return "Earphones";
+  if (raw.includes("battery") || raw.includes("batteries") || raw.includes("cell") || raw.includes("bf3") || raw.includes("b-f3") || raw.includes("bm4") || raw.includes("bn4") || raw.includes("bl-") || raw.includes("blp") || raw.includes("li-ion")) return "Batteries";
+  if (raw.includes("speaker") || raw.includes("soundbar") || raw.includes("audio")) return "Speaker";
+  if (raw.includes("watch") || raw.includes("smartwatch") || raw.includes("smart watch") || raw.includes("band")) return "Smart Watch";
+  if (raw.includes("car charge") || raw.includes("car")) return "Car Charger";
+  if (cat && cat.trim() && cat !== "General" && cat !== "Unspecified" && !cat.toLowerCase().includes("raw")) return cat.trim();
+  return "Mobile Accessories";
+};
+
 export default function CrmDashboard({
   currentUser,
   users = [],
@@ -3680,23 +3698,6 @@ function PartyMonthlyCategoryStudioModal({
       return `${yr}-${mo}`;
     }
     return "";
-  };
-
-  const normalizeCategory = (cat, itemDesc = "") => {
-    const raw = `${cat || ""} ${itemDesc || ""}`.toLowerCase();
-    if (raw.includes("polymer") || raw.includes("li-poly") || raw.includes("lithium poly") || raw.includes("pouch battery")) return "Polymer";
-    if (raw.includes("fast charge") || raw.includes("adapter") || raw.includes("charger") || raw.includes("wall charge")) return "Fast Charger";
-    if (raw.includes("cable") || raw.includes("usb") || raw.includes("type-c") || raw.includes("micro") || raw.includes("lightning")) return "Data Cable";
-    if (raw.includes("neckband") || raw.includes("neck band") || raw.includes("nb-") || raw.includes("nb ")) return "Neckband";
-    if (raw.includes("tws") || raw.includes("earbuds") || raw.includes("airpods") || raw.includes("ear buds") || raw.includes("buds")) return "TWS Earbuds";
-    if (raw.includes("power bank") || raw.includes("powerbank") || raw.includes("pb-") || raw.includes("pb ")) return "Power Bank";
-    if (raw.includes("earphone") || raw.includes("headphone") || raw.includes("handsfree") || raw.includes("ear phone")) return "Earphones";
-    if (raw.includes("battery") || raw.includes("batteries") || raw.includes("cell") || raw.includes("bf3") || raw.includes("b-f3") || raw.includes("bm4") || raw.includes("bn4") || raw.includes("bl-") || raw.includes("blp") || raw.includes("li-ion")) return "Batteries";
-    if (raw.includes("speaker") || raw.includes("soundbar") || raw.includes("audio")) return "Speaker";
-    if (raw.includes("watch") || raw.includes("smartwatch") || raw.includes("smart watch") || raw.includes("band")) return "Smart Watch";
-    if (raw.includes("car charge") || raw.includes("car")) return "Car Charger";
-    if (cat && cat.trim() && cat !== "General" && cat !== "Unspecified" && !cat.toLowerCase().includes("raw")) return cat.trim();
-    return "Mobile Accessories";
   };
 
   // Category rows for this party across the last 4 months (FG only, Polymer merged)
