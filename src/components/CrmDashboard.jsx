@@ -3992,7 +3992,7 @@ function PartyMonthlyCategoryStudioModal({
                 const isAuthor = currentUser?.id === r.authorId || currentUser?.name === r.authorName;
                 const canDelete = isAuthor || currentUser?.role === "superadmin" || currentUser?.role === "crm" || currentUser?.role === "owner";
                 return (
-                  <div key={r.id} style={{ background: "rgba(0, 0, 0, 0.25)", border: "1px solid var(--border-glass)", borderRadius: "8px", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
+                  <div key={r.id} style={{ background: "var(--bg-card-hover, rgba(255, 255, 255, 0.04))", border: "1px solid var(--border-glass)", borderRadius: "8px", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px", flexWrap: "wrap" }}>
                         <span className="badge" style={{ fontSize: "0.7rem", padding: "2px 8px", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", fontWeight: 700 }}>

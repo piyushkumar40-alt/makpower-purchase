@@ -2009,3 +2009,77 @@ table th {
   color: #0f172a !important;
 }
 
+/* ==================== LIGHT THEME: ELIMINATE ALL MUDDY DARK OVERLAYS ==================== */
+/* Staff Edit Account Box */
+.staff-edit-box {
+  background: var(--bg-card-hover, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border-glass);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+[data-theme="light"] .staff-edit-box {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.07) !important;
+}
+
+[data-theme="light"] .staff-edit-box .form-label {
+  color: #334155 !important;
+  font-weight: 600 !important;
+}
+
+[data-theme="light"] .staff-edit-box .form-control {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .staff-edit-box .form-control:focus {
+  border-color: #0284c7 !important;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15) !important;
+}
+
+/* Eliminate all muddy dark inline rgba overlays across the entire app in Light Mode */
+[data-theme="light"] [style*="rgba(0,0,0,"]:not(.modal-backdrop),
+[data-theme="light"] [style*="rgba(0, 0, 0,"]:not(.modal-backdrop) {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+[data-theme="light"] [style*="background: rgba(0,0,0,"]:not(.modal-backdrop),
+[data-theme="light"] [style*="background: rgba(0, 0, 0,"]:not(.modal-backdrop),
+[data-theme="light"] [style*="background:rgba(0,0,0,"]:not(.modal-backdrop),
+[data-theme="light"] [style*="background-color: rgba(0,0,0,"]:not(.modal-backdrop),
+[data-theme="light"] [style*="background-color: rgba(0, 0, 0,"]:not(.modal-backdrop),
+[data-theme="light"] [style*="background-color:rgba(0,0,0,"]:not(.modal-backdrop) {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+[data-theme="light"] tr[style*="rgba(0,0,0,"],
+[data-theme="light"] tr[style*="rgba(0, 0, 0,"] {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+[data-theme="light"] tr[style*="rgba(0,0,0,"]:hover,
+[data-theme="light"] tr[style*="rgba(0, 0, 0,"]:hover {
+  background: #e0f2fe !important;
+}
+
+[data-theme="light"] code {
+  background: #f1f5f9 !important;
+  color: #0284c7 !important;
+  border: 1px solid #e2e8f0 !important;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+

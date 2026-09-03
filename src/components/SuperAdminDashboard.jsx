@@ -1514,18 +1514,20 @@ export default function SuperAdminDashboard({
 
                         {/* Inline Edit Form */}
                         {editingStaffId === staff.id && (
-                          <div style={{ background: "rgba(0,0,0,0.25)", border: "1px solid var(--border-glass)", borderRadius: "8px", padding: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                            <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--primary)" }}>Edit Staff Account</div>
+                          <div className="staff-edit-box">
+                            <div style={{ fontSize: "0.86rem", fontWeight: 700, color: "var(--primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                              ✏️ Edit Staff Account
+                            </div>
                             
                             {/* Current Password Display (Clean) */}
                             <div style={{
                               display: "inline-flex",
                               alignItems: "center",
                               gap: "8px",
-                              padding: "6px 10px",
+                              padding: "6px 12px",
                               borderRadius: "8px",
-                              background: "rgba(99, 102, 241, 0.05)",
-                              border: "1px solid rgba(99, 102, 241, 0.16)",
+                              background: "var(--bg-main, rgba(99, 102, 241, 0.05))",
+                              border: "1px solid var(--border-glass)",
                               fontSize: "0.78rem",
                               width: "fit-content"
                             }}>
