@@ -10,6 +10,16 @@ import Pagination from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 
+// Helper to normalize and match party names across all formats and sub-components
+export const normParty = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+export const matchParty = (p1, p2, id1, id2) => {
+  if (id1 && id2 && id1 === id2) return true;
+  if (!p1 || !p2) return false;
+  const n1 = normParty(p1);
+  const n2 = normParty(p2);
+  return n1 === n2 || n1.includes(n2) || n2.includes(n1);
+};
+
 export default function CrmDashboard({
   currentUser,
   users = [],
@@ -116,16 +126,6 @@ export default function CrmDashboard({
       recordSectionVisit(uId, "crmParties");
     }
   }, []);
-
-  // Helper to normalize and match party names across all formats
-  const normParty = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const matchParty = (p1, p2, id1, id2) => {
-    if (id1 && id2 && id1 === id2) return true;
-    if (!p1 || !p2) return false;
-    const n1 = normParty(p1);
-    const n2 = normParty(p2);
-    return n1 === n2 || n1.includes(n2) || n2.includes(n1);
-  };
 
   // Unified Dispatches combining crmDispatches + IMS party stock movements
   const allUnifiedDispatches = useMemo(() => {
@@ -3329,8 +3329,9 @@ function Party360Modal({
 
                     {partyCategoryRows.map(row => {
                       const categoryRemarks = (crmPartyRemarks || []).filter(r => 
-                        (r.partyId === party.id || (r.partyName && r.partyName.trim().toLowerCase() === (party.name || "").trim().toLowerCase())) && 
+                        matchParty(r.partyName, party.name, r.partyId, party.id) && 
                         (r.category === row.category || 
+                         normalizeCategory(r.category) === row.category ||
                          (row.category === "Polymer Batteries" && (r.category || "").toLowerCase().includes("polymer")) ||
                          (row.category === "Eco Battery" && (r.category || "").toLowerCase().includes("eco")))
                       );
@@ -3428,8 +3429,9 @@ function Party360Modal({
               {/* Individual Category Cards */}
               {partyCategoryRows.map(row => {
                 const categoryRemarks = (crmPartyRemarks || []).filter(r => 
-                  (r.partyId === party.id || (r.partyName && r.partyName.trim().toLowerCase() === (party.name || "").trim().toLowerCase())) && 
+                  matchParty(r.partyName, party.name, r.partyId, party.id) && 
                   (r.category === row.category || 
+                   normalizeCategory(r.category) === row.category ||
                    (row.category === "Polymer Batteries" && (r.category || "").toLowerCase().includes("polymer")) ||
                    (row.category === "Eco Battery" && (r.category || "").toLowerCase().includes("eco")))
                 );
@@ -3587,8 +3589,10 @@ function Party360Modal({
           <PartyCategoryRemarkModal
             target={activeRemarkModalTarget}
             remarks={(crmPartyRemarks || []).filter(r => 
-              (r.partyId === activeRemarkModalTarget.partyId || (r.partyName && r.partyName.trim().toLowerCase() === (activeRemarkModalTarget.partyName || "").trim().toLowerCase())) && 
-              (r.category === activeRemarkModalTarget.category || (activeRemarkModalTarget.category === "Polymer" && (r.category || "").toLowerCase().includes("polymer")))
+              matchParty(r.partyName, activeRemarkModalTarget.partyName, r.partyId, activeRemarkModalTarget.partyId) && 
+              (r.category === activeRemarkModalTarget.category || 
+               normalizeCategory(r.category) === activeRemarkModalTarget.category || 
+               (activeRemarkModalTarget.category === "Polymer" && (r.category || "").toLowerCase().includes("polymer")))
             )}
             currentUser={currentUser}
             onSave={async (text) => {
@@ -3811,6 +3815,53 @@ function PartyMonthlyCategoryStudioModal({
     return Array.from(map.values()).sort((a, b) => b.totalQty - a.totalQty || a.category.localeCompare(b.category));
   }, [partyCategoryMonthlySales, salesOrders, dispatches, items, last4Months, party]);
 
+  // Live list of all remarks matching this party
+  const allPartyRemarks = useMemo(() => {
+    return (crmPartyRemarks || []).filter(r => matchParty(r.partyName, party?.name, r.partyId, party?.id));
+  }, [crmPartyRemarks, party]);
+
+  const matchRemarkToCategory = (rCat, targetCat) => {
+    if (!targetCat || targetCat === "All") return true;
+    const catClean = (rCat || "").trim().toLowerCase();
+    const targetClean = (targetCat || "").trim().toLowerCase();
+    if (targetClean === "general" || targetClean === "uncategorized") {
+      return !catClean || catClean === "general" || catClean === "uncategorized" || catClean === "account" || catClean === "others";
+    }
+    if (catClean === targetClean) return true;
+    if (targetCat === "Polymer" && catClean.includes("polymer")) return true;
+    const norm = normalizeCategory(rCat);
+    return norm.toLowerCase() === targetClean;
+  };
+
+  const [generalRemarkText, setGeneralRemarkText] = useState("");
+  const [isSavingGeneral, setIsSavingGeneral] = useState(false);
+
+  const handleSaveGeneralRemark = async () => {
+    const text = generalRemarkText.trim();
+    if (!text) return;
+    setIsSavingGeneral(true);
+    try {
+      if (onSavePartyRemark) {
+        await onSavePartyRemark({
+          partyId: party.id,
+          partyName: party.name,
+          category: "General",
+          month: last4Months[3].key,
+          remark: text,
+          authorId: currentUser?.id,
+          authorName: currentUser?.name || "Team Member",
+          authorRole: currentUser?.role || "crm"
+        });
+      }
+      setGeneralRemarkText("");
+      showSuccessToast(`✅ Remark saved for ${party.name}!`);
+    } catch (err) {
+      showErrorToast(err.message || "Failed to save remark.");
+    } finally {
+      setIsSavingGeneral(false);
+    }
+  };
+
   const handleSaveCategoryRemark = async (catName) => {
     const text = (remarkInputs[catName] || "").trim();
     if (!text) return;
@@ -3865,6 +3916,130 @@ function PartyMonthlyCategoryStudioModal({
           <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={22} /></button>
         </div>
 
+        {/* Remarks Activity Feed & Quick Add Banner */}
+        <div style={{
+          background: "rgba(56, 189, 248, 0.04)",
+          border: "1px solid rgba(56, 189, 248, 0.2)",
+          borderRadius: "12px",
+          padding: "16px",
+          marginBottom: "20px"
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <MessageSquare size={17} style={{ color: "#38bdf8" }} />
+              <strong style={{ fontSize: "1rem", color: "var(--text-main)" }}>
+                Recorded Remarks for {party.name}
+              </strong>
+              <span className="badge" style={{
+                background: allPartyRemarks.length > 0 ? "rgba(56, 189, 248, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                color: allPartyRemarks.length > 0 ? "#38bdf8" : "var(--text-muted)",
+                fontWeight: 800,
+                fontSize: "0.8rem",
+                padding: "3px 10px"
+              }}>
+                {allPartyRemarks.length} {allPartyRemarks.length === 1 ? "Remark" : "Remarks"}
+              </span>
+            </div>
+
+            {allPartyRemarks.length > 0 && (
+              <button
+                onClick={() => setHistoryCategoryTarget({
+                  partyId: party.id,
+                  partyName: party.name,
+                  category: "All",
+                  remarks: allPartyRemarks
+                })}
+                className="btn btn-secondary btn-sm"
+                style={{ fontSize: "0.78rem", padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: "5px" }}
+              >
+                <Clock size={13} /> View Full Log ({allPartyRemarks.length})
+              </button>
+            )}
+          </div>
+
+          {/* Quick Add General / Party Remark Form */}
+          <div style={{ display: "flex", gap: "8px", marginBottom: allPartyRemarks.length > 0 ? "14px" : "0" }}>
+            <input
+              type="text"
+              placeholder={`Add general remark for ${party.name} (e.g. payment follow-up, meeting notes, sales discussion)...`}
+              value={generalRemarkText}
+              onChange={e => setGeneralRemarkText(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter") handleSaveGeneralRemark();
+              }}
+              className="form-control"
+              style={{ height: "38px", fontSize: "0.84rem", flex: 1 }}
+            />
+            <button
+              onClick={handleSaveGeneralRemark}
+              disabled={isSavingGeneral || !generalRemarkText.trim()}
+              className="btn btn-primary"
+              style={{ height: "38px", padding: "0 16px", fontSize: "0.82rem", whiteSpace: "nowrap", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
+            >
+              <Send size={13} /> Add Remark
+            </button>
+          </div>
+
+          {/* Live List of Recorded Remarks */}
+          {allPartyRemarks.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "16px", color: "var(--text-muted)", fontSize: "0.84rem" }}>
+              No remarks recorded for this party yet. Type a remark above or in any category row below to add one.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "200px", overflowY: "auto", paddingRight: "4px" }}>
+              {allPartyRemarks.map(r => {
+                const isAuthor = currentUser?.id === r.authorId || currentUser?.name === r.authorName;
+                const canDelete = isAuthor || currentUser?.role === "superadmin" || currentUser?.role === "crm" || currentUser?.role === "owner";
+                return (
+                  <div key={r.id} style={{ background: "rgba(0, 0, 0, 0.25)", border: "1px solid var(--border-glass)", borderRadius: "8px", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px", flexWrap: "wrap" }}>
+                        <span className="badge" style={{ fontSize: "0.7rem", padding: "2px 8px", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", fontWeight: 700 }}>
+                          🏷️ {r.category || "General"}
+                        </span>
+                        <span className="badge" style={{
+                          fontSize: "0.7rem",
+                          padding: "2px 8px",
+                          background: r.authorRole === "asm" ? "rgba(16, 185, 129, 0.15)" : r.authorRole === "tsm" ? "rgba(245, 158, 11, 0.15)" : "rgba(99, 102, 241, 0.15)",
+                          color: r.authorRole === "asm" ? "#34d399" : r.authorRole === "tsm" ? "#fbbf24" : "#a5b4fc",
+                          fontWeight: 700
+                        }}>
+                          {r.authorName} ({r.authorRole?.toUpperCase()})
+                        </span>
+                        <span style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginLeft: "auto" }}>
+                          📅 {r.createdAt ? new Date(r.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : (r.month || "")}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "0.88rem", color: "var(--text-main)", lineHeight: 1.45, wordBreak: "break-word" }}>
+                        {r.remark}
+                      </div>
+                    </div>
+                    {canDelete && (
+                      <button
+                        onClick={async () => {
+                          if (window.confirm("Delete this remark?")) {
+                            try {
+                              if (onDeletePartyRemark) await onDeletePartyRemark(r.id);
+                              showSuccessToast("Remark deleted.");
+                            } catch (err) {
+                              showErrorToast("Failed to delete remark.");
+                            }
+                          }
+                        }}
+                        className="btn btn-secondary btn-sm"
+                        title="Delete remark"
+                        style={{ padding: "4px 6px", fontSize: "0.7rem", color: "var(--danger)", borderColor: "rgba(239, 68, 68, 0.3)" }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {/* 4-Month Category Matrix Table */}
         <div style={{ overflowX: "auto" }}>
           <table className="table" style={{ width: "100%", fontSize: "0.85rem", minWidth: "950px" }}>
@@ -3881,10 +4056,7 @@ function PartyMonthlyCategoryStudioModal({
             </thead>
             <tbody>
               {categoryMatrixRows.map(row => {
-                const categoryRemarks = (crmPartyRemarks || []).filter(r => 
-                  (r.partyId === party.id || (r.partyName && r.partyName.trim().toLowerCase() === (party.name || "").trim().toLowerCase())) &&
-                  (r.category === row.category || (row.category === "Polymer" && (r.category || "").toLowerCase().includes("polymer")))
-                );
+                const categoryRemarks = allPartyRemarks.filter(r => matchRemarkToCategory(r.category, row.category));
 
                 return (
                   <tr key={row.category}>
@@ -3935,7 +4107,15 @@ function PartyMonthlyCategoryStudioModal({
                           remarks: categoryRemarks
                         })}
                         className="btn btn-secondary btn-sm"
-                        style={{ fontSize: "0.76rem", padding: "4px 8px", color: categoryRemarks.length > 0 ? "#38bdf8" : undefined, borderColor: categoryRemarks.length > 0 ? "rgba(56, 189, 248, 0.4)" : undefined, whiteSpace: "nowrap" }}
+                        style={{
+                          fontSize: "0.76rem",
+                          padding: "4px 8px",
+                          color: categoryRemarks.length > 0 ? "#38bdf8" : undefined,
+                          borderColor: categoryRemarks.length > 0 ? "rgba(56, 189, 248, 0.4)" : undefined,
+                          background: categoryRemarks.length > 0 ? "rgba(56, 189, 248, 0.08)" : undefined,
+                          fontWeight: categoryRemarks.length > 0 ? 700 : 500,
+                          whiteSpace: "nowrap"
+                        }}
                       >
                         <Clock size={12} /> Show Remarks History ({categoryRemarks.length})
                       </button>
@@ -3971,10 +4151,20 @@ function CategoryRemarksHistoryModal({ target, crmPartyRemarks = [], currentUser
   const activeRemarks = useMemo(() => {
     let list = [];
     if (crmPartyRemarks && crmPartyRemarks.length > 0) {
-      list = crmPartyRemarks.filter(r => 
-        (r.partyId === target.partyId || (r.partyName && target.partyName && r.partyName.trim().toLowerCase() === target.partyName.trim().toLowerCase())) &&
-        (r.category === target.category || (!target.category && !r.category))
-      );
+      list = crmPartyRemarks.filter(r => {
+        const matchesParty = matchParty(r.partyName, target.partyName, r.partyId, target.partyId);
+        if (!matchesParty) return false;
+        if (!target.category || target.category === "All") return true;
+        const targetClean = target.category.trim().toLowerCase();
+        const rCatClean = (r.category || "").trim().toLowerCase();
+        if (targetClean === "general" || targetClean === "uncategorized") {
+          return !rCatClean || rCatClean === "general" || rCatClean === "uncategorized" || rCatClean === "account" || rCatClean === "others";
+        }
+        if (rCatClean === targetClean) return true;
+        if (target.category === "Polymer" && rCatClean.includes("polymer")) return true;
+        const norm = normalizeCategory(r.category);
+        return norm.toLowerCase() === targetClean;
+      });
     }
     if (list.length === 0 && target.remarks && target.remarks.length > 0) {
       list = target.remarks;
