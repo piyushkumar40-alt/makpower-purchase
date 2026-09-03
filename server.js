@@ -252,6 +252,10 @@ async function setupPgDatabase() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS "parentCrmId" TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS "phone" TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS "territory" TEXT;
+      UPDATE users SET "parentCrmId" = 'u-ankita' 
+      WHERE (role = 'asm' OR role = 'tsm') 
+        AND ("parentCrmId" IS NULL OR "parentCrmId" = '') 
+        AND (LOWER(name) LIKE '%ashutosh%' OR LOWER(email) LIKE '%ashutosh%');
     `);
 
     await pool.query(`

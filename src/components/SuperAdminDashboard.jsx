@@ -770,6 +770,7 @@ export default function SuperAdminDashboard({
   const [pPassword, setPPassword] = useState("");
   const [pRole, setPRole] = useState("crm");
   const [pDesignation, setPDesignation] = useState("CRM Executive");
+  const [pParentCrmId, setPParentCrmId] = useState("u-ankita");
   const [customDesignationInput, setCustomDesignationInput] = useState("");
   const [pError, setPError] = useState("");
   const [pSuccess, setPSuccess] = useState("");
@@ -782,6 +783,7 @@ export default function SuperAdminDashboard({
   const [editPasswordVal, setEditPasswordVal] = useState("");
   const [editDesignationVal, setEditDesignationVal] = useState("Purchaser");
   const [editRoleVal, setEditRoleVal] = useState("purchaser");
+  const [editParentCrmIdVal, setEditParentCrmIdVal] = useState("u-ankita");
   const [editSuccessMsg, setEditSuccessMsg] = useState("");
 
   // Vendor State
@@ -898,7 +900,7 @@ export default function SuperAdminDashboard({
     else if (dLower.includes("asm") || dLower.includes("area sales")) roleVal = "asm";
     else if (dLower.includes("tsm") || dLower.includes("territory sales")) roleVal = "tsm";
 
-    const res = onAddPurchaser(pName, pEmail, pPassword, finalDesignation, roleVal);
+    const res = onAddPurchaser(pName, pEmail, pPassword, finalDesignation, roleVal, "", "", (roleVal === "asm" || roleVal === "tsm") ? pParentCrmId : "");
     if (res.success) {
       setPSuccess(`Staff account ${pName} created successfully as ${finalDesignation}!`);
       setPName("");
@@ -1366,6 +1368,15 @@ export default function SuperAdminDashboard({
                               <span className="badge" style={{ fontSize: "0.65rem", padding: "2px 8px", background: isCrmStaff ? "rgba(99, 102, 241, 0.15)" : "rgba(56, 189, 248, 0.12)", color: isCrmStaff ? "#a5b4fc" : "#38bdf8", border: isCrmStaff ? "1px solid rgba(99, 102, 241, 0.3)" : "1px solid rgba(56, 189, 248, 0.3)", fontWeight: 700 }}>
                                 {staff.designation || getRoleLabel(staff.role)}
                               </span>
+                              {(staff.role === "asm" || staff.role === "tsm") && (
+                                <span className="badge" style={{ fontSize: "0.65rem", padding: "2px 8px", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)", fontWeight: 700 }}>
+                                  💼 CRM: {(() => {
+                                    const pid = staff.parentCrmId || ((staff.name || "").toLowerCase().includes("ashutosh") ? "u-ankita" : "");
+                                    const matchCrm = effectiveUsers.find(u => u.id === pid);
+                                    return matchCrm ? matchCrm.name : (pid === "u-ankita" ? "Ankita" : "Unassigned");
+                                  })()}
+                                </span>
+                              )}
                             </div>
                             <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "2px" }}>{staff.email}</div>
                             
@@ -1466,6 +1477,8 @@ export default function SuperAdminDashboard({
                                 setEditPasswordVal("");
                                 setEditDesignationVal(staff.designation || "Purchaser");
                                 setEditRoleVal(staff.role || "purchaser");
+                                const defaultPid = staff.parentCrmId || ((staff.name || "").toLowerCase().includes("ashutosh") ? "u-ankita" : "u-ankita");
+                                setEditParentCrmIdVal(defaultPid);
                                 setEditSuccessMsg("");
                               }}
                               className="btn btn-secondary btn-sm"
@@ -1622,6 +1635,24 @@ export default function SuperAdminDashboard({
                               </select>
                             </div>
 
+                            {(editRoleVal === "asm" || editRoleVal === "tsm") && (
+                              <div className="form-group" style={{ marginBottom: 0, gap: "4px" }}>
+                                <label className="form-label" style={{ fontSize: "0.72rem", fontWeight: 700 }}>Assigned CRM Executive *</label>
+                                <select 
+                                  className="form-control" 
+                                  style={{ padding: "4px 8px", fontSize: "0.85rem", height: "32px", fontWeight: 600 }}
+                                  value={editParentCrmIdVal}
+                                  onChange={e => setEditParentCrmIdVal(e.target.value)}
+                                >
+                                  {effectiveUsers.filter(u => u.role === "crm" && u.status === "active").map(c => (
+                                    <option key={c.id} value={c.id}>
+                                      💼 {c.name} ({c.email})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+
                             <div className="form-group" style={{ marginBottom: "4px", gap: "4px" }}>
                               <label className="form-label" style={{ fontSize: "0.72rem" }}>New Password (leave blank to keep current)</label>
                               <input 
@@ -1649,6 +1680,9 @@ export default function SuperAdminDashboard({
                                     designation: editDesignationVal,
                                     role: roleVal 
                                   };
+                                  if (roleVal === "asm" || roleVal === "tsm") {
+                                    updates.parentCrmId = editParentCrmIdVal || "u-ankita";
+                                  }
                                   if (editPasswordVal.trim()) {
                                     updates.password = editPasswordVal.trim();
                                   }
@@ -1775,6 +1809,27 @@ export default function SuperAdminDashboard({
                       <option value="owner">👑 Owner (Executive Dashboard)</option>
                     </select>
                   </div>
+
+                  {(pRole === "asm" || pRole === "tsm") && (
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label" style={{ fontWeight: 700 }}>Assigned CRM Executive *</label>
+                      <select 
+                        className="form-control"
+                        style={{ fontWeight: 600 }}
+                        value={pParentCrmId}
+                        onChange={e => setPParentCrmId(e.target.value)}
+                      >
+                        {effectiveUsers.filter(u => u.role === "crm" && u.status === "active").map(c => (
+                          <option key={c.id} value={c.id}>
+                            💼 {c.name} ({c.email})
+                          </option>
+                        ))}
+                      </select>
+                      <small style={{ color: "var(--text-muted)", fontSize: "0.74rem" }}>
+                        This sales manager will strictly belong to and be visible only under this CRM executive.
+                      </small>
+                    </div>
+                  )}
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>

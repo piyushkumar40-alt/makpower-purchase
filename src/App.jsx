@@ -52,6 +52,30 @@ export default function App() {
     setTheme(prev => (prev === "dark" ? "light" : "dark"));
   };
 
+  const sanitizeUserName = (name) => {
+    if (!name) return "";
+    let clean = String(name).trim();
+    clean = clean.replace(/^(mr\.|mrs\.|miss|ms\.)\s+((mr\.|mrs\.|miss|ms\.)\s+)/i, "$2");
+    return clean;
+  };
+
+  const normalizeUserData = (u) => {
+    if (!u) return u;
+    let parentCrmId = u.parentCrmId || "";
+    if ((u.role === "asm" || u.role === "tsm") && !parentCrmId) {
+      const n = (u.name || "").toLowerCase();
+      const em = (u.email || "").toLowerCase();
+      if (n.includes("ashutosh") || em.includes("ashutosh")) {
+        parentCrmId = "u-ankita";
+      }
+    }
+    return {
+      ...u,
+      name: sanitizeUserName(u.name),
+      parentCrmId
+    };
+  };
+
   // Load initial data from localStorage or mockData
   // Load initial data from localStorage cache for 0ms instant startup
   const cachedState = React.useMemo(() => {
@@ -65,9 +89,9 @@ export default function App() {
 
   const [users, setUsers] = useState(() => {
     if (cachedState?.users && Array.isArray(cachedState.users) && cachedState.users.length > 0) {
-      return cachedState.users;
+      return cachedState.users.map(normalizeUserData);
     }
-    return initialUsers;
+    return initialUsers.map(normalizeUserData);
   });
   const [vendors, setVendors] = useState(() => cachedState?.vendors || []);
   const [requests, setRequests] = useState(() => cachedState?.requests || []);
@@ -148,9 +172,9 @@ export default function App() {
           const res = await fetch("/api/users");
           const data = await res.json();
           if (Array.isArray(data) && data.length > 0) {
-            setUsers(data.map(u => ({ ...u, name: sanitizeUserName(u.name) })));
+            setUsers(data.map(normalizeUserData));
           } else {
-            setUsers(initialUsers);
+            setUsers(initialUsers.map(normalizeUserData));
           }
         } else if (moduleKey === TRACKABLE_MODULES.VENDORS) {
           const res = await fetch("/api/vendors");
@@ -399,13 +423,6 @@ export default function App() {
 
   const unreadNotificationsCount = userNotifications.filter(n => !n.read).length;
 
-  const sanitizeUserName = (name) => {
-    if (!name) return "";
-    let clean = String(name).trim();
-    clean = clean.replace(/^(mr\.|mrs\.|miss|ms\.)\s+((mr\.|mrs\.|miss|ms\.)\s+)/i, "$2");
-    return clean;
-  };
-
   // Fetch full state on mount & set up 15-second background sync
   useEffect(() => {
     let isMounted = true;
@@ -425,7 +442,7 @@ export default function App() {
         const data = await res.json();
         if (!isMounted) return;
 
-        if (Array.isArray(data.users)) setUsers(data.users.map(u => ({ ...u, name: sanitizeUserName(u.name) })));
+        if (Array.isArray(data.users)) setUsers(data.users.map(normalizeUserData));
         if (Array.isArray(data.vendors)) setVendors(data.vendors);
         if (Array.isArray(data.requests)) setRequests(data.requests.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
         if (Array.isArray(data.cargos)) setCargos(data.cargos);
@@ -985,7 +1002,7 @@ export default function App() {
       else if (dLower === "rahul" || dLower.includes("accounts update") || dLower.includes("purchase updater")) role = "rahul";
     }
 
-    const newUser = {
+    const newUser = normalizeUserData({
       id: `u-${Date.now()}`,
       name: cleanName,
       email,
@@ -996,7 +1013,7 @@ export default function App() {
       territory: territory || "",
       parentCrmId: parentCrmId || "",
       status: "active"
-    };
+    });
     const dbRes = await postData("/api/users", newUser);
     if (dbRes && (dbRes.success || dbRes.id || dbRes.user)) {
       setUsers(prev => [...prev, newUser]);
@@ -1047,7 +1064,7 @@ export default function App() {
       finalFields.name = sanitizeUserName(finalFields.name);
     }
     await postData("/api/users/update", { id: userId, updates: finalFields });
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...finalFields } : u));
+    setUsers(prev => prev.map(u => u.id === userId ? normalizeUserData({ ...u, ...finalFields }) : u));
     return { success: true };
   };
 

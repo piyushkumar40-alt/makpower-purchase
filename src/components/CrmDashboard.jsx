@@ -250,19 +250,86 @@ export default function CrmDashboard({
     return list;
   }, [allUnifiedDispatches, selectedExecutiveId, currentParties, globalStartDate, globalEndDate, isAsmOrTsm, isCrmUser, activeExecutive]);
 
+  // Resolve effective parent CRM ID for an ASM/TSM user (handles Ashutosh -> Ankita default)
+  const getEffectiveParentCrmId = (u) => {
+    if (!u) return "";
+    if (u.parentCrmId) return u.parentCrmId;
+    const n = (u.name || "").toLowerCase();
+    const em = (u.email || "").toLowerCase();
+    if (n.includes("ashutosh") || em.includes("ashutosh")) return "u-ankita";
+    return "";
+  };
+
   // ASMs and TSMs under this executive or all (only active and non-deleted accounts)
   const teamMembers = useMemo(() => {
     return users.filter(u => {
       if (u.role !== "asm" && u.role !== "tsm") return false;
       if (u.status === "inactive" || u.status === "deleted") return false;
       if (["u-asm-vikram", "u-asm-rohit", "u-tsm-manoj", "u-tsm-suresh"].includes(u.id)) return false;
-      if (selectedExecutiveId === "all") return true;
-      return u.parentCrmId === selectedExecutiveId || (!u.parentCrmId) || u.id === selectedExecutiveId;
-    });
-  }, [users, selectedExecutiveId]);
+      
+      const parentId = getEffectiveParentCrmId(u);
 
-  const asmList = useMemo(() => users.filter(u => u.role === "asm" && u.status === "active" && !["u-asm-vikram", "u-asm-rohit"].includes(u.id)), [users]);
-  const tsmList = useMemo(() => users.filter(u => u.role === "tsm" && u.status === "active" && !["u-tsm-manoj", "u-tsm-suresh"].includes(u.id)), [users]);
+      // If logged in as CRM user: strictly show ONLY ASMs/TSMs owned by this CRM!
+      if (isCrmUser) {
+        return parentId === currentUser?.id;
+      }
+
+      // If logged in as ASM or TSM: only see their own account
+      if (isAsmOrTsm) {
+        return u.id === currentUser?.id;
+      }
+
+      // If Admin or Owner:
+      if (isAdminOrOwner) {
+        if (selectedExecutiveId === "all") return true;
+        return parentId === selectedExecutiveId || u.id === selectedExecutiveId;
+      }
+
+      if (selectedExecutiveId && selectedExecutiveId !== "all") {
+        return parentId === selectedExecutiveId || u.id === selectedExecutiveId;
+      }
+      return false;
+    });
+  }, [users, selectedExecutiveId, isCrmUser, currentUser, isAdminOrOwner, isAsmOrTsm]);
+
+  // ASM and TSM lists for party creation / assignment & filtering
+  const asmList = useMemo(() => {
+    return users.filter(u => {
+      if (u.role !== "asm" || u.status !== "active") return false;
+      if (["u-asm-vikram", "u-asm-rohit"].includes(u.id)) return false;
+      const parentId = getEffectiveParentCrmId(u);
+
+      if (isCrmUser) {
+        return parentId === currentUser?.id;
+      }
+      if (isAsmOrTsm) {
+        return u.id === currentUser?.id;
+      }
+      if (isAdminOrOwner && selectedExecutiveId !== "all") {
+        return parentId === selectedExecutiveId;
+      }
+      return true;
+    });
+  }, [users, isCrmUser, currentUser, isAsmOrTsm, isAdminOrOwner, selectedExecutiveId]);
+
+  const tsmList = useMemo(() => {
+    return users.filter(u => {
+      if (u.role !== "tsm" || u.status !== "active") return false;
+      if (["u-tsm-manoj", "u-tsm-suresh"].includes(u.id)) return false;
+      const parentId = getEffectiveParentCrmId(u);
+
+      if (isCrmUser) {
+        return parentId === currentUser?.id;
+      }
+      if (isAsmOrTsm) {
+        return u.id === currentUser?.id;
+      }
+      if (isAdminOrOwner && selectedExecutiveId !== "all") {
+        return parentId === selectedExecutiveId;
+      }
+      return true;
+    });
+  }, [users, isCrmUser, currentUser, isAsmOrTsm, isAdminOrOwner, selectedExecutiveId]);
 
   // Helpers to strictly resolve active ASM and TSM names (never show deleted/dummy staff)
   const getActiveAsmName = (party) => {
@@ -319,6 +386,7 @@ export default function CrmDashboard({
   const [editingTeamMember, setEditingTeamMember] = useState(null);
   const [assigningTeamMember, setAssigningTeamMember] = useState(null);
   const [trackingAsmMember, setTrackingAsmMember] = useState(null);
+  const [transferringAsmMember, setTransferringAsmMember] = useState(null);
 
   // Order & Dispatch Modal State
   const [showAddOrderModal, setShowAddOrderModal] = useState(false);
@@ -1373,72 +1441,108 @@ export default function CrmDashboard({
                     </span>
                   </div>
 
-                  <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: "10px", padding: "12px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "0.82rem" }}>
-                    <div>
-                      <span style={{ color: "var(--text-muted)" }}>Territory:</span>
-                      <div style={{ fontWeight: 600, color: "var(--text-main)" }}>{member.territory || "General"}</div>
-                    </div>
-                    <div>
-                      <span style={{ color: "var(--text-muted)" }}>Phone:</span>
-                      <div style={{ fontWeight: 600, color: "var(--text-main)" }}>{member.phone || "—"}</div>
-                    </div>
-                    <div>
-                      <span style={{ color: "var(--text-muted)" }}>Assigned Parties:</span>
-                      <div style={{ fontWeight: 700, color: "#38bdf8" }}>{assignedParties.length} Parties</div>
-                    </div>
-                    {canViewFinancials ? (
-                      <div>
-                        <span style={{ color: "var(--text-muted)" }}>Total Sales:</span>
-                        <div style={{ fontWeight: 700, color: "var(--success)" }}>{formatInr(memberRevenue)}</div>
-                      </div>
-                    ) : (
-                      <div>
-                        <span style={{ color: "var(--text-muted)" }}>Total Orders:</span>
-                        <div style={{ fontWeight: 700, color: "var(--success)" }}>{memberOrders.length} Orders</div>
-                      </div>
-                    )}
-                  </div>
+                  {(() => {
+                    const memberParentCrmId = getEffectiveParentCrmId(member);
+                    const parentCrmObj = crmExecutives.find(c => c.id === memberParentCrmId) || users.find(u => u.id === memberParentCrmId);
+                    const parentCrmName = parentCrmObj?.name || (memberParentCrmId === "u-ankita" ? "Ankita" : "Unassigned");
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "auto" }}>
-                    <button
-                      onClick={() => setAssigningTeamMember(member)}
-                      className="btn btn-secondary btn-sm"
-                      style={{ justifyContent: "center", fontSize: "0.8rem", color: "var(--primary)", borderColor: "var(--primary)", fontWeight: 700 }}
-                    >
-                      <UserCheck size={13} /> Assign Parties ({assignedParties.length})
-                    </button>
+                    return (
+                      <>
+                        <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: "10px", padding: "12px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "0.82rem" }}>
+                          <div>
+                            <span style={{ color: "var(--text-muted)" }}>Assigned CRM:</span>
+                            <div style={{ fontWeight: 700, color: "#38bdf8" }}>💼 {parentCrmName}</div>
+                          </div>
+                          <div>
+                            <span style={{ color: "var(--text-muted)" }}>Territory:</span>
+                            <div style={{ fontWeight: 600, color: "var(--text-main)" }}>{member.territory || "General"}</div>
+                          </div>
+                          <div>
+                            <span style={{ color: "var(--text-muted)" }}>Phone:</span>
+                            <div style={{ fontWeight: 600, color: "var(--text-main)" }}>{member.phone || "—"}</div>
+                          </div>
+                          <div>
+                            <span style={{ color: "var(--text-muted)" }}>Assigned Parties:</span>
+                            <div style={{ fontWeight: 700, color: "#38bdf8" }}>{assignedParties.length} Parties</div>
+                          </div>
+                          {canViewFinancials ? (
+                            <div style={{ gridColumn: "1 / -1" }}>
+                              <span style={{ color: "var(--text-muted)" }}>Total Sales:</span>
+                              <div style={{ fontWeight: 700, color: "var(--success)" }}>{formatInr(memberRevenue)}</div>
+                            </div>
+                          ) : (
+                            <div style={{ gridColumn: "1 / -1" }}>
+                              <span style={{ color: "var(--text-muted)" }}>Total Orders:</span>
+                              <div style={{ fontWeight: 700, color: "var(--success)" }}>{memberOrders.length} Orders</div>
+                            </div>
+                          )}
+                        </div>
 
-                    <button
-                      onClick={() => setTrackingAsmMember(member)}
-                      className="btn btn-primary btn-sm"
-                      style={{ justifyContent: "center", fontSize: "0.8rem", fontWeight: 700 }}
-                    >
-                      {canViewFinancials ? (
-                        <><TrendingUp size={13} /> Track Sales ({formatInr(memberRevenue)})</>
-                      ) : (
-                        <><Truck size={13} /> View Dispatches & Performance</>
-                      )}
-                    </button>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "auto" }}>
+                          <button
+                            onClick={() => setAssigningTeamMember(member)}
+                            className="btn btn-secondary btn-sm"
+                            style={{ justifyContent: "center", fontSize: "0.8rem", color: "var(--primary)", borderColor: "var(--primary)", fontWeight: 700 }}
+                          >
+                            <UserCheck size={13} /> Assign Parties ({assignedParties.length})
+                          </button>
 
-                    <button
-                      onClick={() => setEditingTeamMember(member)}
-                      className="btn btn-secondary btn-sm"
-                      style={{ justifyContent: "center", fontSize: "0.8rem" }}
-                    >
-                      <Edit2 size={13} /> Edit Account
-                    </button>
+                          <button
+                            onClick={() => setTrackingAsmMember(member)}
+                            className="btn btn-primary btn-sm"
+                            style={{ justifyContent: "center", fontSize: "0.8rem", fontWeight: 700 }}
+                          >
+                            {canViewFinancials ? (
+                              <><TrendingUp size={13} /> Track Sales ({formatInr(memberRevenue)})</>
+                            ) : (
+                              <><Truck size={13} /> View Dispatches & Performance</>
+                            )}
+                          </button>
 
-                    <button
-                      onClick={() => {
-                        const newStatus = member.status === "active" ? "inactive" : "active";
-                        onUpdateUser(member.id, { status: newStatus });
-                      }}
-                      className={`btn btn-sm ${member.status === "active" ? "btn-danger" : "btn-success"}`}
-                      style={{ fontSize: "0.8rem", justifyContent: "center" }}
-                    >
-                      {member.status === "active" ? "Deactivate" : "Activate"}
-                    </button>
-                  </div>
+                          <button
+                            onClick={() => setEditingTeamMember(member)}
+                            className="btn btn-secondary btn-sm"
+                            style={{ justifyContent: "center", fontSize: "0.8rem" }}
+                          >
+                            <Edit2 size={13} /> Edit Account
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              const newStatus = member.status === "active" ? "inactive" : "active";
+                              onUpdateUser(member.id, { status: newStatus });
+                            }}
+                            className={`btn btn-sm ${member.status === "active" ? "btn-danger" : "btn-success"}`}
+                            style={{ fontSize: "0.8rem", justifyContent: "center" }}
+                          >
+                            {member.status === "active" ? "Deactivate" : "Activate"}
+                          </button>
+
+                          {isAdminOrOwner && (
+                            <button
+                              onClick={() => setTransferringAsmMember(member)}
+                              className="btn btn-sm"
+                              style={{
+                                gridColumn: "1 / -1",
+                                justifyContent: "center",
+                                fontSize: "0.8rem",
+                                background: "linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(168, 85, 247, 0.18))",
+                                color: "#c084fc",
+                                border: "1px solid rgba(192, 132, 252, 0.35)",
+                                fontWeight: 700,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px"
+                              }}
+                              title="Transfer this ASM/TSM to another CRM executive"
+                            >
+                              <Share2 size={13} /> Transfer to Another CRM
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               );
             })}
@@ -2497,6 +2601,9 @@ export default function CrmDashboard({
         <TeamMemberModal
           member={editingTeamMember}
           currentExecutive={activeExecutive || currentUser}
+          crmExecutives={crmExecutives}
+          isAdminOrOwner={isAdminOrOwner}
+          currentUser={currentUser}
           onSave={async (memberData) => {
             try {
               if (editingTeamMember) {
@@ -2537,7 +2644,7 @@ export default function CrmDashboard({
       {assigningTeamMember && (
         <AssignPartiesModal
           teamMember={assigningTeamMember}
-          allParties={crmParties}
+          allParties={isCrmUser ? currentParties : crmParties}
           onAssign={async (partyIds) => {
             try {
               const isAsm = assigningTeamMember.role === "asm";
@@ -2555,6 +2662,41 @@ export default function CrmDashboard({
             }
           }}
           onClose={() => setAssigningTeamMember(null)}
+        />
+      )}
+
+      {/* ==================== MODAL: TRANSFER ASM / TSM TO ANOTHER CRM ==================== */}
+      {transferringAsmMember && (
+        <TransferAsmCrmModal
+          member={transferringAsmMember}
+          crmExecutives={crmExecutives}
+          allParties={crmParties}
+          onTransfer={async (member, targetCrmId, partiesToTransfer) => {
+            try {
+              const targetCrm = crmExecutives.find(c => c.id === targetCrmId);
+              const targetName = targetCrm?.name || "CRM Executive";
+
+              // 1. Update ASM/TSM parentCrmId
+              await onUpdateUser(member.id, { parentCrmId: targetCrmId });
+
+              // 2. Optionally update assigned parties to this new CRM
+              if (partiesToTransfer && partiesToTransfer.length > 0) {
+                for (const p of partiesToTransfer) {
+                  await onUpdateParty({
+                    ...p,
+                    assignedCrmId: targetCrmId,
+                    assignedCrmName: targetName
+                  });
+                }
+              }
+
+              showSuccessToast(`✅ Transferred ${member.name} (${member.role?.toUpperCase()}) to ${targetName} successfully!`);
+              setTransferringAsmMember(null);
+            } catch (err) {
+              showErrorToast("Transfer failed: " + (err.message || "Unknown error"));
+            }
+          }}
+          onClose={() => setTransferringAsmMember(null)}
         />
       )}
 
@@ -3928,18 +4070,140 @@ function CategoryRemarksHistoryModal({ target, crmPartyRemarks = [], currentUser
   );
 }
 
+// ==================== SUB-COMPONENT: TRANSFER ASM / TSM TO ANOTHER CRM MODAL ====================
+function TransferAsmCrmModal({ member, crmExecutives = [], allParties = [], onTransfer, onClose }) {
+  const currentParentId = member?.parentCrmId || (member?.name?.toLowerCase().includes("ashutosh") ? "u-ankita" : "");
+  const currentCrm = crmExecutives.find(c => c.id === currentParentId) || { name: currentParentId === "u-ankita" ? "Ankita" : "Unassigned", id: currentParentId };
+  
+  const destinationOptions = crmExecutives.filter(c => c.id !== currentParentId);
+  const [targetCrmId, setTargetCrmId] = useState(destinationOptions[0]?.id || "");
+  const [transferPartiesToo, setTransferPartiesToo] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  const mId = member?.id;
+  const mName = (member?.name || "").trim().toLowerCase();
+  const assignedParties = allParties.filter(p => {
+    if (member?.role === "asm") {
+      return p.assignedAsmId === mId || (p.assignedAsmName && p.assignedAsmName.trim().toLowerCase() === mName);
+    } else {
+      return p.assignedTsmId === mId || (p.assignedTsmName && p.assignedTsmName.trim().toLowerCase() === mName);
+    }
+  });
+
+  const handleConfirm = async (e) => {
+    e.preventDefault();
+    if (!targetCrmId) return;
+    setSubmitting(true);
+    try {
+      await onTransfer(member, targetCrmId, transferPartiesToo ? assignedParties : []);
+      onClose();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "520px", padding: "26px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
+          <h3 style={{ fontSize: "1.2rem", fontWeight: 700, color: "var(--primary)", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+            <Share2 size={20} /> Transfer Sales Member to Another CRM
+          </h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={20} /></button>
+        </div>
+
+        <form onSubmit={handleConfirm} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div style={{ background: "rgba(0,0,0,0.25)", padding: "14px", borderRadius: "10px", border: "1px solid var(--border-glass)", display: "flex", flexDirection: "column", gap: "6px" }}>
+            <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Sales Team Member:</div>
+            <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "var(--text-main)" }}>
+              {member.name} <span className="badge" style={{ fontSize: "0.72rem", marginLeft: "6px" }}>{member.role?.toUpperCase()}</span>
+            </div>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{member.email}</div>
+
+            <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px solid var(--border-glass)", display: "flex", justifyContent: "space-between", fontSize: "0.82rem" }}>
+              <span style={{ color: "var(--text-muted)" }}>Current CRM Owner:</span>
+              <strong style={{ color: "#38bdf8" }}>{currentCrm.name}</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem" }}>
+              <span style={{ color: "var(--text-muted)" }}>Assigned Parties:</span>
+              <strong style={{ color: "var(--success)" }}>{assignedParties.length} Parties</strong>
+            </div>
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label" style={{ fontWeight: 700 }}>Transfer Ownership to New CRM Executive *</label>
+            <select
+              value={targetCrmId}
+              onChange={e => setTargetCrmId(e.target.value)}
+              className="form-control"
+              style={{ fontWeight: 700, color: "var(--primary)", height: "42px" }}
+              required
+            >
+              {destinationOptions.map(c => (
+                <option key={c.id} value={c.id}>
+                  💼 {c.name} ({c.email})
+                </option>
+              ))}
+            </select>
+            <small style={{ color: "var(--text-muted)", fontSize: "0.75rem", marginTop: "4px", display: "block" }}>
+              Once transferred, only the selected CRM executive (and Admins) will see and manage this sales member.
+            </small>
+          </div>
+
+          {assignedParties.length > 0 && (
+            <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer", background: "rgba(99, 102, 241, 0.08)", padding: "12px", borderRadius: "8px", border: "1px solid rgba(99, 102, 241, 0.2)" }}>
+              <input
+                type="checkbox"
+                checked={transferPartiesToo}
+                onChange={e => setTransferPartiesToo(e.target.checked)}
+                style={{ marginTop: "3px" }}
+              />
+              <span style={{ fontSize: "0.83rem", color: "var(--text-main)", lineHeight: 1.4 }}>
+                <strong>Also transfer all {assignedParties.length} assigned parties</strong> to this new CRM executive so their CRM ownership stays in sync.
+              </span>
+            </label>
+          )}
+
+          <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
+            <button
+              type="submit"
+              disabled={submitting || !targetCrmId}
+              className="btn btn-primary"
+              style={{ flex: 1, padding: "10px", fontWeight: 700, display: "inline-flex", justifyContent: "center", alignItems: "center", gap: "6px" }}
+            >
+              <Check size={16} /> {submitting ? "Transferring..." : "Complete CRM Transfer"}
+            </button>
+            <button type="button" onClick={onClose} disabled={submitting} className="btn btn-secondary">
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ==================== SUB-COMPONENT: ASM / TSM TEAM CREATION MODAL ====================
-function TeamMemberModal({ member, currentExecutive, onSave, onClose }) {
+function TeamMemberModal({ member, currentExecutive, crmExecutives = [], isAdminOrOwner = false, currentUser, onSave, onClose }) {
+  const defaultParent = member?.parentCrmId || 
+    (member?.name?.toLowerCase().includes("ashutosh") ? "u-ankita" : "") ||
+    (currentUser?.role === "crm" ? currentUser.id : (currentExecutive?.id || "u-ankita"));
+
   const [name, setName] = useState(member?.name || "");
   const [email, setEmail] = useState(member?.email || "");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState(member?.role || "asm");
   const [phone, setPhone] = useState(member?.phone || "");
   const [territory, setTerritory] = useState(member?.territory || "");
+  const [parentCrmId, setParentCrmId] = useState(defaultParent);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!name.trim() || !email.trim()) return;
+
+    const effectiveParentCrmId = isAdminOrOwner 
+      ? (parentCrmId || "u-ankita")
+      : (currentUser?.role === "crm" ? currentUser.id : (currentExecutive?.id || "u-ankita"));
 
     onSave({
       ...(member || {}),
@@ -3950,9 +4214,11 @@ function TeamMemberModal({ member, currentExecutive, onSave, onClose }) {
       designation: role === "asm" ? "Area Sales Manager (ASM)" : "Territory Sales Manager (TSM)",
       phone: phone.trim(),
       territory: territory.trim(),
-      parentCrmId: currentExecutive?.id || "u-ankita"
+      parentCrmId: effectiveParentCrmId
     });
   };
+
+  const assignedCrmObj = crmExecutives.find(c => c.id === (isAdminOrOwner ? parentCrmId : (currentUser?.role === "crm" ? currentUser.id : defaultParent)));
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -3965,6 +4231,31 @@ function TeamMemberModal({ member, currentExecutive, onSave, onClose }) {
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          {isAdminOrOwner ? (
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" style={{ fontWeight: 700 }}>Assigned CRM Executive *</label>
+              <select
+                value={parentCrmId}
+                onChange={e => setParentCrmId(e.target.value)}
+                className="form-control"
+                style={{ fontWeight: 600 }}
+              >
+                {crmExecutives.map(c => (
+                  <option key={c.id} value={c.id}>
+                    💼 {c.name} ({c.email})
+                  </option>
+                ))}
+              </select>
+              <small style={{ color: "var(--text-muted)", fontSize: "0.74rem", marginTop: "2px", display: "block" }}>
+                This sales member will strictly belong to and be visible only under this CRM.
+              </small>
+            </div>
+          ) : (
+            <div style={{ padding: "8px 12px", background: "rgba(99, 102, 241, 0.08)", border: "1px solid rgba(99, 102, 241, 0.2)", borderRadius: "8px", fontSize: "0.82rem", color: "var(--text-muted)" }}>
+              💼 Owning CRM: <strong style={{ color: "var(--primary)" }}>{assignedCrmObj?.name || currentUser?.name || "My CRM"}</strong> (Only you will see this member)
+            </div>
+          )}
+
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Full Name *</label>
             <input type="text" required placeholder="e.g. Vikram Sharma" value={name} onChange={e => setName(e.target.value)} className="form-control" />
