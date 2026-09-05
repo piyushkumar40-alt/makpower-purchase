@@ -1893,21 +1893,44 @@ function normalizeFgCategory(cat = "", itemDesc = "", itemType = "") {
     if (combined.includes("car charge") || combined.includes("car")) return "Car Charger";
     if (combined.includes("watch")) return "Smart Watch";
     return "Other";
-  }
-
   return "Other";
 }
 
-async function syncPartyCategoryMonthlySales() {
+// Live dynamic calculation of 4-month category sales directly from ims_transactions & crm_sales_orders
+async function getLivePartyCategoryMonthlySales() {
   const targetMonths = get4TargetMonths();
   const targetMonthKeys = new Set(targetMonths.map(m => m.key));
-  const minMonth = targetMonths[0].key; // 4 months ago start
 
   if (isPg) {
     try {
-      // Items category & type lookup directly from Item Catalog
+      const [itemsRes, imsRes, ordersRes] = await Promise.all([
+        pool.query(`SELECT "id", "name", "category", "itemType" FROM items`),
+        pool.query(`
+          SELECT 
+            TRIM("partyName") AS "partyName",
+            "itemName",
+            "itemId",
+            "date",
+            ABS("stockQty") AS "qty"
+          FROM ims_transactions
+          WHERE "partyName" IS NOT NULL 
+            AND TRIM("partyName") <> '' 
+            AND TRIM("partyName") <> '—'
+            AND "stockQty" < 0
+        `),
+        pool.query(`
+          SELECT 
+            TRIM("partyName") AS "partyName",
+            "category",
+            "itemModel",
+            "orderDate",
+            "orderQty",
+            "totalInr"
+          FROM crm_sales_orders
+        `)
+      ]);
+
       const itemMap = new Map();
-      const itemsRes = await pool.query(`SELECT "id", "name", "category", "itemType" FROM items`);
       (itemsRes.rows || []).forEach(it => {
         const cat = it.category || "";
         const itemType = it.itemType || "";
@@ -1927,22 +1950,6 @@ async function syncPartyCategoryMonthlySales() {
         }
       });
 
-      // Query dispatches from ims_transactions
-      const imsRes = await pool.query(`
-        SELECT 
-          TRIM("partyName") AS "partyName",
-          "itemName",
-          "itemId",
-          "date",
-          ABS("stockQty") AS "qty"
-        FROM ims_transactions
-        WHERE "partyName" IS NOT NULL 
-          AND TRIM("partyName") <> '' 
-          AND TRIM("partyName") <> '—'
-          AND "stockQty" < 0
-      `);
-
-      // Party category month aggregation map
       const agg = new Map();
 
       (imsRes.rows || []).forEach(r => {
@@ -1956,10 +1963,8 @@ async function syncPartyCategoryMonthlySales() {
         const rawItemId = String(r.itemId || "").trim().toLowerCase();
         const cleanItemId = rawItemId.replace(/^#+/, "");
         
-        // Prioritize exact item name match over item ID
         const itInfo = itemMap.get(rawName) || itemMap.get(cleanName) || itemMap.get(rawItemId) || itemMap.get(cleanItemId) || itemMap.get('#' + cleanItemId) || { category: "", itemType: "" };
         
-        // Take category from Item Catalog & Stock, take only FG
         const cat = normalizeFgCategory(itInfo.category, r.itemName || "", itInfo.itemType);
         if (!cat) return;
 
@@ -1971,18 +1976,6 @@ async function syncPartyCategoryMonthlySales() {
         entry.qty += parseInt(r.qty) || 0;
         entry.orderCount += 1;
       });
-
-      // Also aggregate from crm_sales_orders
-      const ordersRes = await pool.query(`
-        SELECT 
-          TRIM("partyName") AS "partyName",
-          "category",
-          "itemModel",
-          "orderDate",
-          "orderQty",
-          "totalInr"
-        FROM crm_sales_orders
-      `);
 
       (ordersRes.rows || []).forEach(o => {
         const pName = (o.partyName || "").trim();
@@ -1998,55 +1991,29 @@ async function syncPartyCategoryMonthlySales() {
           agg.set(key, { partyName: pName, category: cat, month, qty: 0, revenue: 0, orderCount: 0 });
         }
         const entry = agg.get(key);
-        // Only add if not already populated from IMS dispatches
         if (entry.qty === 0) {
           entry.qty += parseInt(o.orderQty) || 0;
         }
         entry.revenue += parseFloat(o.totalInr) || 0;
       });
 
-      // Clear & Upsert into crm_party_category_monthly_sales table
-      await pool.query(`TRUNCATE TABLE crm_party_category_monthly_sales`);
-      
-      const valuesList = Array.from(agg.values());
-      const nowIso = new Date().toISOString();
-      const batchSize = 100;
-      
-      for (let i = 0; i < valuesList.length; i += batchSize) {
-        const chunk = valuesList.slice(i, i + batchSize);
-        const params = [];
-        const valueClauses = chunk.map((val, cIdx) => {
-          const id = `pcs_${crypto.createHash('md5').update(`${val.partyName}___${val.category}___${val.month}`).digest('hex')}`;
-          const offset = cIdx * 8;
-          params.push(id, val.partyName, val.category, val.month, val.qty, val.revenue, val.orderCount, nowIso);
-          return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`;
-        });
-        
-        await pool.query(`
-          INSERT INTO crm_party_category_monthly_sales ("id", "partyName", "category", "month", "salesQty", "salesRevenue", "orderCount", "updatedAt")
-          VALUES ${valueClauses.join(", ")}
-          ON CONFLICT ("id") DO UPDATE SET 
-            "salesQty" = EXCLUDED."salesQty", 
-            "salesRevenue" = EXCLUDED."salesRevenue", 
-            "orderCount" = EXCLUDED."orderCount", 
-            "updatedAt" = EXCLUDED."updatedAt"
-        `, params);
-      }
-
-      console.log(`Synced ${agg.size} party category monthly sales records across 4 months (${minMonth} to ${targetMonths[3].key})`);
-      return { success: true, recordCount: agg.size };
+      return Array.from(agg.values()).map(v => ({
+        id: `pcs_${crypto.createHash('md5').update(`${v.partyName}___${v.category}___${v.month}`).digest('hex')}`,
+        partyName: v.partyName,
+        category: v.category,
+        month: v.month,
+        salesQty: Number(v.qty || 0),
+        salesRevenue: Number(v.revenue || 0),
+        orderCount: Number(v.orderCount || 0)
+      }));
     } catch (err) {
-      console.error("Error in syncPartyCategoryMonthlySales (PG):", err.message);
-      throw err;
+      console.error("Error in getLivePartyCategoryMonthlySales (PG):", err.message);
+      return [];
     }
   } else {
-    // Local JSON
+    // Local JSON live aggregation directly from current transactions & orders
     const data = readLocalJson();
-    const targetMonths = get4TargetMonths();
-    const targetMonthKeys = new Set(targetMonths.map(m => m.key));
-    const minMonth = targetMonths[0].key;
     const agg = new Map();
-
     const itemMap = new Map();
     (data.items || []).forEach(it => {
       const cat = it.category || "";
@@ -2074,12 +2041,83 @@ async function syncPartyCategoryMonthlySales() {
       }
     });
 
-    data.crmPartyCategoryMonthlySales = Array.from(agg.values()).map(v => ({
-      id: `pcs-${v.partyName}-${v.category}-${v.month}`,
+    (data.crmSalesOrders || []).forEach(o => {
+      const pName = (o.partyName || "").trim();
+      const month = extractYearMonthFromAnyDate(o.orderDate);
+      if (pName && targetMonthKeys.has(month)) {
+        const cat = normalizeFgCategory(o.category, o.itemModel || "");
+        if (cat) {
+          const key = `${pName}___${cat}___${month}`;
+          if (!agg.has(key)) {
+            agg.set(key, { partyName: pName, category: cat, month, salesQty: 0, salesRevenue: 0, orderCount: 0 });
+          }
+          const e = agg.get(key);
+          if (e.salesQty === 0) {
+            e.salesQty += parseInt(o.orderQty) || 0;
+          }
+          e.salesRevenue += parseFloat(o.totalInr) || 0;
+        }
+      }
+    });
+
+    return Array.from(agg.values()).map(v => ({
+      id: `pcs_${v.partyName}_${v.category}_${v.month}`,
+      partyName: v.partyName,
+      category: v.category,
+      month: v.month,
+      salesQty: Number(v.salesQty || 0),
+      salesRevenue: Number(v.salesRevenue || 0),
+      orderCount: Number(v.orderCount || 0)
+    }));
+  }
+}
+
+async function syncPartyCategoryMonthlySales() {
+  const targetMonths = get4TargetMonths();
+  const minMonth = targetMonths[0].key;
+  const list = await getLivePartyCategoryMonthlySales();
+
+  if (isPg) {
+    try {
+      await pool.query(`TRUNCATE TABLE crm_party_category_monthly_sales`);
+      
+      const nowIso = new Date().toISOString();
+      const batchSize = 100;
+      
+      for (let i = 0; i < list.length; i += batchSize) {
+        const chunk = list.slice(i, i + batchSize);
+        const params = [];
+        const valueClauses = chunk.map((val, cIdx) => {
+          const offset = cIdx * 8;
+          params.push(val.id, val.partyName, val.category, val.month, val.salesQty, val.salesRevenue, val.orderCount, nowIso);
+          return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`;
+        });
+        
+        await pool.query(`
+          INSERT INTO crm_party_category_monthly_sales ("id", "partyName", "category", "month", "salesQty", "salesRevenue", "orderCount", "updatedAt")
+          VALUES ${valueClauses.join(", ")}
+          ON CONFLICT ("id") DO UPDATE SET 
+            "salesQty" = EXCLUDED."salesQty", 
+            "salesRevenue" = EXCLUDED."salesRevenue", 
+            "orderCount" = EXCLUDED."orderCount", 
+            "updatedAt" = EXCLUDED."updatedAt"
+        `, params);
+      }
+
+      console.log(`Synced ${list.length} party category monthly sales records across 4 months (${minMonth} to ${targetMonths[3].key})`);
+      return { success: true, recordCount: list.length, sales: list };
+    } catch (err) {
+      console.error("Error in syncPartyCategoryMonthlySales (PG):", err.message);
+      return { success: false, sales: list };
+    }
+  } else {
+    const data = readLocalJson();
+    data.crmPartyCategoryMonthlySales = list.map(v => ({
       ...v,
       updatedAt: new Date().toISOString()
     }));
     writeLocalJson(data);
+    return { success: true, recordCount: list.length, sales: list };
   }
 }
 
@@ -2154,7 +2192,7 @@ app.get("/api/state", async (req, res) => {
         crmPartiesRes,
         designationsRes,
         itemPricesRes,
-        partyCatSalesRes
+        partyCatSalesList
       ] = await Promise.all([
         pool.query("SELECT * FROM users"),
         pool.query("SELECT * FROM vendors"),
@@ -2166,7 +2204,7 @@ app.get("/api/state", async (req, res) => {
         pool.query(crmPartiesQuery, crmPartiesParams),
         pool.query("SELECT * FROM designations"),
         pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC"),
-        pool.query("SELECT * FROM crm_party_category_monthly_sales ORDER BY \"salesQty\" DESC")
+        getLivePartyCategoryMonthlySales()
       ]);
 
       const rawParties = crmPartiesRes.rows || [];
@@ -2314,12 +2352,7 @@ app.get("/api/state", async (req, res) => {
         })),
         crmPartyRemarks: crmPartyRemarksRes?.rows || [],
         partyCategoryMonths: get4TargetMonths(),
-        partyCategoryMonthlySales: (partyCatSalesRes?.rows || []).map(r => ({
-          ...r,
-          salesQty: Number(r.salesQty || 0),
-          salesRevenue: Number(r.salesRevenue || 0),
-          orderCount: Number(r.orderCount || 0)
-        }))
+        partyCategoryMonthlySales: partyCatSalesList || []
       };
 
       if (!isRestrictedRole) {
@@ -2338,6 +2371,7 @@ app.get("/api/state", async (req, res) => {
   } else {
     const data = readLocalJson();
     const imsSummary = await calculateImsFullSummary();
+    const livePartySales = await getLivePartyCategoryMonthlySales();
     if (isRestrictedRole && (userId || userName)) {
       const effectiveId = userId || "";
       const cleanName = (userName || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
@@ -2369,12 +2403,16 @@ app.get("/api/state", async (req, res) => {
         crmSalesOrders: (data.crmSalesOrders || []).filter(o => (partyIdSet.has(o.partyId) || partyNameSet.has((o.partyName || "").trim().toLowerCase())) && (!isAsmTsmRole || !o.orderDate || o.orderDate >= cutoffDate3Mo)),
         crmDispatches: (data.crmDispatches || []).filter(d => (partyIdSet.has(d.partyId) || partyNameSet.has((d.partyName || "").trim().toLowerCase())) && (!isAsmTsmRole || !d.dispatchDate || d.dispatchDate >= cutoffDate3Mo)),
         crmPartyRemarks: (data.crmPartyRemarks || []).filter(r => partyIdSet.has(r.partyId) || partyNameSet.has((r.partyName || "").trim().toLowerCase())),
+        partyCategoryMonths: get4TargetMonths(),
+        partyCategoryMonthlySales: livePartySales,
         imsTransactions: (data.imsTransactions || []).slice(0, 1000),
         imsSummary
       });
     }
     res.json({
       ...data,
+      partyCategoryMonths: get4TargetMonths(),
+      partyCategoryMonthlySales: livePartySales,
       imsTransactions: (data.imsTransactions || []).slice(0, 1000),
       imsSummary
     });
@@ -3864,57 +3902,27 @@ app.get("/api/crm/party-remarks", async (req, res) => {
   }
 });
 
-// GET /api/crm/party-category-sales - Returns 4-month category sales matrix for parties
+// GET /api/crm/party-category-sales - Returns 4-month category sales matrix for parties (100% LIVE directly from IMS transactions)
 app.get("/api/crm/party-category-sales", async (req, res) => {
   const { partyName, partyId } = req.query;
   const targetMonths = get4TargetMonths();
-  if (isPg) {
-    try {
-      let query = 'SELECT * FROM crm_party_category_monthly_sales';
-      const conditions = [];
-      const values = [];
-      let idx = 1;
-      if (partyName) {
-        conditions.push(`("partyName" ILIKE $${idx} OR $${idx} ILIKE '%' || "partyName" || '%')`);
-        values.push(`%${partyName.trim()}%`);
-        idx++;
-      }
-      if (partyId) {
-        conditions.push(`"partyId" = $${idx}`);
-        values.push(partyId);
-        idx++;
-      }
-      if (conditions.length > 0) {
-        query += " WHERE " + conditions.join(" AND ");
-      }
-      query += ' ORDER BY "salesQty" DESC';
-      const result = await pool.query(query, values);
-      res.json({
-        success: true,
-        months: targetMonths,
-        sales: (result.rows || []).map(r => ({
-          ...r,
-          salesQty: Number(r.salesQty || 0),
-          salesRevenue: Number(r.salesRevenue || 0),
-          orderCount: Number(r.orderCount || 0)
-        }))
-      });
-    } catch (err) {
-      console.error("GET /api/crm/party-category-sales error:", err.message);
-      res.status(500).json({ error: "Failed to fetch party category monthly sales." });
-    }
-  } else {
-    const data = readLocalJson();
-    let list = data.crmPartyCategoryMonthlySales || [];
+  try {
+    let sales = await getLivePartyCategoryMonthlySales();
     if (partyName) {
       const pNorm = partyName.trim().toLowerCase();
-      list = list.filter(r => (r.partyName || "").toLowerCase().includes(pNorm) || pNorm.includes((r.partyName || "").toLowerCase()));
+      sales = sales.filter(r => (r.partyName || "").toLowerCase().includes(pNorm) || pNorm.includes((r.partyName || "").toLowerCase()));
+    }
+    if (partyId) {
+      sales = sales.filter(r => r.partyId === partyId || (r.id && r.id.includes(partyId)));
     }
     res.json({
       success: true,
       months: targetMonths,
-      sales: list
+      sales
     });
+  } catch (err) {
+    console.error("GET /api/crm/party-category-sales error:", err.message);
+    res.status(500).json({ error: "Failed to fetch party category monthly sales: " + err.message });
   }
 });
 
