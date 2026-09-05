@@ -3918,15 +3918,81 @@ app.get("/api/crm/party-category-sales", async (req, res) => {
   }
 });
 
-// POST /api/crm/party-category-sales/sync - Re-calculates and syncs 4-month party sales
+// POST /api/crm/party-category-sales/sync - Re-calculates and syncs 4-month party sales directly from database
 app.post("/api/crm/party-category-sales/sync", async (req, res) => {
   try {
+    invalidateStateCache();
     await syncPartyCategoryMonthlySales();
     const targetMonths = get4TargetMonths();
-    res.json({ success: true, message: "Party category monthly sales synced successfully.", months: targetMonths });
+    let sales = [];
+    if (isPg) {
+      const partyCatSalesRes = await pool.query(`SELECT * FROM crm_party_category_monthly_sales ORDER BY "salesQty" DESC`);
+      sales = (partyCatSalesRes?.rows || []).map(r => ({
+        ...r,
+        salesQty: Number(r.salesQty || 0),
+        salesRevenue: Number(r.salesRevenue || 0),
+        orderCount: Number(r.orderCount || 0)
+      }));
+    } else {
+      const data = readLocalJson();
+      sales = data.crmPartyCategoryMonthlySales || [];
+    }
+    res.json({ success: true, message: "Party category monthly sales synced successfully.", months: targetMonths, sales });
   } catch (err) {
     console.error("POST /api/crm/party-category-sales/sync error:", err.message);
-    res.status(500).json({ error: "Failed to sync party category sales." });
+    res.status(500).json({ error: "Failed to sync party category sales: " + err.message });
+  }
+});
+
+// POST /api/crm/party-category-sales/purge-month - Completely purge all data for a specific month (e.g. "2026-08")
+app.post("/api/crm/party-category-sales/purge-month", async (req, res) => {
+  const { month } = req.body;
+  if (!month) {
+    return res.status(400).json({ error: "Month parameter is required (e.g. '2026-08')." });
+  }
+  const cleanMonth = String(month).trim();
+  invalidateStateCache();
+
+  if (isPg) {
+    try {
+      // 1. Delete from precalculated aggregate table
+      const d1 = await pool.query(`DELETE FROM crm_party_category_monthly_sales WHERE "month" = $1 OR "month" LIKE $2`, [cleanMonth, `%${cleanMonth}%`]);
+      // 2. Delete from ims_transactions
+      const d2 = await pool.query(`DELETE FROM ims_transactions WHERE "date" LIKE $1`, [`${cleanMonth}%`]);
+      // 3. Delete from crm_sales_orders
+      const d3 = await pool.query(`DELETE FROM crm_sales_orders WHERE "orderDate" LIKE $1`, [`${cleanMonth}%`]);
+      // 4. Delete from crm_dispatches
+      const d4 = await pool.query(`DELETE FROM crm_dispatches WHERE "dispatchDate" LIKE $1`, [`${cleanMonth}%`]);
+
+      imsFullSummaryCache = null;
+      await syncPartyCategoryMonthlySales();
+
+      const partyCatSalesRes = await pool.query(`SELECT * FROM crm_party_category_monthly_sales ORDER BY "salesQty" DESC`);
+      const sales = (partyCatSalesRes?.rows || []).map(r => ({
+        ...r,
+        salesQty: Number(r.salesQty || 0),
+        salesRevenue: Number(r.salesRevenue || 0),
+        orderCount: Number(r.orderCount || 0)
+      }));
+
+      res.json({
+        success: true,
+        message: `Purged data for ${cleanMonth}: ${d1.rowCount} monthly records, ${d2.rowCount} IMS records, ${d3.rowCount} orders, ${d4.rowCount} dispatches deleted.`,
+        sales
+      });
+    } catch (err) {
+      console.error("Purge month error:", err.message);
+      res.status(500).json({ error: "Failed to purge month data: " + err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    data.crmPartyCategoryMonthlySales = (data.crmPartyCategoryMonthlySales || []).filter(r => r.month !== cleanMonth && !r.month.includes(cleanMonth));
+    data.imsTransactions = (data.imsTransactions || []).filter(t => !String(t.date || "").startsWith(cleanMonth));
+    data.crmSalesOrders = (data.crmSalesOrders || []).filter(o => !String(o.orderDate || "").startsWith(cleanMonth));
+    data.crmDispatches = (data.crmDispatches || []).filter(d => !String(d.dispatchDate || "").startsWith(cleanMonth));
+    writeLocalJson(data);
+    await syncPartyCategoryMonthlySales();
+    res.json({ success: true, message: `Purged month ${cleanMonth}`, sales: data.crmPartyCategoryMonthlySales });
   }
 });
 
@@ -4600,6 +4666,9 @@ app.post("/api/ims/transactions/delete-range", async (req, res) => {
     if (isPg) {
       try {
         await pool.query('DELETE FROM ims_transactions');
+        await pool.query('TRUNCATE TABLE crm_party_category_monthly_sales');
+        imsFullSummaryCache = null;
+        invalidateStateCache();
         return res.json({ success: true, count: 0 });
       } catch (err) {
         console.error("PURGE IMS error:", err.message);
@@ -4608,6 +4677,7 @@ app.post("/api/ims/transactions/delete-range", async (req, res) => {
     } else {
       const data = readLocalJson();
       data.imsTransactions = [];
+      data.crmPartyCategoryMonthlySales = [];
       writeLocalJson(data);
       return res.json({ success: true, count: 0 });
     }
@@ -4617,6 +4687,9 @@ app.post("/api/ims/transactions/delete-range", async (req, res) => {
     if (isPg) {
       try {
         const deleteRes = await pool.query('DELETE FROM ims_transactions WHERE "id" = ANY($1::text[])', [ids]);
+        imsFullSummaryCache = null;
+        invalidateStateCache();
+        try { await syncPartyCategoryMonthlySales(); } catch (e) {}
         return res.json({ success: true, count: deleteRes.rowCount || ids.length });
       } catch (err) {
         console.error("DELETE IMS IDs error:", err.message);
@@ -4628,6 +4701,7 @@ app.post("/api/ims/transactions/delete-range", async (req, res) => {
       data.imsTransactions = (data.imsTransactions || []).filter(t => !ids.includes(t.id));
       const deletedCount = initialCount - data.imsTransactions.length;
       writeLocalJson(data);
+      await syncPartyCategoryMonthlySales();
       return res.json({ success: true, count: deletedCount });
     }
   }
@@ -4638,6 +4712,9 @@ app.post("/api/ims/transactions/delete-range", async (req, res) => {
     if (isPg) {
       try {
         const deleteRes = await pool.query('DELETE FROM ims_transactions WHERE LOWER("location") = LOWER($1)', [locClean]);
+        imsFullSummaryCache = null;
+        invalidateStateCache();
+        try { await syncPartyCategoryMonthlySales(); } catch (e) {}
         return res.json({ success: true, count: deleteRes.rowCount || 0 });
       } catch (err) {
         console.error("DELETE IMS by location error:", err.message);
@@ -4649,6 +4726,7 @@ app.post("/api/ims/transactions/delete-range", async (req, res) => {
       data.imsTransactions = (data.imsTransactions || []).filter(t => (t.location || "Delhi").trim().toLowerCase() !== locClean.toLowerCase());
       const deletedCount = initialCount - data.imsTransactions.length;
       writeLocalJson(data);
+      await syncPartyCategoryMonthlySales();
       return res.json({ success: true, count: deletedCount });
     }
   }
@@ -4666,6 +4744,13 @@ app.post("/api/ims/transactions/delete-range", async (req, res) => {
         params.push(String(location).trim());
       }
       const deleteRes = await pool.query(deleteSql, params);
+      imsFullSummaryCache = null;
+      invalidateStateCache();
+      try {
+        await syncPartyCategoryMonthlySales();
+      } catch (syncErr) {
+        console.warn("syncPartyCategoryMonthlySales notice on range delete:", syncErr.message);
+      }
       res.json({ success: true, count: deleteRes.rowCount || 0 });
     } catch (err) {
       console.error("DELETE IMS date range error:", err.message);
@@ -4681,6 +4766,7 @@ app.post("/api/ims/transactions/delete-range", async (req, res) => {
     });
     const deletedCount = initialCount - data.imsTransactions.length;
     writeLocalJson(data);
+    await syncPartyCategoryMonthlySales();
     res.json({ success: true, count: deletedCount });
   }
 });

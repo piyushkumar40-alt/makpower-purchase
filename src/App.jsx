@@ -157,6 +157,7 @@ export default function App() {
 
   const handleHardCacheRefresh = async () => {
     try {
+      localStorage.removeItem("makpower_app_state_cache");
       if ("caches" in window) {
         const keys = await caches.keys();
         await Promise.all(keys.map(k => caches.delete(k)));
@@ -1203,6 +1204,26 @@ export default function App() {
     }
   };
 
+  const handleRefreshMonthlySales = async () => {
+    try {
+      const res = await postData("/api/crm/party-category-sales/sync", {});
+      if (res && res.success) {
+        if (Array.isArray(res.sales)) {
+          setPartyCategoryMonthlySales(res.sales);
+          try {
+            const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+            cached.partyCategoryMonthlySales = res.sales;
+            localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+          } catch (e) {}
+        }
+        return res;
+      }
+    } catch (err) {
+      console.error("Failed to sync monthly sales:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
   const handleAddSalesOrder = async (order) => {
     const res = await postData("/api/crm/sales-orders", order);
     if (res && res.success) {
@@ -1535,6 +1556,7 @@ export default function App() {
       if (res && res.success) {
         logSystemActivity("IMS_BULK_DELETE", `Bulk deleted ${res.count} IMS transactions`, "IMS", "bulk_delete");
         refreshImsSummary();
+        handleRefreshMonthlySales();
       }
       return res;
     } catch (err) {
@@ -2502,6 +2524,7 @@ export default function App() {
             onDeleteUser={handleDeleteUser}
             onLogout={handleLogout}
             onPullModuleData={pullModuleData}
+            onRefreshMonthlySales={handleRefreshMonthlySales}
             loadingModules={loadingModules}
             recordSectionVisit={recordSectionVisit}
             currentUserId={currentUser?.id}

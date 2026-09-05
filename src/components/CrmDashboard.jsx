@@ -70,6 +70,7 @@ export default function CrmDashboard({
   onUpdateUser,
   onLogout,
   onPullModuleData,
+  onRefreshMonthlySales = null,
   loadingModules = {},
   recordSectionVisit,
   currentUserId
@@ -2612,6 +2613,7 @@ export default function CrmDashboard({
           currentUser={currentUser}
           onSavePartyRemark={onSavePartyRemark}
           onDeletePartyRemark={onDeletePartyRemark}
+          onRefreshMonthlySales={onRefreshMonthlySales}
           canViewFinancials={canViewFinancials}
           onClose={() => setSelectedPartyFor360(null)}
         />
@@ -2630,6 +2632,7 @@ export default function CrmDashboard({
           currentUser={currentUser}
           onSavePartyRemark={onSavePartyRemark}
           onDeletePartyRemark={onDeletePartyRemark}
+          onRefreshMonthlySales={onRefreshMonthlySales}
           canViewFinancials={canViewFinancials}
           formatInr={formatInr}
           onClose={() => setSelectedPartyForCategoryStudio(null)}
@@ -3013,11 +3016,13 @@ function Party360Modal({
   currentUser,
   onSavePartyRemark,
   onDeletePartyRemark,
+  onRefreshMonthlySales = null,
   canViewFinancials = false, 
   onClose 
 }) {
   const [modalTab, setModalTab] = useState("category_matrix"); // "category_matrix" | "orders"
   const [activeRemarkModalTarget, setActiveRemarkModalTarget] = useState(null);
+  const [isSyncingSales, setIsSyncingSales] = useState(false);
 
   // Dynamic Last 4 Months (including current month)
   const last4Months = useMemo(() => {
@@ -3332,10 +3337,26 @@ function Party360Modal({
           <div>
             {/* Desktop Spreadsheet Table View */}
             <div className="desktop-table-view">
-              <div style={{ marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
                 <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
                   Track 4-month order & dispatch volumes and record category-wise field remarks.
                 </span>
+                {onRefreshMonthlySales && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setIsSyncingSales(true);
+                      await onRefreshMonthlySales();
+                      setIsSyncingSales(false);
+                    }}
+                    className="btn btn-ghost btn-sm"
+                    style={{ fontSize: "0.74rem", padding: "3px 9px", display: "inline-flex", alignItems: "center", gap: "5px", color: "var(--primary)", border: "1px solid var(--border-glass)", borderRadius: "6px" }}
+                    title="Recalculate & resync 4-month sales matrix directly from database"
+                    disabled={isSyncingSales}
+                  >
+                    <RefreshCw size={12} className={isSyncingSales ? "spin" : ""} /> {isSyncingSales ? "Syncing Database..." : "Sync Database Sales"}
+                  </button>
+                )}
               </div>
 
               <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%", borderRadius: "10px", border: "1px solid var(--border-glass)" }}>
@@ -3681,6 +3702,7 @@ function PartyMonthlyCategoryStudioModal({
   currentUser,
   onSavePartyRemark,
   onDeletePartyRemark,
+  onRefreshMonthlySales = null,
   canViewFinancials = false,
   formatInr,
   onClose
@@ -3688,6 +3710,7 @@ function PartyMonthlyCategoryStudioModal({
   const [remarkInputs, setRemarkInputs] = useState({});
   const [savingCategory, setSavingCategory] = useState(null);
   const [historyCategoryTarget, setHistoryCategoryTarget] = useState(null);
+  const [isSyncingSales, setIsSyncingSales] = useState(false);
   const { showSuccessToast, showErrorToast } = useLoading();
 
   // Dynamic Last 4 Months e.g. [Jun 26, Jul 26, Aug 26, Sep 26]
@@ -4074,6 +4097,27 @@ function PartyMonthlyCategoryStudioModal({
         </div>
 
         {/* 4-Month Category Matrix Table */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "8px" }}>
+          <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+            Monthly sales volumes aggregated by product category.
+          </span>
+          {onRefreshMonthlySales && (
+            <button
+              type="button"
+              onClick={async () => {
+                setIsSyncingSales(true);
+                await onRefreshMonthlySales();
+                setIsSyncingSales(false);
+              }}
+              className="btn btn-ghost btn-sm"
+              style={{ fontSize: "0.74rem", padding: "3px 9px", display: "inline-flex", alignItems: "center", gap: "5px", color: "var(--primary)", border: "1px solid var(--border-glass)", borderRadius: "6px" }}
+              title="Recalculate & resync 4-month sales matrix directly from database"
+              disabled={isSyncingSales}
+            >
+              <RefreshCw size={12} className={isSyncingSales ? "spin" : ""} /> {isSyncingSales ? "Syncing Database..." : "Sync Database Sales"}
+            </button>
+          )}
+        </div>
         <div style={{ overflowX: "auto" }}>
           <table className="table" style={{ width: "100%", fontSize: "0.85rem", minWidth: "950px" }}>
             <thead>
