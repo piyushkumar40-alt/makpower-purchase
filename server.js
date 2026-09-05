@@ -301,80 +301,69 @@ async function setupPgDatabase() {
       );
     `);
 
-    // Deduplicate crm_parties: Keep the LAST party name and delete duplicate above ones, then ensure name is PRIMARY KEY
+    // 1b. Deduplicate and ensure "name" is PRIMARY KEY and has UNIQUE constraint on crm_parties
     try {
+      // Clean up duplicates: keep the last row per name
+      await pool.query(`
+        DELETE FROM crm_parties
+        WHERE ctid NOT IN (
+          SELECT MAX(ctid)
+          FROM crm_parties
+          WHERE "name" IS NOT NULL AND TRIM("name") <> ''
+          GROUP BY LOWER(TRIM("name"))
+        );
+        DELETE FROM crm_parties WHERE "name" IS NULL OR TRIM("name") = '';
+        UPDATE crm_parties SET "name" = TRIM("name"), "id" = TRIM("name");
+      `);
+
+      // Ensure any old primary key constraint on "id" is dropped
+      await pool.query(`
+        DO $$
+        DECLARE
+          r RECORD;
+        BEGIN
+          FOR r IN (
+            SELECT conname 
+            FROM pg_constraint 
+            WHERE conrelid = 'crm_parties'::regclass AND contype = 'p'
+          ) LOOP
+            -- Check if current primary key is already on "name"
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint c
+              JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+              WHERE c.conname = r.conname AND c.conrelid = 'crm_parties'::regclass AND a.attname = 'name'
+            ) THEN
+              EXECUTE 'ALTER TABLE crm_parties DROP CONSTRAINT ' || quote_ident(r.conname) || ' CASCADE';
+            END IF;
+          END LOOP;
+        END $$;
+      `);
+
+      // Add primary key and unique constraint on "name"
       await pool.query(`
         DO $$
         BEGIN
-          -- 1. Deduplicate existing rows: keep the LAST row (highest ctid) for each duplicate party name
-          CREATE TEMP TABLE _kept_parties ON COMMIT DROP AS
-          SELECT "id", "name", ctid
-          FROM (
-            SELECT "id", "name", ctid,
-                   ROW_NUMBER() OVER (PARTITION BY LOWER(TRIM("name")) ORDER BY ctid DESC) as rn
-            FROM crm_parties
-            WHERE "name" IS NOT NULL AND TRIM("name") <> ''
-          ) t
-          WHERE rn = 1;
-
-          CREATE TEMP TABLE _dup_parties ON COMMIT DROP AS
-          SELECT cp."id" as old_id, kp."id" as new_id, kp."name" as new_name, cp.ctid as old_ctid
-          FROM crm_parties cp
-          JOIN _kept_parties kp ON LOWER(TRIM(cp."name")) = LOWER(TRIM(kp."name"))
-          WHERE cp.ctid <> kp.ctid;
-
-          -- Re-map foreign references from duplicate rows above to the kept last row
-          UPDATE crm_sales_orders so
-          SET "partyId" = dp.new_name, "partyName" = dp.new_name
-          FROM _dup_parties dp
-          WHERE so."partyId" = dp.old_id OR so."partyId" = dp.old_name;
-
-          UPDATE crm_dispatches d
-          SET "partyId" = dp.new_name, "partyName" = dp.new_name
-          FROM _dup_parties dp
-          WHERE d."partyId" = dp.old_id OR d."partyId" = dp.old_name;
-
-          UPDATE crm_party_remarks pr
-          SET "partyId" = dp.new_name, "partyName" = dp.new_name
-          FROM _dup_parties dp
-          WHERE pr."partyId" = dp.old_id OR pr."partyId" = dp.old_name;
-
-          -- Delete duplicate rows above the last one
-          DELETE FROM crm_parties
-          WHERE ctid IN (SELECT old_ctid FROM _dup_parties);
-
-          -- Remove any invalid null or empty names
-          DELETE FROM crm_parties WHERE "name" IS NULL OR TRIM("name") = '';
-
-          -- 2. Synchronize id = name and make name the PRIMARY KEY
-          UPDATE crm_parties SET "name" = TRIM("name"), "id" = TRIM("name");
-
-          -- Drop old pkey on id if it exists
-          IF EXISTS (
-            SELECT 1 FROM pg_constraint c
-            JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
-            WHERE c.conname = 'crm_parties_pkey' AND c.conrelid = 'crm_parties'::regclass AND a.attname = 'id'
-          ) THEN
-            ALTER TABLE crm_parties DROP CONSTRAINT crm_parties_pkey;
-          END IF;
-
-          -- Add primary key on name if not already primary key
           IF NOT EXISTS (
-            SELECT 1 FROM pg_constraint c
-            JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
-            WHERE c.conrelid = 'crm_parties'::regclass AND c.contype = 'p' AND a.attname = 'name'
+            SELECT 1 FROM pg_constraint
+            WHERE conrelid = 'crm_parties'::regclass AND contype = 'p'
           ) THEN
             ALTER TABLE crm_parties ALTER COLUMN "name" SET NOT NULL;
             ALTER TABLE crm_parties ADD PRIMARY KEY ("name");
           END IF;
+
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conrelid = 'crm_parties'::regclass AND conname = 'crm_parties_name_unique'
+          ) THEN
+            ALTER TABLE crm_parties ADD CONSTRAINT crm_parties_name_unique UNIQUE ("name");
+          END IF;
         END $$;
       `);
 
-      // Unique index on LOWER(TRIM(name)) for case-insensitive uniqueness guarantee
       await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_parties_name_unique ON crm_parties (LOWER(TRIM("name")));`);
-      console.log("CRM parties schema verified: name is primary key and unique constraint enforced.");
+      console.log("CRM parties schema verified: name is PRIMARY KEY and UNIQUE constraint active.");
     } catch (migErr) {
-      console.warn("CRM parties deduplication / primary key migration note:", migErr.message);
+      console.error("CRM parties deduplication / primary key migration error:", migErr.message);
     }
 
     await pool.query(`
@@ -3246,11 +3235,25 @@ app.post("/api/crm/parties", async (req, res) => {
         partyObj.paymentTerms, partyObj.assignedCrmId, partyObj.assignedCrmName, partyObj.assignedAsmId,
         partyObj.assignedAsmName, partyObj.assignedTsmId, partyObj.assignedTsmName, partyObj.status, partyObj.createdAt
       ];
-      await pool.query(query, values);
+      try {
+        await pool.query(query, values);
+      } catch (insertErr) {
+        // Fallback if constraint differs: update existing by name or insert
+        const updateRes = await pool.query(
+          `UPDATE crm_parties SET "contactPerson" = $1, "phone" = $2, "email" = $3, "city" = $4, "state" = $5, "gstin" = $6, "creditLimit" = $7, "outstanding" = $8, "paymentTerms" = $9, "assignedCrmId" = $10, "assignedCrmName" = $11, "assignedAsmId" = $12, "assignedAsmName" = $13, "assignedTsmId" = $14, "assignedTsmName" = $15, "status" = $16 WHERE LOWER(TRIM("name")) = LOWER(TRIM($17))`,
+          [partyObj.contactPerson, partyObj.phone, partyObj.email, partyObj.city, partyObj.state, partyObj.gstin, partyObj.creditLimit, partyObj.outstanding, partyObj.paymentTerms, partyObj.assignedCrmId, partyObj.assignedCrmName, partyObj.assignedAsmId, partyObj.assignedAsmName, partyObj.assignedTsmId, partyObj.assignedTsmName, partyObj.status, partyObj.name]
+        );
+        if (updateRes.rowCount === 0) {
+          await pool.query(
+            `INSERT INTO crm_parties ("id", "name", "contactPerson", "phone", "email", "city", "state", "gstin", "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName", "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+            values
+          );
+        }
+      }
       res.json({ success: true, party: partyObj });
     } catch (err) {
       console.error("POST /api/crm/parties error:", err.message);
-      res.status(500).json({ error: "Failed to save CRM party: " + err.message });
+      res.status(500).json({ error: "Failed to save CRM party: " + err.message, detail: err.detail || err.message });
     }
   } else {
     const data = readLocalJson();
@@ -3362,40 +3365,124 @@ app.post("/api/crm/parties/batch", async (req, res) => {
         }
 
         if (valuePlaceholders.length > 0) {
-          const bulkSql = `
-            INSERT INTO crm_parties (
-              "id", "name", "contactPerson", "phone", "email", "city", "state", "gstin",
-              "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName",
-              "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt"
-            ) VALUES ${valuePlaceholders.join(", ")}
-            ON CONFLICT ("name") DO UPDATE SET
-              "id" = EXCLUDED."name",
-              "contactPerson" = EXCLUDED."contactPerson",
-              "phone" = EXCLUDED."phone",
-              "email" = EXCLUDED."email",
-              "city" = EXCLUDED."city",
-              "state" = EXCLUDED."state",
-              "gstin" = EXCLUDED."gstin",
-              "creditLimit" = EXCLUDED."creditLimit",
-              "outstanding" = EXCLUDED."outstanding",
-              "paymentTerms" = EXCLUDED."paymentTerms",
-              "assignedCrmId" = EXCLUDED."assignedCrmId",
-              "assignedCrmName" = EXCLUDED."assignedCrmName",
-              "assignedAsmId" = EXCLUDED."assignedAsmId",
-              "assignedAsmName" = EXCLUDED."assignedAsmName",
-              "assignedTsmId" = EXCLUDED."assignedTsmId",
-              "assignedTsmName" = EXCLUDED."assignedTsmName",
-              "status" = EXCLUDED."status"
-          `;
-          await pool.query(bulkSql, queryParams);
-          insertedCount += valuePlaceholders.length;
+          // Robust upsert: Try ON CONFLICT ("name") first; if constraint differs, fallback to individual upserts
+          try {
+            const bulkSql = `
+              INSERT INTO crm_parties (
+                "id", "name", "contactPerson", "phone", "email", "city", "state", "gstin",
+                "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName",
+                "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt"
+              ) VALUES ${valuePlaceholders.join(", ")}
+              ON CONFLICT ("name") DO UPDATE SET
+                "id" = EXCLUDED."name",
+                "contactPerson" = EXCLUDED."contactPerson",
+                "phone" = EXCLUDED."phone",
+                "email" = EXCLUDED."email",
+                "city" = EXCLUDED."city",
+                "state" = EXCLUDED."state",
+                "gstin" = EXCLUDED."gstin",
+                "creditLimit" = EXCLUDED."creditLimit",
+                "outstanding" = EXCLUDED."outstanding",
+                "paymentTerms" = EXCLUDED."paymentTerms",
+                "assignedCrmId" = EXCLUDED."assignedCrmId",
+                "assignedCrmName" = EXCLUDED."assignedCrmName",
+                "assignedAsmId" = EXCLUDED."assignedAsmId",
+                "assignedAsmName" = EXCLUDED."assignedAsmName",
+                "assignedTsmId" = EXCLUDED."assignedTsmId",
+                "assignedTsmName" = EXCLUDED."assignedTsmName",
+                "status" = EXCLUDED."status"
+            `;
+            await pool.query(bulkSql, queryParams);
+          } catch (bulkErr) {
+            // If ON CONFLICT ("name") failed due to missing constraint, dynamically add UNIQUE ("name") and execute upserts
+            console.warn("Bulk ON CONFLICT failed, applying fallback upsert:", bulkErr.message);
+            try {
+              await pool.query(`ALTER TABLE crm_parties ADD CONSTRAINT crm_parties_name_unique UNIQUE ("name");`);
+            } catch (cErr) {
+              // Constraint might already exist or need duplicate cleanup
+            }
+
+            for (const p of chunk) {
+              if (!p.name) continue;
+              await pool.query(`
+                INSERT INTO crm_parties (
+                  "id", "name", "contactPerson", "phone", "email", "city", "state", "gstin",
+                  "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName",
+                  "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt"
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+                ON CONFLICT ("name") DO UPDATE SET
+                  "id" = EXCLUDED."name",
+                  "contactPerson" = EXCLUDED."contactPerson",
+                  "phone" = EXCLUDED."phone",
+                  "email" = EXCLUDED."email",
+                  "city" = EXCLUDED."city",
+                  "state" = EXCLUDED."state",
+                  "gstin" = EXCLUDED."gstin",
+                  "creditLimit" = EXCLUDED."creditLimit",
+                  "outstanding" = EXCLUDED."outstanding",
+                  "paymentTerms" = EXCLUDED."paymentTerms",
+                  "assignedCrmId" = EXCLUDED."assignedCrmId",
+                  "assignedCrmName" = EXCLUDED."assignedCrmName",
+                  "assignedAsmId" = EXCLUDED."assignedAsmId",
+                  "assignedAsmName" = EXCLUDED."assignedAsmName",
+                  "assignedTsmId" = EXCLUDED."assignedTsmId",
+                  "assignedTsmName" = EXCLUDED."assignedTsmName",
+                  "status" = EXCLUDED."status"
+              try {
+                await pool.query(`
+                  INSERT INTO crm_parties (
+                    "id", "name", "contactPerson", "phone", "email", "city", "state", "gstin",
+                    "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName",
+                    "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt"
+                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+                  ON CONFLICT ("name") DO UPDATE SET
+                    "id" = EXCLUDED."name",
+                    "contactPerson" = EXCLUDED."contactPerson",
+                    "phone" = EXCLUDED."phone",
+                    "email" = EXCLUDED."email",
+                    "city" = EXCLUDED."city",
+                    "state" = EXCLUDED."state",
+                    "gstin" = EXCLUDED."gstin",
+                    "creditLimit" = EXCLUDED."creditLimit",
+                    "outstanding" = EXCLUDED."outstanding",
+                    "paymentTerms" = EXCLUDED."paymentTerms",
+                    "assignedCrmId" = EXCLUDED."assignedCrmId",
+                    "assignedCrmName" = EXCLUDED."assignedCrmName",
+                    "assignedAsmId" = EXCLUDED."assignedAsmId",
+                    "assignedAsmName" = EXCLUDED."assignedAsmName",
+                    "assignedTsmId" = EXCLUDED."assignedTsmId",
+                    "assignedTsmName" = EXCLUDED."assignedTsmName",
+                    "status" = EXCLUDED."status"
+                `, [
+                  p.name, p.name, p.contactPerson || "", p.phone || "", p.email || "", p.city || "",
+                  p.state || "", p.gstin || "", p.creditLimit || 0, p.outstanding || 0,
+                  p.paymentTerms || "30 Days", p.assignedCrmId || "", p.assignedCrmName || "",
+                  p.assignedAsmId || "", p.assignedAsmName || "", p.assignedTsmId || "",
+                  p.assignedTsmName || "", p.status || "Active", p.createdAt || new Date().toISOString().split("T")[0]
+                ]);
+              } catch (singleErr) {
+                // Last-resort fallback: update or insert without ON CONFLICT clause
+                const updateRes = await pool.query(
+                  `UPDATE crm_parties SET "contactPerson" = $1, "phone" = $2, "email" = $3, "city" = $4, "state" = $5, "gstin" = $6, "creditLimit" = $7, "outstanding" = $8, "paymentTerms" = $9, "assignedCrmId" = $10, "assignedCrmName" = $11, "assignedAsmId" = $12, "assignedAsmName" = $13, "assignedTsmId" = $14, "assignedTsmName" = $15, "status" = $16 WHERE LOWER(TRIM("name")) = LOWER(TRIM($17))`,
+                  [p.contactPerson || "", p.phone || "", p.email || "", p.city || "", p.state || "", p.gstin || "", p.creditLimit || 0, p.outstanding || 0, p.paymentTerms || "30 Days", p.assignedCrmId || "", p.assignedCrmName || "", p.assignedAsmId || "", p.assignedAsmName || "", p.assignedTsmId || "", p.assignedTsmName || "", p.status || "Active", p.name]
+                );
+                if (updateRes.rowCount === 0) {
+                  await pool.query(
+                    `INSERT INTO crm_parties ("id", "name", "contactPerson", "phone", "email", "city", "state", "gstin", "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName", "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+                    [p.name, p.name, p.contactPerson || "", p.phone || "", p.email || "", p.city || "", p.state || "", p.gstin || "", p.creditLimit || 0, p.outstanding || 0, p.paymentTerms || "30 Days", p.assignedCrmId || "", p.assignedCrmName || "", p.assignedAsmId || "", p.assignedAsmName || "", p.assignedTsmId || "", p.assignedTsmName || "", p.status || "Active", p.createdAt || new Date().toISOString().split("T")[0]]
+                  );
+                }
+              }
+            }
+          }
+          insertedCount += chunk.length;
         }
       }
 
       res.json({ success: true, count: insertedCount });
     } catch (err) {
       console.error("POST /api/crm/parties/batch error:", err.message);
-      res.status(500).json({ error: "Failed to batch save CRM parties: " + err.message });
+      res.status(500).json({ error: "Failed to batch save CRM parties: " + err.message, detail: err.detail || err.message });
     }
   } else {
     const data = readLocalJson();

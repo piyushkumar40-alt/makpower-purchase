@@ -617,7 +617,14 @@ export default function App() {
         json = text ? JSON.parse(text) : {};
       } catch (pe) {
         console.error(`Non-JSON response from ${url}:`, text);
-        json = { success: res.ok, error: `Server error (${res.status}): ${text.slice(0, 150)}` };
+        json = { success: res.ok, error: `Server error (${res.status}): ${text ? text.slice(0, 250) : res.statusText}` };
+      }
+      if (!res.ok) {
+        if (!json || typeof json !== "object") json = {};
+        json.success = false;
+        if (!json.error) {
+          json.error = `Server error (${res.status}): ${text ? text.slice(0, 250) : res.statusText}`;
+        }
       }
       if (isHeavy && window.__finishLoadingProgress) {
         window.__finishLoadingProgress();

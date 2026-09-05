@@ -575,6 +575,14 @@ export default function SuperAdminDashboard({
   // Commit Bulk Parties to Server Database
   const handleCommitBulkParties = async () => {
     if (bulkParsedParties.length === 0) return;
+
+    const invalidRows = bulkParsedParties.filter(p => !p.name || !p.name.trim());
+    if (invalidRows.length > 0) {
+      showErrorToast(`Validation error: ${invalidRows.length} rows have missing party names.`);
+      setBulkPartyUploadMsg(`❌ Validation error: ${invalidRows.length} rows have missing party names. Every record must have a Party Name.`);
+      return;
+    }
+
     setIsUploadingParties(true);
     setBulkPartyUploadMsg("");
     startLoading("Saving CRM Parties...", `Committing ${bulkParsedParties.length} party records to database...`, 20);
@@ -592,14 +600,16 @@ export default function SuperAdminDashboard({
           setTimeout(() => setPartyStudioMode("directory"), 1800);
         } else {
           finishLoading();
-          showErrorToast(res?.error || "Failed to commit parties");
-          setBulkPartyUploadMsg(`❌ Upload failed: ${res?.error || "Unknown server error"}`);
+          const errDetail = res?.detail && res.detail !== res.error ? `${res.error} (${res.detail})` : (res?.error || "Unknown server error");
+          showErrorToast(`Upload failed: ${errDetail}`);
+          setBulkPartyUploadMsg(`❌ Upload failed: ${errDetail}`);
         }
       }
     } catch (err) {
       finishLoading();
-      showErrorToast(err.message || "Failed to commit parties");
-      setBulkPartyUploadMsg(`❌ Upload Error: ${err.message}`);
+      const exactMsg = err.message || "Unknown error";
+      showErrorToast(`Upload Error: ${exactMsg}`);
+      setBulkPartyUploadMsg(`❌ Upload Error: ${exactMsg}`);
     } finally {
       setIsUploadingParties(false);
     }
