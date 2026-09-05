@@ -5543,17 +5543,30 @@ app.get("/api/prices", async (req, res) => {
   }
 });
 
+// Helper: Generate a unique, deterministic price record ID from item and validity date window
+function generatePriceId(itemId = "", itemName = "", from = "", to = "") {
+  const cleanItem = String(itemId || itemName || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const cleanFrom = String(from || "").trim().replace(/[^a-z0-9]/gi, "");
+  const cleanTo = String(to || "").trim().replace(/[^a-z0-9]/gi, "");
+  return `prc_${cleanItem || "item"}_${cleanFrom || "from"}_${cleanTo || "to"}`;
+}
+
 // 2. POST /api/prices - Create or Update Single Price
 app.post("/api/prices", async (req, res) => {
   const { id, itemId, itemName, pp, from, to } = req.body;
-  if (!itemId && !itemName) {
+  const cleanItemId = String(itemId || "").trim();
+  const cleanItemName = String(itemName || "").trim();
+  if (!cleanItemId && !cleanItemName) {
     return res.status(400).json({ error: "Item ID or Item Name is required." });
   }
 
-  const priceId = id || `prc_${itemId || Date.now()}_${Date.now().toString(36)}`;
-  const ppNum = parseFloat(pp) || 0;
   const fromDate = from || new Date().toISOString().split("T")[0];
-  const toDate = to || "2030-12-31";
+  const toDate = to || "01/05/2030";
+  let priceId = id;
+  if (!priceId || priceId === cleanItemId) {
+    priceId = generatePriceId(cleanItemId, cleanItemName, fromDate, toDate);
+  }
+  const ppNum = parseFloat(pp) || 0;
   const nowIso = new Date().toISOString();
 
   if (isPg) {
@@ -5568,9 +5581,10 @@ app.post("/api/prices", async (req, res) => {
            "from" = EXCLUDED."from",
            "to" = EXCLUDED."to",
            "updatedAt" = EXCLUDED."updatedAt"`,
-        [priceId, itemId || "", itemName || "", ppNum, fromDate, toDate, nowIso]
+        [priceId, cleanItemId, cleanItemName, ppNum, fromDate, toDate, nowIso]
       );
-      res.json({ success: true, price: { id: priceId, itemId, itemName, pp: ppNum, from: fromDate, to: toDate, updatedAt: nowIso } });
+      invalidateStateCache();
+      res.json({ success: true, price: { id: priceId, itemId: cleanItemId, itemName: cleanItemName, pp: ppNum, from: fromDate, to: toDate, updatedAt: nowIso } });
     } catch (err) {
       console.error("POST /api/prices error:", err.message);
       res.status(500).json({ error: "Failed to save item price: " + err.message });
@@ -5578,14 +5592,15 @@ app.post("/api/prices", async (req, res) => {
   } else {
     const data = readLocalJson();
     if (!data.itemPrices) data.itemPrices = [];
-    const idx = data.itemPrices.findIndex(p => p.id === priceId || (p.itemId === itemId && p.from === fromDate));
-    const priceObj = { id: priceId, itemId: itemId || "", itemName: itemName || "", pp: ppNum, from: fromDate, to: toDate, updatedAt: nowIso };
+    const idx = data.itemPrices.findIndex(p => p.id === priceId || (p.itemId === cleanItemId && p.from === fromDate && p.to === toDate));
+    const priceObj = { id: priceId, itemId: cleanItemId, itemName: cleanItemName, pp: ppNum, from: fromDate, to: toDate, updatedAt: nowIso };
     if (idx >= 0) {
       data.itemPrices[idx] = priceObj;
     } else {
       data.itemPrices.unshift(priceObj);
     }
     writeLocalJson(data);
+    invalidateStateCache();
     res.json({ success: true, price: priceObj });
   }
 });
@@ -5600,18 +5615,31 @@ app.post("/api/prices/batch", async (req, res) => {
   const nowIso = new Date().toISOString();
   let insertedCount = 0;
   let updatedCount = 0;
+  const seenBatchKeys = new Map();
 
   if (isPg) {
     try {
       for (const p of prices) {
-        const itemId = String(p.itemId || p.id || "").trim();
+        const itemId = String(p.itemId || (p.id && !String(p.id).startsWith("prc_") ? p.id : "")).trim();
         const itemName = String(p.itemName || p.name || "").trim();
         if (!itemId && !itemName) continue;
 
-        const priceId = p.id || `prc_${itemId || Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        const fromDate = p.from || "01/05/2026";
+        const toDate = p.to || "01/05/2030";
         const ppNum = parseFloat(p.pp || p.price || p.purchasePrice) || 0;
-        const fromDate = p.from || "2026-05-01";
-        const toDate = p.to || "2030-05-01";
+
+        let priceId = p.id;
+        if (!priceId || priceId === itemId) {
+          priceId = generatePriceId(itemId, itemName, fromDate, toDate);
+        }
+
+        if (seenBatchKeys.has(priceId)) {
+          const count = seenBatchKeys.get(priceId) + 1;
+          seenBatchKeys.set(priceId, count);
+          priceId = `${priceId}_${count}`;
+        } else {
+          seenBatchKeys.set(priceId, 1);
+        }
 
         const resCheck = await pool.query(
           `INSERT INTO item_prices ("id", "itemId", "itemName", "pp", "from", "to", "createdAt", "updatedAt")
@@ -5629,6 +5657,7 @@ app.post("/api/prices/batch", async (req, res) => {
         if (resCheck.rows[0]?.xmax === 0) insertedCount++;
         else updatedCount++;
       }
+      invalidateStateCache();
       res.json({ success: true, count: insertedCount + updatedCount, insertedCount, updatedCount });
     } catch (err) {
       console.error("POST /api/prices/batch error:", err.message);
@@ -5638,16 +5667,28 @@ app.post("/api/prices/batch", async (req, res) => {
     const data = readLocalJson();
     if (!data.itemPrices) data.itemPrices = [];
     for (const p of prices) {
-      const itemId = String(p.itemId || p.id || "").trim();
+      const itemId = String(p.itemId || (p.id && !String(p.id).startsWith("prc_") ? p.id : "")).trim();
       const itemName = String(p.itemName || p.name || "").trim();
       if (!itemId && !itemName) continue;
 
-      const priceId = p.id || `prc_${itemId || Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+      const fromDate = p.from || "01/05/2026";
+      const toDate = p.to || "01/05/2030";
       const ppNum = parseFloat(p.pp || p.price || p.purchasePrice) || 0;
-      const fromDate = p.from || "2026-05-01";
-      const toDate = p.to || "2030-05-01";
 
-      const idx = data.itemPrices.findIndex(x => x.id === priceId || (x.itemId === itemId && x.from === fromDate));
+      let priceId = p.id;
+      if (!priceId || priceId === itemId) {
+        priceId = generatePriceId(itemId, itemName, fromDate, toDate);
+      }
+
+      if (seenBatchKeys.has(priceId)) {
+        const count = seenBatchKeys.get(priceId) + 1;
+        seenBatchKeys.set(priceId, count);
+        priceId = `${priceId}_${count}`;
+      } else {
+        seenBatchKeys.set(priceId, 1);
+      }
+
+      const idx = data.itemPrices.findIndex(x => x.id === priceId || (x.itemId === itemId && x.from === fromDate && x.to === toDate));
       const priceObj = { id: priceId, itemId, itemName, pp: ppNum, from: fromDate, to: toDate, updatedAt: nowIso };
       if (idx >= 0) {
         data.itemPrices[idx] = priceObj;
@@ -5658,6 +5699,7 @@ app.post("/api/prices/batch", async (req, res) => {
       }
     }
     writeLocalJson(data);
+    invalidateStateCache();
     res.json({ success: true, count: insertedCount + updatedCount, insertedCount, updatedCount });
   }
 });

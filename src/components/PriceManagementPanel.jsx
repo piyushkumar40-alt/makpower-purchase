@@ -30,6 +30,14 @@ function isPriceActive(from, to) {
   return true;
 }
 
+// Helper: Generate a unique, deterministic price record ID from item and validity date window
+export function generatePriceId(itemId = "", itemName = "", from = "", to = "") {
+  const cleanItem = String(itemId || itemName || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const cleanFrom = String(from || "").trim().replace(/[^a-z0-9]/gi, "");
+  const cleanTo = String(to || "").trim().replace(/[^a-z0-9]/gi, "");
+  return `prc_${cleanItem || "item"}_${cleanFrom || "from"}_${cleanTo || "to"}`;
+}
+
 export default function PriceManagementPanel({
   items = [],
   itemPrices = [],
@@ -121,6 +129,9 @@ export default function PriceManagementPanel({
       if (sortField === "pp") {
         valA = parseFloat(valA) || 0;
         valB = parseFloat(valB) || 0;
+      } else if (sortField === "from" || sortField === "to") {
+        valA = parseDateTimestamp(valA) || 0;
+        valB = parseDateTimestamp(valB) || 0;
       } else if (sortField === "id" || sortField === "itemId") {
         const numA = parseInt(String(valA).replace(/\D/g, ""), 10);
         const numB = parseInt(String(valB).replace(/\D/g, ""), 10);
@@ -243,6 +254,7 @@ export default function PriceManagementPanel({
 
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     const parsed = [];
+    const seenBatchKeys = new Map();
 
     lines.forEach((line, lineIdx) => {
       // Split by tab or comma
@@ -267,8 +279,18 @@ export default function PriceManagementPanel({
         const to = cols[4] || "01/05/2030";
 
         if (id || itemName) {
+          const baseKey = generatePriceId(id, itemName, from, to);
+          let uniquePriceId = baseKey;
+          if (seenBatchKeys.has(baseKey)) {
+            const count = seenBatchKeys.get(baseKey) + 1;
+            seenBatchKeys.set(baseKey, count);
+            uniquePriceId = `${baseKey}_${count}`;
+          } else {
+            seenBatchKeys.set(baseKey, 1);
+          }
+
           parsed.push({
-            id: `prc_${id || lineIdx}_${Date.now().toString(36)}`,
+            id: uniquePriceId,
             itemId: id,
             itemName: itemName,
             pp: pp,

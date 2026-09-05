@@ -6,6 +6,7 @@ import {
   Sparkles, Award, ShieldAlert, Clock, ArrowDownRight, Truck, Info, ChevronDown, X
 } from "lucide-react";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
+import { parseDateTimestamp } from "./DateRangeFilter";
 
 // Helper: Format large numbers into Indian Crores (₹ Cr) or Lakhs (₹ L)
 export function formatCr(val) {
@@ -149,11 +150,36 @@ export default function OwnerDashboard({
   // 1. Build Item Price Lookup Map (Active Purchase Price `pp` in INR)
   const itemPriceMap = useMemo(() => {
     const map = new Map();
-    (itemPrices || []).forEach(p => {
+    const now = new Date().setHours(0, 0, 0, 0);
+
+    const isPriceActive = (from, to) => {
+      if (!from && !to) return true;
+      const fromTs = from ? parseDateTimestamp(from) : null;
+      const toTs = to ? parseDateTimestamp(to) : null;
+      if (fromTs && now < fromTs) return false;
+      if (toTs) {
+        const toEndDay = new Date(toTs).setHours(23, 59, 59, 999);
+        if (now > toEndDay) return false;
+      }
+      return true;
+    };
+
+    const sorted = [...(itemPrices || [])].sort((a, b) => {
+      const aActive = isPriceActive(a.from, a.to) ? 1 : 0;
+      const bActive = isPriceActive(b.from, b.to) ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive;
+      const tsA = parseDateTimestamp(a.from) || 0;
+      const tsB = parseDateTimestamp(b.from) || 0;
+      return tsB - tsA;
+    });
+
+    sorted.forEach(p => {
       const price = parseFloat(p.pp) || 0;
       if (price > 0) {
-        if (p.itemId) map.set(String(p.itemId).trim().toLowerCase(), price);
-        if (p.itemName) map.set(String(p.itemName).trim().toLowerCase(), price);
+        const idKey = p.itemId ? String(p.itemId).trim().toLowerCase() : null;
+        const nameKey = p.itemName ? String(p.itemName).trim().toLowerCase() : null;
+        if (idKey && !map.has(idKey)) map.set(idKey, price);
+        if (nameKey && !map.has(nameKey)) map.set(nameKey, price);
       }
     });
     return map;
