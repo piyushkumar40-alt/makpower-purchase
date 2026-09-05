@@ -176,14 +176,11 @@ export default function SuperAdminDashboard({
     return Array.from(map.values());
   }, [imsTransactions]);
 
-  // CRM Executives list (Ankita, Ajit, Prince, Simran, Harish, etc.)
+  // CRM Executives list (Ankita, Ajit, Prince, Simran, Harish - strictly CRM role only, no ASM or TSM)
   const crmExecutives = React.useMemo(() => {
     return (users || []).filter(u => 
       u.role === "crm" || 
-      u.role === "asm" || 
-      u.role === "tsm" || 
-      (u.designation && u.designation.toLowerCase().includes("crm")) ||
-      (u.designation && u.designation.toLowerCase().includes("sales"))
+      (u.designation && u.designation.toLowerCase().trim() === "crm executive")
     );
   }, [users]);
 
