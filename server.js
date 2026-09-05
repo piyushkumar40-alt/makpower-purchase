@@ -154,7 +154,26 @@ function readLocalJson() {
         redirectUrl: "https://www.instagram.com/makpowerofficial/"
       };
     }
-    if (!Array.isArray(data.crmParties)) data.crmParties = initialCrmParties;
+    if (!Array.isArray(data.crmParties)) {
+      data.crmParties = initialCrmParties;
+    } else {
+      // Deduplicate keeping the LAST party name and deleting duplicates above it
+      const seenNames = new Set();
+      const keptReversed = [];
+      for (let i = data.crmParties.length - 1; i >= 0; i--) {
+        const p = data.crmParties[i];
+        if (!p || !p.name) continue;
+        const norm = (p.name || "").trim().toLowerCase();
+        if (!norm) continue;
+        if (!seenNames.has(norm)) {
+          seenNames.add(norm);
+          p.name = (p.name || "").trim();
+          p.id = p.name; // party name acts as primary key
+          keptReversed.push(p);
+        }
+      }
+      data.crmParties = keptReversed.reverse();
+    }
     if (!Array.isArray(data.crmSalesOrders)) data.crmSalesOrders = [];
     data.crmSalesOrders = data.crmSalesOrders.filter(o => !o.id?.startsWith('so-10') && !o.itemModel?.startsWith('MP-'));
     if (!Array.isArray(data.crmDispatches)) data.crmDispatches = [];
@@ -260,8 +279,8 @@ async function setupPgDatabase() {
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS crm_parties (
-        "id" TEXT PRIMARY KEY,
-        "name" TEXT,
+        "name" TEXT PRIMARY KEY,
+        "id" TEXT,
         "contactPerson" TEXT,
         "phone" TEXT,
         "email" TEXT,
@@ -281,6 +300,82 @@ async function setupPgDatabase() {
         "createdAt" TEXT
       );
     `);
+
+    // Deduplicate crm_parties: Keep the LAST party name and delete duplicate above ones, then ensure name is PRIMARY KEY
+    try {
+      await pool.query(`
+        DO $$
+        BEGIN
+          -- 1. Deduplicate existing rows: keep the LAST row (highest ctid) for each duplicate party name
+          CREATE TEMP TABLE _kept_parties ON COMMIT DROP AS
+          SELECT "id", "name", ctid
+          FROM (
+            SELECT "id", "name", ctid,
+                   ROW_NUMBER() OVER (PARTITION BY LOWER(TRIM("name")) ORDER BY ctid DESC) as rn
+            FROM crm_parties
+            WHERE "name" IS NOT NULL AND TRIM("name") <> ''
+          ) t
+          WHERE rn = 1;
+
+          CREATE TEMP TABLE _dup_parties ON COMMIT DROP AS
+          SELECT cp."id" as old_id, kp."id" as new_id, kp."name" as new_name, cp.ctid as old_ctid
+          FROM crm_parties cp
+          JOIN _kept_parties kp ON LOWER(TRIM(cp."name")) = LOWER(TRIM(kp."name"))
+          WHERE cp.ctid <> kp.ctid;
+
+          -- Re-map foreign references from duplicate rows above to the kept last row
+          UPDATE crm_sales_orders so
+          SET "partyId" = dp.new_name, "partyName" = dp.new_name
+          FROM _dup_parties dp
+          WHERE so."partyId" = dp.old_id OR so."partyId" = dp.old_name;
+
+          UPDATE crm_dispatches d
+          SET "partyId" = dp.new_name, "partyName" = dp.new_name
+          FROM _dup_parties dp
+          WHERE d."partyId" = dp.old_id OR d."partyId" = dp.old_name;
+
+          UPDATE crm_party_remarks pr
+          SET "partyId" = dp.new_name, "partyName" = dp.new_name
+          FROM _dup_parties dp
+          WHERE pr."partyId" = dp.old_id OR pr."partyId" = dp.old_name;
+
+          -- Delete duplicate rows above the last one
+          DELETE FROM crm_parties
+          WHERE ctid IN (SELECT old_ctid FROM _dup_parties);
+
+          -- Remove any invalid null or empty names
+          DELETE FROM crm_parties WHERE "name" IS NULL OR TRIM("name") = '';
+
+          -- 2. Synchronize id = name and make name the PRIMARY KEY
+          UPDATE crm_parties SET "name" = TRIM("name"), "id" = TRIM("name");
+
+          -- Drop old pkey on id if it exists
+          IF EXISTS (
+            SELECT 1 FROM pg_constraint c
+            JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+            WHERE c.conname = 'crm_parties_pkey' AND c.conrelid = 'crm_parties'::regclass AND a.attname = 'id'
+          ) THEN
+            ALTER TABLE crm_parties DROP CONSTRAINT crm_parties_pkey;
+          END IF;
+
+          -- Add primary key on name if not already primary key
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint c
+            JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+            WHERE c.conrelid = 'crm_parties'::regclass AND c.contype = 'p' AND a.attname = 'name'
+          ) THEN
+            ALTER TABLE crm_parties ALTER COLUMN "name" SET NOT NULL;
+            ALTER TABLE crm_parties ADD PRIMARY KEY ("name");
+          END IF;
+        END $$;
+      `);
+
+      // Unique index on LOWER(TRIM(name)) for case-insensitive uniqueness guarantee
+      await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_parties_name_unique ON crm_parties (LOWER(TRIM("name")));`);
+      console.log("CRM parties schema verified: name is primary key and unique constraint enforced.");
+    } catch (migErr) {
+      console.warn("CRM parties deduplication / primary key migration note:", migErr.message);
+    }
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS crm_sales_orders (
@@ -330,11 +425,12 @@ async function setupPgDatabase() {
       const ptyCheck = await pool.query("SELECT COUNT(*) FROM crm_parties");
       if (parseInt(ptyCheck.rows[0].count) === 0) {
         for (const p of initialCrmParties) {
+          const partyName = (p.name || "").trim();
           await pool.query(
             `INSERT INTO crm_parties ("id", "name", "contactPerson", "phone", "email", "city", "state", "gstin", "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName", "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt")
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-             ON CONFLICT ("id") DO NOTHING`,
-            [p.id, p.name, p.contactPerson, p.phone, p.email, p.city, p.state, p.gstin, p.creditLimit, p.outstanding, p.paymentTerms, p.assignedCrmId, p.assignedCrmName, p.assignedAsmId, p.assignedAsmName, p.assignedTsmId, p.assignedTsmName, p.status, p.createdAt]
+             ON CONFLICT ("name") DO NOTHING`,
+            [partyName, partyName, p.contactPerson, p.phone, p.email, p.city, p.state, p.gstin, p.creditLimit, p.outstanding, p.paymentTerms, p.assignedCrmId, p.assignedCrmName, p.assignedAsmId, p.assignedAsmName, p.assignedTsmId, p.assignedTsmName, p.status, p.createdAt]
           );
         }
       }
@@ -2084,7 +2180,20 @@ app.get("/api/state", async (req, res) => {
         pool.query("SELECT * FROM crm_party_category_monthly_sales ORDER BY \"salesQty\" DESC")
       ]);
 
-      const myParties = crmPartiesRes.rows || [];
+      const rawParties = crmPartiesRes.rows || [];
+      const seenPState = new Set();
+      const keptPStateReversed = [];
+      for (let i = rawParties.length - 1; i >= 0; i--) {
+        const row = rawParties[i];
+        const n = (row.name || "").trim().toLowerCase();
+        if (n && !seenPState.has(n)) {
+          seenPState.add(n);
+          row.name = (row.name || "").trim();
+          row.id = row.name;
+          keptPStateReversed.push(row);
+        }
+      }
+      const myParties = keptPStateReversed.reverse();
       let crmSalesOrdersRes = { rows: [] };
       let crmDispatchesRes = { rows: [] };
       let crmPartyRemarksRes = { rows: [] };
@@ -3020,7 +3129,20 @@ app.get("/api/crm/parties", async (req, res) => {
       query += " ORDER BY \"name\" ASC";
 
       const result = await pool.query(query, values);
-      res.json({ success: true, parties: result.rows });
+      // Deduplicate keeping the LAST party name and deleting duplicates above it
+      const seenP = new Set();
+      const keptPReversed = [];
+      for (let i = result.rows.length - 1; i >= 0; i--) {
+        const row = result.rows[i];
+        const n = (row.name || "").trim().toLowerCase();
+        if (n && !seenP.has(n)) {
+          seenP.add(n);
+          row.name = (row.name || "").trim();
+          row.id = row.name;
+          keptPReversed.push(row);
+        }
+      }
+      res.json({ success: true, parties: keptPReversed.reverse() });
     } catch (err) {
       console.error("GET /api/crm/parties error:", err.message);
       res.status(500).json({ error: "Failed to fetch CRM parties." });
@@ -3043,20 +3165,35 @@ app.get("/api/crm/parties", async (req, res) => {
         return matchId || matchName;
       });
     }
-    res.json({ success: true, parties: list });
+    // Deduplicate keeping the LAST party name
+    const seenP = new Set();
+    const keptPReversed = [];
+    for (let i = list.length - 1; i >= 0; i--) {
+      const row = list[i];
+      const n = (row.name || "").trim().toLowerCase();
+      if (n && !seenP.has(n)) {
+        seenP.add(n);
+        row.name = (row.name || "").trim();
+        row.id = row.name;
+        keptPReversed.push(row);
+      }
+    }
+    res.json({ success: true, parties: keptPReversed.reverse() });
   }
 });
 
-// 2. POST /api/crm/parties - Create or Update CRM Party
+// 2. POST /api/crm/parties - Create or Update CRM Party (Party name is primary key)
 app.post("/api/crm/parties", async (req, res) => {
   const p = req.body;
-  if (!p || !p.name) {
+  if (!p || !p.name || !(p.name || "").trim()) {
     return res.status(400).json({ error: "Party name is required." });
   }
 
+  const cleanName = (p.name || "").trim();
+
   const partyObj = {
-    id: p.id || `pty-${Date.now()}`,
-    name: (p.name || "").trim(),
+    id: cleanName,
+    name: cleanName,
     contactPerson: (p.contactPerson || "").trim(),
     phone: (p.phone || "").trim(),
     email: (p.email || "").trim(),
@@ -3084,8 +3221,8 @@ app.post("/api/crm/parties", async (req, res) => {
           "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName",
           "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt"
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-        ON CONFLICT ("id") DO UPDATE SET
-          "name" = EXCLUDED."name",
+        ON CONFLICT ("name") DO UPDATE SET
+          "id" = EXCLUDED."name",
           "contactPerson" = EXCLUDED."contactPerson",
           "phone" = EXCLUDED."phone",
           "email" = EXCLUDED."email",
@@ -3113,17 +3250,30 @@ app.post("/api/crm/parties", async (req, res) => {
       res.json({ success: true, party: partyObj });
     } catch (err) {
       console.error("POST /api/crm/parties error:", err.message);
-      res.status(500).json({ error: "Failed to save CRM party." });
+      res.status(500).json({ error: "Failed to save CRM party: " + err.message });
     }
   } else {
     const data = readLocalJson();
     if (!data.crmParties) data.crmParties = [];
-    const index = data.crmParties.findIndex(x => x.id === partyObj.id);
+    const index = data.crmParties.findIndex(x => (x.name || "").trim().toLowerCase() === cleanName.toLowerCase() || x.id === cleanName);
     if (index !== -1) {
       data.crmParties[index] = partyObj;
     } else {
       data.crmParties.push(partyObj);
     }
+    // Deduplicate keeping the LAST party name
+    const seen = new Set();
+    const keptRev = [];
+    for (let i = data.crmParties.length - 1; i >= 0; i--) {
+      const pItem = data.crmParties[i];
+      if (!pItem || !pItem.name) continue;
+      const n = (pItem.name || "").trim().toLowerCase();
+      if (!seen.has(n)) {
+        seen.add(n);
+        keptRev.push(pItem);
+      }
+    }
+    data.crmParties = keptRev.reverse();
     writeLocalJson(data);
     res.json({ success: true, party: partyObj });
   }
@@ -3136,13 +3286,50 @@ app.post("/api/crm/parties/batch", async (req, res) => {
     return res.status(400).json({ error: "Parties array is required." });
   }
 
+  // Deduplicate incoming batch keeping the LAST party name and deleting duplicate above ones
+  const seenBatch = new Set();
+  const cleanPartiesReversed = [];
+  for (let i = parties.length - 1; i >= 0; i--) {
+    const p = parties[i];
+    if (!p || !p.name) continue;
+    const cleanName = (p.name || "").trim();
+    if (!cleanName) continue;
+    const norm = cleanName.toLowerCase();
+    if (!seenBatch.has(norm)) {
+      seenBatch.add(norm);
+      cleanPartiesReversed.push({
+        ...p,
+        id: cleanName,
+        name: cleanName,
+        contactPerson: (p.contactPerson || "").trim(),
+        phone: (p.phone || "").trim(),
+        email: (p.email || "").trim(),
+        city: (p.city || "").trim(),
+        state: (p.state || "").trim(),
+        gstin: (p.gstin || "").trim(),
+        creditLimit: p.creditLimit != null ? parseFloat(p.creditLimit) : 0,
+        outstanding: p.outstanding != null ? parseFloat(p.outstanding) : 0,
+        paymentTerms: (p.paymentTerms || "30 Days").trim(),
+        assignedCrmId: p.assignedCrmId || "",
+        assignedCrmName: p.assignedCrmName || "",
+        assignedAsmId: p.assignedAsmId || "",
+        assignedAsmName: p.assignedAsmName || "",
+        assignedTsmId: p.assignedTsmId || "",
+        assignedTsmName: p.assignedTsmName || "",
+        status: p.status || "Active",
+        createdAt: p.createdAt || new Date().toISOString().split("T")[0]
+      });
+    }
+  }
+  const cleanParties = cleanPartiesReversed.reverse();
+
   if (isPg) {
     try {
       const CHUNK_SIZE = 250;
       let insertedCount = 0;
 
-      for (let i = 0; i < parties.length; i += CHUNK_SIZE) {
-        const chunk = parties.slice(i, i + CHUNK_SIZE);
+      for (let i = 0; i < cleanParties.length; i += CHUNK_SIZE) {
+        const chunk = cleanParties.slice(i, i + CHUNK_SIZE);
         const valuePlaceholders = [];
         const queryParams = [];
         let pIdx = 1;
@@ -3151,17 +3338,17 @@ app.post("/api/crm/parties/batch", async (req, res) => {
           if (!p.name) continue;
           valuePlaceholders.push(`($${pIdx}, $${pIdx+1}, $${pIdx+2}, $${pIdx+3}, $${pIdx+4}, $${pIdx+5}, $${pIdx+6}, $${pIdx+7}, $${pIdx+8}, $${pIdx+9}, $${pIdx+10}, $${pIdx+11}, $${pIdx+12}, $${pIdx+13}, $${pIdx+14}, $${pIdx+15}, $${pIdx+16}, $${pIdx+17}, $${pIdx+18})`);
           queryParams.push(
-            p.id || `pty-${Date.now()}-${insertedCount + valuePlaceholders.length}-${Math.random().toString(36).substr(2, 4)}`,
-            (p.name || "").trim(),
-            (p.contactPerson || "").trim(),
-            (p.phone || "").trim(),
-            (p.email || "").trim(),
-            (p.city || "").trim(),
-            (p.state || "").trim(),
-            (p.gstin || "").trim(),
-            p.creditLimit != null ? parseFloat(p.creditLimit) : 0,
-            p.outstanding != null ? parseFloat(p.outstanding) : 0,
-            (p.paymentTerms || "30 Days").trim(),
+            p.name, // id is party name
+            p.name, // name is primary key
+            p.contactPerson || "",
+            p.phone || "",
+            p.email || "",
+            p.city || "",
+            p.state || "",
+            p.gstin || "",
+            p.creditLimit || 0,
+            p.outstanding || 0,
+            p.paymentTerms || "30 Days",
             p.assignedCrmId || "",
             p.assignedCrmName || "",
             p.assignedAsmId || "",
@@ -3181,8 +3368,8 @@ app.post("/api/crm/parties/batch", async (req, res) => {
               "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName",
               "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt"
             ) VALUES ${valuePlaceholders.join(", ")}
-            ON CONFLICT ("id") DO UPDATE SET
-              "name" = EXCLUDED."name",
+            ON CONFLICT ("name") DO UPDATE SET
+              "id" = EXCLUDED."name",
               "contactPerson" = EXCLUDED."contactPerson",
               "phone" = EXCLUDED."phone",
               "email" = EXCLUDED."email",
@@ -3213,16 +3400,29 @@ app.post("/api/crm/parties/batch", async (req, res) => {
   } else {
     const data = readLocalJson();
     if (!data.crmParties) data.crmParties = [];
-    parties.forEach(p => {
-      const idx = data.crmParties.findIndex(x => x.id === p.id);
+    cleanParties.forEach(p => {
+      const idx = data.crmParties.findIndex(x => (x.name || "").trim().toLowerCase() === p.name.toLowerCase() || x.id === p.name);
       if (idx !== -1) {
         data.crmParties[idx] = { ...data.crmParties[idx], ...p };
       } else {
         data.crmParties.push(p);
       }
     });
+    // Deduplicate keeping the LAST party name
+    const seen = new Set();
+    const keptRev = [];
+    for (let i = data.crmParties.length - 1; i >= 0; i--) {
+      const pItem = data.crmParties[i];
+      if (!pItem || !pItem.name) continue;
+      const n = (pItem.name || "").trim().toLowerCase();
+      if (!seen.has(n)) {
+        seen.add(n);
+        keptRev.push(pItem);
+      }
+    }
+    data.crmParties = keptRev.reverse();
     writeLocalJson(data);
-    res.json({ success: true, count: parties.length });
+    res.json({ success: true, count: cleanParties.length });
   }
 });
 
@@ -3231,7 +3431,7 @@ app.delete("/api/crm/parties/:id", async (req, res) => {
   const partyId = req.params.id;
   if (isPg) {
     try {
-      await pool.query('DELETE FROM crm_parties WHERE "id" = $1', [partyId]);
+      await pool.query('DELETE FROM crm_parties WHERE "id" = $1 OR "name" = $1', [partyId]);
       res.json({ success: true });
     } catch (err) {
       console.error("DELETE /api/crm/parties error:", err.message);
@@ -3239,7 +3439,7 @@ app.delete("/api/crm/parties/:id", async (req, res) => {
     }
   } else {
     const data = readLocalJson();
-    data.crmParties = (data.crmParties || []).filter(x => x.id !== partyId);
+    data.crmParties = (data.crmParties || []).filter(x => x.id !== partyId && x.name !== partyId);
     writeLocalJson(data);
     res.json({ success: true });
   }
@@ -3271,7 +3471,7 @@ app.post("/api/crm/parties/delete", async (req, res) => {
 
   if (isPg) {
     try {
-      const deleteRes = await pool.query('DELETE FROM crm_parties WHERE "id" = ANY($1::text[])', [ids]);
+      const deleteRes = await pool.query('DELETE FROM crm_parties WHERE "id" = ANY($1::text[]) OR "name" = ANY($1::text[])', [ids]);
       res.json({ success: true, count: deleteRes.rowCount || ids.length });
     } catch (err) {
       console.error("POST /api/crm/parties/delete error:", err.message);
@@ -3281,7 +3481,7 @@ app.post("/api/crm/parties/delete", async (req, res) => {
     const data = readLocalJson();
     if (!data.crmParties) data.crmParties = [];
     const initLen = data.crmParties.length;
-    data.crmParties = data.crmParties.filter(p => !ids.includes(p.id));
+    data.crmParties = data.crmParties.filter(p => !ids.includes(p.id) && !ids.includes(p.name));
     const delCount = initLen - data.crmParties.length;
     writeLocalJson(data);
     res.json({ success: true, count: delCount });

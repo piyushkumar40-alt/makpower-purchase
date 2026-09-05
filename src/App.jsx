@@ -23,6 +23,29 @@ import {
 } from "./utils/userIntentionTracker";
 import { isDateInBetween } from "./components/DateRangeFilter";
 
+// Helper to ensure party name acts as primary key and duplicates above the last party are deleted
+export function deduplicatePartiesKeepLast(parties) {
+  if (!Array.isArray(parties)) return [];
+  const seen = new Set();
+  const keptReversed = [];
+  for (let i = parties.length - 1; i >= 0; i--) {
+    const p = parties[i];
+    if (!p || !p.name) continue;
+    const cleanName = (p.name || "").trim();
+    if (!cleanName) continue;
+    const norm = cleanName.toLowerCase();
+    if (!seen.has(norm)) {
+      seen.add(norm);
+      keptReversed.push({
+        ...p,
+        id: cleanName,
+        name: cleanName
+      });
+    }
+  }
+  return keptReversed.reverse();
+}
+
 export default function App() {
   // Mobile drawer state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -99,7 +122,7 @@ export default function App() {
   const [cargoCompanies, setCargoCompanies] = useState(() => cachedState?.cargoCompanies || []);
   const [items, setItems] = useState(() => cachedState?.items || []);
   const [designations, setDesignations] = useState(() => cachedState?.designations || []);
-  const [crmParties, setCrmParties] = useState(() => cachedState?.crmParties || []);
+  const [crmParties, setCrmParties] = useState(() => deduplicatePartiesKeepLast(cachedState?.crmParties || []));
   const [crmSalesOrders, setCrmSalesOrders] = useState(() => cachedState?.crmSalesOrders || []);
   const [crmDispatches, setCrmDispatches] = useState(() => cachedState?.crmDispatches || []);
   const [auditLogs, setAuditLogs] = useState([]);
@@ -204,7 +227,7 @@ export default function App() {
           ]);
           const data = await resParties.json();
           const list = Array.isArray(data) ? data : (data.parties || []);
-          setCrmParties(list);
+          setCrmParties(deduplicatePartiesKeepLast(list));
           try {
             const catSalesData = await resCatSales.json();
             if (Array.isArray(catSalesData?.sales)) {
@@ -449,7 +472,7 @@ export default function App() {
         if (Array.isArray(data.cargoCompanies)) setCargoCompanies(data.cargoCompanies);
         if (Array.isArray(data.items)) setItems(data.items);
         if (Array.isArray(data.designations)) setDesignations(data.designations);
-        if (Array.isArray(data.crmParties)) setCrmParties(data.crmParties);
+        if (Array.isArray(data.crmParties)) setCrmParties(deduplicatePartiesKeepLast(data.crmParties));
         if (Array.isArray(data.crmSalesOrders)) setCrmSalesOrders(data.crmSalesOrders);
         if (Array.isArray(data.crmDispatches)) setCrmDispatches(data.crmDispatches);
         if (data.imsSummary) {
@@ -497,7 +520,7 @@ export default function App() {
               cargoCompanies: data.cargoCompanies || [],
               items: data.items || [],
               designations: data.designations || [],
-              crmParties: data.crmParties || [],
+              crmParties: deduplicatePartiesKeepLast(data.crmParties || []),
               crmSalesOrders: data.crmSalesOrders || [],
               crmDispatches: data.crmDispatches || [],
               imsTransactions: (data.imsTransactions || []).slice(0, 1000),
@@ -1081,18 +1104,29 @@ export default function App() {
 
   // ==================== CRM PORTAL HANDLERS ====================
   const handleAddParty = async (party) => {
-    const res = await postData("/api/crm/parties", party);
-    if (res && res.success) {
+    const cleanParty = { ...party, id: (party.name || "").trim(), name: (party.name || "").trim() };
+    const res = await postData("/api/crm/parties", cleanParty);
+    if (res && res.success && res.party) {
       setCrmParties(prev => {
-        const idx = prev.findIndex(p => p.id === res.party.id);
+        const savedParty = { ...res.party, id: res.party.name.trim(), name: res.party.name.trim() };
+        const normName = savedParty.name.toLowerCase();
+        const idx = prev.findIndex(p => (p.name || "").trim().toLowerCase() === normName || p.id === savedParty.id);
+        let next;
         if (idx !== -1) {
-          const copy = [...prev];
-          copy[idx] = res.party;
-          return copy;
+          next = [...prev];
+          next[idx] = savedParty;
+        } else {
+          next = [...prev, savedParty];
         }
-        return [...prev, res.party];
+        const deduped = deduplicatePartiesKeepLast(next);
+        try {
+          const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+          cached.crmParties = deduped;
+          localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+        } catch (e) {}
+        return deduped;
       });
-      logSystemActivity("CRM_PARTY_SAVED", `Saved party "${res.party.name}" (${res.party.city})`, "CRM Party", res.party.id);
+      logSystemActivity("CRM_PARTY_SAVED", `Saved party "${res.party.name}" (${res.party.city})`, "CRM Party", res.party.name);
     }
     return res;
   };
@@ -1102,8 +1136,9 @@ export default function App() {
   };
 
   const handleDeleteParty = async (id) => {
+    const targetClean = (id || "").trim().toLowerCase();
     setCrmParties(prev => {
-      const next = prev.filter(p => p.id !== id);
+      const next = prev.filter(p => (p.id || "").trim().toLowerCase() !== targetClean && (p.name || "").trim().toLowerCase() !== targetClean);
       try {
         const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
         cached.crmParties = next;
@@ -1112,16 +1147,17 @@ export default function App() {
       return next;
     });
     try {
-      await fetch(`/api/crm/parties/${id}`, { method: "DELETE" });
-      logSystemActivity("CRM_PARTY_DELETED", `Deleted CRM party ID: ${id}`, "CRM Party", id);
+      await fetch(`/api/crm/parties/${encodeURIComponent(id)}`, { method: "DELETE" });
+      logSystemActivity("CRM_PARTY_DELETED", `Deleted CRM party: ${id}`, "CRM Party", id);
     } catch (err) {
       console.error("Delete party error:", err);
     }
   };
 
   const handleBulkDeleteParties = async (ids, purgeAll = false) => {
+    const idSet = new Set((ids || []).map(x => (x || "").trim().toLowerCase()));
     setCrmParties(prev => {
-      let next = purgeAll ? [] : prev.filter(p => !ids.includes(p.id));
+      let next = purgeAll ? [] : prev.filter(p => !idSet.has((p.id || "").trim().toLowerCase()) && !idSet.has((p.name || "").trim().toLowerCase()));
       try {
         const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
         cached.crmParties = next;
@@ -1143,14 +1179,15 @@ export default function App() {
 
   const handleBatchUploadParties = async (partiesList) => {
     try {
-      const res = await postData("/api/crm/parties/batch", { parties: partiesList });
+      const cleanList = deduplicatePartiesKeepLast(partiesList);
+      const res = await postData("/api/crm/parties/batch", { parties: cleanList });
       if (res && res.success) {
         const stateRes = await fetch("/api/state");
         const sData = await stateRes.json();
         if (Array.isArray(sData.crmParties)) {
-          setCrmParties(sData.crmParties);
+          setCrmParties(deduplicatePartiesKeepLast(sData.crmParties));
         }
-        logSystemActivity("CRM_PARTIES_BULK_UPLOAD", `Bulk imported ${res.count || partiesList.length} CRM parties from Admin portal`, "CRM Party", "bulk");
+        logSystemActivity("CRM_PARTIES_BULK_UPLOAD", `Bulk imported ${res.count || cleanList.length} CRM parties from Admin portal`, "CRM Party", "bulk");
       }
       return res;
     } catch (err) {

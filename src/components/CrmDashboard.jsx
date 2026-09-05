@@ -172,12 +172,32 @@ export default function CrmDashboard({
 
   const allUnifiedSalesOrders = crmSalesOrders;
 
-  // Filtered Parties based on selected executive
+  // Filtered Parties based on selected executive (deduplicated: keep last party name)
   const currentParties = useMemo(() => {
+    const seen = new Set();
+    const cleanListReversed = [];
+    const sourceParties = crmParties || [];
+    for (let i = sourceParties.length - 1; i >= 0; i--) {
+      const p = sourceParties[i];
+      if (!p || !p.name) continue;
+      const cleanName = (p.name || "").trim();
+      const norm = cleanName.toLowerCase();
+      if (!norm) continue;
+      if (!seen.has(norm)) {
+        seen.add(norm);
+        cleanListReversed.push({
+          ...p,
+          id: cleanName,
+          name: cleanName
+        });
+      }
+    }
+    const cleanParties = cleanListReversed.reverse();
+
     if (isAsmUser) {
       const myName = (currentUser?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       const myId = currentUser?.id || "";
-      return crmParties.filter(p => {
+      return cleanParties.filter(p => {
         const matchId = myId && (p.assignedAsmId === myId);
         const pAsm = (p.assignedAsmName || "").trim().toLowerCase();
         const matchName = myName && pAsm && (pAsm.includes(myName) || myName.includes(pAsm));
@@ -187,7 +207,7 @@ export default function CrmDashboard({
     if (isTsmUser) {
       const myName = (currentUser?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       const myId = currentUser?.id || "";
-      return crmParties.filter(p => {
+      return cleanParties.filter(p => {
         const matchId = myId && (p.assignedTsmId === myId);
         const pTsm = (p.assignedTsmName || "").trim().toLowerCase();
         const matchName = myName && pTsm && (pTsm.includes(myName) || myName.includes(pTsm));
@@ -197,16 +217,16 @@ export default function CrmDashboard({
     if (isCrmUser) {
       const myName = (currentUser?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       const myId = currentUser?.id || "";
-      return crmParties.filter(p => {
+      return cleanParties.filter(p => {
         const matchId = myId && (p.assignedCrmId === myId);
         const pCrm = (p.assignedCrmName || "").trim().toLowerCase();
         const matchName = myName && pCrm && (pCrm.includes(myName) || myName.includes(pCrm));
         return matchId || matchName;
       });
     }
-    if (selectedExecutiveId === "all") return crmParties;
+    if (selectedExecutiveId === "all") return cleanParties;
     const execName = (activeExecutive?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
-    return crmParties.filter(p => {
+    return cleanParties.filter(p => {
       const matchId = p.assignedCrmId === selectedExecutiveId || p.assignedAsmId === selectedExecutiveId || p.assignedTsmId === selectedExecutiveId;
       const pCrm = (p.assignedCrmName || "").trim().toLowerCase();
       const pAsm = (p.assignedAsmName || "").trim().toLowerCase();
@@ -2550,6 +2570,7 @@ export default function CrmDashboard({
       {(showAddPartyModal || editingParty) && (
         <PartyModal
           party={editingParty}
+          allParties={crmParties}
           crmExecutives={crmExecutives}
           asmList={asmList}
           tsmList={tsmList}
@@ -2815,7 +2836,7 @@ export default function CrmDashboard({
 }
 
 // ==================== SUB-COMPONENT: PARTY ADD/EDIT MODAL ====================
-function PartyModal({ party, crmExecutives, asmList, tsmList, currentExecutive, currentUser, onSave, onClose }) {
+function PartyModal({ party, allParties = [], crmExecutives, asmList, tsmList, currentExecutive, currentUser, onSave, onClose }) {
   const isCrmRole = currentUser?.role === "crm" || currentUser?.role === "asm" || currentUser?.role === "tsm";
   const [name, setName] = useState(party?.name || "");
   const [contactPerson, setContactPerson] = useState(party?.contactPerson || "");
@@ -2831,8 +2852,17 @@ function PartyModal({ party, crmExecutives, asmList, tsmList, currentExecutive, 
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const finalPartyName = (isCrmRole && party) ? party.name : name.trim();
+    const finalPartyName = (isCrmRole && party) ? party.name.trim() : name.trim();
     if (!finalPartyName) return;
+
+    // Party name can't be duplicate: check if already exists when adding new party
+    if (!party) {
+      const exists = (allParties || []).some(p => (p.name || "").trim().toLowerCase() === finalPartyName.toLowerCase());
+      if (exists) {
+        alert(`Party "${finalPartyName}" already exists. Party name must be unique!`);
+        return;
+      }
+    }
 
     const crmObj = crmExecutives.find(c => c.id === assignedCrmId);
     const asmObj = asmList.find(a => a.id === assignedAsmId);
@@ -2840,6 +2870,7 @@ function PartyModal({ party, crmExecutives, asmList, tsmList, currentExecutive, 
 
     onSave({
       ...(party || {}),
+      id: finalPartyName,
       name: finalPartyName,
       contactPerson: contactPerson.trim(),
       phone: phone.trim(),

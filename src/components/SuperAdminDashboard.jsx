@@ -186,9 +186,52 @@ export default function SuperAdminDashboard({
     );
   }, [users]);
 
-  // Filtered CRM Parties for directory
+  // Auto-detect and delete duplicates above the last party in the database
+  React.useEffect(() => {
+    if (!crmParties || crmParties.length === 0 || !onBulkDeleteParties) return;
+    const seen = new Set();
+    const duplicateAboveIds = [];
+    for (let i = crmParties.length - 1; i >= 0; i--) {
+      const p = crmParties[i];
+      if (!p || !p.name) continue;
+      const norm = (p.name || "").trim().toLowerCase();
+      if (!norm) continue;
+      if (seen.has(norm)) {
+        // This is a duplicate ABOVE the last one!
+        if (p.id) duplicateAboveIds.push(p.id);
+      } else {
+        seen.add(norm);
+      }
+    }
+    if (duplicateAboveIds.length > 0) {
+      console.log(`Auto-cleaning ${duplicateAboveIds.length} duplicate party entries above the last ones...`);
+      onBulkDeleteParties(duplicateAboveIds);
+    }
+  }, [crmParties, onBulkDeleteParties]);
+
+  // Filtered & Deduplicated CRM Parties for directory (keeps the last party name)
   const filteredCrmParties = React.useMemo(() => {
-    return (crmParties || []).filter(p => {
+    const seen = new Set();
+    const keptReversed = [];
+    const sourceList = crmParties || [];
+    for (let i = sourceList.length - 1; i >= 0; i--) {
+      const p = sourceList[i];
+      if (!p || !p.name) continue;
+      const cleanName = (p.name || "").trim();
+      const norm = cleanName.toLowerCase();
+      if (!norm) continue;
+      if (!seen.has(norm)) {
+        seen.add(norm);
+        keptReversed.push({
+          ...p,
+          id: cleanName,
+          name: cleanName
+        });
+      }
+    }
+    const cleanList = keptReversed.reverse();
+
+    return cleanList.filter(p => {
       if (crmPartyFilter !== "all") {
         if (crmPartyFilter === "unassigned") {
           if (p.assignedCrmId && p.assignedCrmId !== "") return false;
@@ -453,9 +496,10 @@ export default function SuperAdminDashboard({
         crmDisplayName = emailUserPart.charAt(0).toUpperCase() + emailUserPart.slice(1);
       }
 
+      const cleanName = partyName.trim();
       parsed.push({
-        id: `pty-${Date.now()}-${index}-${Math.floor(Math.random() * 1000)}`,
-        name: partyName.trim(),
+        id: cleanName,
+        name: cleanName,
         assignedCrmId: matchedCrm ? matchedCrm.id : "",
         assignedCrmName: crmDisplayName,
         crmEmailProvided: crmIdentifier,
@@ -471,16 +515,48 @@ export default function SuperAdminDashboard({
       });
     });
 
-    setBulkParsedParties(parsed);
+    // Deduplicate parsed parties: keep the LAST party name and delete duplicate above ones
+    const seenParsed = new Set();
+    const cleanParsedReversed = [];
+    for (let i = parsed.length - 1; i >= 0; i--) {
+      const p = parsed[i];
+      if (!p || !p.name) continue;
+      const norm = p.name.toLowerCase();
+      if (!seenParsed.has(norm)) {
+        seenParsed.add(norm);
+        cleanParsedReversed.push(p);
+      }
+    }
+    setBulkParsedParties(cleanParsedReversed.reverse());
   };
 
   // Flip Party Name and City for all parsed rows if inverted
   const handleFlipAllParsedNamesAndCities = () => {
-    setBulkParsedParties(prev => prev.map(p => ({
-      ...p,
-      name: p.city || p.name,
-      city: p.name !== p.city ? p.name : ""
-    })));
+    setBulkParsedParties(prev => {
+      const flipped = prev.map(p => {
+        const flippedName = (p.city || p.name || "").trim();
+        const flippedCity = p.name !== p.city ? p.name : "";
+        return {
+          ...p,
+          id: flippedName,
+          name: flippedName,
+          city: flippedCity
+        };
+      });
+      // Deduplicate keeping the LAST party name
+      const seenFlipped = new Set();
+      const keptRev = [];
+      for (let i = flipped.length - 1; i >= 0; i--) {
+        const p = flipped[i];
+        if (!p || !p.name) continue;
+        const norm = p.name.toLowerCase();
+        if (!seenFlipped.has(norm)) {
+          seenFlipped.add(norm);
+          keptRev.push(p);
+        }
+      }
+      return keptRev.reverse();
+    });
   };
 
   // Bulk assign all parsed parties to a specific CRM executive
@@ -3734,14 +3810,23 @@ export default function SuperAdminDashboard({
                   <form onSubmit={async (e) => {
                     e.preventDefault();
                     const formData = new FormData(e.target);
-                    const partyName = editingParty ? editingParty.name : (formData.get("name")?.trim());
+                    const partyName = editingParty ? editingParty.name.trim() : (formData.get("name")?.trim());
                     if (!partyName) return;
+
+                    // Uniqueness validation: party name can't be duplicate
+                    if (!editingParty) {
+                      const alreadyExists = (crmParties || []).some(p => (p.name || "").trim().toLowerCase() === partyName.toLowerCase());
+                      if (alreadyExists) {
+                        alert(`Party "${partyName}" already exists. Party name must be unique!`);
+                        return;
+                      }
+                    }
 
                     const crmId = formData.get("assignedCrmId");
                     const matchedCrm = users.find(u => u.id === crmId);
 
                     const partyObj = {
-                      id: editingParty ? editingParty.id : `pty-${Date.now()}`,
+                      id: partyName,
                       name: partyName,
                       assignedCrmId: crmId || "",
                       assignedCrmName: matchedCrm ? matchedCrm.name : "Unassigned",
