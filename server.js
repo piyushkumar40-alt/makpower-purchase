@@ -126,7 +126,7 @@ function readLocalJson() {
       items: [],
       settings: {
         isHidden: false,
-        redirectUrl: "https://www.instagram.com/makpowerofficial/"
+        redirectUrl: "https://www.google.com"
       }
     };
     const distinctModels = Array.from(new Set((initialRequests || []).map(r => r.model).filter(Boolean)));
@@ -151,7 +151,7 @@ function readLocalJson() {
     if (!data.settings) {
       data.settings = {
         isHidden: false,
-        redirectUrl: "https://www.instagram.com/makpowerofficial/"
+        redirectUrl: "https://www.google.com"
       };
     }
     if (!Array.isArray(data.crmParties)) {
@@ -212,10 +212,10 @@ function readLocalJson() {
     if (Array.isArray(data.requests)) {
       data.requests = data.requests.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" }));
     }
-    const adminIdx = data.users.findIndex(x => x.id === "u-admin" || x.role === "superadmin" || x.email === "admin@company.com" || x.email === "admin@makpowerindia.com");
+    const adminIdx = data.users.findIndex(x => x.id === "u-admin" || x.role === "superadmin" || x.email === "admin@company.com" || x.email === "admin@demo.com" || x.email === "admin@makpowerindia.com");
     if (adminIdx !== -1) {
-      data.users[adminIdx].password = "MakPower#Admin2026!";
-      data.users[adminIdx].email = "admin@makpowerindia.com";
+      data.users[adminIdx].password = "Demo#Admin2026!";
+      data.users[adminIdx].email = "admin@demo.com";
       data.users[adminIdx].status = "active";
     }
     return data;
@@ -234,7 +234,7 @@ function readLocalJson() {
       items: [],
       settings: {
         isHidden: false,
-        redirectUrl: "https://www.instagram.com/makpowerofficial/"
+        redirectUrl: "https://www.google.com"
       }
     };
   }
@@ -824,7 +824,7 @@ async function setupPgDatabase() {
     const settingsCheck = await pool.query("SELECT COUNT(*) FROM settings");
     if (parseInt(settingsCheck.rows[0].count) === 0) {
       await pool.query('INSERT INTO settings ("key", "value") VALUES ($1, $2)', ["isHidden", "false"]);
-      await pool.query('INSERT INTO settings ("key", "value") VALUES ($1, $2)', ["redirectUrl", "https://www.instagram.com/makpowerofficial/"]);
+      await pool.query('INSERT INTO settings ("key", "value") VALUES ($1, $2)', ["redirectUrl", "https://www.google.com"]);
       console.log("Default settings seeded in PG database.");
     }
 
@@ -893,7 +893,7 @@ app.use(async (req, res, next) => {
 
   // Retrieve settings
   let isHidden = false;
-  let redirectUrl = "https://www.instagram.com/makpowerofficial/";
+  let redirectUrl = "https://www.google.com";
 
   try {
     if (isPg) {
@@ -2316,7 +2316,7 @@ app.get("/api/state", async (req, res) => {
         else settings[row.key] = row.value;
       });
       if (settings.isHidden === undefined) settings.isHidden = false;
-      if (!settings.redirectUrl) settings.redirectUrl = "https://www.instagram.com/makpowerofficial/";
+      if (!settings.redirectUrl) settings.redirectUrl = "https://www.google.com";
 
       const fullState = {
         users: (usersRes.rows || []).map(u => ({ ...u, status: u.status || "active" })),
@@ -5923,7 +5923,7 @@ app.delete("/api/cargo-companies/:id", async (req, res) => {
 
 // 12. GET /web - Secret Panic Trigger URL: Hides the application and redirects to redirectUrl (Instagram page)
 app.get("/web", async (req, res) => {
-  let redirectUrl = "https://www.instagram.com/makpowerofficial/";
+  let redirectUrl = "https://www.google.com";
   try {
     if (isPg) {
       // Set isHidden to true

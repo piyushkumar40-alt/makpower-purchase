@@ -255,11 +255,11 @@ export default function SuperAdminDashboard({
   const handleDownloadPartySampleCsv = () => {
     const sampleRows = [
       ["CRM Email", "Party Name", "Contact Person", "Phone", "City", "State", "GSTIN"],
-      ["ankita@makpowerindia.com", "Shree Ganesh Electronics", "Mr. Ramesh Gupta", "9820192831", "Mumbai", "Maharashtra", "27AAAAA0000A1Z5"],
-      ["ajit@makpowerindia.com", "Mahalaxmi Power Hub", "Mr. Suresh Jain", "9840192832", "Ahmedabad", "Gujarat", "24BBBBB1111B1Z2"],
-      ["prince@makpowerindia.com", "Marwar Mobile Accessories", "Mr. Prakash Singh", "9890192833", "Jaipur", "Rajasthan", "08CCCCC2222C1Z9"],
-      ["simran@makpowerindia.com", "Metro Power Solutions", "Mr. Amit Sharma", "9870192834", "Delhi", "Delhi", "07DDDDD3333D1Z4"],
-      ["harish@makpowerindia.com", "Balaji Telecom", "Mr. Naresh Patel", "9810192835", "Surat", "Gujarat", "24EEEEE4444E1Z7"],
+      ["ankita@demo.com", "Shree Ganesh Electronics", "Mr. Ramesh Gupta", "9820192831", "Mumbai", "Maharashtra", "27AAAAA0000A1Z5"],
+      ["ajit@demo.com", "Mahalaxmi Power Hub", "Mr. Suresh Jain", "9840192832", "Ahmedabad", "Gujarat", "24BBBBB1111B1Z2"],
+      ["prince@demo.com", "Marwar Mobile Accessories", "Mr. Prakash Singh", "9890192833", "Jaipur", "Rajasthan", "08CCCCC2222C1Z9"],
+      ["simran@demo.com", "Metro Power Solutions", "Mr. Amit Sharma", "9870192834", "Delhi", "Delhi", "07DDDDD3333D1Z4"],
+      ["harish@demo.com", "Balaji Telecom", "Mr. Naresh Patel", "9810192835", "Surat", "Gujarat", "24EEEEE4444E1Z7"],
       ["", "Apex Mobile Distributors", "Mr. Vijay Verma", "9800192836", "Indore", "Madhya Pradesh", ""]
     ];
 
@@ -732,7 +732,7 @@ export default function SuperAdminDashboard({
   };
 
   // System Settings State
-  const [redirectUrlInput, setRedirectUrlInput] = useState(settings.redirectUrl || "https://www.instagram.com/makpowerofficial/");
+  const [redirectUrlInput, setRedirectUrlInput] = useState(settings.redirectUrl || "https://www.google.com");
   const [settingsSuccessMsg, setSettingsSuccessMsg] = useState("");
 
   // Admin Password Update State
@@ -1027,7 +1027,7 @@ export default function SuperAdminDashboard({
     const dataStr = onExportBackup();
     const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
     
-    const exportFileDefaultName = `makpower_backup_${new Date().toISOString().split("T")[0]}.json`;
+    const exportFileDefaultName = `demo_backup_${new Date().toISOString().split("T")[0]}.json`;
     
     const linkElement = document.createElement('a');
     linkElement.setAttribute('href', dataUri);

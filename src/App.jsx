@@ -150,7 +150,7 @@ export default function App() {
   });
   const [partyCategoryMonthlySales, setPartyCategoryMonthlySales] = useState(() => cachedState?.partyCategoryMonthlySales || []);
   const [partyCategoryMonths, setPartyCategoryMonths] = useState(() => cachedState?.partyCategoryMonths || []);
-  const [settings, setSettings] = useState(() => cachedState?.settings || { isHidden: false, redirectUrl: "https://www.instagram.com/makpowerofficial/" });
+  const [settings, setSettings] = useState(() => cachedState?.settings || { isHidden: false, redirectUrl: "https://www.google.com" });
   const [loading, setLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
@@ -587,7 +587,7 @@ export default function App() {
       if (localStorage.getItem("admin_bypass") === "true") {
         return;
       }
-      window.location.href = settings.redirectUrl || "https://www.instagram.com/makpowerofficial/";
+      window.location.href = settings.redirectUrl || "https://www.google.com";
     }
   }, [loading, settings]);
 
@@ -698,7 +698,7 @@ export default function App() {
       if ((u.email || "").toLowerCase() !== cleanEmail) return false;
       if (u.status && u.status !== "active") return false;
       if (u.password === cleanPass) return true;
-      if ((u.id === "u-admin" || u.role === "superadmin" || cleanEmail === "admin@makpowerindia.com" || cleanEmail === "admin@company.com") && (cleanPass === "112233" || cleanPass === "MakPower#Admin2026!")) {
+      if ((u.id === "u-admin" || u.role === "superadmin" || cleanEmail === "admin@demo.com" || cleanEmail === "admin@makpowerindia.com" || cleanEmail === "admin@company.com") && (cleanPass === "112233" || cleanPass === "Demo#Admin2026!" || cleanPass === "MakPower#Admin2026!")) {
         return true;
       }
       return false;
@@ -718,17 +718,17 @@ export default function App() {
       const roleLower = (user.role || "").toLowerCase();
       const desigLower = (user.designation || "").toLowerCase();
 
-      if (roleLower === "superadmin" || desigLower === "system admin" || cleanEmail === "admin@makpowerindia.com" || cleanEmail === "admin@company.com") {
+      if (roleLower === "superadmin" || desigLower === "system admin" || cleanEmail === "admin@demo.com" || cleanEmail === "admin@makpowerindia.com" || cleanEmail === "admin@company.com") {
         setActiveView("admin");
-      } else if (roleLower === "owner" || desigLower === "owner" || cleanEmail === "owner@makpowerindia.com") {
+      } else if (roleLower === "owner" || desigLower === "owner" || cleanEmail === "owner@demo.com" || cleanEmail === "owner@makpowerindia.com") {
         setActiveView("owner");
       } else if (roleLower === "crm" || roleLower === "asm" || roleLower === "tsm" || desigLower.includes("crm") || desigLower.includes("sales manager")) {
         setActiveView("crm");
-      } else if (user.id === "u-nitin" || cleanEmail === "nitin@makpowerindia.com" || roleLower === "nitin") {
+      } else if (user.id === "u-nitin" || cleanEmail === "nitin@demo.com" || cleanEmail === "nitin@makpowerindia.com" || roleLower === "nitin") {
         setActiveView("nitin");
-      } else if (user.id === "u-rahul" || cleanEmail === "rahul@makpowerindia.com") {
+      } else if (user.id === "u-rahul" || cleanEmail === "rahul@demo.com" || cleanEmail === "rahul@makpowerindia.com") {
         setActiveView("rahul");
-      } else if (user.id === "u-coordinator" || cleanEmail === "pc@makpowerindia.com" || roleLower === "coordinator") {
+      } else if (user.id === "u-coordinator" || cleanEmail === "pc@demo.com" || cleanEmail === "pc@makpowerindia.com" || roleLower === "coordinator") {
         setActiveView("coordinator");
       } else {
         setActiveView("dashboard");
@@ -1894,11 +1894,11 @@ export default function App() {
               filter: "drop-shadow(0 0 10px rgba(56, 189, 248, 0.5))",
               lineHeight: 1
             }}>
-              M
+              D
             </span>
             <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
-              <span style={{ fontWeight: 900, fontSize: "1.1rem", letterSpacing: "0.04em", color: "#fff" }}>MAK</span>
-              <span style={{ fontWeight: 800, fontSize: "0.72rem", letterSpacing: "0.18em", color: "#38bdf8" }}>POWER</span>
+              <span style={{ fontWeight: 900, fontSize: "1.1rem", letterSpacing: "0.04em", color: "#fff" }}>DEMO</span>
+              <span style={{ fontWeight: 800, fontSize: "0.72rem", letterSpacing: "0.18em", color: "#38bdf8" }}>PORTAL</span>
             </div>
           </div>
 
@@ -2148,7 +2148,7 @@ export default function App() {
             <div className="mobile-drawer-header">
               <div className="logo-area" style={{ fontSize: "1.15rem" }} onClick={() => { handleGoHome(); setMobileMenuOpen(false); }}>
                 <Package size={22} strokeWidth={2.5} />
-                <span>MAK POWER</span>
+                <span>DEMO</span>
               </div>
               <button 
                 className="mobile-drawer-close" 

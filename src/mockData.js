@@ -2,8 +2,8 @@ export const initialUsers = [
   {
     id: "u-admin",
     name: "Super Admin",
-    email: "admin@makpowerindia.com",
-    password: "MakPower#Admin2026!",
+    email: "admin@demo.com",
+    password: "Demo#Admin2026!",
     role: "superadmin",
     designation: "System Admin",
     status: "active"
@@ -11,8 +11,8 @@ export const initialUsers = [
   {
     id: "u-owner",
     name: "Company Owner",
-    email: "owner@makpowerindia.com",
-    password: "MakPower#Owner2026!",
+    email: "owner@demo.com",
+    password: "Demo#Owner2026!",
     role: "owner",
     designation: "Owner",
     status: "active"
@@ -20,8 +20,8 @@ export const initialUsers = [
   {
     id: "u-anees",
     name: "Anees",
-    email: "anees@makpowerindia.com",
-    password: "MakPower#Anees2026!",
+    email: "anees@demo.com",
+    password: "Demo#Anees2026!",
     role: "purchaser",
     designation: "Purchaser",
     status: "active"
@@ -29,8 +29,8 @@ export const initialUsers = [
   {
     id: "u-nitin",
     name: "Nitin Kumar",
-    email: "nitin@makpowerindia.com",
-    password: "MakPower#Nitin2026!",
+    email: "nitin@demo.com",
+    password: "Demo#Nitin2026!",
     role: "purchaser",
     designation: "Packing",
     status: "active"
@@ -38,8 +38,8 @@ export const initialUsers = [
   {
     id: "u-rahul",
     name: "Rahul",
-    email: "rahul@makpowerindia.com",
-    password: "MakPower#Rahul2026!",
+    email: "rahul@demo.com",
+    password: "Demo#Rahul2026!",
     role: "purchaser",
     designation: "Accounts and Updates",
     status: "active"
@@ -47,8 +47,8 @@ export const initialUsers = [
   {
     id: "u-coordinator",
     name: "Logistics PC",
-    email: "pc@makpowerindia.com",
-    password: "MakPower#Coord2026!",
+    email: "pc@demo.com",
+    password: "Demo#Coord2026!",
     role: "coordinator",
     designation: "Logistics",
     status: "active"
@@ -57,8 +57,8 @@ export const initialUsers = [
   {
     id: "u-ankita",
     name: "Ankita",
-    email: "ankita@makpowerindia.com",
-    password: "MakPower#CRM2026!",
+    email: "ankita@demo.com",
+    password: "Demo#CRM2026!",
     role: "crm",
     designation: "CRM Executive",
     phone: "+91 98101 23401",
@@ -68,8 +68,8 @@ export const initialUsers = [
   {
     id: "u-ajit",
     name: "Ajit",
-    email: "ajit@makpowerindia.com",
-    password: "MakPower#CRM2026!",
+    email: "ajit@demo.com",
+    password: "Demo#CRM2026!",
     role: "crm",
     designation: "CRM Executive",
     phone: "+91 98101 23402",
@@ -79,8 +79,8 @@ export const initialUsers = [
   {
     id: "u-prince",
     name: "Prince",
-    email: "prince@makpowerindia.com",
-    password: "MakPower#CRM2026!",
+    email: "prince@demo.com",
+    password: "Demo#CRM2026!",
     role: "crm",
     designation: "CRM Executive",
     phone: "+91 98101 23403",
@@ -90,8 +90,8 @@ export const initialUsers = [
   {
     id: "u-simran",
     name: "Simran",
-    email: "simran@makpowerindia.com",
-    password: "MakPower#CRM2026!",
+    email: "simran@demo.com",
+    password: "Demo#CRM2026!",
     role: "crm",
     designation: "CRM Executive",
     phone: "+91 98101 23404",
@@ -101,8 +101,8 @@ export const initialUsers = [
   {
     id: "u-harish",
     name: "Harish",
-    email: "harish@makpowerindia.com",
-    password: "MakPower#CRM2026!",
+    email: "harish@demo.com",
+    password: "Demo#CRM2026!",
     role: "crm",
     designation: "CRM Executive",
     phone: "+91 98101 23405",
