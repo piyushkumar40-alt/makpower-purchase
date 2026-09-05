@@ -3404,30 +3404,6 @@ app.post("/api/crm/parties/batch", async (req, res) => {
 
             for (const p of chunk) {
               if (!p.name) continue;
-              await pool.query(`
-                INSERT INTO crm_parties (
-                  "id", "name", "contactPerson", "phone", "email", "city", "state", "gstin",
-                  "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName",
-                  "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt"
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-                ON CONFLICT ("name") DO UPDATE SET
-                  "id" = EXCLUDED."name",
-                  "contactPerson" = EXCLUDED."contactPerson",
-                  "phone" = EXCLUDED."phone",
-                  "email" = EXCLUDED."email",
-                  "city" = EXCLUDED."city",
-                  "state" = EXCLUDED."state",
-                  "gstin" = EXCLUDED."gstin",
-                  "creditLimit" = EXCLUDED."creditLimit",
-                  "outstanding" = EXCLUDED."outstanding",
-                  "paymentTerms" = EXCLUDED."paymentTerms",
-                  "assignedCrmId" = EXCLUDED."assignedCrmId",
-                  "assignedCrmName" = EXCLUDED."assignedCrmName",
-                  "assignedAsmId" = EXCLUDED."assignedAsmId",
-                  "assignedAsmName" = EXCLUDED."assignedAsmName",
-                  "assignedTsmId" = EXCLUDED."assignedTsmId",
-                  "assignedTsmName" = EXCLUDED."assignedTsmName",
-                  "status" = EXCLUDED."status"
               try {
                 await pool.query(`
                   INSERT INTO crm_parties (
