@@ -1893,6 +1893,7 @@ function normalizeFgCategory(cat = "", itemDesc = "", itemType = "") {
     if (combined.includes("car charge") || combined.includes("car")) return "Car Charger";
     if (combined.includes("watch")) return "Smart Watch";
     return "Other";
+  }
   return "Other";
 }
 
