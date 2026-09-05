@@ -15,6 +15,7 @@ import PriceManagementPanel from "./PriceManagementPanel";
 import { QuickCreateDesignationModal, QuickCreateVendorModal, QuickCreateCargoCompanyModal, QuickCreateItemModal, QuickCreateUserModal } from "./QuickCreateModals";
 import { useLoading } from "../context/LoadingContext";
 import { initialUsers } from "../mockData";
+import { downloadCsv } from "../utils/formatters";
 
 export default function SuperAdminDashboard({
   users = [],
@@ -2886,13 +2887,36 @@ export default function SuperAdminDashboard({
                     </label>
 
                     {selectedFileIds.length > 0 && (
-                      <button 
-                        onClick={handleBatchDeleteStorageFiles}
-                        className="btn btn-danger btn-sm"
-                        style={{ padding: "6px 14px" }}
-                      >
-                        <Trash2 size={14} /> Delete Selected ({selectedFileIds.length})
-                      </button>
+                      <>
+                        <button
+                          onClick={() => {
+                            const selectedFiles = filteredStorageFiles.filter(f => selectedFileIds.includes(f.public_id));
+                            const headers = ["Name", "Public ID", "Storage Type", "Format", "Size", "URL", "Created At"];
+                            const rows = selectedFiles.map(f => [
+                              f.name || "",
+                              f.public_id || "",
+                              f.storageType || "Database",
+                              f.format || "",
+                              f.sizeStr || f.bytes || "",
+                              f.url || "",
+                              f.created_at || ""
+                            ]);
+                            downloadCsv(headers, rows, `Media_Files_Selected_${selectedFiles.length}`);
+                          }}
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: "6px", color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.4)" }}
+                          title="Download details of selected files as CSV"
+                        >
+                          <Download size={14} /> Download Selected ({selectedFileIds.length})
+                        </button>
+                        <button 
+                          onClick={handleBatchDeleteStorageFiles}
+                          className="btn btn-danger btn-sm"
+                          style={{ padding: "6px 14px" }}
+                        >
+                          <Trash2 size={14} /> Delete Selected ({selectedFileIds.length})
+                        </button>
+                      </>
                     )}
                   </div>
 
@@ -3623,26 +3647,72 @@ export default function SuperAdminDashboard({
                       </button>
                     )}
 
-                    {/* Multi-Delete Button */}
+                    {/* Multi-Download and Multi-Delete Buttons */}
                     {selectedPartyIds.length > 0 && (
-                      <button
-                        onClick={async () => {
-                          if (!window.confirm(`⚠️ Are you sure you want to delete ${selectedPartyIds.length} selected party accounts?`)) return;
-                          if (onBulkDeleteParties) {
-                            await onBulkDeleteParties(selectedPartyIds);
-                            showSuccessToast(`✅ Deleted ${selectedPartyIds.length} parties successfully!`);
-                          }
-                          setSelectedPartyIds([]);
-                        }}
-                        className="btn btn-danger btn-sm"
-                        style={{ display: "inline-flex", alignItems: "center", gap: "6px", height: "36px", fontWeight: 700, padding: "0 14px", animation: "pulse 2s infinite" }}
-                      >
-                        <Trash2 size={14} /> Delete Selected ({selectedPartyIds.length})
-                      </button>
+                      <>
+                        <button
+                          onClick={() => {
+                            const selectedParties = crmParties.filter(p => selectedPartyIds.includes(p.id) || selectedPartyIds.includes(p.name));
+                            const headers = ["Party Name", "City", "State", "Phone", "Assigned Sales Rep", "Address", "GST Number", "Created At"];
+                            const rows = selectedParties.map(p => [
+                              p.name || "",
+                              p.city || "",
+                              p.state || "",
+                              p.phone || "",
+                              p.assignedCrmName || p.assignedCrmId || "",
+                              p.address || "",
+                              p.gstNumber || p.gst || "",
+                              p.createdAt || p.date || ""
+                            ]);
+                            downloadCsv(headers, rows, `Parties_Directory_Selected_${selectedParties.length}`);
+                          }}
+                          className="btn btn-secondary btn-sm"
+                          style={{ display: "inline-flex", alignItems: "center", gap: "6px", height: "36px", fontWeight: 700, padding: "0 14px", color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.45)", background: "rgba(56, 189, 248, 0.1)" }}
+                          title="Download selected parties as CSV"
+                        >
+                          <Download size={14} /> Download Selected ({selectedPartyIds.length})
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!window.confirm(`⚠️ Are you sure you want to delete ${selectedPartyIds.length} selected party accounts?`)) return;
+                            if (onBulkDeleteParties) {
+                              await onBulkDeleteParties(selectedPartyIds);
+                              showSuccessToast(`✅ Deleted ${selectedPartyIds.length} parties successfully!`);
+                            }
+                            setSelectedPartyIds([]);
+                          }}
+                          className="btn btn-danger btn-sm"
+                          style={{ display: "inline-flex", alignItems: "center", gap: "6px", height: "36px", fontWeight: 700, padding: "0 14px", animation: "pulse 2s infinite" }}
+                        >
+                          <Trash2 size={14} /> Delete Selected ({selectedPartyIds.length})
+                        </button>
+                      </>
                     )}
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <button
+                      onClick={() => {
+                        const headers = ["Party Name", "City", "State", "Phone", "Assigned Sales Rep", "Address", "GST Number", "Created At"];
+                        const rows = filteredCrmParties.map(p => [
+                          p.name || "",
+                          p.city || "",
+                          p.state || "",
+                          p.phone || "",
+                          p.assignedCrmName || p.assignedCrmId || "",
+                          p.address || "",
+                          p.gstNumber || p.gst || "",
+                          p.createdAt || p.date || ""
+                        ]);
+                        downloadCsv(headers, rows, `Parties_Directory_All_${filteredCrmParties.length}`);
+                      }}
+                      className="btn btn-secondary btn-sm"
+                      style={{ display: "inline-flex", alignItems: "center", gap: "6px", height: "34px", fontSize: "0.8rem" }}
+                      title="Export all filtered parties to CSV"
+                    >
+                      <Download size={13} /> Export All ({filteredCrmParties.length})
+                    </button>
+
                     {selectedPartyIds.length > 0 && (
                       <button
                         onClick={() => setSelectedPartyIds([])}

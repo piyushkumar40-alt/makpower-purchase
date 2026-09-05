@@ -4,6 +4,7 @@ import ItemDetailModal from "./ItemDetailModal";
 import { useSortableData } from "../utils/useSortableData";
 import Pagination, { SmartSelectionBar } from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
+import { downloadCsv } from "../utils/formatters";
 
 // Normalize item names for fuzzy duplicate detection (e.g. DC02, DC 02, DC2, DC-2, DC-02 -> DC2)
 export function normalizeItemKey(str) {
@@ -464,6 +465,38 @@ export default function ItemCatalogPanel({
     setSelectedIds(prev => prev.filter(x => x !== id));
   };
 
+  // Export Catalog Items (CSV)
+  const handleExportCatalog = (targetIds = null) => {
+    const isSelectedMode = Array.isArray(targetIds) && targetIds.length > 0;
+    const targetItems = isSelectedMode
+      ? items.filter(i => targetIds.includes(i.id))
+      : filteredItems;
+
+    if (targetItems.length === 0) {
+      alert("No catalog items to export.");
+      return;
+    }
+
+    const headers = ["Item ID", "Item Name", "Category", "Item Type", "Item Nature", "Unit", "Current Stock", "Description", "Photo URL"];
+    const rows = targetItems.map(i => [
+      i.id || "",
+      i.name || "",
+      i.category || "",
+      i.itemType || "RM",
+      i.itemNature || "Non Consumables",
+      i.unit || "Pcs",
+      i.currentStock || 0,
+      i.description || "",
+      i.photo || ""
+    ]);
+
+    const filename = isSelectedMode
+      ? `Catalog_Items_Selected_${targetItems.length}`
+      : `Master_Catalog_Items_${new Date().toISOString().split("T")[0]}`;
+
+    downloadCsv(headers, rows, filename);
+  };
+
   // Bulk Delete
   const handleBulkDelete = async () => {
     if (!isSuperAdmin) return;
@@ -814,6 +847,17 @@ export default function ItemCatalogPanel({
               style={{ fontSize: "0.85rem", borderColor: "#818cf8", color: "#c7d2fe" }}
             >
               <GitMerge size={16} style={{ color: "#818cf8" }} /> Merge 2 Items
+            </button>
+          )}
+
+          {selectedIds.length > 0 && (
+            <button 
+              onClick={() => handleExportCatalog(selectedIds)}
+              className="btn btn-secondary"
+              style={{ fontSize: "0.85rem", color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.45)", background: "rgba(56, 189, 248, 0.1)" }}
+              title="Download selected catalog items to CSV"
+            >
+              <Download size={16} /> Download Selected ({selectedIds.length})
             </button>
           )}
 
@@ -1451,15 +1495,25 @@ export default function ItemCatalogPanel({
         onClearSelection={() => setSelectedIds([])}
         entityName="catalog items"
         actions={
-          isSuperAdmin && (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
             <button
-              onClick={handleBulkDelete}
-              className="btn btn-danger btn-sm"
-              style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
+              onClick={() => handleExportCatalog(selectedIds)}
+              className="btn btn-secondary btn-sm"
+              style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px", color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.45)", background: "rgba(56, 189, 248, 0.1)" }}
+              title="Download selected catalog items to CSV"
             >
-              <Trash2 size={14} /> Delete Selected ({selectedIds.length})
+              <Download size={14} /> Download Selected ({selectedIds.length})
             </button>
-          )
+            {isSuperAdmin && (
+              <button
+                onClick={handleBulkDelete}
+                className="btn btn-danger btn-sm"
+                style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
+              >
+                <Trash2 size={14} /> Delete Selected ({selectedIds.length})
+              </button>
+            )}
+          </div>
         }
       />
 

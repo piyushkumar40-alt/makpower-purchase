@@ -7,6 +7,7 @@ import {
 import Pagination, { SmartSelectionBar } from "./Pagination";
 import DateRangeFilter, { isDateInBetween, parseDateTimestamp } from "./DateRangeFilter";
 import { useLoading } from "../context/LoadingContext";
+import { downloadCsv } from "../utils/formatters";
 
 // Helper: Format Date into DD/MM/YYYY or YYYY-MM-DD cleanly
 function formatDateDisplay(dateStr) {
@@ -203,31 +204,32 @@ export default function PriceManagementPanel({
     }
   };
 
-  // Export CSV
-  const handleExportCsv = () => {
-    if (filteredPrices.length === 0) {
+  // Export CSV (All Filtered or Selected)
+  const handleExportCsv = (targetIds = null) => {
+    const isSelectedMode = Array.isArray(targetIds) && targetIds.length > 0;
+    const targetPrices = isSelectedMode 
+      ? filteredPrices.filter(p => targetIds.includes(p.id))
+      : filteredPrices;
+
+    if (targetPrices.length === 0) {
       alert("No price records to export.");
       return;
     }
     const headers = ["ID", "Item Name", "PP", "From", "To", "Status"];
-    const rows = filteredPrices.map(p => [
-      `"${p.itemId || p.id || ""}"`,
-      `"${(p.itemName || "").replace(/"/g, '""')}"`,
+    const rows = targetPrices.map(p => [
+      p.itemId || p.id || "",
+      p.itemName || "",
       p.pp || 0,
-      `"${p.from || ""}"`,
-      `"${p.to || ""}"`,
-      `"${isPriceActive(p.from, p.to) ? "Active" : "Expired"}"`
+      p.from || "",
+      p.to || "",
+      isPriceActive(p.from, p.to) ? "Active" : "Expired"
     ]);
 
-    const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `Price_Master_${new Date().toISOString().split("T")[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const filename = isSelectedMode 
+      ? `Price_Master_Selected_${targetPrices.length}`
+      : `Price_Master_${new Date().toISOString().split("T")[0]}`;
+
+    downloadCsv(headers, rows, filename);
   };
 
   // Parse Bulk Text (from Google Sheet / Excel paste)
@@ -440,13 +442,23 @@ export default function PriceManagementPanel({
         {/* Action Buttons & Counter */}
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           {selectedPriceIds.length > 0 && (
-            <button
-              onClick={handleExecuteDeleteSelected}
-              className="btn btn-danger"
-              style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", padding: "8px 14px" }}
-            >
-              <Trash2 size={14} /> Delete Selected ({selectedPriceIds.length})
-            </button>
+            <>
+              <button
+                onClick={() => handleExportCsv(selectedPriceIds)}
+                className="btn btn-secondary btn-sm"
+                style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", padding: "8px 14px", color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.45)", background: "rgba(56, 189, 248, 0.1)" }}
+                title="Download selected prices as CSV"
+              >
+                <Download size={14} /> Download Selected ({selectedPriceIds.length})
+              </button>
+              <button
+                onClick={handleExecuteDeleteSelected}
+                className="btn btn-danger"
+                style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", padding: "8px 14px" }}
+              >
+                <Trash2 size={14} /> Delete Selected ({selectedPriceIds.length})
+              </button>
+            </>
           )}
 
           <button

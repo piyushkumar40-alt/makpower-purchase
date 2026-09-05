@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 import { History, User, Filter, Search, Download, Clock, ShieldCheck, Tag, FileText, ChevronRight, X, AlertCircle } from "lucide-react";
 import { useSortableData } from "../utils/useSortableData";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
+import { downloadCsv } from "../utils/formatters";
 
 export default function AuditLogsPanel({ auditLogs = [], users = [], requests = [], vendors = [] }) {
   const [selectedUser, setSelectedUser] = useState("all");
@@ -69,24 +70,17 @@ export default function AuditLogsPanel({ auditLogs = [], users = [], requests = 
     if (filteredLogs.length === 0) return;
     const headers = ["Log ID", "Timestamp (IST)", "User Name", "Role", "Action Type", "Entity Type", "Entity ID", "Details"];
     const rows = filteredLogs.map(log => [
-      `"${log.id || ""}"`,
-      `"${log.timestamp || log.isoTime || ""}"`,
-      `"${log.userName || ""}"`,
-      `"${log.role || ""}"`,
-      `"${log.action || ""}"`,
-      `"${log.entityType || ""}"`,
-      `"${log.entityId || ""}"`,
-      `"${(log.details || "").replace(/"/g, '""')}"`
+      log.id || "",
+      log.timestamp || log.isoTime || "",
+      log.userName || "",
+      log.role || "",
+      log.action || "",
+      log.entityType || "",
+      log.entityId || "",
+      log.details || ""
     ]);
 
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `MakPower_Audit_Logs_Version_History_${new Date().toISOString().split("T")[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadCsv(headers, rows, `MakPower_Audit_Logs_Version_History_${new Date().toISOString().split("T")[0]}`);
   };
 
   // Helper: Render Action Badge

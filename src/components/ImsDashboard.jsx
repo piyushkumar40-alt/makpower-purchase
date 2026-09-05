@@ -9,6 +9,7 @@ import Pagination, { SmartSelectionBar } from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
 import { initialImsTransactions } from "../mockData";
 import DateRangeFilter, { isDateInBetween, parseDateTimestamp, formatDisplayDate } from "./DateRangeFilter";
+import { downloadCsv } from "../utils/formatters";
 
 export default function ImsDashboard({
   currentUser,
@@ -1068,32 +1069,37 @@ export default function ImsDashboard({
     return clean;
   }
 
-  // CSV Export for Ledger
-  const handleExportCsv = () => {
+  // CSV Export for Ledger (All Filtered or Selected)
+  const handleExportCsv = (targetIds = null) => {
+    const isSelectedMode = Array.isArray(targetIds) && targetIds.length > 0;
+    const targetTransactions = isSelectedMode
+      ? filteredTransactions.filter(t => targetIds.includes(t.id))
+      : filteredTransactions;
+
+    if (targetTransactions.length === 0) {
+      alert("No transactions to export.");
+      return;
+    }
+
     const headers = ["Date", "Item Name", "Item ID", "Warehouse Location", "Stock Movement Qty", "Movement Type", "Party Name", "Remarks", "ID Status", "Source"];
-    const rows = filteredTransactions.map(t => [
-      t.date,
-      t.itemName,
+    const rows = targetTransactions.map(t => [
+      t.date || "",
+      t.itemName || "",
       t.itemId || "UNLINKED",
       t.location || "Delhi",
-      t.stockQty,
-      t.stockQty >= 0 ? "IN" : "OUT",
-      t.partyName,
-      t.remarks,
+      t.stockQty !== undefined ? t.stockQty : 0,
+      (t.stockQty >= 0 ? "IN" : "OUT"),
+      t.partyName || "",
+      t.remarks || "",
       t.isMissingId ? "Missing Item ID" : "Linked",
-      t.source
+      t.source || ""
     ]);
 
-    const csvContent = "data:text/csv;charset=utf-8," + 
-      [headers.join(","), ...rows.map(e => e.map(val => `"${String(val || "").replace(/"/g, '""')}"`).join(","))].join("\n");
-    
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `IMS_Stock_Ledger_${new Date().toISOString().split("T")[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const filename = isSelectedMode
+      ? `IMS_Stock_Ledger_Selected_${targetTransactions.length}`
+      : `IMS_Stock_Ledger_${new Date().toISOString().split("T")[0]}`;
+
+    downloadCsv(headers, rows, filename);
   };
 
   // Download Sample CSV Template
@@ -1852,13 +1858,23 @@ export default function ImsDashboard({
             onClearSelection={() => setSelectedTxIds([])}
             entityName="transactions"
             actions={
-              <button
-                onClick={handleExecuteDeleteSelected}
-                className="btn btn-danger btn-sm"
-                style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
-              >
-                <Trash2 size={14} /> Delete Selected ({selectedTxIds.length})
-              </button>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                <button
+                  onClick={() => handleExportCsv(selectedTxIds)}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px", color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.45)", background: "rgba(56, 189, 248, 0.1)" }}
+                  title="Download selected transactions to CSV"
+                >
+                  <Download size={14} /> Download Selected ({selectedTxIds.length})
+                </button>
+                <button
+                  onClick={handleExecuteDeleteSelected}
+                  className="btn btn-danger btn-sm"
+                  style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
+                >
+                  <Trash2 size={14} /> Delete Selected ({selectedTxIds.length})
+                </button>
+              </div>
             }
           />
 

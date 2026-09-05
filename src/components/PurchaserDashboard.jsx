@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard } from "lucide-react";
+import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import { uploadToCloudinary } from "../utils/upload";
 import ItemMasterView from "./ItemMasterView";
@@ -10,6 +10,7 @@ import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
+import { downloadCsv } from "../utils/formatters";
 
 // ==================== TOP-LEVEL UTILITIES & METRIC CALCULATION HELPERS ====================
 export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange, placeholder, accentColor = "var(--primary)" }) {
@@ -894,15 +895,55 @@ export default function PurchaserDashboard({
                     </div>
                   </div>
 
-                  {/* Save All Batch Updates Button */}
-                  <button 
-                    type="button"
-                    onClick={() => handleSaveStep1Batch(pendingReqs)}
-                    className="btn btn-success btn-sm"
-                    style={{ fontWeight: 700, padding: "8px 18px", boxShadow: "0 4px 14px rgba(16, 185, 129, 0.25)" }}
-                  >
-                    <CheckCircle2 size={16} /> Save All Updated Prices & Details
-                  </button>
+                  {/* Export / Download Selected and Save All Batch Updates Button */}
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetIds = step1CheckedIds.length > 0 ? step1CheckedIds : pendingReqs.map(r => r.id);
+                        const targetRows = pendingReqs.filter(r => targetIds.includes(r.id));
+                        const headers = ["Order ID", "Date", "Model / Item", "Order Qty", "Vendor", "Unit Price (RMB)", "Total (RMB)", "Advance", "Balance", "Vendor EDD"];
+                        const rows = targetRows.map(r => {
+                          const edits = step1InlineEdits[r.id] || {};
+                          const price = edits.priceRmb !== undefined ? edits.priceRmb : (r.priceRmb || 0);
+                          const qty = r.orderQuantity || 0;
+                          const total = edits.totalRmb !== undefined ? edits.totalRmb : (r.totalRmb || price * qty);
+                          const adv = edits.advancePayment !== undefined ? edits.advancePayment : (r.advancePayment || 0);
+                          const bal = edits.balancePayment !== undefined ? edits.balancePayment : (r.balancePayment || (total - adv));
+                          const edd = edits.vendorEdd !== undefined ? edits.vendorEdd : (r.vendorEdd || "");
+                          const v = edits.vendor !== undefined ? edits.vendor : (r.vendor || "");
+                          return [
+                            r.id || "",
+                            r.orderDate || "",
+                            r.model || "",
+                            qty,
+                            v,
+                            price,
+                            total,
+                            adv,
+                            bal,
+                            edd
+                          ];
+                        });
+                        const isSelected = step1CheckedIds.length > 0;
+                        downloadCsv(headers, rows, isSelected ? `Unpriced_Requests_Selected_${targetRows.length}` : `Unpriced_Requests_All_${targetRows.length}`);
+                      }}
+                      className="btn btn-secondary btn-sm"
+                      style={{ height: "36px", display: "inline-flex", alignItems: "center", gap: "6px", color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.45)", background: "rgba(56, 189, 248, 0.1)", fontWeight: 700 }}
+                      title={step1CheckedIds.length > 0 ? "Download selected requests as CSV" : "Download all pending unpriced requests as CSV"}
+                    >
+                      <Download size={15} /> {step1CheckedIds.length > 0 ? `Download Selected (${step1CheckedIds.length})` : `Download All (${pendingReqs.length})`}
+                    </button>
+
+                    <button 
+                      type="button"
+                      onClick={() => handleSaveStep1Batch(pendingReqs)}
+                      className="btn btn-success btn-sm"
+                      style={{ fontWeight: 700, padding: "8px 18px", height: "36px", boxShadow: "0 4px 14px rgba(16, 185, 129, 0.25)" }}
+                    >
+                      <CheckCircle2 size={16} /> Save All Updated Prices & Details
+                    </button>
+                  </div>
                 </div>
               )}
 

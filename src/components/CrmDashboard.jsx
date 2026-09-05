@@ -9,6 +9,7 @@ import {
 import Pagination from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
+import { downloadCsv } from "../utils/formatters";
 
 // Helper to normalize and match party names across all formats and sub-components
 export const normParty = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -4833,7 +4834,7 @@ function AssignPartiesModal({ teamMember, allParties = [], onAssign, onClose }) 
         </div>
 
         {/* Quick Select Bar */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", padding: "6px 10px", background: "rgba(0,0,0,0.15)", borderRadius: "8px", fontSize: "0.82rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", padding: "6px 10px", background: "rgba(0,0,0,0.15)", borderRadius: "8px", fontSize: "0.82rem", flexWrap: "wrap", gap: "8px" }}>
           <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600 }}>
             <input
               type="checkbox"
@@ -4843,14 +4844,40 @@ function AssignPartiesModal({ teamMember, allParties = [], onAssign, onClose }) 
             />
             Select All Matching ({filtered.length} parties)
           </label>
-          <button
-            type="button"
-            onClick={() => setSelectedIds([])}
-            className="btn btn-secondary btn-sm"
-            style={{ fontSize: "0.75rem", padding: "2px 8px" }}
-          >
-            Clear All
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            {selectedIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const targetParties = filtered.filter(p => selectedIds.includes(p.id));
+                  const headers = ["Party Name", "City", "State", "Phone", "Assigned Sales Rep", "Address", "GST"];
+                  const rows = targetParties.map(p => [
+                    p.name || "",
+                    p.city || "",
+                    p.state || "",
+                    p.phone || "",
+                    p.assignedCrmName || p.assignedCrmId || "",
+                    p.address || "",
+                    p.gstNumber || p.gst || ""
+                  ]);
+                  downloadCsv(headers, rows, `Parties_Selected_${targetParties.length}`);
+                }}
+                className="btn btn-secondary btn-sm"
+                style={{ fontSize: "0.75rem", padding: "2px 8px", color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.45)", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                title="Download selected parties as CSV"
+              >
+                <Download size={12} /> Download Selected ({selectedIds.length})
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setSelectedIds([])}
+              className="btn btn-secondary btn-sm"
+              style={{ fontSize: "0.75rem", padding: "2px 8px" }}
+            >
+              Clear All
+            </button>
+          </div>
         </div>
 
         {/* Parties Checklist */}
