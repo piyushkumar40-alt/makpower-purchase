@@ -3510,6 +3510,8 @@ function ExcelShippingUpdateModal({
   const [analysis, setAnalysis] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = React.useRef(null);
 
   const processRows = (rows, sourceName = "") => {
     setErrorMsg("");
@@ -3526,11 +3528,13 @@ function ExcelShippingUpdateModal({
     }
   };
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files?.[0];
+  const processFile = (file) => {
     if (!file) return;
     setIsProcessing(true);
     setErrorMsg("");
+    setFileName(file.name);
+
+    const isCsv = file.name.toLowerCase().endsWith(".csv");
 
     const reader = new FileReader();
     reader.onload = (evt) => {
@@ -3538,28 +3542,47 @@ function ExcelShippingUpdateModal({
         const data = evt.target.result;
         let rawRows = [];
 
-        if (typeof window !== "undefined" && window.XLSX) {
-          const workbook = window.XLSX.read(data, { type: "array", cellDates: true });
+        if (!isCsv && typeof window !== "undefined" && window.XLSX) {
+          const workbook = typeof data === "string"
+            ? window.XLSX.read(data, { type: "binary", cellDates: true })
+            : window.XLSX.read(new Uint8Array(data), { type: "array", cellDates: true });
           const firstSheet = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheet];
           rawRows = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
         } else {
-          const text = new TextDecoder().decode(new Uint8Array(data));
+          const text = typeof data === "string" ? data : new TextDecoder().decode(new Uint8Array(data));
           const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
           rawRows = lines.map(line => {
             if (line.includes("\t")) return line.split("\t");
-            return line.split(",").map(c => c.replace(/^"|"$/g, "").trim());
+            const regex = /(?:,|\n|^)("(?:(?:"")*[^"]*)*"|[^",\n]*|(?:\n|$))/g;
+            const matches = [];
+            let match;
+            while ((match = regex.exec(line)) !== null) {
+              if (match.index === regex.lastIndex) regex.lastIndex++;
+              let val = match[1] || "";
+              val = val.replace(/^"|"$/g, "").replace(/""/g, '"').trim();
+              matches.push(val);
+            }
+            return matches.length > 0 ? matches : line.split(",").map(c => c.replace(/^"|"$/g, "").trim());
           });
         }
 
         processRows(rawRows, file.name);
       } catch (err) {
-        setErrorMsg("Failed to read Excel file: " + err.message);
+        console.error("File parse error:", err);
+        setErrorMsg("Failed to read file: " + err.message);
       } finally {
         setIsProcessing(false);
       }
     };
-    reader.readAsArrayBuffer(file);
+
+    if (isCsv) {
+      reader.readAsText(file);
+    } else if (reader.readAsBinaryString) {
+      reader.readAsBinaryString(file);
+    } else {
+      reader.readAsArrayBuffer(file);
+    }
   };
 
   const handleAnalyzePaste = () => {
@@ -3605,7 +3628,7 @@ function ExcelShippingUpdateModal({
 
         {/* Instructions & Sample Download */}
         <div style={{ background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "10px", padding: "14px", marginBottom: "16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "gap", gap: "10px" }}>
             <div>
               <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-main)", marginBottom: "4px" }}>
                 Required Columns: <code>Order Date</code>, <code>Item Name</code>, <code>Qty</code>
@@ -3648,34 +3671,68 @@ function ExcelShippingUpdateModal({
         {/* File Upload Mode */}
         {inputMode === "file" && (
           <div style={{ marginBottom: "16px" }}>
-            <label 
+            <div 
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragging(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragging(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragging(false);
+                const file = e.dataTransfer?.files?.[0];
+                if (file) processFile(file);
+              }}
               style={{
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                padding: "24px",
-                border: "2px dashed rgba(56, 189, 248, 0.4)",
+                padding: "26px 20px",
+                border: isDragging ? "2px dashed #38bdf8" : "2px dashed rgba(56, 189, 248, 0.5)",
                 borderRadius: "12px",
-                background: "rgba(15, 23, 42, 0.4)",
+                background: isDragging ? "rgba(56, 189, 248, 0.15)" : "rgba(15, 23, 42, 0.4)",
                 cursor: "pointer",
                 transition: "all 0.2s ease"
               }}
             >
-              <UploadCloud size={32} style={{ color: "#38bdf8", marginBottom: "8px" }} />
-              <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--text-main)" }}>
+              <UploadCloud size={36} style={{ color: "#38bdf8", marginBottom: "8px" }} />
+              <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "var(--text-main)", textAlign: "center" }}>
                 {fileName ? `Selected: ${fileName}` : "Click to Browse or Drag & Drop Excel File"}
               </div>
-              <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "4px" }}>
+              <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px", textAlign: "center" }}>
                 Supports .xlsx, .xls, and .csv files
               </div>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "6px" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+              >
+                <Upload size={14} /> Choose Excel / CSV File
+              </button>
               <input 
+                ref={fileInputRef}
                 type="file" 
                 accept=".xlsx, .xls, .csv" 
                 style={{ display: "none" }} 
-                onChange={handleFileUpload}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) processFile(file);
+                  e.target.value = "";
+                }}
               />
-            </label>
+            </div>
           </div>
         )}
 
