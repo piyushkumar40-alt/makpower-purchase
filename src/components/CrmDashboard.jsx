@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { 
   Users, Building2, TrendingUp, Truck, Package, Plus, Search, Filter, 
   Download, Eye, Edit2, Trash2, CheckCircle2, Clock, AlertCircle, 
@@ -125,6 +125,65 @@ export default function CrmDashboard({
   const [salesReportStartDate, setSalesReportStartDate] = useState("");
   const [salesReportEndDate, setSalesReportEndDate] = useState("");
 
+  // Smart Date Range Data Pulling & In-Memory Range Cache
+  // If user selects date (e.g. 1 Aug to 20 Aug 2026), pulls from 1st day of prior month (1 July 2026) till today.
+  // If user later selects within already-pulled range (e.g. Feb to Mar 2026 after pulling Nov 2025 till today),
+  // nothing is pulled from DB because data is already in memory.
+  const pulledDateRangeRef = useRef({ minDate: null, maxDate: null });
+
+  const handleEnsureDateDataPulled = useCallback((start, end) => {
+    if (!onPullModuleData) return;
+
+    // Determine reference start and end
+    const now = new Date();
+    const todayStr = formatYMD(now);
+    const refStart = start || end || todayStr;
+
+    // Parse YYYY-MM
+    let [y, m] = (refStart || "").split("-").map(Number);
+    if (!y || !m || isNaN(y) || isNaN(m)) {
+      y = now.getFullYear();
+      m = now.getMonth() + 1;
+    }
+
+    // Previous month 1st day:
+    // e.g. Aug 2026 (m=8) -> July 1, 2026 (new Date(2026, 6, 1))
+    // e.g. Dec 2025 (m=12) -> Nov 1, 2025 (new Date(2025, 10, 1))
+    const prevMonthDate = new Date(y, m - 2, 1);
+    const neededPullStart = formatYMD(prevMonthDate);
+
+    // End date: till today (or end date if in future)
+    let neededPullEnd = todayStr;
+    if (end && end > todayStr) {
+      neededPullEnd = end;
+    }
+
+    // Check if this date range is ALREADY pulled from database
+    const currentMin = pulledDateRangeRef.current.minDate;
+    const currentMax = pulledDateRangeRef.current.maxDate;
+
+    if (currentMin && currentMax && neededPullStart >= currentMin && neededPullEnd <= currentMax) {
+      // Nothing will pull from database, because data is already pulled for this date!
+      return;
+    }
+
+    // Mark bounds immediately to avoid redundant pulls while request is in flight
+    pulledDateRangeRef.current = {
+      minDate: currentMin ? (neededPullStart < currentMin ? neededPullStart : currentMin) : neededPullStart,
+      maxDate: currentMax ? (neededPullEnd > currentMax ? neededPullEnd : currentMax) : neededPullEnd,
+    };
+
+    // Pull IMS transactions (stock movements / dispatches)
+    onPullModuleData("imsTransactions", { startDate: neededPullStart, endDate: neededPullEnd, range: "custom" });
+    // Pull CRM Dispatches & Sales Orders
+    onPullModuleData("crmDispatches", { startDate: neededPullStart, endDate: neededPullEnd });
+    onPullModuleData("crmSalesOrders", { startDate: neededPullStart, endDate: neededPullEnd });
+    // Also ensure parties are loaded
+    if (crmParties.length === 0) {
+      onPullModuleData("crmParties");
+    }
+  }, [onPullModuleData, crmParties.length]);
+
   // Synchronized date application across global and tab-specific views
   const handleApplyDateRange = (start, end) => {
     setGlobalStartDate(start);
@@ -135,6 +194,7 @@ export default function CrmDashboard({
     setOrdersEndDate(end);
     setSalesReportStartDate(start);
     setSalesReportEndDate(end);
+    handleEnsureDateDataPulled(start, end);
   };
 
   const handleSelectThisMonth = () => {
@@ -173,6 +233,33 @@ export default function CrmDashboard({
     }
   };
 
+  // Monitor active tab and date filters to ensure required date data is pulled
+  useEffect(() => {
+    const effStart = activeTab === "dispatchreport"
+      ? (dispatchStartDate || globalStartDate)
+      : activeTab === "orders"
+        ? (ordersStartDate || globalStartDate)
+        : activeTab === "salesreport"
+          ? (salesReportStartDate || globalStartDate)
+          : globalStartDate;
+    const effEnd = activeTab === "dispatchreport"
+      ? (dispatchEndDate || globalEndDate)
+      : activeTab === "orders"
+        ? (ordersEndDate || globalEndDate)
+        : activeTab === "salesreport"
+          ? (salesReportEndDate || globalEndDate)
+          : globalEndDate;
+
+    handleEnsureDateDataPulled(effStart, effEnd);
+  }, [
+    activeTab,
+    globalStartDate, globalEndDate,
+    dispatchStartDate, dispatchEndDate,
+    ordersStartDate, ordersEndDate,
+    salesReportStartDate, salesReportEndDate,
+    handleEnsureDateDataPulled
+  ]);
+
   useEffect(() => {
     if (onPullModuleData && crmParties.length === 0) {
       onPullModuleData("crmParties");
@@ -188,7 +275,10 @@ export default function CrmDashboard({
     const list = [...crmDispatches];
     const existingIds = new Set(crmDispatches.map(d => d.id));
     (imsTransactions || []).forEach(tx => {
-      if (tx.partyName && tx.partyName.trim() && (tx.movementType === "OUT" || !tx.movementType)) {
+      if (!tx || !tx.partyName || !tx.partyName.trim()) return;
+      const numQty = parseInt(tx.stockQty) || 0;
+      const isOutward = (tx.movementType || "").toUpperCase() === "OUT" || numQty < 0 || (!tx.movementType && numQty !== 0);
+      if (isOutward) {
         if (!existingIds.has(tx.id)) {
           list.push({
             id: tx.id,
@@ -196,10 +286,10 @@ export default function CrmDashboard({
             partyId: tx.partyId || "",
             partyName: tx.partyName.trim(),
             itemModel: tx.itemName || "Item",
-            dispatchedQty: Math.abs(parseInt(tx.stockQty) || 0),
+            dispatchedQty: Math.abs(numQty),
             transporterName: tx.location || tx.source || "Warehouse Dispatch",
             docketNo: tx.remarks || "",
-            invoiceNo: `IMS-${tx.id.slice(0, 8)}`,
+            invoiceNo: tx.invoiceNo || `IMS-${String(tx.id || '').slice(0, 8)}`,
             status: "Delivered"
           });
         }
@@ -255,10 +345,17 @@ export default function CrmDashboard({
     if (isCrmUser) {
       const myName = (currentUser?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       const myId = currentUser?.id || "";
+      const normMyName = normParty(myName);
       return cleanParties.filter(p => {
         const matchId = myId && (p.assignedCrmId === myId);
         const pCrm = (p.assignedCrmName || "").trim().toLowerCase();
-        const matchName = myName && pCrm && (pCrm.includes(myName) || myName.includes(pCrm));
+        const normPCrm = normParty(pCrm);
+        const matchName = myName && pCrm && (
+          pCrm === myName ||
+          pCrm.includes(myName) ||
+          myName.includes(pCrm) ||
+          (normMyName && normPCrm && (normPCrm.includes(normMyName) || normMyName.includes(normPCrm)))
+        );
         return matchId || matchName;
       });
     }
@@ -284,7 +381,12 @@ export default function CrmDashboard({
     if (isCrmUser || isAsmOrTsm) {
       const partyIdSet = new Set(currentParties.map(p => p.id));
       const partyNameSet = new Set(currentParties.map(p => (p.name || "").trim().toLowerCase()));
-      list = list.filter(so => partyIdSet.has(so.partyId) || partyNameSet.has((so.partyName || "").trim().toLowerCase()));
+      list = list.filter(so => {
+        if (so.partyId && partyIdSet.has(so.partyId)) return true;
+        const normSo = (so.partyName || "").trim().toLowerCase();
+        if (normSo && partyNameSet.has(normSo)) return true;
+        return currentParties.some(p => matchParty(p.name, so.partyName, p.id, so.partyId));
+      });
     } else if (selectedExecutiveId !== "all") {
       const execName = (activeExecutive?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       list = list.filter(so => {
@@ -319,7 +421,12 @@ export default function CrmDashboard({
     if (isCrmUser || isAsmOrTsm) {
       const partyIdSet = new Set(currentParties.map(p => p.id));
       const partyNameSet = new Set(currentParties.map(p => (p.name || "").trim().toLowerCase()));
-      list = list.filter(d => partyIdSet.has(d.partyId) || partyNameSet.has((d.partyName || "").trim().toLowerCase()));
+      list = list.filter(d => {
+        if (d.partyId && partyIdSet.has(d.partyId)) return true;
+        const normD = (d.partyName || "").trim().toLowerCase();
+        if (normD && partyNameSet.has(normD)) return true;
+        return currentParties.some(p => matchParty(p.name, d.partyName, p.id, d.partyId));
+      });
     } else if (selectedExecutiveId !== "all") {
       const execName = (activeExecutive?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       list = list.filter(d => {
@@ -564,7 +671,7 @@ export default function CrmDashboard({
             d.status,
             d.dispatchDate
           ].filter(Boolean).join(" ").toLowerCase();
-          return combined.includes(term);
+          return combined.includes(term) || normParty(combined).includes(normParty(term));
         }
       };
 

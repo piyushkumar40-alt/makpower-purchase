@@ -181,11 +181,12 @@ export default function App() {
 
   const pullModuleData = React.useCallback(async (moduleKey, force = false) => {
     if (!moduleKey) return;
-    if (!force && loadedModulesRef.current.has(moduleKey) && !activePullPromisesRef.current[moduleKey]) {
+    const pullKey = typeof force === "object" && force !== null ? `${moduleKey}_${force.startDate || ""}_${force.endDate || ""}` : moduleKey;
+    if (!force && loadedModulesRef.current.has(moduleKey) && !activePullPromisesRef.current[pullKey]) {
       return; // Already loaded and cached in memory
     }
-    if (activePullPromisesRef.current[moduleKey]) {
-      return activePullPromisesRef.current[moduleKey]; // Deduplicate concurrent in-flight pulls
+    if (activePullPromisesRef.current[pullKey]) {
+      return activePullPromisesRef.current[pullKey]; // Deduplicate concurrent in-flight pulls
     }
 
     setLoadingModules(prev => ({ ...prev, [moduleKey]: true }));
@@ -239,15 +240,45 @@ export default function App() {
             }
           } catch (e) {}
         } else if (moduleKey === TRACKABLE_MODULES.CRM_SALES_ORDERS) {
-          const q = currentUser ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(currentUser.role)}&userName=${encodeURIComponent(currentUser.name || '')}` : "";
-          const res = await fetch(`/api/crm/sales-orders${q}`);
+          const params = new URLSearchParams();
+          if (currentUser) {
+            params.append("userId", currentUser.id);
+            params.append("userRole", currentUser.role);
+            params.append("userName", currentUser.name || "");
+          }
+          if (typeof force === "object" && force !== null) {
+            if (force.startDate) params.append("startDate", force.startDate);
+            if (force.endDate) params.append("endDate", force.endDate);
+          }
+          const res = await fetch(`/api/crm/sales-orders?${params.toString()}`);
           const data = await res.json();
-          if (Array.isArray(data)) setCrmSalesOrders(data);
+          if (Array.isArray(data)) {
+            setCrmSalesOrders(prev => {
+              const map = new Map((prev || []).map(o => [o.id, o]));
+              data.forEach(o => { if (o && o.id) map.set(o.id, o); });
+              return Array.from(map.values());
+            });
+          }
         } else if (moduleKey === TRACKABLE_MODULES.CRM_DISPATCHES) {
-          const q = currentUser ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(currentUser.role)}&userName=${encodeURIComponent(currentUser.name || '')}` : "";
-          const res = await fetch(`/api/crm/dispatches${q}`);
+          const params = new URLSearchParams();
+          if (currentUser) {
+            params.append("userId", currentUser.id);
+            params.append("userRole", currentUser.role);
+            params.append("userName", currentUser.name || "");
+          }
+          if (typeof force === "object" && force !== null) {
+            if (force.startDate) params.append("startDate", force.startDate);
+            if (force.endDate) params.append("endDate", force.endDate);
+          }
+          const res = await fetch(`/api/crm/dispatches?${params.toString()}`);
           const data = await res.json();
-          if (Array.isArray(data)) setCrmDispatches(data);
+          if (Array.isArray(data)) {
+            setCrmDispatches(prev => {
+              const map = new Map((prev || []).map(d => [d.id, d]));
+              data.forEach(d => { if (d && d.id) map.set(d.id, d); });
+              return Array.from(map.values());
+            });
+          }
         } else if (moduleKey === TRACKABLE_MODULES.IMS_TRANSACTIONS || moduleKey === "imsTransactions") {
           let query = "";
           if (typeof force === "object" && force !== null) {
@@ -268,7 +299,12 @@ export default function App() {
           const res = await fetch(`/api/ims/transactions${query}`);
           const data = await res.json();
           const list = Array.isArray(data) ? data : (data.transactions || []);
-          setImsTransactions(list);
+          setImsTransactions(prev => {
+            const map = new Map();
+            (prev || []).forEach(tx => { if (tx && tx.id) map.set(tx.id, tx); });
+            list.forEach(tx => { if (tx && tx.id) map.set(tx.id, tx); });
+            return Array.from(map.values());
+          });
           if (data?.imsSummary) {
             setImsSummary(data.imsSummary);
           }
@@ -278,7 +314,7 @@ export default function App() {
           if (data?.itemStocks) {
             setImsItemStocks(data.itemStocks);
           }
-          setImsRange(data?.range || (force === "all" ? "all" : "3days"));
+          setImsRange(data?.range || (force === "all" ? "all" : (typeof force === "object" && force?.range) ? force.range : "custom"));
         } else if (moduleKey === TRACKABLE_MODULES.AUDIT_LOGS) {
           const res = await fetch("/api/audit-logs");
           const data = await res.json();

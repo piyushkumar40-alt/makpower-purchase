@@ -2555,7 +2555,7 @@ app.get("/api/designations", async (req, res) => {
 
 // GET /api/crm/sales-orders - On-demand CRM Sales Orders pull
 app.get("/api/crm/sales-orders", async (req, res) => {
-  const { userId, userRole, userName, asmId, tsmId, partyId } = req.query;
+  const { userId, userRole, userName, asmId, tsmId, partyId, startDate, endDate } = req.query;
   const isRestrictedRole = userRole === "asm" || userRole === "tsm" || !!asmId || !!tsmId;
 
   if (isPg) {
@@ -2590,12 +2590,22 @@ app.get("/api/crm/sales-orders", async (req, res) => {
 
         conditions.push(`("partyId" = ANY($${idx++}) OR LOWER(TRIM("partyName")) = ANY($${idx++}))`);
         values.push(assignedIds, assignedNames);
+      }
 
-        // 3-Month Cutoff
+      if (startDate) {
+        conditions.push(`("orderDate" >= $${idx++} OR "orderDate" IS NULL OR "orderDate" = '')`);
+        values.push(startDate);
+      } else if (isRestrictedRole) {
+        // 3-Month Cutoff fallback
         const d3 = new Date();
         d3.setMonth(d3.getMonth() - 2, 1);
         conditions.push(`("orderDate" >= $${idx++} OR "orderDate" IS NULL OR "orderDate" = '')`);
         values.push(d3.toISOString().slice(0, 10));
+      }
+
+      if (endDate) {
+        conditions.push(`("orderDate" <= $${idx++} OR "orderDate" IS NULL OR "orderDate" = '')`);
+        values.push(endDate);
       }
 
       if (conditions.length > 0) {
@@ -2629,19 +2639,29 @@ app.get("/api/crm/sales-orders", async (req, res) => {
       const pIdSet = new Set(myParties.map(p => p.id));
       const pNameSet = new Set(myParties.map(p => (p.name || "").trim().toLowerCase()));
 
+      list = list.filter(o => pIdSet.has(o.partyId) || pNameSet.has((o.partyName || "").trim().toLowerCase()));
+    }
+
+    if (startDate) {
+      list = list.filter(o => !o.orderDate || o.orderDate >= startDate);
+    } else if (isRestrictedRole) {
       const d3 = new Date();
       d3.setMonth(d3.getMonth() - 2, 1);
       const cutoff = d3.toISOString().slice(0, 10);
-
-      list = list.filter(o => (pIdSet.has(o.partyId) || pNameSet.has((o.partyName || "").trim().toLowerCase())) && (!o.orderDate || o.orderDate >= cutoff));
+      list = list.filter(o => !o.orderDate || o.orderDate >= cutoff);
     }
+
+    if (endDate) {
+      list = list.filter(o => !o.orderDate || o.orderDate <= endDate);
+    }
+
     res.json(list);
   }
 });
 
 // GET /api/crm/dispatches - On-demand CRM Dispatches pull
 app.get("/api/crm/dispatches", async (req, res) => {
-  const { userId, userRole, userName, asmId, tsmId, partyId } = req.query;
+  const { userId, userRole, userName, asmId, tsmId, partyId, startDate, endDate } = req.query;
   const isRestrictedRole = userRole === "asm" || userRole === "tsm" || !!asmId || !!tsmId;
 
   if (isPg) {
@@ -2676,12 +2696,22 @@ app.get("/api/crm/dispatches", async (req, res) => {
 
         conditions.push(`("partyId" = ANY($${idx++}) OR LOWER(TRIM("partyName")) = ANY($${idx++}))`);
         values.push(assignedIds, assignedNames);
+      }
 
-        // 3-Month Cutoff
+      if (startDate) {
+        conditions.push(`("dispatchDate" >= $${idx++} OR "dispatchDate" IS NULL OR "dispatchDate" = '')`);
+        values.push(startDate);
+      } else if (isRestrictedRole) {
+        // 3-Month Cutoff fallback
         const d3 = new Date();
         d3.setMonth(d3.getMonth() - 2, 1);
         conditions.push(`("dispatchDate" >= $${idx++} OR "dispatchDate" IS NULL OR "dispatchDate" = '')`);
         values.push(d3.toISOString().slice(0, 10));
+      }
+
+      if (endDate) {
+        conditions.push(`("dispatchDate" <= $${idx++} OR "dispatchDate" IS NULL OR "dispatchDate" = '')`);
+        values.push(endDate);
       }
 
       if (conditions.length > 0) {
@@ -2711,12 +2741,22 @@ app.get("/api/crm/dispatches", async (req, res) => {
       const pIdSet = new Set(myParties.map(p => p.id));
       const pNameSet = new Set(myParties.map(p => (p.name || "").trim().toLowerCase()));
 
+      list = list.filter(d => pIdSet.has(d.partyId) || pNameSet.has((d.partyName || "").trim().toLowerCase()));
+    }
+
+    if (startDate) {
+      list = list.filter(d => !d.dispatchDate || d.dispatchDate >= startDate);
+    } else if (isRestrictedRole) {
       const d3 = new Date();
       d3.setMonth(d3.getMonth() - 2, 1);
       const cutoff = d3.toISOString().slice(0, 10);
-
-      list = list.filter(d => (pIdSet.has(d.partyId) || pNameSet.has((d.partyName || "").trim().toLowerCase())) && (!d.dispatchDate || d.dispatchDate >= cutoff));
+      list = list.filter(d => !d.dispatchDate || d.dispatchDate >= cutoff);
     }
+
+    if (endDate) {
+      list = list.filter(d => !d.dispatchDate || d.dispatchDate <= endDate);
+    }
+
     res.json(list);
   }
 });
