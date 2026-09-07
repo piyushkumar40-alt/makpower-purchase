@@ -65,7 +65,11 @@ export const downloadExcelOrCsv = (headers, rows, filename = "export") => {
 export const parseFlexibleDate = (dateVal) => {
   if (!dateVal) return "";
   if (dateVal instanceof Date && !isNaN(dateVal.getTime())) {
-    return dateVal.toISOString().split("T")[0];
+    // Avoid UTC timezone day shifts across midnight in local time
+    const y = dateVal.getFullYear();
+    const m = String(dateVal.getMonth() + 1).padStart(2, "0");
+    const d = String(dateVal.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
   }
   const str = String(dateVal).trim();
   if (!str) return "";
@@ -75,20 +79,31 @@ export const parseFlexibleDate = (dateVal) => {
   if (!isNaN(num) && num > 25000 && num < 65000) {
     const d = new Date(Math.round((num - 25569) * 86400 * 1000));
     if (!isNaN(d.getTime())) {
-      return d.toISOString().split("T")[0];
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const dt = String(d.getUTCDate()).padStart(2, "0");
+      return `${y}-${m}-${dt}`;
     }
   }
 
-  // Check YYYY-MM-DD
+  // Check YYYY-MM-DD or YYYY-DD-MM (e.g. 2026-07-08 or 2026-08-19 or 2026/08/19)
   const ymdMatch = str.match(/^(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})/);
   if (ymdMatch) {
     const y = ymdMatch[1];
-    const m = String(ymdMatch[2]).padStart(2, "0");
-    const d = String(ymdMatch[3]).padStart(2, "0");
+    const p1 = parseInt(ymdMatch[2], 10);
+    const p2 = parseInt(ymdMatch[3], 10);
+    // If p1 > 12, it is YYYY-DD-MM
+    if (p1 > 12 && p2 <= 12) {
+      const m = String(p2).padStart(2, "0");
+      const d = String(p1).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+    const m = String(Math.min(12, Math.max(1, p1))).padStart(2, "0");
+    const d = String(p2).padStart(2, "0");
     return `${y}-${m}-${d}`;
   }
 
-  // Check M/D/YYYY or D/M/YYYY (e.g. 9/7/2026 or 07/09/2026)
+  // Check DD-MM-YYYY or MM-DD-YYYY or D/M/YYYY or M/D/YYYY
   const slashMatch = str.match(/^(\d{1,2})[-\/\.](\d{1,2})[-\/\.](\d{2,4})/);
   if (slashMatch) {
     const p1 = parseInt(slashMatch[1], 10);
@@ -97,23 +112,43 @@ export const parseFlexibleDate = (dateVal) => {
     if (y.length === 2) y = `20${y}`;
 
     if (p1 > 12) {
-      // p1 is day, p2 is month
+      // p1 is day, p2 is month (DD/MM/YYYY)
       const d = String(p1).padStart(2, "0");
       const m = String(Math.min(12, Math.max(1, p2))).padStart(2, "0");
       return `${y}-${m}-${d}`;
     }
     if (p2 > 12) {
-      // p2 is day, p1 is month
+      // p2 is day, p1 is month (MM/DD/YYYY)
       const m = String(Math.min(12, Math.max(1, p1))).padStart(2, "0");
       const d = String(p2).padStart(2, "0");
       return `${y}-${m}-${d}`;
     }
 
-    // Ambiguous: default to M/D/YYYY (standard in spreadsheets like Image 2: 9/7/2026)
+    // Both <= 12: default to standard month/day
     const m = String(Math.min(12, Math.max(1, p1))).padStart(2, "0");
     const d = String(p2).padStart(2, "0");
     return `${y}-${m}-${d}`;
   }
 
   return str;
+};
+
+// Generate plausible format variants of a date for flexible matching
+export const getDateVariants = (dateVal) => {
+  if (!dateVal) return [];
+  const base = parseFlexibleDate(dateVal);
+  if (!base) return [];
+  const variants = new Set([base, String(dateVal).trim()]);
+  const parts = base.split("-");
+  if (parts.length === 3) {
+    // Swapped day and month (e.g. 2026-08-07 <-> 2026-07-08)
+    variants.add(`${parts[0]}-${parts[2]}-${parts[1]}`);
+    variants.add(`${parts[2]}/${parts[1]}/${parts[0]}`);
+    variants.add(`${parts[1]}/${parts[2]}/${parts[0]}`);
+    const mTrim = String(parseInt(parts[1], 10));
+    const dTrim = String(parseInt(parts[2], 10));
+    variants.add(`${mTrim}/${dTrim}/${parts[0]}`);
+    variants.add(`${dTrim}/${mTrim}/${parts[0]}`);
+  }
+  return Array.from(variants);
 };

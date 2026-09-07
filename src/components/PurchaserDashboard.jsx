@@ -10,7 +10,7 @@ import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
-import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate } from "../utils/formatters";
+import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants } from "../utils/formatters";
 
 // ==================== TOP-LEVEL UTILITIES & METRIC CALCULATION HELPERS ====================
 export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange, placeholder, accentColor = "var(--primary)" }) {
@@ -1344,7 +1344,12 @@ export default function PurchaserDashboard({
                     }}
                   >
                     <div style={{ fontSize: "0.86rem", color: "var(--text-main)" }}>
-                      <strong style={{ color: "var(--success, #16a34a)" }}>✓ {excelNotification.matchedCount} item(s) matched & selected</strong> with updated quantities.
+                      <strong style={{ color: "var(--success, #16a34a)" }}>✓ {excelNotification.matchedCount} item(s) matched & selected</strong> with updated quantities
+                      {excelNotification.dateAdjustedCount > 0 && (
+                        <span style={{ marginLeft: "6px", fontSize: "0.8rem", color: "var(--primary, #0284c7)" }}>
+                          ({excelNotification.dateAdjustedCount} date(s) smart-matched & corrected)
+                        </span>
+                      )}.
                       {excelNotification.unmatchedCount > 0 && (
                         <span style={{ marginLeft: "8px", color: "var(--warning, #d97706)" }}>
                           ⚠️ <strong>{excelNotification.unmatchedCount} item(s) not found</strong> (downloaded to <code>NotFound_Items.xlsx</code>).
@@ -2524,10 +2529,31 @@ export default function PurchaserDashboard({
           vendorName={vendors.find(v => v.id === plannerVendorId)?.name || "Selected Vendor"}
           onClose={() => setShowExcelUpdateModal(false)}
           onApplyMatches={(analysis) => {
-            const { matchedReqIds, newQtyMap, matched, unmatched } = analysis;
+            const { matchedReqIds, newQtyMap, newDateMap, matched, unmatched, syncOrderDates } = analysis;
 
             setCheckedRequestIds(prev => Array.from(new Set([...prev, ...matchedReqIds])));
             setPlannerNewQtyMap(prev => ({ ...prev, ...newQtyMap }));
+
+            // If auto-correct date is enabled and we have date updates, sync them into the requests!
+            if (syncOrderDates && newDateMap && Object.keys(newDateMap).length > 0) {
+              const dateUpdates = [];
+              matched.forEach(m => {
+                if (newDateMap[m.reqId] && newDateMap[m.reqId] !== m.orderDate) {
+                  const originalReq = (requests || []).find(r => r.id === m.reqId);
+                  if (originalReq) {
+                    dateUpdates.push({ ...originalReq, orderDate: newDateMap[m.reqId] });
+                  }
+                }
+              });
+
+              if (dateUpdates.length > 0) {
+                if (batchUpdateRequests) {
+                  batchUpdateRequests(dateUpdates, "SYNC_EXCEL_ORDER_DATE", `Corrected order dates for ${dateUpdates.length} item(s) from Excel`);
+                } else if (onUpdateRequest) {
+                  dateUpdates.forEach(u => onUpdateRequest(u));
+                }
+              }
+            }
 
             // If item not found, download file showing what item not found with qty and order date
             if (unmatched && unmatched.length > 0) {
@@ -2536,8 +2562,10 @@ export default function PurchaserDashboard({
               downloadExcelOrCsv(notFoundHeaders, notFoundRows, "NotFound_Items");
             }
 
+            const dateAdjustedCount = matched.filter(m => m.isDateCorrected).length;
             setExcelNotification({
               matchedCount: matched.length,
+              dateAdjustedCount,
               unmatchedCount: unmatched.length,
               unmatchedList: unmatched,
               timestamp: new Date().toLocaleTimeString()
@@ -3434,6 +3462,7 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
   const unmatched = [];
   const matchedReqIds = new Set();
   const newQtyMap = {};
+  const newDateMap = {};
 
   dataRows.forEach((row) => {
     if (!Array.isArray(row) || row.every(c => c === "" || c == null)) return;
@@ -3448,91 +3477,95 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
 
     if (!itemStr && !cleanDate && isNaN(qtyNum)) return; // skip blank row
 
-    const cleanInputModel = cleanModelStr(itemStr);
-
-    let altDate = "";
-    if (cleanDate) {
-      const p = cleanDate.split("-");
-      if (p.length === 3) {
-        altDate = `${p[0]}-${p[2]}-${p[1]}`;
-      }
+    if (!itemStr) {
+      unmatched.push({
+        orderDate: cleanDate || String(rawDate || "—"),
+        itemName: "—",
+        qty: !isNaN(qtyNum) ? qtyNum : String(rawQty || "—"),
+        reason: "Item Name missing in file"
+      });
+      return;
     }
 
-    const matchedReq = availableItems.find(r => {
+    if (isNaN(qtyNum) || qtyNum <= 0) {
+      unmatched.push({
+        orderDate: cleanDate || String(rawDate || "—"),
+        itemName: itemStr,
+        qty: String(rawQty || "—"),
+        reason: "Quantity missing or invalid in file"
+      });
+      return;
+    }
+
+    const cleanInputModel = cleanModelStr(itemStr);
+
+    // Find candidate items for this model among unclaimed requests
+    const candidates = availableItems.filter(r => {
       if (matchedReqIds.has(r.id)) return false;
       const rModelClean = cleanModelStr(r.model);
-      const rDateClean = parseFlexibleDate(r.orderDate);
-      const modelMatch = rModelClean === cleanInputModel || (r.model && r.model.toLowerCase().trim() === itemStr.toLowerCase());
-      const dateMatch = rDateClean === cleanDate || (altDate && rDateClean === altDate) || String(r.orderDate).trim() === String(rawDate).trim();
-      return modelMatch && dateMatch;
+      return rModelClean === cleanInputModel || (r.model && r.model.toLowerCase().trim() === itemStr.toLowerCase());
     });
 
-    if (matchedReq && !isNaN(qtyNum) && qtyNum > 0) {
+    if (candidates.length > 0) {
+      // Look for candidate with exact or variant date match first
+      const dateVariants = getDateVariants(cleanDate || rawDate);
+      let matchedReq = candidates.find(r => {
+        const rDateClean = parseFlexibleDate(r.orderDate);
+        const rDateRaw = String(r.orderDate || "").trim();
+        return (
+          (cleanDate && rDateClean === cleanDate) ||
+          (rDateClean && dateVariants.includes(rDateClean)) ||
+          (rDateRaw && dateVariants.includes(rDateRaw))
+        );
+      });
+
+      let isDateCorrected = false;
+      if (!matchedReq) {
+        // Smart match by Model: item exists for this vendor ready for shipping!
+        // Automatically reconcile / correct date format mismatch (e.g. 2026-07-08 vs 2026-08-19)
+        matchedReq = candidates[0];
+        isDateCorrected = true;
+      }
+
       matchedReqIds.add(matchedReq.id);
       newQtyMap[matchedReq.id] = qtyNum;
+      if (cleanDate) {
+        newDateMap[matchedReq.id] = cleanDate;
+      }
+
       matched.push({
         reqId: matchedReq.id,
         model: matchedReq.model,
         orderDate: matchedReq.orderDate,
+        excelDate: cleanDate || String(rawDate || matchedReq.orderDate),
+        isDateCorrected,
         originalQty: matchedReq.vendorOrderQuantity || matchedReq.orderQuantity,
         newQty: qtyNum
       });
     } else {
+      // No unclaimed candidate for this model
       let specificReason = "";
-      if (!itemStr) {
-        specificReason = "Item Name missing in file";
-      } else if (!cleanDate) {
-        specificReason = "Order Date missing or invalid in file";
-      } else if (isNaN(qtyNum) || qtyNum <= 0) {
-        specificReason = "Quantity missing or invalid in file";
+      const alreadyClaimed = availableItems.some(r => {
+        const rModelClean = cleanModelStr(r.model);
+        return (rModelClean === cleanInputModel || (r.model && r.model.toLowerCase().trim() === itemStr.toLowerCase())) && matchedReqIds.has(r.id);
+      });
+
+      if (alreadyClaimed) {
+        specificReason = "Duplicate item row (Already matched with previous row in file)";
       } else {
-        // Check if item was already matched by an earlier row in the file
-        const alreadyMatched = availableItems.some(r => {
-          const rModelClean = cleanModelStr(r.model);
-          const rDateClean = parseFlexibleDate(r.orderDate);
-          const modelMatch = rModelClean === cleanInputModel || (r.model && r.model.toLowerCase().trim() === itemStr.toLowerCase());
-          const dateMatch = rDateClean === cleanDate || (altDate && rDateClean === altDate) || String(r.orderDate).trim() === String(rawDate).trim();
-          return modelMatch && dateMatch && matchedReqIds.has(r.id);
-        });
-
-        if (alreadyMatched) {
-          specificReason = "Duplicate row (Already matched with previous row in file)";
-        } else {
-          // Check if model exists for this vendor with another date
-          const sameModelOrders = availableItems.filter(r => {
-            const rModelClean = cleanModelStr(r.model);
-            return rModelClean === cleanInputModel || (r.model && r.model.toLowerCase().trim() === itemStr.toLowerCase());
-          });
-
-          if (sameModelOrders.length > 0) {
-            const actualDates = Array.from(new Set(sameModelOrders.map(r => r.orderDate).filter(Boolean)));
-            specificReason = `Order Date not matched (Item exists with Order Date: ${actualDates.join(", ")})`;
-          } else {
-            // Check if date exists for this vendor
-            const sameDateOrders = availableItems.filter(r => {
-              const rDateClean = parseFlexibleDate(r.orderDate);
-              return rDateClean === cleanDate || (altDate && rDateClean === altDate) || String(r.orderDate).trim() === String(rawDate).trim();
-            });
-
-            if (sameDateOrders.length > 0) {
-              specificReason = "Item Name not found for this vendor";
-            } else {
-              specificReason = "Both Item Name & Order Date not found for this vendor";
-            }
-          }
-        }
+        specificReason = "Item Name not found for this vendor";
       }
 
       unmatched.push({
         orderDate: cleanDate || String(rawDate || "—"),
-        itemName: itemStr || "—",
-        qty: !isNaN(qtyNum) ? qtyNum : String(rawQty || "—"),
+        itemName: itemStr,
+        qty: qtyNum,
         reason: specificReason
       });
     }
   });
 
-  return { matched, unmatched, newQtyMap, matchedReqIds: Array.from(matchedReqIds) };
+  return { matched, unmatched, newQtyMap, newDateMap, matchedReqIds: Array.from(matchedReqIds) };
 };
 
 // ==================== EXCEL SHIPPING QUANTITY UPDATE MODAL ====================
@@ -3550,6 +3583,7 @@ function ExcelShippingUpdateModal({
   const [errorMsg, setErrorMsg] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [syncOrderDates, setSyncOrderDates] = useState(true);
   const fileInputRef = React.useRef(null);
 
   const processRows = (rows, sourceName = "") => {
@@ -3639,7 +3673,7 @@ function ExcelShippingUpdateModal({
 
   const handleConfirmApply = () => {
     if (!analysis) return;
-    onApplyMatches(analysis);
+    onApplyMatches({ ...analysis, syncOrderDates });
   };
 
   return (
@@ -3811,7 +3845,11 @@ function ExcelShippingUpdateModal({
               <div style={{ flex: 1, padding: "12px 14px", borderRadius: "8px", background: "rgba(34, 197, 94, 0.1)", border: "1px solid rgba(34, 197, 94, 0.3)" }}>
                 <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Matched Items</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--success, #16a34a)" }}>{analysis.matched.length}</div>
-                <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>Will be selected & updated in table</div>
+                <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>
+                  {analysis.matched.filter(m => m.isDateCorrected).length > 0 
+                    ? `Auto-matched (${analysis.matched.filter(m => m.isDateCorrected).length} date(s) smart-reconciled)` 
+                    : "Will be selected & updated in table"}
+                </div>
               </div>
               <div style={{ flex: 1, padding: "12px 14px", borderRadius: "8px", background: analysis.unmatched.length > 0 ? "rgba(245, 158, 11, 0.1)" : "var(--bg-card-hover, rgba(0,0,0,0.03))", border: analysis.unmatched.length > 0 ? "1px solid rgba(245, 158, 11, 0.3)" : "1px solid var(--border-glass, #cbd5e1)" }}>
                 <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Not Found Items</div>
@@ -3832,19 +3870,38 @@ function ExcelShippingUpdateModal({
                   <table className="custom-table" style={{ fontSize: "0.78rem", width: "100%", borderCollapse: "collapse" }}>
                     <thead>
                       <tr style={{ background: "var(--bg-card-hover, #f1f5f9)", borderBottom: "1px solid var(--border-glass, #cbd5e1)" }}>
-                        <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Date</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Order Date</th>
                         <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Model</th>
                         <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Current Qty</th>
                         <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>New Qty</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Match Status</th>
                       </tr>
                     </thead>
                     <tbody>
                       {analysis.matched.slice(0, 15).map((m, idx) => (
                         <tr key={idx} style={{ borderBottom: "1px solid var(--border-glass, #f1f5f9)" }}>
-                          <td style={{ padding: "6px 10px", color: "var(--text-main)" }}>{m.orderDate}</td>
+                          <td style={{ padding: "6px 10px", color: "var(--text-main)" }}>
+                            <div style={{ fontWeight: 500 }}>{m.orderDate}</div>
+                            {m.isDateCorrected && (
+                              <div style={{ fontSize: "0.7rem", color: "var(--primary, #0284c7)" }}>
+                                Excel: {m.excelDate}
+                              </div>
+                            )}
+                          </td>
                           <td style={{ padding: "6px 10px", fontWeight: 600, color: "var(--primary, #0284c7)" }}>{m.model}</td>
                           <td style={{ padding: "6px 10px", color: "var(--text-muted)" }}>{m.originalQty} Pcs</td>
                           <td style={{ padding: "6px 10px", fontWeight: 700, color: "var(--success, #16a34a)" }}>{m.newQty} Pcs</td>
+                          <td style={{ padding: "6px 10px" }}>
+                            {m.isDateCorrected ? (
+                              <span style={{ fontSize: "0.7rem", padding: "2px 7px", borderRadius: "4px", background: "rgba(56, 189, 248, 0.12)", color: "var(--primary, #0284c7)", fontWeight: 600, border: "1px solid rgba(56, 189, 248, 0.25)" }}>
+                                Smart Matched
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: "0.7rem", padding: "2px 7px", borderRadius: "4px", background: "rgba(34, 197, 94, 0.1)", color: "var(--success, #16a34a)", fontWeight: 600, border: "1px solid rgba(34, 197, 94, 0.25)" }}>
+                                Exact Date
+                              </span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -3909,6 +3966,22 @@ function ExcelShippingUpdateModal({
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Date Auto-Correct Option */}
+        {analysis && analysis.matched.some(m => m.isDateCorrected) && (
+          <div style={{ marginBottom: "14px", padding: "10px 14px", borderRadius: "8px", background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.25)", display: "flex", alignItems: "center", gap: "10px" }}>
+            <input 
+              type="checkbox" 
+              id="syncOrderDatesCheck"
+              checked={syncOrderDates} 
+              onChange={e => setSyncOrderDates(e.target.checked)} 
+              style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "var(--primary, #0284c7)" }}
+            />
+            <label htmlFor="syncOrderDatesCheck" style={{ fontSize: "0.82rem", color: "var(--text-main)", cursor: "pointer", margin: 0 }}>
+              <strong>Auto-correct Order Date in app:</strong> Update order dates in app to match the Excel dates ({analysis.matched.filter(m => m.isDateCorrected).length} date(s) corrected)
+            </label>
           </div>
         )}
 
