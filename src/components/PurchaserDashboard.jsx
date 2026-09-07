@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download } from "lucide-react";
+import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download, FileSpreadsheet, UploadCloud } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import { uploadToCloudinary } from "../utils/upload";
 import ItemMasterView from "./ItemMasterView";
@@ -10,7 +10,7 @@ import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
-import { downloadCsv } from "../utils/formatters";
+import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate } from "../utils/formatters";
 
 // ==================== TOP-LEVEL UTILITIES & METRIC CALCULATION HELPERS ====================
 export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange, placeholder, accentColor = "var(--primary)" }) {
@@ -391,6 +391,30 @@ export default function PurchaserDashboard({
   // Form states for cargo planner
   const [plannerVendorId, setPlannerVendorId] = useState("");
   const [checkedRequestIds, setCheckedRequestIds] = useState([]);
+  const [plannerNewQtyMap, setPlannerNewQtyMap] = useState({}); // { [reqId]: number }
+  const [showExcelUpdateModal, setShowExcelUpdateModal] = useState(false);
+  const [excelNotification, setExcelNotification] = useState(null); // { matchedCount, unmatchedCount, unmatchedList, timestamp }
+
+  const handleDownloadShippingSampleFile = (availableItems = []) => {
+    const headers = ["Order Date", "Item Name", "Qty"];
+    let rows = [];
+    if (availableItems && availableItems.length > 0) {
+      rows = availableItems.slice(0, 8).map(r => [
+        r.orderDate || new Date().toISOString().split("T")[0],
+        r.model || "Item Model",
+        r.vendorOrderQuantity || r.orderQuantity || 50
+      ]);
+    } else {
+      rows = [
+        ["2026-08-19", "M11", 50],
+        ["2026-08-19", "39LX", 100],
+        ["2026-09-07", "BLP837", 30],
+        ["2026-09-07", "BN51", 352],
+        ["2026-09-07", "BN5M", 50]
+      ];
+    }
+    downloadExcelOrCsv(headers, rows, "Sample_Shipping_Update");
+  };
 
   // Step 1 Batch Update & Paste State
   const [step1CheckedIds, setStep1CheckedIds] = useState([]);
@@ -1251,6 +1275,8 @@ export default function PurchaserDashboard({
                   onChange={e => {
                     setPlannerVendorId(e.target.value);
                     setCheckedRequestIds([]);
+                    setPlannerNewQtyMap({});
+                    setExcelNotification(null);
                   }}
                 >
                   <option value="">Select Vendor...</option>
@@ -1274,9 +1300,82 @@ export default function PurchaserDashboard({
 
             {plannerVendorId && (
               <div className="glass-panel card-fade-in" style={{ padding: "24px" }}>
-                <h4 style={{ fontSize: "1.1rem", marginBottom: "16px", color: "var(--primary)" }}>
-                  Available Items ready for Shipping (No active Cargo)
-                </h4>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
+                  <h4 style={{ fontSize: "1.1rem", margin: 0, color: "var(--primary)" }}>
+                    Available Items ready for Shipping (No active Cargo)
+                  </h4>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        const readyRequests = myRequests.filter(r => r.vendorId === plannerVendorId && r.priceRmb && !r.cargoId);
+                        handleDownloadShippingSampleFile(readyRequests);
+                      }}
+                      className="btn btn-secondary btn-sm"
+                      style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", padding: "6px 12px" }}
+                      title="Download sample Excel template (Order Date, Item Name, Qty)"
+                    >
+                      <Download size={14} /> Download Sample File
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setShowExcelUpdateModal(true)}
+                      className="btn btn-primary btn-sm"
+                      style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", padding: "6px 14px", fontWeight: 600 }}
+                    >
+                      <FileSpreadsheet size={15} /> Update from Excel File
+                    </button>
+                  </div>
+                </div>
+
+                {excelNotification && (
+                  <div 
+                    style={{ 
+                      marginBottom: "16px", 
+                      padding: "12px 16px", 
+                      borderRadius: "10px", 
+                      background: excelNotification.unmatchedCount > 0 ? "rgba(245, 158, 11, 0.12)" : "rgba(34, 197, 94, 0.12)",
+                      border: excelNotification.unmatchedCount > 0 ? "1px solid rgba(245, 158, 11, 0.35)" : "1px solid rgba(34, 197, 94, 0.35)",
+                      display: "flex", 
+                      justifyContent: "space-between", 
+                      alignItems: "center", 
+                      flexWrap: "wrap", 
+                      gap: "10px" 
+                    }}
+                  >
+                    <div style={{ fontSize: "0.86rem" }}>
+                      <strong style={{ color: "#4ade80" }}>✓ {excelNotification.matchedCount} item(s) matched & selected</strong> with updated quantities.
+                      {excelNotification.unmatchedCount > 0 && (
+                        <span style={{ marginLeft: "8px", color: "#fbbf24" }}>
+                          ⚠️ <strong>{excelNotification.unmatchedCount} item(s) not found</strong> (downloaded to <code>NotFound_Items.xlsx</code>).
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      {excelNotification.unmatchedCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const notFoundHeaders = ["Order Date", "Item Name", "Qty", "Reason"];
+                            const notFoundRows = excelNotification.unmatchedList.map(u => [u.orderDate, u.itemName, u.qty, u.reason]);
+                            downloadExcelOrCsv(notFoundHeaders, notFoundRows, "NotFound_Items");
+                          }}
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: "3px 8px", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "4px" }}
+                        >
+                          <Download size={12} /> Re-download Not Found File
+                        </button>
+                      )}
+                      <button 
+                        type="button"
+                        onClick={() => setExcelNotification(null)} 
+                        style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: "0.9rem" }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="table-container" style={{ marginBottom: "20px" }}>
                   <table className="custom-table">
@@ -1303,6 +1402,7 @@ export default function PurchaserDashboard({
                         <th>Order Date</th>
                         <th>Model</th>
                         <th>Quantity</th>
+                        <th style={{ color: "#38bdf8", minWidth: "125px" }}>New Qty</th>
                         <th>Total Price</th>
                         <th>Vendor EDD</th>
                         <th>Ready Date</th>
@@ -1313,7 +1413,7 @@ export default function PurchaserDashboard({
                     <tbody>
                       {myRequests.filter(r => r.vendorId === plannerVendorId && r.priceRmb && !r.cargoId).length === 0 ? (
                         <tr>
-                          <td colSpan="9" style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                          <td colSpan="10" style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
                             No items priced for this vendor. Go to <strong>Step 1: Commercial & Timeline Specification</strong> to assign vendor and price.
                           </td>
                         </tr>
@@ -1321,6 +1421,13 @@ export default function PurchaserDashboard({
                         myRequests.filter(r => r.vendorId === plannerVendorId && r.priceRmb && !r.cargoId).map(r => {
                           const isChecked = checkedRequestIds.includes(r.id);
                           const undoHours = hoursRemaining48(r.pricedAt);
+                          const origQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+                          const customNewQty = plannerNewQtyMap[r.id];
+                          const hasNewQty = customNewQty !== undefined && customNewQty !== null && customNewQty !== "";
+                          const effectiveQty = hasNewQty ? parseInt(customNewQty, 10) : origQty;
+                          const unitPrice = parseFloat(r.priceRmb || 0);
+                          const effectiveTotalPrice = unitPrice > 0 ? unitPrice * effectiveQty : r.totalRmb;
+
                           return (
                             <tr key={r.id} className={isChecked ? "planner-row-selected" : ""}>
                               <td>
@@ -1371,7 +1478,68 @@ export default function PurchaserDashboard({
                                   </span>
                                 )}
                               </td>
-                              <td>{getCurrencySymbol(r.currency)}{Number(r.totalRmb).toLocaleString()}</td>
+
+                              {/* New Qty */}
+                              <td>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                    <input 
+                                      type="number"
+                                      min="1"
+                                      className="form-control"
+                                      style={{
+                                        width: "85px",
+                                        padding: "4px 8px",
+                                        fontSize: "0.85rem",
+                                        fontWeight: 700,
+                                        textAlign: "center",
+                                        borderColor: hasNewQty ? "#38bdf8" : undefined,
+                                        background: hasNewQty ? "rgba(56, 189, 248, 0.1)" : undefined,
+                                        color: hasNewQty ? "#38bdf8" : undefined
+                                      }}
+                                      value={plannerNewQtyMap[r.id] ?? ""}
+                                      placeholder={String(origQty)}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setPlannerNewQtyMap(prev => {
+                                          const next = { ...prev };
+                                          if (val === "") {
+                                            delete next[r.id];
+                                          } else {
+                                            const num = parseInt(val, 10);
+                                            if (!isNaN(num)) {
+                                              next[r.id] = num;
+                                            }
+                                          }
+                                          return next;
+                                        });
+                                        if (val !== "" && !checkedRequestIds.includes(r.id)) {
+                                          setCheckedRequestIds(prev => [...prev, r.id]);
+                                        }
+                                      }}
+                                    />
+                                    <span style={{ fontSize: "0.76rem", color: "var(--text-muted)" }}>Pcs</span>
+                                  </div>
+                                  {hasNewQty && effectiveQty < origQty && (
+                                    <span style={{ fontSize: "0.68rem", color: "#fbbf24", whiteSpace: "nowrap" }}>
+                                      {origQty - effectiveQty} Pcs at vendor
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Total Price */}
+                              <td>
+                                <div style={{ fontWeight: hasNewQty ? 700 : 500, color: hasNewQty ? "#38bdf8" : "inherit" }}>
+                                  {getCurrencySymbol(r.currency)}{Number(effectiveTotalPrice).toLocaleString()}
+                                </div>
+                                {hasNewQty && effectiveTotalPrice !== r.totalRmb && (
+                                  <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", display: "block" }}>
+                                    (Orig: {getCurrencySymbol(r.currency)}{Number(r.totalRmb).toLocaleString()})
+                                  </span>
+                                )}
+                              </td>
+
                               <td>{r.vendorEdd}</td>
                               <td style={{ color: r.vendorReadyDate ? "var(--success)" : "var(--text-muted)", fontSize: "0.8rem" }}>
                                 {r.vendorReadyDate || "Not Ready"}
@@ -1407,17 +1575,62 @@ export default function PurchaserDashboard({
                   </table>
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
                   <div style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>
-                    {checkedRequestIds.length} item(s) selected for combined cargo.
+                    <strong>{checkedRequestIds.length}</strong> item(s) selected for combined cargo.
+                    {checkedRequestIds.filter(id => plannerNewQtyMap[id] != null).length > 0 && (
+                      <span style={{ color: "#38bdf8", marginLeft: "6px" }}>
+                        ({checkedRequestIds.filter(id => plannerNewQtyMap[id] != null).length} with updated quantity)
+                      </span>
+                    )}
                   </div>
-                  <button 
-                    disabled={checkedRequestIds.length === 0}
-                    onClick={() => setCreatingCargo(true)}
-                    className="btn btn-primary"
-                  >
-                    <Plus size={16} /> Combine Selected into Cargo
-                  </button>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                    {checkedRequestIds.some(id => plannerNewQtyMap[id] != null) && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const itemsToUpdate = checkedRequestIds
+                            .filter(id => plannerNewQtyMap[id] != null)
+                            .map(id => {
+                              const r = myRequests.find(x => x.id === id);
+                              if (!r) return null;
+                              const newQty = plannerNewQtyMap[id];
+                              const unitPrice = parseFloat(r.priceRmb || 0);
+                              return {
+                                ...r,
+                                vendorOrderQuantity: newQty,
+                                totalRmb: unitPrice > 0 ? unitPrice * newQty : r.totalRmb
+                              };
+                            })
+                            .filter(Boolean);
+
+                          if (itemsToUpdate.length === 0) return;
+                          if (window.confirm(`Update order quantity for ${itemsToUpdate.length} item(s) in system?`)) {
+                            if (batchUpdateRequests) {
+                              await batchUpdateRequests(itemsToUpdate, "UPDATE_QUANTITY", `Updated order quantities for ${itemsToUpdate.length} item(s)`);
+                            } else {
+                              for (const itm of itemsToUpdate) {
+                                await onUpdateRequest(itm);
+                              }
+                            }
+                            alert(`Successfully updated order quantity for ${itemsToUpdate.length} item(s).`);
+                          }
+                        }}
+                        className="btn btn-secondary"
+                        style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem" }}
+                        title="Permanently save updated quantities to order records"
+                      >
+                        <CheckCircle2 size={16} style={{ color: "#10b981" }} /> Save New Quantities
+                      </button>
+                    )}
+                    <button 
+                      disabled={checkedRequestIds.length === 0}
+                      onClick={() => setCreatingCargo(true)}
+                      className="btn btn-primary"
+                    >
+                      <Plus size={16} /> Combine Selected into Cargo
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -2289,6 +2502,7 @@ export default function PurchaserDashboard({
           vendorName={vendors.find(v => v.id === plannerVendorId)?.name}
           selectedIds={checkedRequestIds}
           requests={myRequests}
+          initialPickedQtyMap={plannerNewQtyMap}
           cargos={cargos}
           cargoCompanies={cargoCompanies}
           onAddCargoCompany={onAddCargoCompany}
@@ -2297,7 +2511,43 @@ export default function PurchaserDashboard({
             onAddCargo(cargoDetails, checkedRequestIds, itemPickedQtyMap);
             setCreatingCargo(false);
             setCheckedRequestIds([]);
+            setPlannerNewQtyMap({});
             setActiveTab("cargopickup"); // Go to Cargo Pickup step next
+          }}
+        />
+      )}
+
+      {/* ==================== EXCEL SHIPPING QUANTITY UPDATE MODAL ==================== */}
+      {showExcelUpdateModal && (
+        <ExcelShippingUpdateModal 
+          availableItems={myRequests.filter(r => r.vendorId === plannerVendorId && r.priceRmb && !r.cargoId)}
+          vendorName={vendors.find(v => v.id === plannerVendorId)?.name || "Selected Vendor"}
+          onClose={() => setShowExcelUpdateModal(false)}
+          onApplyMatches={(analysis) => {
+            const { matchedReqIds, newQtyMap, matched, unmatched } = analysis;
+
+            setCheckedRequestIds(prev => Array.from(new Set([...prev, ...matchedReqIds])));
+            setPlannerNewQtyMap(prev => ({ ...prev, ...newQtyMap }));
+
+            // If item not found, download file showing what item not found with qty and order date
+            if (unmatched && unmatched.length > 0) {
+              const notFoundHeaders = ["Order Date", "Item Name", "Qty", "Reason"];
+              const notFoundRows = unmatched.map(u => [u.orderDate, u.itemName, u.qty, u.reason]);
+              downloadExcelOrCsv(notFoundHeaders, notFoundRows, "NotFound_Items");
+            }
+
+            setExcelNotification({
+              matchedCount: matched.length,
+              unmatchedCount: unmatched.length,
+              unmatchedList: unmatched,
+              timestamp: new Date().toLocaleTimeString()
+            });
+
+            setShowExcelUpdateModal(false);
+          }}
+          onDownloadSample={() => {
+            const readyRequests = myRequests.filter(r => r.vendorId === plannerVendorId && r.priceRmb && !r.cargoId);
+            handleDownloadShippingSampleFile(readyRequests);
           }}
         />
       )}
@@ -3126,8 +3376,447 @@ function ReceiveCargoModal({ cargo, requests, onClose, onConfirm }) {
   );
 }
 
+// ==================== EXCEL SHIPPING UPDATE & PARSER UTILITIES ====================
+export const cleanModelStr = (s) => String(s || "").toLowerCase().replace(/[\s\-_/.]/g, "");
+
+export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => {
+  if (!rawRows || rawRows.length === 0) {
+    throw new Error("Uploaded content is empty or contains no rows.");
+  }
+
+  // Find column indices
+  let headerRowIdx = -1;
+  let dateColIdx = -1;
+  let itemColIdx = -1;
+  let qtyColIdx = -1;
+
+  for (let i = 0; i < Math.min(rawRows.length, 5); i++) {
+    const row = rawRows[i];
+    if (!Array.isArray(row)) continue;
+    row.forEach((cell, idx) => {
+      const cStr = String(cell || "").toLowerCase().trim();
+      if (dateColIdx === -1 && (cStr.includes("date") || cStr === "d")) dateColIdx = idx;
+      if (itemColIdx === -1 && (cStr.includes("model") || cStr.includes("item") || cStr.includes("name") || cStr === "e")) itemColIdx = idx;
+      if (qtyColIdx === -1 && (cStr.includes("qty") || cStr.includes("quantity") || cStr.includes("count") || cStr === "f")) qtyColIdx = idx;
+    });
+    if (dateColIdx !== -1 && (itemColIdx !== -1 || qtyColIdx !== -1)) {
+      headerRowIdx = i;
+      break;
+    }
+  }
+
+  const dataRows = headerRowIdx !== -1 ? rawRows.slice(headerRowIdx + 1) : rawRows;
+
+  // Auto-detect columns from first data row if headers were missing or incomplete
+  if (dateColIdx === -1 || itemColIdx === -1 || qtyColIdx === -1) {
+    const sampleRow = dataRows.find(r => Array.isArray(r) && r.filter(c => c !== "" && c != null).length >= 2);
+    if (sampleRow) {
+      sampleRow.forEach((c, idx) => {
+        const str = String(c || "").trim();
+        const num = Number(str);
+        if (dateColIdx === -1 && (parseFlexibleDate(c) || str.match(/\d{1,4}[-\/\.]\d{1,2}[-\/\.]\d{1,4}/))) {
+          dateColIdx = idx;
+        } else if (qtyColIdx === -1 && !isNaN(num) && num > 0 && Number.isInteger(num)) {
+          qtyColIdx = idx;
+        } else if (itemColIdx === -1 && str.length > 0 && isNaN(num)) {
+          itemColIdx = idx;
+        }
+      });
+    }
+  }
+
+  // Fallbacks if still not found
+  if (dateColIdx === -1) dateColIdx = 0;
+  if (itemColIdx === -1) itemColIdx = 1;
+  if (qtyColIdx === -1) qtyColIdx = 2;
+
+  const matched = [];
+  const unmatched = [];
+  const matchedReqIds = new Set();
+  const newQtyMap = {};
+
+  dataRows.forEach((row) => {
+    if (!Array.isArray(row) || row.every(c => c === "" || c == null)) return;
+
+    const rawDate = row[dateColIdx];
+    const rawItem = row[itemColIdx];
+    const rawQty = row[qtyColIdx];
+
+    const cleanDate = parseFlexibleDate(rawDate);
+    const itemStr = String(rawItem || "").trim();
+    const qtyNum = parseInt(String(rawQty || "").replace(/[^0-9]/g, ""), 10);
+
+    if (!itemStr && !cleanDate && isNaN(qtyNum)) return; // skip blank row
+
+    const cleanInputModel = cleanModelStr(itemStr);
+
+    let altDate = "";
+    if (cleanDate) {
+      const p = cleanDate.split("-");
+      if (p.length === 3) {
+        altDate = `${p[0]}-${p[2]}-${p[1]}`;
+      }
+    }
+
+    const matchedReq = availableItems.find(r => {
+      if (matchedReqIds.has(r.id)) return false;
+      const rModelClean = cleanModelStr(r.model);
+      const rDateClean = parseFlexibleDate(r.orderDate);
+      const modelMatch = rModelClean === cleanInputModel || (r.model && r.model.toLowerCase().trim() === itemStr.toLowerCase());
+      const dateMatch = rDateClean === cleanDate || (altDate && rDateClean === altDate) || String(r.orderDate).trim() === String(rawDate).trim();
+      return modelMatch && dateMatch;
+    });
+
+    if (matchedReq && !isNaN(qtyNum) && qtyNum > 0) {
+      matchedReqIds.add(matchedReq.id);
+      newQtyMap[matchedReq.id] = qtyNum;
+      matched.push({
+        reqId: matchedReq.id,
+        model: matchedReq.model,
+        orderDate: matchedReq.orderDate,
+        originalQty: matchedReq.vendorOrderQuantity || matchedReq.orderQuantity,
+        newQty: qtyNum
+      });
+    } else {
+      unmatched.push({
+        orderDate: cleanDate || String(rawDate || "—"),
+        itemName: itemStr || "—",
+        qty: !isNaN(qtyNum) ? qtyNum : String(rawQty || "—"),
+        reason: !itemStr
+          ? "Item name missing"
+          : !cleanDate
+            ? "Invalid order date"
+            : isNaN(qtyNum)
+              ? "Invalid quantity"
+              : "No matching item found with this Order Date & Model for current vendor"
+      });
+    }
+  });
+
+  return { matched, unmatched, newQtyMap, matchedReqIds: Array.from(matchedReqIds) };
+};
+
+// ==================== EXCEL SHIPPING QUANTITY UPDATE MODAL ====================
+function ExcelShippingUpdateModal({
+  availableItems = [],
+  vendorName = "",
+  onClose,
+  onApplyMatches,
+  onDownloadSample
+}) {
+  const [inputMode, setInputMode] = useState("file"); // "file" | "paste"
+  const [pastedText, setPastedText] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [analysis, setAnalysis] = useState(null);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const processRows = (rows, sourceName = "") => {
+    setErrorMsg("");
+    try {
+      if (!rows || rows.length === 0) {
+        throw new Error("No data found in uploaded content.");
+      }
+      const result = parseExcelShippingRowsAndMatch(rows, availableItems);
+      setAnalysis(result);
+      if (sourceName) setFileName(sourceName);
+    } catch (err) {
+      setErrorMsg(err.message || "Failed to parse file.");
+      setAnalysis(null);
+    }
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsProcessing(true);
+    setErrorMsg("");
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = evt.target.result;
+        let rawRows = [];
+
+        if (typeof window !== "undefined" && window.XLSX) {
+          const workbook = window.XLSX.read(data, { type: "array", cellDates: true });
+          const firstSheet = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheet];
+          rawRows = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+        } else {
+          const text = new TextDecoder().decode(new Uint8Array(data));
+          const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+          rawRows = lines.map(line => {
+            if (line.includes("\t")) return line.split("\t");
+            return line.split(",").map(c => c.replace(/^"|"$/g, "").trim());
+          });
+        }
+
+        processRows(rawRows, file.name);
+      } catch (err) {
+        setErrorMsg("Failed to read Excel file: " + err.message);
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleAnalyzePaste = () => {
+    if (!pastedText.trim()) {
+      setErrorMsg("Please paste Excel rows containing Order Date, Item Name, and Qty.");
+      return;
+    }
+    const lines = pastedText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const rawRows = lines.map(l => {
+      if (l.includes("\t")) return l.split("\t").map(c => c.trim());
+      return l.split(",").map(c => c.replace(/^"|"$/g, "").trim());
+    });
+    processRows(rawRows, "Pasted Text");
+  };
+
+  const handleConfirmApply = () => {
+    if (!analysis) return;
+    onApplyMatches(analysis);
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="glass-panel modal-content" style={{ maxWidth: "700px", width: "92%", maxHeight: "90vh", overflowY: "auto" }}>
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: "12px" }}>
+          <div>
+            <h3 style={{ fontSize: "1.25rem", margin: 0, color: "#38bdf8", display: "flex", alignItems: "center", gap: "8px" }}>
+              <FileSpreadsheet size={22} /> Update Quantities from Excel File
+            </h3>
+            <p style={{ margin: "4px 0 0 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+              Vendor: <strong>{vendorName}</strong> • {availableItems.length} items available for matching
+            </p>
+          </div>
+          <button 
+            type="button" 
+            onClick={onClose} 
+            className="btn btn-secondary btn-sm" 
+            style={{ padding: "4px 10px", fontSize: "0.85rem" }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Instructions & Sample Download */}
+        <div style={{ background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "10px", padding: "14px", marginBottom: "16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+            <div>
+              <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-main)", marginBottom: "4px" }}>
+                Required Columns: <code>Order Date</code>, <code>Item Name</code>, <code>Qty</code>
+              </div>
+              <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                Matches by Order Date & Item Name. Matched items are auto-selected with New Qty filled. Any unmatched items will be automatically downloaded to <code>NotFound_Items.xlsx</code>.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onDownloadSample}
+              className="btn btn-secondary btn-sm"
+              style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", whiteSpace: "nowrap" }}
+            >
+              <Download size={14} /> Download Sample File
+            </button>
+          </div>
+        </div>
+
+        {/* Input Mode Selector */}
+        <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
+          <button
+            type="button"
+            className={`btn btn-sm ${inputMode === "file" ? "btn-primary" : "btn-secondary"}`}
+            onClick={() => setInputMode("file")}
+            style={{ display: "flex", alignItems: "center", gap: "6px", flex: 1 }}
+          >
+            <UploadCloud size={15} /> Upload Excel / CSV File
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${inputMode === "paste" ? "btn-primary" : "btn-secondary"}`}
+            onClick={() => setInputMode("paste")}
+            style={{ display: "flex", alignItems: "center", gap: "6px", flex: 1 }}
+          >
+            <Clipboard size={15} /> Direct Paste from Sheets
+          </button>
+        </div>
+
+        {/* File Upload Mode */}
+        {inputMode === "file" && (
+          <div style={{ marginBottom: "16px" }}>
+            <label 
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "24px",
+                border: "2px dashed rgba(56, 189, 248, 0.4)",
+                borderRadius: "12px",
+                background: "rgba(15, 23, 42, 0.4)",
+                cursor: "pointer",
+                transition: "all 0.2s ease"
+              }}
+            >
+              <UploadCloud size={32} style={{ color: "#38bdf8", marginBottom: "8px" }} />
+              <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--text-main)" }}>
+                {fileName ? `Selected: ${fileName}` : "Click to Browse or Drag & Drop Excel File"}
+              </div>
+              <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "4px" }}>
+                Supports .xlsx, .xls, and .csv files
+              </div>
+              <input 
+                type="file" 
+                accept=".xlsx, .xls, .csv" 
+                style={{ display: "none" }} 
+                onChange={handleFileUpload}
+              />
+            </label>
+          </div>
+        )}
+
+        {/* Paste Mode */}
+        {inputMode === "paste" && (
+          <div style={{ marginBottom: "16px" }}>
+            <textarea
+              className="form-control"
+              rows={5}
+              placeholder={`Paste rows from Excel or Google Sheets here...\nExample:\n9/7/2026\tBLP837\t30\n9/7/2026\tBN51\t352`}
+              value={pastedText}
+              onChange={e => setPastedText(e.target.value)}
+              style={{ fontSize: "0.82rem", fontFamily: "monospace" }}
+            />
+            <button
+              type="button"
+              onClick={handleAnalyzePaste}
+              className="btn btn-secondary btn-sm"
+              style={{ marginTop: "8px", width: "100%" }}
+            >
+              Parse Pasted Rows
+            </button>
+          </div>
+        )}
+
+        {/* Error message */}
+        {errorMsg && (
+          <div style={{ padding: "10px 14px", borderRadius: "8px", background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.4)", color: "#f87171", fontSize: "0.82rem", marginBottom: "16px" }}>
+            {errorMsg}
+          </div>
+        )}
+
+        {/* Analysis Preview */}
+        {analysis && (
+          <div style={{ marginTop: "12px", marginBottom: "20px" }}>
+            <div style={{ display: "flex", gap: "12px", marginBottom: "12px", flexWrap: "wrap" }}>
+              <div style={{ flex: 1, padding: "10px 14px", borderRadius: "8px", background: "rgba(34, 197, 94, 0.12)", border: "1px solid rgba(34, 197, 94, 0.3)" }}>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Matched Items</div>
+                <div style={{ fontSize: "1.3rem", fontWeight: 700, color: "#4ade80" }}>{analysis.matched.length}</div>
+                <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>Will be selected & updated in table</div>
+              </div>
+              <div style={{ flex: 1, padding: "10px 14px", borderRadius: "8px", background: analysis.unmatched.length > 0 ? "rgba(245, 158, 11, 0.12)" : "rgba(148, 163, 184, 0.1)", border: analysis.unmatched.length > 0 ? "1px solid rgba(245, 158, 11, 0.3)" : "1px solid rgba(148, 163, 184, 0.2)" }}>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Not Found Items</div>
+                <div style={{ fontSize: "1.3rem", fontWeight: 700, color: analysis.unmatched.length > 0 ? "#fbbf24" : "var(--text-muted)" }}>{analysis.unmatched.length}</div>
+                <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>
+                  {analysis.unmatched.length > 0 ? "Will auto-download as NotFound_Items.xlsx" : "All items matched perfectly"}
+                </div>
+              </div>
+            </div>
+
+            {/* Matched Preview List */}
+            {analysis.matched.length > 0 && (
+              <div style={{ marginBottom: "14px" }}>
+                <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "6px" }}>
+                  Matched Items Preview ({analysis.matched.length}):
+                </div>
+                <div style={{ maxHeight: "140px", overflowY: "auto", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px", background: "rgba(15, 23, 42, 0.5)" }}>
+                  <table className="custom-table" style={{ fontSize: "0.78rem" }}>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Model</th>
+                        <th>Current Qty</th>
+                        <th>New Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {analysis.matched.slice(0, 15).map((m, idx) => (
+                        <tr key={idx}>
+                          <td>{m.orderDate}</td>
+                          <td style={{ fontWeight: 600, color: "#38bdf8" }}>{m.model}</td>
+                          <td>{m.originalQty} Pcs</td>
+                          <td style={{ fontWeight: 700, color: "#4ade80" }}>{m.newQty} Pcs</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {analysis.matched.length > 15 && (
+                    <div style={{ textAlign: "center", padding: "6px", fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                      ... and {analysis.matched.length - 15} more matched items
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Unmatched Preview List */}
+            {analysis.unmatched.length > 0 && (
+              <div>
+                <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#fbbf24", marginBottom: "6px" }}>
+                  Not Found Items ({analysis.unmatched.length}) — will be exported to Excel:
+                </div>
+                <div style={{ maxHeight: "120px", overflowY: "auto", border: "1px solid rgba(245, 158, 11, 0.2)", borderRadius: "8px", background: "rgba(15, 23, 42, 0.5)" }}>
+                  <table className="custom-table" style={{ fontSize: "0.78rem" }}>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Item Name</th>
+                        <th>Qty</th>
+                        <th>Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {analysis.unmatched.slice(0, 10).map((u, idx) => (
+                        <tr key={idx}>
+                          <td>{u.orderDate}</td>
+                          <td style={{ fontWeight: 600, color: "#f87171" }}>{u.itemName}</td>
+                          <td>{u.qty}</td>
+                          <td style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{u.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Footer Actions */}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: "14px" }}>
+          <button type="button" onClick={onClose} className="btn btn-secondary">
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!analysis || analysis.matched.length === 0}
+            onClick={handleConfirmApply}
+            className="btn btn-primary"
+            style={{ display: "flex", alignItems: "center", gap: "6px" }}
+          >
+            <CheckCircle2 size={16} /> Apply Updates {analysis?.unmatched.length > 0 ? `& Download ${analysis.unmatched.length} Not Found` : ""}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // 3. CREATE CARGO BUNDLE MODAL
-function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos = [], cargoCompanies = [], onAddCargoCompany, onClose, onSave }) {
+function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos = [], cargoCompanies = [], onAddCargoCompany, onClose, onSave, initialPickedQtyMap = {} }) {
   const [detail, setDetail] = useState("");
   const [currency, setCurrency] = useState("RMB");
   const [price, setPrice] = useState("");
@@ -3145,7 +3834,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
   const [itemPickedQtyMap, setItemPickedQtyMap] = useState(() => {
     const map = {};
     (requests || []).filter(r => selectedIds.includes(r.id)).forEach(r => {
-      map[r.id] = r.vendorOrderQuantity || r.orderQuantity || 1;
+      map[r.id] = initialPickedQtyMap[r.id] ?? (r.vendorOrderQuantity || r.orderQuantity || 1);
     });
     return map;
   });
