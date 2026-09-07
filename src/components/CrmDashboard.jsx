@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import Pagination from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
-import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
+import DateRangeFilter, { isDateInBetween, formatYMD } from "./DateRangeFilter";
 import { downloadCsv } from "../utils/formatters";
 
 // Helper to normalize and match party names across all formats and sub-components
@@ -118,6 +118,42 @@ export default function CrmDashboard({
   const [activeTab, setActiveTab] = useState("parties");
   const [globalStartDate, setGlobalStartDate] = useState("");
   const [globalEndDate, setGlobalEndDate] = useState("");
+  const [dispatchStartDate, setDispatchStartDate] = useState("");
+  const [dispatchEndDate, setDispatchEndDate] = useState("");
+  const [ordersStartDate, setOrdersStartDate] = useState("");
+  const [ordersEndDate, setOrdersEndDate] = useState("");
+  const [salesReportStartDate, setSalesReportStartDate] = useState("");
+  const [salesReportEndDate, setSalesReportEndDate] = useState("");
+
+  // Synchronized date application across global and tab-specific views
+  const handleApplyDateRange = (start, end) => {
+    setGlobalStartDate(start);
+    setGlobalEndDate(end);
+    setDispatchStartDate(start);
+    setDispatchEndDate(end);
+    setOrdersStartDate(start);
+    setOrdersEndDate(end);
+    setSalesReportStartDate(start);
+    setSalesReportEndDate(end);
+  };
+
+  const handleSelectThisMonth = () => {
+    const now = new Date();
+    const firstDay = formatYMD(new Date(now.getFullYear(), now.getMonth(), 1));
+    const lastDay = formatYMD(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+    handleApplyDateRange(firstDay, lastDay);
+  };
+
+  const handleSelectLastMonth = () => {
+    const now = new Date();
+    const firstDay = formatYMD(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+    const lastDay = formatYMD(new Date(now.getFullYear(), now.getMonth(), 0));
+    handleApplyDateRange(firstDay, lastDay);
+  };
+
+  const handleClearDateRange = () => {
+    handleApplyDateRange("", "");
+  };
 
   const handleCrmTabSwitch = (tab) => {
     setActiveTab(tab);
@@ -260,11 +296,22 @@ export default function CrmDashboard({
         return false;
       });
     }
-    if (globalStartDate || globalEndDate) {
-      list = list.filter(so => isDateInBetween(so.orderDate, globalStartDate, globalEndDate));
+    const effectiveStart = activeTab === "orders" && (ordersStartDate || ordersEndDate)
+      ? ordersStartDate
+      : activeTab === "salesreport" && (salesReportStartDate || salesReportEndDate)
+        ? salesReportStartDate
+        : globalStartDate;
+    const effectiveEnd = activeTab === "orders" && (ordersStartDate || ordersEndDate)
+      ? ordersEndDate
+      : activeTab === "salesreport" && (salesReportStartDate || salesReportEndDate)
+        ? salesReportEndDate
+        : globalEndDate;
+
+    if (effectiveStart || effectiveEnd) {
+      list = list.filter(so => isDateInBetween(so.orderDate, effectiveStart, effectiveEnd));
     }
     return list;
-  }, [allUnifiedSalesOrders, selectedExecutiveId, currentParties, globalStartDate, globalEndDate, isAsmOrTsm, isCrmUser, activeExecutive]);
+  }, [allUnifiedSalesOrders, selectedExecutiveId, currentParties, globalStartDate, globalEndDate, ordersStartDate, ordersEndDate, salesReportStartDate, salesReportEndDate, activeTab, isAsmOrTsm, isCrmUser, activeExecutive]);
 
   // Filtered Dispatches (matched by executive ID or party name/ID, and global dates)
   const currentDispatches = useMemo(() => {
@@ -284,11 +331,18 @@ export default function CrmDashboard({
         return false;
       });
     }
-    if (globalStartDate || globalEndDate) {
-      list = list.filter(d => isDateInBetween(d.dispatchDate, globalStartDate, globalEndDate));
+    const effectiveStart = activeTab === "dispatchreport" && (dispatchStartDate || dispatchEndDate)
+      ? dispatchStartDate
+      : globalStartDate;
+    const effectiveEnd = activeTab === "dispatchreport" && (dispatchStartDate || dispatchEndDate)
+      ? dispatchEndDate
+      : globalEndDate;
+
+    if (effectiveStart || effectiveEnd) {
+      list = list.filter(d => isDateInBetween(d.dispatchDate, effectiveStart, effectiveEnd));
     }
     return list;
-  }, [allUnifiedDispatches, selectedExecutiveId, currentParties, globalStartDate, globalEndDate, isAsmOrTsm, isCrmUser, activeExecutive]);
+  }, [allUnifiedDispatches, selectedExecutiveId, currentParties, globalStartDate, globalEndDate, dispatchStartDate, dispatchEndDate, activeTab, isAsmOrTsm, isCrmUser, activeExecutive]);
 
   // Resolve effective parent CRM ID for an ASM/TSM user (handles Ashutosh -> Ankita default)
   const getEffectiveParentCrmId = (u) => {
@@ -435,12 +489,7 @@ export default function CrmDashboard({
 
   // Report & Table Filters
   const [salesReportCategory, setSalesReportCategory] = useState("all");
-  const [salesReportStartDate, setSalesReportStartDate] = useState("");
-  const [salesReportEndDate, setSalesReportEndDate] = useState("");
-
   const [dispatchStatusFilter, setDispatchStatusFilter] = useState("all");
-  const [dispatchStartDate, setDispatchStartDate] = useState("");
-  const [dispatchEndDate, setDispatchEndDate] = useState("");
 
   // Dynamic Multi-Search Criteria for Dispatches Report
   const [dispatchSearchFilters, setDispatchSearchFilters] = useState([
@@ -473,6 +522,8 @@ export default function CrmDashboard({
     setDispatchStatusFilter("all");
     setDispatchStartDate("");
     setDispatchEndDate("");
+    setGlobalStartDate("");
+    setGlobalEndDate("");
   };
 
   // Filtered Dispatches for Logistics Report (incorporating Multi-Search Filters)
@@ -492,7 +543,8 @@ export default function CrmDashboard({
         if (!term) return true;
 
         if (f.field === "party") {
-          return (d.partyName || "").toLowerCase().includes(term);
+          const pName = (d.partyName || "").toLowerCase();
+          return pName.includes(term) || normParty(pName).includes(normParty(term));
         } else if (f.field === "item") {
           return (d.itemModel || "").toLowerCase().includes(term);
         } else if (f.field === "invoice") {
@@ -523,9 +575,6 @@ export default function CrmDashboard({
       }
     });
   }, [currentDispatches, dispatchStatusFilter, dispatchStartDate, dispatchEndDate, dispatchSearchFilters, dispatchMatchMode]);
-
-  const [ordersStartDate, setOrdersStartDate] = useState("");
-  const [ordersEndDate, setOrdersEndDate] = useState("");
 
   // Format INR currency
   const formatInr = (val) => {
@@ -889,37 +938,32 @@ export default function CrmDashboard({
             <DateRangeFilter
               startDate={globalStartDate}
               endDate={globalEndDate}
-              onStartDateChange={setGlobalStartDate}
-              onEndDateChange={setGlobalEndDate}
-              onClear={() => {
-                setGlobalStartDate("");
-                setGlobalEndDate("");
+              onStartDateChange={(val) => {
+                setGlobalStartDate(val);
+                setDispatchStartDate(val);
+                setOrdersStartDate(val);
+                setSalesReportStartDate(val);
               }}
+              onEndDateChange={(val) => {
+                setGlobalEndDate(val);
+                setDispatchEndDate(val);
+                setOrdersEndDate(val);
+                setSalesReportEndDate(val);
+              }}
+              onClear={handleClearDateRange}
               placeholder="Filter by Date"
             />
           </div>
           <div className="date-btn-group" style={{ display: "flex", gap: "6px" }}>
             <button
-              onClick={() => {
-                const now = new Date();
-                const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-                const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
-                setGlobalStartDate(firstDay);
-                setGlobalEndDate(lastDay);
-              }}
+              onClick={handleSelectThisMonth}
               className="btn btn-secondary btn-sm"
               style={{ fontSize: "0.78rem", padding: "6px 12px", fontWeight: 600 }}
             >
               This Month
             </button>
             <button
-              onClick={() => {
-                const now = new Date();
-                const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10);
-                const lastDay = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0, 10);
-                setGlobalStartDate(firstDay);
-                setGlobalEndDate(lastDay);
-              }}
+              onClick={handleSelectLastMonth}
               className="btn btn-secondary btn-sm"
               style={{ fontSize: "0.78rem", padding: "6px 12px", fontWeight: 600 }}
             >
@@ -927,10 +971,7 @@ export default function CrmDashboard({
             </button>
             {(globalStartDate || globalEndDate) && (
               <button
-                onClick={() => {
-                  setGlobalStartDate("");
-                  setGlobalEndDate("");
-                }}
+                onClick={handleClearDateRange}
                 className="btn btn-secondary btn-sm"
                 style={{ fontSize: "0.78rem", padding: "6px 10px" }}
               >
@@ -1910,14 +1951,46 @@ export default function CrmDashboard({
               <DateRangeFilter
                 startDate={salesReportStartDate}
                 endDate={salesReportEndDate}
-                onStartDateChange={setSalesReportStartDate}
-                onEndDateChange={setSalesReportEndDate}
-                onClear={() => {
-                  setSalesReportStartDate("");
-                  setSalesReportEndDate("");
+                onStartDateChange={(val) => {
+                  setSalesReportStartDate(val);
+                  setGlobalStartDate(val);
                 }}
+                onEndDateChange={(val) => {
+                  setSalesReportEndDate(val);
+                  setGlobalEndDate(val);
+                }}
+                onClear={handleClearDateRange}
                 align="right"
               />
+
+              <div className="date-btn-group" style={{ display: "flex", gap: "6px" }}>
+                <button
+                  type="button"
+                  onClick={handleSelectThisMonth}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: "0.78rem", padding: "6px 10px", fontWeight: 600 }}
+                >
+                  This Month
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSelectLastMonth}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: "0.78rem", padding: "6px 10px", fontWeight: 600 }}
+                >
+                  Last Month
+                </button>
+                {(salesReportStartDate || salesReportEndDate) && (
+                  <button
+                    type="button"
+                    onClick={handleClearDateRange}
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: "0.78rem", padding: "6px 8px" }}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
 
               <select
                 value={salesReportCategory}
@@ -2095,14 +2168,46 @@ export default function CrmDashboard({
               <DateRangeFilter
                 startDate={dispatchStartDate}
                 endDate={dispatchEndDate}
-                onStartDateChange={setDispatchStartDate}
-                onEndDateChange={setDispatchEndDate}
-                onClear={() => {
-                  setDispatchStartDate("");
-                  setDispatchEndDate("");
+                onStartDateChange={(val) => {
+                  setDispatchStartDate(val);
+                  setGlobalStartDate(val);
                 }}
+                onEndDateChange={(val) => {
+                  setDispatchEndDate(val);
+                  setGlobalEndDate(val);
+                }}
+                onClear={handleClearDateRange}
                 align="right"
               />
+
+              <div className="date-btn-group" style={{ display: "flex", gap: "6px" }}>
+                <button
+                  type="button"
+                  onClick={handleSelectThisMonth}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: "0.78rem", padding: "6px 10px", fontWeight: 600 }}
+                >
+                  This Month
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSelectLastMonth}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: "0.78rem", padding: "6px 10px", fontWeight: 600 }}
+                >
+                  Last Month
+                </button>
+                {(dispatchStartDate || dispatchEndDate) && (
+                  <button
+                    type="button"
+                    onClick={handleClearDateRange}
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: "0.78rem", padding: "6px 8px" }}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
 
               <select
                 value={dispatchStatusFilter}
@@ -2372,14 +2477,46 @@ export default function CrmDashboard({
               <DateRangeFilter
                 startDate={ordersStartDate}
                 endDate={ordersEndDate}
-                onStartDateChange={setOrdersStartDate}
-                onEndDateChange={setOrdersEndDate}
-                onClear={() => {
-                  setOrdersStartDate("");
-                  setOrdersEndDate("");
+                onStartDateChange={(val) => {
+                  setOrdersStartDate(val);
+                  setGlobalStartDate(val);
                 }}
+                onEndDateChange={(val) => {
+                  setOrdersEndDate(val);
+                  setGlobalEndDate(val);
+                }}
+                onClear={handleClearDateRange}
                 align="right"
               />
+
+              <div className="date-btn-group" style={{ display: "flex", gap: "6px" }}>
+                <button
+                  type="button"
+                  onClick={handleSelectThisMonth}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: "0.78rem", padding: "6px 10px", fontWeight: 600 }}
+                >
+                  This Month
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSelectLastMonth}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: "0.78rem", padding: "6px 10px", fontWeight: 600 }}
+                >
+                  Last Month
+                </button>
+                {(ordersStartDate || ordersEndDate) && (
+                  <button
+                    type="button"
+                    onClick={handleClearDateRange}
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: "0.78rem", padding: "6px 8px" }}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
 
               <button
                 onClick={() => setShowAddOrderModal(true)}
