@@ -31,7 +31,8 @@ export default function DateRangeFilter({
   onClear,
   placeholder = "Select date range",
   buttonStyle = {},
-  align = "left" // "left" | "right"
+  align = "left", // "left" | "right"
+  firstAvailableDate = ""
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [tempStart, setTempStart] = useState(startDate);
@@ -120,6 +121,16 @@ export default function DateRangeFilter({
     const curDay = now.getDay(); // 0 is Sunday, 1 is Monday
 
     switch (key) {
+      case "closing_as_of": {
+        const end = tempEnd || formatYMD(now);
+        applyPreset(`Closing Stock (as of ${formatDisplayDate(end)})`, firstAvailableDate || end, end);
+        break;
+      }
+      case "closing_today": {
+        const d = formatYMD(now);
+        applyPreset(`Closing Stock (as of ${formatDisplayDate(d)})`, firstAvailableDate || d, d);
+        break;
+      }
       case "all":
         applyPreset("All Time", "", "");
         break;
@@ -335,9 +346,11 @@ export default function DateRangeFilter({
 
   const handleRightDayClick = (ymd) => {
     setTempEnd(ymd);
-    setRangeLabel("Fixed");
-    if (tempStart && ymd < tempStart) {
-      setTempStart(ymd);
+    setRangeLabel(`Closing Stock (${formatDisplayDate(ymd)})`);
+    if (!tempStart && firstAvailableDate) {
+      setTempStart(firstAvailableDate);
+    } else if (tempStart && ymd < tempStart) {
+      setTempStart(firstAvailableDate || ymd);
     }
   };
 
@@ -542,6 +555,16 @@ export default function DateRangeFilter({
                   Auto
                 </div>
 
+                {firstAvailableDate && (
+                  <div 
+                    onClick={() => handleSelectPreset("closing_as_of")}
+                    style={{ padding: "8px 14px", fontSize: "0.83rem", cursor: "pointer", fontWeight: 700, color: "#38bdf8", borderBottom: "1px solid var(--border-glass, rgba(255, 255, 255, 0.15))" }}
+                    className="menu-item-hover"
+                  >
+                    ⭐ Closing Stock (From 1st Day: {formatDisplayDate(firstAvailableDate)})
+                  </div>
+                )}
+
                 {/* Submenu 1: This Month */}
                 <div
                   onMouseEnter={() => setActiveSubmenu("thisMonth")}
@@ -655,8 +678,37 @@ export default function DateRangeFilter({
             
             {/* LEFT CALENDAR (Start date) */}
             <div>
-              <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 700, marginBottom: "10px", textAlign: "center", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                Start date
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  Start date
+                </div>
+                {firstAvailableDate && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTempStart(firstAvailableDate);
+                      const ts = parseDateTimestamp(firstAvailableDate);
+                      if (ts) {
+                        const d = new Date(ts);
+                        setLeftCal({ year: d.getFullYear(), month: d.getMonth() });
+                      }
+                    }}
+                    style={{
+                      fontSize: "0.72rem",
+                      padding: "2px 8px",
+                      borderRadius: "6px",
+                      border: tempStart === firstAvailableDate ? "1px solid #38bdf8" : "1px solid rgba(255,255,255,0.15)",
+                      background: tempStart === firstAvailableDate ? "rgba(56, 189, 248, 0.2)" : "rgba(255,255,255,0.06)",
+                      color: tempStart === firstAvailableDate ? "#38bdf8" : "var(--text-muted)",
+                      cursor: "pointer",
+                      fontWeight: 700,
+                      transition: "all 0.15s"
+                    }}
+                    title={`Click to set Start Date to earliest stock record (${firstAvailableDate})`}
+                  >
+                    {tempStart === firstAvailableDate ? "✓ 1st Stock Day" : `Use 1st Day (${formatDisplayDate(firstAvailableDate)})`}
+                  </button>
+                )}
               </div>
 
               {/* Month Navigation Header */}

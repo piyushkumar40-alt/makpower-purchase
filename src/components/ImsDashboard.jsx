@@ -59,6 +59,29 @@ export default function ImsDashboard({
   });
   const [endDate, setEndDate] = useState(() => (new Date()).toISOString().split("T")[0]);
 
+  // Earliest 1st Day of Available Stock in the system
+  const firstAvailableStockDate = useMemo(() => {
+    if (imsSummary?.firstStockDate) return imsSummary.firstStockDate;
+    if (Array.isArray(effectiveTransactions) && effectiveTransactions.length > 0) {
+      let minDate = "";
+      for (const t of effectiveTransactions) {
+        if (t.date && (!minDate || t.date < minDate)) minDate = t.date;
+      }
+      return minDate;
+    }
+    return "";
+  }, [imsSummary?.firstStockDate, effectiveTransactions]);
+
+  // When user specifies a closing date (e.g. 7 Sept), starting date automatically becomes the 1st day of available stock
+  const handleSelectEndDate = (newEnd) => {
+    setEndDate(newEnd);
+    if (newEnd && firstAvailableStockDate) {
+      if (!startDate || startDate > newEnd || startDate !== firstAvailableStockDate) {
+        setStartDate(firstAvailableStockDate);
+      }
+    }
+  };
+
   useEffect(() => {
     if (onPullModuleData) {
       onPullModuleData("imsTransactions", { startDate, endDate });
@@ -523,12 +546,53 @@ export default function ImsDashboard({
       });
     }
 
-    if (matchingStocks.length > 0) {
-      // User searched / filtered for specific item model(s) (e.g. DC55)
-      const itemTotalStock = matchingStocks.reduce((sum, s) => sum + (s.currentStock || 0), 0);
-      const itemDelhiStock = matchingStocks.reduce((sum, s) => sum + (s.delhiStock || 0), 0);
-      const itemMumbaiStock = matchingStocks.reduce((sum, s) => sum + (s.mumbaiStock || 0), 0);
-      const itemLabel = matchingStocks.length === 1 ? matchingStocks[0].itemName : `${matchingStocks.length} Selected Models`;
+    const isFilteredByEnd = Boolean(endDate);
+    const dateLabel = endDate ? ` as of ${formatDisplayDate(endDate)}` : "";
+
+    // Cumulative transactions matching active search/item filter up to endDate:
+    const matchingTxUpToEnd = effectiveTransactions.filter(t => {
+      if (endDate && t.date && t.date > endDate) return false;
+      if (selectedItemFilter !== "all") {
+        return t.itemId === selectedItemFilter || t.itemName === selectedItemFilter;
+      }
+      if (activeSearchItems.length > 0) {
+        const item = (t.itemName || "").toLowerCase();
+        const id = (t.itemId || "").toLowerCase();
+        return activeSearchItems.some(search => {
+          const term = search.query;
+          const words = term.split(/\s+/).filter(Boolean);
+          if (words.length > 1) {
+            return words.every(w => item.includes(w) || id.includes(w));
+          }
+          return item.includes(term) || id.includes(term);
+        });
+      }
+      return true;
+    });
+
+    if (matchingStocks.length > 0 || (activeSearchItems.length > 0 && matchingTxUpToEnd.length > 0)) {
+      // User searched / filtered for specific item model(s) (e.g. BT CELL05 Battery or DC55)
+      let itemTotalStock = 0;
+      let itemDelhiStock = 0;
+      let itemMumbaiStock = 0;
+
+      if (matchingStocks.length > 0) {
+        itemTotalStock = matchingStocks.reduce((sum, s) => sum + (s.currentStock || 0), 0);
+        itemDelhiStock = matchingStocks.reduce((sum, s) => sum + (s.delhiStock || 0), 0);
+        itemMumbaiStock = matchingStocks.reduce((sum, s) => sum + (s.mumbaiStock || 0), 0);
+      } else {
+        itemDelhiStock = matchingTxUpToEnd.filter(t => (t.location || 'Delhi').trim().toLowerCase() !== 'mumbai').reduce((sum, t) => sum + (t.stockQty || 0), 0);
+        itemMumbaiStock = matchingTxUpToEnd.filter(t => (t.location || 'Delhi').trim().toLowerCase() === 'mumbai').reduce((sum, t) => sum + (t.stockQty || 0), 0);
+        itemTotalStock = itemDelhiStock + itemMumbaiStock;
+      }
+
+      const itemLabel = matchingStocks.length === 1 
+        ? matchingStocks[0].itemName 
+        : matchingStocks.length > 1 
+          ? `${matchingStocks.length} Selected Models` 
+          : activeSearchItems.length > 0 
+            ? activeSearchItems.map(s => s.query).join(", ") 
+            : "Selected Items";
 
       return {
         onHandStock: locationFilter === "Mumbai" ? itemMumbaiStock : locationFilter === "Delhi" ? itemDelhiStock : itemTotalStock,
@@ -536,24 +600,40 @@ export default function ImsDashboard({
         mumbaiStock: itemMumbaiStock,
         inwardUnits: filteredInwardUnits,
         outwardUnits: filteredOutwardUnits,
-        onHandSubtitle: locationFilter !== "all" ? `${locationFilter} On-Hand (${itemLabel})` : `Physical Stock (${itemLabel})`,
-        delhiSubtitle: `Delhi Balance (${itemLabel})`,
-        mumbaiSubtitle: `Mumbai Balance (${itemLabel})`,
+        onHandTitle: isFilteredByEnd ? `Closing Stock (${formatDisplayDate(endDate)})` : "Total All On-Hand",
+        delhiTitle: isFilteredByEnd ? "🏢 Delhi Closing Stock" : "🏢 Delhi Warehouse",
+        mumbaiTitle: isFilteredByEnd ? "🏢 Mumbai Closing Stock" : "🏢 Mumbai Warehouse",
+        onHandSubtitle: locationFilter !== "all" ? `${locationFilter} On-Hand (${itemLabel})${dateLabel}` : `Physical Stock (${itemLabel})${dateLabel}`,
+        delhiSubtitle: `Delhi Balance (${itemLabel})${dateLabel}`,
+        mumbaiSubtitle: `Mumbai Balance (${itemLabel})${dateLabel}`,
         inwardSubtitle: `Period Inflows (${itemLabel})`,
         outwardSubtitle: `Period Outflows (${itemLabel})`
       };
     }
 
     // Global / Warehouse / Party View
+    const globalClosingTotal = isFilteredByEnd && imsPeriodSummary?.closingStock !== undefined
+      ? imsPeriodSummary.closingStock
+      : totalNetStock;
+    const globalClosingDelhi = isFilteredByEnd && imsPeriodSummary?.closingDelhiStock !== undefined
+      ? imsPeriodSummary.closingDelhiStock
+      : delhiStock;
+    const globalClosingMumbai = isFilteredByEnd && imsPeriodSummary?.closingMumbaiStock !== undefined
+      ? imsPeriodSummary.closingMumbaiStock
+      : mumbaiStock;
+
     return {
-      onHandStock: locationFilter === "Mumbai" ? mumbaiStock : locationFilter === "Delhi" ? delhiStock : totalNetStock,
-      delhiStock: delhiStock,
-      mumbaiStock: mumbaiStock,
+      onHandStock: locationFilter === "Mumbai" ? globalClosingMumbai : locationFilter === "Delhi" ? globalClosingDelhi : globalClosingTotal,
+      delhiStock: globalClosingDelhi,
+      mumbaiStock: globalClosingMumbai,
       inwardUnits: hasActiveFilters ? filteredInwardUnits : (imsPeriodSummary ? imsPeriodSummary.periodInward : filteredInwardUnits),
       outwardUnits: hasActiveFilters ? filteredOutwardUnits : (imsPeriodSummary ? imsPeriodSummary.periodOutward : filteredOutwardUnits),
-      onHandSubtitle: locationFilter !== "all" ? `${locationFilter} Physical Stock` : (hasActiveFilters ? "Total Physical Stock (Combined)" : "Combined Physical Stock"),
-      delhiSubtitle: "Delhi Warehouse Balance",
-      mumbaiSubtitle: "Mumbai Warehouse Balance",
+      onHandTitle: isFilteredByEnd ? `Closing Stock (${formatDisplayDate(endDate)})` : "Total All On-Hand",
+      delhiTitle: isFilteredByEnd ? "🏢 Delhi Closing Stock" : "🏢 Delhi Warehouse",
+      mumbaiTitle: isFilteredByEnd ? "🏢 Mumbai Closing Stock" : "🏢 Mumbai Warehouse",
+      onHandSubtitle: locationFilter !== "all" ? `${locationFilter} Physical Stock${dateLabel}` : (hasActiveFilters ? `Total Physical Stock (Combined)${dateLabel}` : `Combined Physical Stock${dateLabel}`),
+      delhiSubtitle: `Delhi Warehouse Balance${dateLabel}`,
+      mumbaiSubtitle: `Mumbai Warehouse Balance${dateLabel}`,
       inwardSubtitle: hasActiveFilters ? "Filtered Period Inflows" : (startDate || endDate ? "Period Inflows" : "Factory & Vendor Inflows"),
       outwardSubtitle: hasActiveFilters ? "Filtered Period Outflows" : (startDate || endDate ? "Period Outflows" : "Party & Dealer Outflows")
     };
@@ -570,7 +650,8 @@ export default function ImsDashboard({
     hasActiveFilters,
     imsPeriodSummary,
     startDate,
-    endDate
+    endDate,
+    effectiveTransactions
   ]);
 
   // Paginated Transactions Slice (100 rows per page)
@@ -635,8 +716,9 @@ export default function ImsDashboard({
         rec.lastDate = is.lastDate || "";
       });
     } else {
-      // Fallback: aggregate effectiveTransactions
+      // Fallback: aggregate effectiveTransactions up to endDate
       effectiveTransactions.forEach(tx => {
+        if (endDate && tx.date && tx.date > endDate) return;
         const q = parseInt(tx.stockQty) || 0;
         const loc = (tx.location || "Delhi").trim();
         let key = tx.itemId;
@@ -664,9 +746,9 @@ export default function ImsDashboard({
         else rec.outward += Math.abs(q);
 
         if (loc.toLowerCase() === "mumbai") {
-          rec.mumbaiStock = (rec.mumbaiStock || 0) + q;
+          rec.mumbaiStock += q;
         } else {
-          rec.delhiStock = (rec.delhiStock || 0) + q;
+          rec.delhiStock += q;
         }
 
         rec.currentStock += q;
@@ -678,7 +760,7 @@ export default function ImsDashboard({
     }
 
     return Array.from(map.values());
-  }, [items, imsItemStocks, effectiveTransactions]);
+  }, [items, imsItemStocks, effectiveTransactions, endDate]);
 
   // Paginated Matrix Slice (100 rows per page)
   const paginatedMatrix = useMemo(() => {
@@ -1680,12 +1762,39 @@ export default function ImsDashboard({
                 startDate={startDate}
                 endDate={endDate}
                 onStartDateChange={setStartDate}
-                onEndDateChange={setEndDate}
+                onEndDateChange={handleSelectEndDate}
+                firstAvailableDate={firstAvailableStockDate}
                 onClear={() => {
                   setStartDate("");
                   setEndDate("");
                 }}
               />
+
+              {firstAvailableStockDate && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStartDate(firstAvailableStockDate);
+                    if (!endDate) setEndDate((new Date()).toISOString().split("T")[0]);
+                  }}
+                  className="btn btn-secondary btn-sm"
+                  style={{
+                    height: "36px",
+                    fontSize: "0.78rem",
+                    background: startDate === firstAvailableStockDate ? "rgba(56, 189, 248, 0.16)" : "rgba(255, 255, 255, 0.05)",
+                    borderColor: startDate === firstAvailableStockDate ? "#38bdf8" : "var(--border-glass, rgba(255, 255, 255, 0.15))",
+                    color: startDate === firstAvailableStockDate ? "#38bdf8" : "var(--text-muted)",
+                    fontWeight: startDate === firstAvailableStockDate ? 700 : 500,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px"
+                  }}
+                  title={`Start from 1st day of stock (${firstAvailableStockDate}) to view complete closing stock up to ${endDate || "selected date"}`}
+                >
+                  <Calendar size={13} />
+                  <span>{startDate === firstAvailableStockDate ? `✓ 1st Day (${formatDisplayDate(firstAvailableStockDate)})` : `1st Day (${formatDisplayDate(firstAvailableStockDate)})`}</span>
+                </button>
+              )}
 
               {hasActiveFilters && (
                 <button
@@ -1741,7 +1850,7 @@ export default function ImsDashboard({
                 <Package size={22} />
               </div>
               <div>
-                <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total All On-Hand</div>
+                <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>{kpiMetrics.onHandTitle || "Total All On-Hand"}</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: kpiMetrics.onHandStock >= 0 ? "var(--text-main)" : "var(--danger)" }}>
                   {isDataLoading ? (
                     <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
@@ -1763,7 +1872,7 @@ export default function ImsDashboard({
                 <Building2 size={22} />
               </div>
               <div>
-                <div style={{ fontSize: "0.74rem", color: "#38bdf8", fontWeight: 700 }}>🏢 Delhi Warehouse</div>
+                <div style={{ fontSize: "0.74rem", color: "#38bdf8", fontWeight: 700 }}>{kpiMetrics.delhiTitle || "🏢 Delhi Warehouse"}</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: kpiMetrics.delhiStock >= 0 ? "#38bdf8" : "var(--danger)" }}>
                   {isDataLoading ? (
                     <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
@@ -1785,7 +1894,7 @@ export default function ImsDashboard({
                 <Building2 size={22} />
               </div>
               <div>
-                <div style={{ fontSize: "0.74rem", color: "#c084fc", fontWeight: 700 }}>🏢 Mumbai Warehouse</div>
+                <div style={{ fontSize: "0.74rem", color: "#c084fc", fontWeight: 700 }}>{kpiMetrics.mumbaiTitle || "🏢 Mumbai Warehouse"}</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: kpiMetrics.mumbaiStock >= 0 ? "#c084fc" : "var(--danger)" }}>
                   {isDataLoading ? (
                     <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>

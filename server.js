@@ -1657,7 +1657,9 @@ async function calculateImsFullSummary(forceFresh = false) {
           COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE("location", 'Delhi'))) = 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "mumbaiStock",
           COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE("location", 'Delhi'))) <> 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "delhiStock",
           COALESCE(COUNT(CASE WHEN "isMissingId" = true OR "itemId" IS NULL OR "itemId" = '' THEN 1 END), 0)::int AS "missingIdsCount",
-          COUNT(*)::int AS "totalTransactionsCount"
+          COUNT(*)::int AS "totalTransactionsCount",
+          MIN("date") AS "firstStockDate",
+          MAX("date") AS "lastStockDate"
         FROM ims_transactions;
       `);
       const row = summaryRes.rows[0] || {};
@@ -1681,6 +1683,7 @@ async function calculateImsFullSummary(forceFresh = false) {
           COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE("location", 'Delhi'))) <> 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "delhiStock",
           COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE("location", 'Delhi'))) = 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "mumbaiStock",
           COUNT(*)::int AS "txCount",
+          MIN("date") AS "firstDate",
           MAX("date") AS "lastDate"
         FROM ims_transactions
         GROUP BY "itemId", "itemName"
@@ -1694,6 +1697,8 @@ async function calculateImsFullSummary(forceFresh = false) {
         mumbaiStock: Number(row.mumbaiStock || 0),
         missingIdsCount: Number(row.missingIdsCount || 0),
         totalTransactionsCount: Number(row.totalTransactionsCount || 0),
+        firstStockDate: row.firstStockDate || "",
+        lastStockDate: row.lastStockDate || "",
         distinctMissingItems: (missingRes.rows || []).map(r => ({
           name: r.name || "Unknown Item",
           count: Number(r.count || 0),
@@ -1708,6 +1713,7 @@ async function calculateImsFullSummary(forceFresh = false) {
           delhiStock: Number(r.delhiStock || 0),
           mumbaiStock: Number(r.mumbaiStock || 0),
           txCount: Number(r.txCount || 0),
+          firstDate: r.firstDate || "",
           lastDate: r.lastDate || ""
         }))
       };
@@ -1725,6 +1731,8 @@ async function calculateImsFullSummary(forceFresh = false) {
         mumbaiStock: 0,
         missingIdsCount: 0,
         totalTransactionsCount: 0,
+        firstStockDate: "",
+        lastStockDate: "",
         distinctMissingItems: [],
         itemStocks: []
       };
@@ -1733,6 +1741,7 @@ async function calculateImsFullSummary(forceFresh = false) {
     const data = readLocalJson();
     const list = data.imsTransactions || [];
     let net = 0, inUnits = 0, outUnits = 0, delhiNet = 0, mumbaiNet = 0, missingCount = 0;
+    let minDate = "", maxDate = "";
     const missingMap = new Map();
     const itemMap = new Map();
 
@@ -1745,6 +1754,10 @@ async function calculateImsFullSummary(forceFresh = false) {
       else outUnits += Math.abs(q);
       if (isMumbai) mumbaiNet += q;
       else delhiNet += q;
+      if (tx.date) {
+        if (!minDate || tx.date < minDate) minDate = tx.date;
+        if (!maxDate || tx.date > maxDate) maxDate = tx.date;
+      }
       if (tx.isMissingId || !tx.itemId) {
         missingCount++;
         const itemKey = (tx.itemName || "Unknown Item").trim();
@@ -1767,7 +1780,8 @@ async function calculateImsFullSummary(forceFresh = false) {
           delhiStock: 0,
           mumbaiStock: 0,
           txCount: 0,
-          lastDate: ""
+          firstDate: tx.date || "",
+          lastDate: tx.date || ""
         });
       }
       const itemRec = itemMap.get(itemKey);
@@ -1777,8 +1791,9 @@ async function calculateImsFullSummary(forceFresh = false) {
       if (isMumbai) itemRec.mumbaiStock += q;
       else itemRec.delhiStock += q;
       itemRec.txCount++;
-      if (!itemRec.lastDate || (tx.date && tx.date > itemRec.lastDate)) {
-        itemRec.lastDate = tx.date;
+      if (tx.date) {
+        if (!itemRec.firstDate || tx.date < itemRec.firstDate) itemRec.firstDate = tx.date;
+        if (!itemRec.lastDate || tx.date > itemRec.lastDate) itemRec.lastDate = tx.date;
       }
     });
 
@@ -1790,6 +1805,8 @@ async function calculateImsFullSummary(forceFresh = false) {
       mumbaiStock: mumbaiNet,
       missingIdsCount: missingCount,
       totalTransactionsCount: list.length,
+      firstStockDate: minDate,
+      lastStockDate: maxDate,
       distinctMissingItems: Array.from(missingMap.values()),
       itemStocks: Array.from(itemMap.values())
     };
@@ -4230,26 +4247,65 @@ app.get("/api/ims/transactions", async (req, res) => {
         periodInward: 0,
         periodOutward: 0,
         periodNetChange: 0,
-        closingStock: imsSummary.totalNetStock
+        closingStock: imsSummary.totalNetStock,
+        closingDelhiStock: imsSummary.delhiStock,
+        closingMumbaiStock: imsSummary.mumbaiStock,
+        asOfDate: effectiveEndDate || ""
       };
 
-      if (effectiveStartDate) {
+      if (effectiveStartDate || effectiveEndDate) {
         const periodRes = await pool.query(`
           SELECT
-            COALESCE(SUM(CASE WHEN "date" < $1 THEN "stockQty" ELSE 0 END), 0)::bigint AS "openingStock",
-            COALESCE(SUM(CASE WHEN "date" >= $1 AND ($2::text IS NULL OR "date" <= $2) AND "stockQty" > 0 THEN "stockQty" ELSE 0 END), 0)::bigint AS "periodInward",
-            COALESCE(SUM(CASE WHEN "date" >= $1 AND ($2::text IS NULL OR "date" <= $2) AND "stockQty" < 0 THEN ABS("stockQty") ELSE 0 END), 0)::bigint AS "periodOutward",
-            COALESCE(SUM(CASE WHEN ($2::text IS NULL OR "date" <= $2) THEN "stockQty" ELSE 0 END), 0)::bigint AS "closingStock"
+            COALESCE(SUM(CASE WHEN $1::text IS NOT NULL AND "date" < $1 THEN "stockQty" ELSE 0 END), 0)::bigint AS "openingStock",
+            COALESCE(SUM(CASE WHEN ($1::text IS NULL OR "date" >= $1) AND ($2::text IS NULL OR "date" <= $2) AND "stockQty" > 0 THEN "stockQty" ELSE 0 END), 0)::bigint AS "periodInward",
+            COALESCE(SUM(CASE WHEN ($1::text IS NULL OR "date" >= $1) AND ($2::text IS NULL OR "date" <= $2) AND "stockQty" < 0 THEN ABS("stockQty") ELSE 0 END), 0)::bigint AS "periodOutward",
+            COALESCE(SUM(CASE WHEN ($2::text IS NULL OR "date" <= $2) THEN "stockQty" ELSE 0 END), 0)::bigint AS "closingStock",
+            COALESCE(SUM(CASE WHEN ($2::text IS NULL OR "date" <= $2) AND LOWER(TRIM(COALESCE("location", 'Delhi'))) <> 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "closingDelhiStock",
+            COALESCE(SUM(CASE WHEN ($2::text IS NULL OR "date" <= $2) AND LOWER(TRIM(COALESCE("location", 'Delhi'))) = 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "closingMumbaiStock"
           FROM ims_transactions;
-        `, [effectiveStartDate, effectiveEndDate || null]);
+        `, [effectiveStartDate || null, effectiveEndDate || null]);
         const pr = periodRes.rows[0] || {};
         periodSummary = {
           openingStock: Number(pr.openingStock || 0),
           periodInward: Number(pr.periodInward || 0),
           periodOutward: Number(pr.periodOutward || 0),
           periodNetChange: Number(pr.periodInward || 0) - Number(pr.periodOutward || 0),
-          closingStock: Number(pr.closingStock || 0)
+          closingStock: Number(pr.closingStock || 0),
+          closingDelhiStock: Number(pr.closingDelhiStock || 0),
+          closingMumbaiStock: Number(pr.closingMumbaiStock || 0),
+          asOfDate: effectiveEndDate || ""
         };
+      }
+
+      let dynamicItemStocks = imsSummary.itemStocks || [];
+      if (effectiveEndDate) {
+        const itemStocksRes = await pool.query(`
+          SELECT
+            "itemId",
+            "itemName",
+            COALESCE(SUM(CASE WHEN "date" <= $1 THEN "stockQty" ELSE 0 END), 0)::bigint AS "currentStock",
+            COALESCE(SUM(CASE WHEN "date" <= $1 AND "stockQty" > 0 THEN "stockQty" ELSE 0 END), 0)::bigint AS "inward",
+            COALESCE(SUM(CASE WHEN "date" <= $1 AND "stockQty" < 0 THEN ABS("stockQty") ELSE 0 END), 0)::bigint AS "outward",
+            COALESCE(SUM(CASE WHEN "date" <= $1 AND LOWER(TRIM(COALESCE("location", 'Delhi'))) <> 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "delhiStock",
+            COALESCE(SUM(CASE WHEN "date" <= $1 AND LOWER(TRIM(COALESCE("location", 'Delhi'))) = 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "mumbaiStock",
+            COUNT(CASE WHEN "date" <= $1 THEN 1 END)::int AS "txCount",
+            MIN("date") AS "firstDate",
+            MAX(CASE WHEN "date" <= $1 THEN "date" END) AS "lastDate"
+          FROM ims_transactions
+          GROUP BY "itemId", "itemName"
+        `, [effectiveEndDate]);
+        dynamicItemStocks = (itemStocksRes.rows || []).map(r => ({
+          itemId: r.itemId || "",
+          itemName: r.itemName || "",
+          currentStock: Number(r.currentStock || 0),
+          inward: Number(r.inward || 0),
+          outward: Number(r.outward || 0),
+          delhiStock: Number(r.delhiStock || 0),
+          mumbaiStock: Number(r.mumbaiStock || 0),
+          txCount: Number(r.txCount || 0),
+          firstDate: r.firstDate || "",
+          lastDate: r.lastDate || ""
+        }));
       }
 
       res.json({
@@ -4257,7 +4313,7 @@ app.get("/api/ims/transactions", async (req, res) => {
         transactions: rows,
         imsSummary,
         periodSummary,
-        itemStocks: imsSummary.itemStocks || [],
+        itemStocks: dynamicItemStocks,
         startDate: effectiveStartDate || "",
         endDate: effectiveEndDate || "",
         range: range || (effectiveStartDate ? "custom" : "3days")
@@ -4287,16 +4343,23 @@ app.get("/api/ims/transactions", async (req, res) => {
       }
     }
 
-    let opening = 0, pIn = 0, pOut = 0;
+    let opening = 0, pIn = 0, pOut = 0, cTotal = 0, cDelhi = 0, cMumbai = 0;
     (data.imsTransactions || []).forEach(tx => {
       const q = parseInt(tx.stockQty) || 0;
       const d = tx.date || "";
+      const loc = (tx.location || "Delhi").trim().toLowerCase();
+      const isMumbai = loc === "mumbai";
       if (effectiveStartDate && d < effectiveStartDate) {
         opening += q;
       }
       if (effectiveStartDate && d >= effectiveStartDate && (!effectiveEndDate || d <= effectiveEndDate)) {
         if (q > 0) pIn += q;
         else pOut += Math.abs(q);
+      }
+      if (!effectiveEndDate || d <= effectiveEndDate) {
+        cTotal += q;
+        if (isMumbai) cMumbai += q;
+        else cDelhi += q;
       }
     });
 
@@ -4305,15 +4368,56 @@ app.get("/api/ims/transactions", async (req, res) => {
       periodInward: pIn,
       periodOutward: pOut,
       periodNetChange: pIn - pOut,
-      closingStock: opening + pIn - pOut
+      closingStock: cTotal,
+      closingDelhiStock: cDelhi,
+      closingMumbaiStock: cMumbai,
+      asOfDate: effectiveEndDate || ""
     };
+
+    let dynamicItemStocks = imsSummary.itemStocks || [];
+    if (effectiveEndDate) {
+      const itemMap = new Map();
+      (data.imsTransactions || []).forEach(tx => {
+        if (tx.date && tx.date > effectiveEndDate) return;
+        const q = parseInt(tx.stockQty) || 0;
+        const loc = (tx.location || "Delhi").trim().toLowerCase();
+        const isMumbai = loc === "mumbai";
+        const itemKey = `${tx.itemId || ''}_${tx.itemName || ''}`;
+        if (!itemMap.has(itemKey)) {
+          itemMap.set(itemKey, {
+            itemId: tx.itemId || "",
+            itemName: tx.itemName || "",
+            currentStock: 0,
+            inward: 0,
+            outward: 0,
+            delhiStock: 0,
+            mumbaiStock: 0,
+            txCount: 0,
+            firstDate: tx.date || "",
+            lastDate: ""
+          });
+        }
+        const itemRec = itemMap.get(itemKey);
+        itemRec.currentStock += q;
+        if (q > 0) itemRec.inward += q;
+        else itemRec.outward += Math.abs(q);
+        if (isMumbai) itemRec.mumbaiStock += q;
+        else itemRec.delhiStock += q;
+        itemRec.txCount++;
+        if (tx.date) {
+          if (!itemRec.firstDate || tx.date < itemRec.firstDate) itemRec.firstDate = tx.date;
+          if (!itemRec.lastDate || tx.date > itemRec.lastDate) itemRec.lastDate = tx.date;
+        }
+      });
+      dynamicItemStocks = Array.from(itemMap.values());
+    }
 
     res.json({
       success: true,
       transactions: list,
       imsSummary,
       periodSummary,
-      itemStocks: imsSummary.itemStocks || [],
+      itemStocks: dynamicItemStocks,
       startDate: effectiveStartDate || "",
       endDate: effectiveEndDate || "",
       range: range || (effectiveStartDate ? "custom" : "3days")
