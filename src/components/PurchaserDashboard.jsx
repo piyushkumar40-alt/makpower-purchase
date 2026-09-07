@@ -1343,10 +1343,10 @@ export default function PurchaserDashboard({
                       gap: "10px" 
                     }}
                   >
-                    <div style={{ fontSize: "0.86rem" }}>
-                      <strong style={{ color: "#4ade80" }}>✓ {excelNotification.matchedCount} item(s) matched & selected</strong> with updated quantities.
+                    <div style={{ fontSize: "0.86rem", color: "var(--text-main)" }}>
+                      <strong style={{ color: "var(--success, #16a34a)" }}>✓ {excelNotification.matchedCount} item(s) matched & selected</strong> with updated quantities.
                       {excelNotification.unmatchedCount > 0 && (
-                        <span style={{ marginLeft: "8px", color: "#fbbf24" }}>
+                        <span style={{ marginLeft: "8px", color: "var(--warning, #d97706)" }}>
                           ⚠️ <strong>{excelNotification.unmatchedCount} item(s) not found</strong> (downloaded to <code>NotFound_Items.xlsx</code>).
                         </span>
                       )}
@@ -3478,17 +3478,56 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
         newQty: qtyNum
       });
     } else {
+      let specificReason = "";
+      if (!itemStr) {
+        specificReason = "Item Name missing in file";
+      } else if (!cleanDate) {
+        specificReason = "Order Date missing or invalid in file";
+      } else if (isNaN(qtyNum) || qtyNum <= 0) {
+        specificReason = "Quantity missing or invalid in file";
+      } else {
+        // Check if item was already matched by an earlier row in the file
+        const alreadyMatched = availableItems.some(r => {
+          const rModelClean = cleanModelStr(r.model);
+          const rDateClean = parseFlexibleDate(r.orderDate);
+          const modelMatch = rModelClean === cleanInputModel || (r.model && r.model.toLowerCase().trim() === itemStr.toLowerCase());
+          const dateMatch = rDateClean === cleanDate || (altDate && rDateClean === altDate) || String(r.orderDate).trim() === String(rawDate).trim();
+          return modelMatch && dateMatch && matchedReqIds.has(r.id);
+        });
+
+        if (alreadyMatched) {
+          specificReason = "Duplicate row (Already matched with previous row in file)";
+        } else {
+          // Check if model exists for this vendor with another date
+          const sameModelOrders = availableItems.filter(r => {
+            const rModelClean = cleanModelStr(r.model);
+            return rModelClean === cleanInputModel || (r.model && r.model.toLowerCase().trim() === itemStr.toLowerCase());
+          });
+
+          if (sameModelOrders.length > 0) {
+            const actualDates = Array.from(new Set(sameModelOrders.map(r => r.orderDate).filter(Boolean)));
+            specificReason = `Order Date not matched (Item exists with Order Date: ${actualDates.join(", ")})`;
+          } else {
+            // Check if date exists for this vendor
+            const sameDateOrders = availableItems.filter(r => {
+              const rDateClean = parseFlexibleDate(r.orderDate);
+              return rDateClean === cleanDate || (altDate && rDateClean === altDate) || String(r.orderDate).trim() === String(rawDate).trim();
+            });
+
+            if (sameDateOrders.length > 0) {
+              specificReason = "Item Name not found for this vendor";
+            } else {
+              specificReason = "Both Item Name & Order Date not found for this vendor";
+            }
+          }
+        }
+      }
+
       unmatched.push({
         orderDate: cleanDate || String(rawDate || "—"),
         itemName: itemStr || "—",
         qty: !isNaN(qtyNum) ? qtyNum : String(rawQty || "—"),
-        reason: !itemStr
-          ? "Item name missing"
-          : !cleanDate
-            ? "Invalid order date"
-            : isNaN(qtyNum)
-              ? "Invalid quantity"
-              : "No matching item found with this Order Date & Model for current vendor"
+        reason: specificReason
       });
     }
   });
@@ -3605,11 +3644,11 @@ function ExcelShippingUpdateModal({
 
   return (
     <div className="modal-overlay">
-      <div className="glass-panel modal-content" style={{ maxWidth: "700px", width: "92%", maxHeight: "90vh", overflowY: "auto" }}>
+      <div className="glass-panel modal-content" style={{ maxWidth: "720px", width: "94%", maxHeight: "90vh", overflowY: "auto" }}>
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: "12px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid var(--border-glass, rgba(0,0,0,0.1))", paddingBottom: "12px" }}>
           <div>
-            <h3 style={{ fontSize: "1.25rem", margin: 0, color: "#38bdf8", display: "flex", alignItems: "center", gap: "8px" }}>
+            <h3 style={{ fontSize: "1.25rem", margin: 0, color: "var(--primary, #0284c7)", display: "flex", alignItems: "center", gap: "8px" }}>
               <FileSpreadsheet size={22} /> Update Quantities from Excel File
             </h3>
             <p style={{ margin: "4px 0 0 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
@@ -3627,14 +3666,14 @@ function ExcelShippingUpdateModal({
         </div>
 
         {/* Instructions & Sample Download */}
-        <div style={{ background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "10px", padding: "14px", marginBottom: "16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "gap", gap: "10px" }}>
+        <div style={{ background: "var(--bg-card-hover, rgba(241, 245, 249, 0.7))", border: "1px solid var(--border-glass, #cbd5e1)", borderRadius: "10px", padding: "14px", marginBottom: "16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
             <div>
               <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-main)", marginBottom: "4px" }}>
-                Required Columns: <code>Order Date</code>, <code>Item Name</code>, <code>Qty</code>
+                Required Columns: <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Order Date</code>, <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Item Name</code>, <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Qty</code>
               </div>
               <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                Matches by Order Date & Item Name. Matched items are auto-selected with New Qty filled. Any unmatched items will be automatically downloaded to <code>NotFound_Items.xlsx</code>.
+                Matches by Order Date & Item Name. Matched items are auto-selected with New Qty filled. Any unmatched items will be automatically downloaded to <code style={{ padding: "1px 5px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)" }}>NotFound_Items.xlsx</code>.
               </div>
             </div>
             <button
@@ -3654,7 +3693,7 @@ function ExcelShippingUpdateModal({
             type="button"
             className={`btn btn-sm ${inputMode === "file" ? "btn-primary" : "btn-secondary"}`}
             onClick={() => setInputMode("file")}
-            style={{ display: "flex", alignItems: "center", gap: "6px", flex: 1 }}
+            style={{ display: "flex", alignItems: "center", gap: "6px", flex: 1, justifyContent: "center" }}
           >
             <UploadCloud size={15} /> Upload Excel / CSV File
           </button>
@@ -3662,7 +3701,7 @@ function ExcelShippingUpdateModal({
             type="button"
             className={`btn btn-sm ${inputMode === "paste" ? "btn-primary" : "btn-secondary"}`}
             onClick={() => setInputMode("paste")}
-            style={{ display: "flex", alignItems: "center", gap: "6px", flex: 1 }}
+            style={{ display: "flex", alignItems: "center", gap: "6px", flex: 1, justifyContent: "center" }}
           >
             <Clipboard size={15} /> Direct Paste from Sheets
           </button>
@@ -3696,14 +3735,14 @@ function ExcelShippingUpdateModal({
                 alignItems: "center",
                 justifyContent: "center",
                 padding: "26px 20px",
-                border: isDragging ? "2px dashed #38bdf8" : "2px dashed rgba(56, 189, 248, 0.5)",
+                border: isDragging ? "2px dashed var(--primary, #0284c7)" : "2px dashed var(--border-glass, #94a3b8)",
                 borderRadius: "12px",
-                background: isDragging ? "rgba(56, 189, 248, 0.15)" : "rgba(15, 23, 42, 0.4)",
+                background: isDragging ? "rgba(56, 189, 248, 0.12)" : "var(--bg-card-hover, rgba(241, 245, 249, 0.6))",
                 cursor: "pointer",
                 transition: "all 0.2s ease"
               }}
             >
-              <UploadCloud size={36} style={{ color: "#38bdf8", marginBottom: "8px" }} />
+              <UploadCloud size={38} style={{ color: "var(--primary, #0284c7)", marginBottom: "8px" }} />
               <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "var(--text-main)", textAlign: "center" }}>
                 {fileName ? `Selected: ${fileName}` : "Click to Browse or Drag & Drop Excel File"}
               </div>
@@ -3760,7 +3799,7 @@ function ExcelShippingUpdateModal({
 
         {/* Error message */}
         {errorMsg && (
-          <div style={{ padding: "10px 14px", borderRadius: "8px", background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.4)", color: "#f87171", fontSize: "0.82rem", marginBottom: "16px" }}>
+          <div style={{ padding: "10px 14px", borderRadius: "8px", background: "rgba(239, 68, 68, 0.12)", border: "1px solid rgba(239, 68, 68, 0.35)", color: "var(--danger, #dc2626)", fontSize: "0.82rem", marginBottom: "16px" }}>
             {errorMsg}
           </div>
         )}
@@ -3769,14 +3808,14 @@ function ExcelShippingUpdateModal({
         {analysis && (
           <div style={{ marginTop: "12px", marginBottom: "20px" }}>
             <div style={{ display: "flex", gap: "12px", marginBottom: "12px", flexWrap: "wrap" }}>
-              <div style={{ flex: 1, padding: "10px 14px", borderRadius: "8px", background: "rgba(34, 197, 94, 0.12)", border: "1px solid rgba(34, 197, 94, 0.3)" }}>
+              <div style={{ flex: 1, padding: "12px 14px", borderRadius: "8px", background: "rgba(34, 197, 94, 0.1)", border: "1px solid rgba(34, 197, 94, 0.3)" }}>
                 <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Matched Items</div>
-                <div style={{ fontSize: "1.3rem", fontWeight: 700, color: "#4ade80" }}>{analysis.matched.length}</div>
+                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--success, #16a34a)" }}>{analysis.matched.length}</div>
                 <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>Will be selected & updated in table</div>
               </div>
-              <div style={{ flex: 1, padding: "10px 14px", borderRadius: "8px", background: analysis.unmatched.length > 0 ? "rgba(245, 158, 11, 0.12)" : "rgba(148, 163, 184, 0.1)", border: analysis.unmatched.length > 0 ? "1px solid rgba(245, 158, 11, 0.3)" : "1px solid rgba(148, 163, 184, 0.2)" }}>
+              <div style={{ flex: 1, padding: "12px 14px", borderRadius: "8px", background: analysis.unmatched.length > 0 ? "rgba(245, 158, 11, 0.1)" : "var(--bg-card-hover, rgba(0,0,0,0.03))", border: analysis.unmatched.length > 0 ? "1px solid rgba(245, 158, 11, 0.3)" : "1px solid var(--border-glass, #cbd5e1)" }}>
                 <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Not Found Items</div>
-                <div style={{ fontSize: "1.3rem", fontWeight: 700, color: analysis.unmatched.length > 0 ? "#fbbf24" : "var(--text-muted)" }}>{analysis.unmatched.length}</div>
+                <div style={{ fontSize: "1.35rem", fontWeight: 800, color: analysis.unmatched.length > 0 ? "var(--warning, #d97706)" : "var(--text-muted)" }}>{analysis.unmatched.length}</div>
                 <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>
                   {analysis.unmatched.length > 0 ? "Will auto-download as NotFound_Items.xlsx" : "All items matched perfectly"}
                 </div>
@@ -3789,29 +3828,29 @@ function ExcelShippingUpdateModal({
                 <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "6px" }}>
                   Matched Items Preview ({analysis.matched.length}):
                 </div>
-                <div style={{ maxHeight: "140px", overflowY: "auto", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px", background: "rgba(15, 23, 42, 0.5)" }}>
-                  <table className="custom-table" style={{ fontSize: "0.78rem" }}>
+                <div style={{ maxHeight: "150px", overflowY: "auto", border: "1px solid var(--border-glass, #cbd5e1)", borderRadius: "8px", background: "var(--bg-card, #ffffff)" }}>
+                  <table className="custom-table" style={{ fontSize: "0.78rem", width: "100%", borderCollapse: "collapse" }}>
                     <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Model</th>
-                        <th>Current Qty</th>
-                        <th>New Qty</th>
+                      <tr style={{ background: "var(--bg-card-hover, #f1f5f9)", borderBottom: "1px solid var(--border-glass, #cbd5e1)" }}>
+                        <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Date</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Model</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Current Qty</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>New Qty</th>
                       </tr>
                     </thead>
                     <tbody>
                       {analysis.matched.slice(0, 15).map((m, idx) => (
-                        <tr key={idx}>
-                          <td>{m.orderDate}</td>
-                          <td style={{ fontWeight: 600, color: "#38bdf8" }}>{m.model}</td>
-                          <td>{m.originalQty} Pcs</td>
-                          <td style={{ fontWeight: 700, color: "#4ade80" }}>{m.newQty} Pcs</td>
+                        <tr key={idx} style={{ borderBottom: "1px solid var(--border-glass, #f1f5f9)" }}>
+                          <td style={{ padding: "6px 10px", color: "var(--text-main)" }}>{m.orderDate}</td>
+                          <td style={{ padding: "6px 10px", fontWeight: 600, color: "var(--primary, #0284c7)" }}>{m.model}</td>
+                          <td style={{ padding: "6px 10px", color: "var(--text-muted)" }}>{m.originalQty} Pcs</td>
+                          <td style={{ padding: "6px 10px", fontWeight: 700, color: "var(--success, #16a34a)" }}>{m.newQty} Pcs</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                   {analysis.matched.length > 15 && (
-                    <div style={{ textAlign: "center", padding: "6px", fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                    <div style={{ textAlign: "center", padding: "6px", fontSize: "0.72rem", color: "var(--text-muted)", background: "var(--bg-card-hover, #f8fafc)" }}>
                       ... and {analysis.matched.length - 15} more matched items
                     </div>
                   )}
@@ -3822,30 +3861,51 @@ function ExcelShippingUpdateModal({
             {/* Unmatched Preview List */}
             {analysis.unmatched.length > 0 && (
               <div>
-                <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#fbbf24", marginBottom: "6px" }}>
+                <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--warning, #d97706)", marginBottom: "6px" }}>
                   Not Found Items ({analysis.unmatched.length}) — will be exported to Excel:
                 </div>
-                <div style={{ maxHeight: "120px", overflowY: "auto", border: "1px solid rgba(245, 158, 11, 0.2)", borderRadius: "8px", background: "rgba(15, 23, 42, 0.5)" }}>
-                  <table className="custom-table" style={{ fontSize: "0.78rem" }}>
+                <div style={{ maxHeight: "150px", overflowY: "auto", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: "8px", background: "var(--bg-card, #ffffff)" }}>
+                  <table className="custom-table" style={{ fontSize: "0.78rem", width: "100%", borderCollapse: "collapse" }}>
                     <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Item Name</th>
-                        <th>Qty</th>
-                        <th>Reason</th>
+                      <tr style={{ background: "rgba(245, 158, 11, 0.08)", borderBottom: "1px solid rgba(245, 158, 11, 0.25)" }}>
+                        <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Date</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Item Name</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Qty</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Reason Not Found</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {analysis.unmatched.slice(0, 10).map((u, idx) => (
-                        <tr key={idx}>
-                          <td>{u.orderDate}</td>
-                          <td style={{ fontWeight: 600, color: "#f87171" }}>{u.itemName}</td>
-                          <td>{u.qty}</td>
-                          <td style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{u.reason}</td>
-                        </tr>
-                      ))}
+                      {analysis.unmatched.slice(0, 15).map((u, idx) => {
+                        const isDateMismatch = u.reason.startsWith("Order Date not matched");
+                        return (
+                          <tr key={idx} style={{ borderBottom: "1px solid var(--border-glass, #f1f5f9)" }}>
+                            <td style={{ padding: "6px 10px", color: "var(--text-main)" }}>{u.orderDate}</td>
+                            <td style={{ padding: "6px 10px", fontWeight: 600, color: "var(--danger, #dc2626)" }}>{u.itemName}</td>
+                            <td style={{ padding: "6px 10px", color: "var(--text-main)" }}>{u.qty}</td>
+                            <td style={{ padding: "6px 10px" }}>
+                              <span style={{ 
+                                display: "inline-block", 
+                                padding: "2px 8px", 
+                                borderRadius: "6px", 
+                                fontSize: "0.74rem",
+                                background: isDateMismatch ? "rgba(245, 158, 11, 0.12)" : "rgba(239, 68, 68, 0.1)",
+                                color: isDateMismatch ? "var(--warning, #d97706)" : "var(--danger, #dc2626)",
+                                fontWeight: 500,
+                                border: `1px solid ${isDateMismatch ? "rgba(245, 158, 11, 0.28)" : "rgba(239, 68, 68, 0.22)"}`
+                              }}>
+                                {u.reason}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
+                  {analysis.unmatched.length > 15 && (
+                    <div style={{ textAlign: "center", padding: "6px", fontSize: "0.72rem", color: "var(--text-muted)", background: "var(--bg-card-hover, #f8fafc)" }}>
+                      ... and {analysis.unmatched.length - 15} more not-found items
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -3853,7 +3913,7 @@ function ExcelShippingUpdateModal({
         )}
 
         {/* Footer Actions */}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: "14px" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid var(--border-glass, rgba(0,0,0,0.1))", paddingTop: "14px" }}>
           <button type="button" onClick={onClose} className="btn btn-secondary">
             Cancel
           </button>
