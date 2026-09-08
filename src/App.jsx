@@ -154,6 +154,7 @@ export default function App() {
   });
   const [partyCategoryMonthlySales, setPartyCategoryMonthlySales] = useState(() => cachedState?.partyCategoryMonthlySales || []);
   const [partyCategoryMonths, setPartyCategoryMonths] = useState(() => cachedState?.partyCategoryMonths || []);
+  const [settings, setSettings] = useState(() => cachedState?.settings || { isHidden: false, redirectUrl: "https://www.google.com" });
   const [loading, setLoading] = useState(() => {
     try {
       const saved = localStorage.getItem("makpower_app_state_cache");
