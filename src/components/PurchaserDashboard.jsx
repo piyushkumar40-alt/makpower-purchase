@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download, FileSpreadsheet, UploadCloud } from "lucide-react";
+import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download, FileSpreadsheet, UploadCloud, CheckSquare } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import { uploadToCloudinary } from "../utils/upload";
 import ItemMasterView from "./ItemMasterView";
@@ -1303,6 +1303,54 @@ export default function PurchaserDashboard({
                         })
                       )}
                     </tbody>
+                    {step1CheckedIds.length > 0 && (() => {
+                      const step1SelectedReqs = pendingReqs.filter(r => step1CheckedIds.includes(r.id));
+                      const step1SelectedCount = step1SelectedReqs.length;
+                      const step1SelectedOrigQty = step1SelectedReqs.reduce((acc, r) => acc + parseInt(r.orderQuantity || 0, 10), 0);
+                      const step1SelectedQty = step1SelectedReqs.reduce((acc, r) => {
+                        const edits = step1InlineEdits[r.id] || {};
+                        const qty = parseInt(edits.vendorOrderQuantity !== undefined ? edits.vendorOrderQuantity : (r.vendorOrderQuantity || r.orderQuantity || 0), 10);
+                        return acc + (isNaN(qty) ? 0 : qty);
+                      }, 0);
+                      const step1SelectedTotal = step1SelectedReqs.reduce((acc, r) => {
+                        const edits = step1InlineEdits[r.id] || {};
+                        const priceNum = parseFloat(edits.priceRmb !== undefined ? edits.priceRmb : (r.priceRmb || 0));
+                        const qty = parseInt(edits.vendorOrderQuantity !== undefined ? edits.vendorOrderQuantity : (r.vendorOrderQuantity || r.orderQuantity || 0), 10);
+                        return acc + (!isNaN(priceNum) && !isNaN(qty) ? priceNum * qty : 0);
+                      }, 0);
+
+                      return (
+                        <tfoot>
+                          <tr style={{
+                            background: "var(--primary-glow, rgba(56, 189, 248, 0.12))",
+                            borderTop: "2px solid var(--primary, #0284c7)",
+                            fontWeight: 800
+                          }}>
+                            <td style={{ textAlign: "center" }}>
+                              <Check size={16} style={{ color: "var(--primary, #0284c7)" }} />
+                            </td>
+                            <td></td>
+                            <td style={{ color: "var(--primary, #0284c7)", fontWeight: 800 }}>
+                              Total Selected ({step1SelectedCount} item{step1SelectedCount !== 1 ? "s" : ""})
+                            </td>
+                            <td>
+                              <strong style={{ fontSize: "0.95rem" }}>{step1SelectedQty.toLocaleString()} Pcs</strong>
+                              {step1SelectedOrigQty !== step1SelectedQty && (
+                                <span style={{ fontSize: "0.72rem", color: "#38bdf8", display: "block" }}>
+                                  (Req: {step1SelectedOrigQty.toLocaleString()} Pcs)
+                                </span>
+                              )}
+                            </td>
+                            <td></td>
+                            <td></td>
+                            <td style={{ color: "var(--primary, #0284c7)", fontWeight: 800 }}>
+                              {step1SelectedTotal > 0 ? `${step1SelectedTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "—"}
+                            </td>
+                            <td colSpan="3"></td>
+                          </tr>
+                        </tfoot>
+                      );
+                    })()}
                   </table>
                 </div>
               </div>
@@ -1346,7 +1394,27 @@ export default function PurchaserDashboard({
               </div>
             </div>
 
-            {plannerVendorId && (
+            {plannerVendorId && (() => {
+              const readyRequests = myRequests.filter(r => r.vendorId === plannerVendorId && r.priceRmb && !r.cargoId);
+              const selectedReadyRequests = readyRequests.filter(r => checkedRequestIds.includes(r.id));
+              const selectedCount = selectedReadyRequests.length;
+              const selectedOrigQty = selectedReadyRequests.reduce((acc, r) => acc + parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10), 0);
+              const selectedNewQty = selectedReadyRequests.reduce((acc, r) => {
+                const custom = plannerNewQtyMap[r.id];
+                const val = (custom !== undefined && custom !== null && custom !== "") ? parseInt(custom, 10) : parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+                return acc + (isNaN(val) ? 0 : val);
+              }, 0);
+              const selectedTotalPrice = selectedReadyRequests.reduce((acc, r) => {
+                const orig = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+                const custom = plannerNewQtyMap[r.id];
+                const eff = (custom !== undefined && custom !== null && custom !== "") ? parseInt(custom, 10) : orig;
+                const unit = parseFloat(r.priceRmb || 0);
+                const total = unit > 0 ? unit * eff : parseFloat(r.totalRmb || 0);
+                return acc + (isNaN(total) ? 0 : total);
+              }, 0);
+              const selectedCurrency = selectedReadyRequests[0]?.currency || "RMB";
+
+              return (
               <div className="glass-panel card-fade-in" style={{ padding: "24px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
                   <h4 style={{ fontSize: "1.1rem", margin: 0, color: "var(--primary)" }}>
@@ -1356,7 +1424,6 @@ export default function PurchaserDashboard({
                     <button 
                       type="button"
                       onClick={() => {
-                        const readyRequests = myRequests.filter(r => r.vendorId === plannerVendorId && r.priceRmb && !r.cargoId);
                         handleDownloadShippingSampleFile(readyRequests);
                       }}
                       className="btn btn-secondary btn-sm"
@@ -1430,6 +1497,58 @@ export default function PurchaserDashboard({
                   </div>
                 )}
 
+                {/* Selected Items Summary Strip / Pill Bar */}
+                {selectedCount > 0 && (
+                  <div 
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "14px",
+                      background: "var(--primary-glow, rgba(56, 189, 248, 0.12))",
+                      border: "1px solid var(--primary, #0284c7)",
+                      borderRadius: "10px",
+                      padding: "10px 18px",
+                      marginBottom: "16px",
+                      flexWrap: "wrap",
+                      boxShadow: "0 2px 8px rgba(0, 0, 0, 0.06)"
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 800, color: "var(--primary, #0284c7)", display: "flex", alignItems: "center", gap: "6px", fontSize: "0.95rem" }}>
+                        <CheckSquare size={17} /> {selectedCount} Item{selectedCount !== 1 ? "s" : ""} Selected
+                      </span>
+                      <span style={{ color: "var(--border-glass, #cbd5e1)", opacity: 0.6 }}>|</span>
+                      <span style={{ fontSize: "0.9rem", color: "var(--text-main)" }}>
+                        Total Qty: <strong style={{ fontWeight: 800, fontSize: "1.02rem" }}>{selectedOrigQty.toLocaleString()} Pcs</strong>
+                      </span>
+                      <span style={{ color: "var(--border-glass, #cbd5e1)", opacity: 0.6 }}>|</span>
+                      <span style={{ fontSize: "0.9rem", color: "var(--primary, #0284c7)" }}>
+                        Total New Qty: <strong style={{ fontWeight: 800, fontSize: "1.05rem" }}>{selectedNewQty.toLocaleString()} Pcs</strong>
+                      </span>
+                      {selectedOrigQty !== selectedNewQty && (
+                        <span className="badge badge-warning" style={{ fontSize: "0.75rem", padding: "4px 8px" }}>
+                          {selectedNewQty < selectedOrigQty
+                            ? `${(selectedOrigQty - selectedNewQty).toLocaleString()} Pcs at vendor`
+                            : `+${(selectedNewQty - selectedOrigQty).toLocaleString()} Pcs`}
+                        </span>
+                      )}
+                      <span style={{ color: "var(--border-glass, #cbd5e1)", opacity: 0.6 }}>|</span>
+                      <span style={{ fontSize: "0.9rem", color: "var(--text-main)" }}>
+                        Total Price: <strong style={{ fontWeight: 800, fontSize: "1.02rem" }}>{getCurrencySymbol(selectedCurrency)}{Number(selectedTotalPrice.toFixed(2)).toLocaleString()}</strong>
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCheckedRequestIds([])}
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: "0.75rem", padding: "3px 8px", opacity: 0.85 }}
+                    >
+                      Deselect All
+                    </button>
+                  </div>
+                )}
+
                 <div className="table-container" style={{ marginBottom: "20px" }}>
                   <table className="custom-table">
                     <thead>
@@ -1439,11 +1558,10 @@ export default function PurchaserDashboard({
                             type="checkbox"
                             className="checkbox-input"
                             checked={
-                             myRequests.filter(r => r.vendorId === plannerVendorId && r.priceRmb && !r.cargoId).length > 0 &&
-                              checkedRequestIds.length === myRequests.filter(r => r.vendorId === plannerVendorId && r.priceRmb && !r.cargoId).length
+                              readyRequests.length > 0 &&
+                              checkedRequestIds.length === readyRequests.length
                             }
                             onChange={(e) => {
-                              const readyRequests = myRequests.filter(r => r.vendorId === plannerVendorId && r.priceRmb && !r.cargoId);
                               if (e.target.checked) {
                                 setCheckedRequestIds(readyRequests.map(r => r.id));
                               } else {
@@ -1464,14 +1582,14 @@ export default function PurchaserDashboard({
                       </tr>
                     </thead>
                     <tbody>
-                      {myRequests.filter(r => r.vendorId === plannerVendorId && r.priceRmb && !r.cargoId).length === 0 ? (
+                      {readyRequests.length === 0 ? (
                         <tr>
                           <td colSpan="10" style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
                             No items priced for this vendor. Go to <strong>Step 1: Commercial & Timeline Specification</strong> to assign vendor and price.
                           </td>
                         </tr>
                       ) : (
-                        myRequests.filter(r => r.vendorId === plannerVendorId && r.priceRmb && !r.cargoId).map(r => {
+                        readyRequests.map(r => {
                           const isChecked = checkedRequestIds.includes(r.id);
                           const undoHours = hoursRemaining48(r.pricedAt);
                           const origQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
@@ -1625,14 +1743,61 @@ export default function PurchaserDashboard({
                         })
                       )}
                     </tbody>
+                    {selectedCount > 0 && (
+                      <tfoot>
+                        <tr style={{
+                          background: "var(--primary-glow, rgba(56, 189, 248, 0.12))",
+                          borderTop: "2px solid var(--primary, #0284c7)",
+                          fontWeight: 800
+                        }}>
+                          <td style={{ textAlign: "center" }}>
+                            <Check size={16} style={{ color: "var(--primary, #0284c7)" }} />
+                          </td>
+                          <td colSpan="2" style={{ color: "var(--primary, #0284c7)", fontWeight: 800 }}>
+                            Total Selected ({selectedCount} item{selectedCount !== 1 ? "s" : ""})
+                          </td>
+                          <td>
+                            <strong style={{ fontSize: "0.95rem" }}>{selectedOrigQty.toLocaleString()} Pcs</strong>
+                          </td>
+                          <td style={{ color: "var(--primary, #0284c7)" }}>
+                            <strong style={{ fontSize: "1.02rem" }}>{selectedNewQty.toLocaleString()} Pcs</strong>
+                            {selectedOrigQty !== selectedNewQty && (
+                              <span style={{ fontSize: "0.72rem", color: "#fbbf24", display: "block", fontWeight: 600 }}>
+                                {selectedNewQty < selectedOrigQty
+                                  ? `${(selectedOrigQty - selectedNewQty).toLocaleString()} Pcs at vendor`
+                                  : `+${(selectedNewQty - selectedOrigQty).toLocaleString()} Pcs`}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            <strong style={{ fontSize: "0.95rem", color: "var(--primary, #0284c7)" }}>
+                              {getCurrencySymbol(selectedCurrency)}{Number(selectedTotalPrice.toFixed(2)).toLocaleString()}
+                            </strong>
+                          </td>
+                          <td colSpan="4"></td>
+                        </tr>
+                      </tfoot>
+                    )}
                   </table>
                 </div>
 
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
-                  <div style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>
-                    <strong>{checkedRequestIds.length}</strong> item(s) selected for combined cargo.
+                  <div style={{ fontSize: "0.92rem", color: "var(--text-main)", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                    <span>
+                      <strong>{checkedRequestIds.length}</strong> item(s) selected
+                    </span>
+                    {selectedCount > 0 && (
+                      <>
+                        <span style={{ opacity: 0.4 }}>•</span>
+                        <span>Total Qty: <strong>{selectedOrigQty.toLocaleString()} Pcs</strong></span>
+                        <span style={{ opacity: 0.4 }}>•</span>
+                        <span>Total New Qty: <strong style={{ color: "var(--primary, #0284c7)" }}>{selectedNewQty.toLocaleString()} Pcs</strong></span>
+                        <span style={{ opacity: 0.4 }}>•</span>
+                        <span>Total Price: <strong>{getCurrencySymbol(selectedCurrency)}{Number(selectedTotalPrice.toFixed(2)).toLocaleString()}</strong></span>
+                      </>
+                    )}
                     {checkedRequestIds.filter(id => plannerNewQtyMap[id] != null).length > 0 && (
-                      <span style={{ color: "#38bdf8", marginLeft: "6px" }}>
+                      <span style={{ color: "#38bdf8", marginLeft: "4px" }}>
                         ({checkedRequestIds.filter(id => plannerNewQtyMap[id] != null).length} with updated quantity)
                       </span>
                     )}
@@ -1686,7 +1851,8 @@ export default function PurchaserDashboard({
                   </div>
                 </div>
               </div>
-            )}
+              );
+            })()}
           </div>
         )}
 
@@ -1853,13 +2019,69 @@ export default function PurchaserDashboard({
 
             {(() => {
               const allChecked = vrItems.length > 0 && vrChecked.length === vrItems.length;
+              const vrSelectedItems = vrItems.filter(r => vrChecked.includes(r.id));
+              const vrSelectedCount = vrSelectedItems.length;
+              const vrSelectedOrigQty = vrSelectedItems.reduce((acc, r) => acc + parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10), 0);
+              const vrSelectedNewQty = vrSelectedItems.reduce((acc, r) => {
+                const custom = vrNewQtyMap[r.id];
+                const val = (custom !== undefined && custom !== null && custom !== "") ? parseInt(custom, 10) : parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+                return acc + (isNaN(val) ? 0 : val);
+              }, 0);
+
               return vrItems.length === 0 ? (
                 <div className="glass-panel" style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
                   <CheckCircle2 size={32} style={{ color: "var(--success)", marginBottom: "10px", display: "inline" }} /><br />
                   All priced orders have been marked as Vendor Ready.
                 </div>
               ) : (
-                <div className="glass-panel" style={{ padding: "4px" }}>
+                <div className="glass-panel" style={{ padding: "16px" }}>
+                  {vrSelectedCount > 0 && (
+                    <div 
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "14px",
+                        background: "var(--primary-glow, rgba(56, 189, 248, 0.12))",
+                        border: "1px solid var(--primary, #0284c7)",
+                        borderRadius: "10px",
+                        padding: "10px 18px",
+                        marginBottom: "16px",
+                        flexWrap: "wrap",
+                        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.06)"
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
+                        <span style={{ fontWeight: 800, color: "var(--primary, #0284c7)", display: "flex", alignItems: "center", gap: "6px", fontSize: "0.95rem" }}>
+                          <CheckSquare size={17} /> {vrSelectedCount} Item{vrSelectedCount !== 1 ? "s" : ""} Selected
+                        </span>
+                        <span style={{ color: "var(--border-glass, #cbd5e1)", opacity: 0.6 }}>|</span>
+                        <span style={{ fontSize: "0.9rem", color: "var(--text-main)" }}>
+                          Total Qty: <strong style={{ fontWeight: 800, fontSize: "1.02rem" }}>{vrSelectedOrigQty.toLocaleString()} Pcs</strong>
+                        </span>
+                        <span style={{ color: "var(--border-glass, #cbd5e1)", opacity: 0.6 }}>|</span>
+                        <span style={{ fontSize: "0.9rem", color: "var(--primary, #0284c7)" }}>
+                          Total New Qty: <strong style={{ fontWeight: 800, fontSize: "1.05rem" }}>{vrSelectedNewQty.toLocaleString()} Pcs</strong>
+                        </span>
+                        {vrSelectedOrigQty !== vrSelectedNewQty && (
+                          <span className="badge badge-warning" style={{ fontSize: "0.75rem", padding: "4px 8px" }}>
+                            {vrSelectedNewQty < vrSelectedOrigQty
+                              ? `${(vrSelectedOrigQty - vrSelectedNewQty).toLocaleString()} Pcs less`
+                              : `+${(vrSelectedNewQty - vrSelectedOrigQty).toLocaleString()} Pcs`}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setVrChecked([])}
+                        className="btn btn-secondary btn-sm"
+                        style={{ fontSize: "0.75rem", padding: "3px 8px", opacity: 0.85 }}
+                      >
+                        Deselect All
+                      </button>
+                    </div>
+                  )}
+
                   <div className="table-container">
                     <table className="custom-table">
                       <thead>
@@ -1989,6 +2211,36 @@ export default function PurchaserDashboard({
                           );
                         })}
                       </tbody>
+                      {vrSelectedCount > 0 && (
+                        <tfoot>
+                          <tr style={{
+                            background: "var(--primary-glow, rgba(56, 189, 248, 0.12))",
+                            borderTop: "2px solid var(--primary, #0284c7)",
+                            fontWeight: 800
+                          }}>
+                            <td style={{ textAlign: "center" }}>
+                              <Check size={16} style={{ color: "var(--primary, #0284c7)" }} />
+                            </td>
+                            <td style={{ color: "var(--primary, #0284c7)", fontWeight: 800 }}>
+                              Total Selected ({vrSelectedCount} item{vrSelectedCount !== 1 ? "s" : ""})
+                            </td>
+                            <td>
+                              <strong style={{ fontSize: "0.95rem" }}>{vrSelectedOrigQty.toLocaleString()} Pcs</strong>
+                            </td>
+                            <td style={{ color: "var(--primary, #0284c7)" }}>
+                              <strong style={{ fontSize: "1.02rem" }}>{vrSelectedNewQty.toLocaleString()} Pcs</strong>
+                              {vrSelectedOrigQty !== vrSelectedNewQty && (
+                                <span style={{ fontSize: "0.72rem", color: "#fbbf24", display: "block", fontWeight: 600 }}>
+                                  {vrSelectedNewQty < vrSelectedOrigQty
+                                    ? `${(vrSelectedOrigQty - vrSelectedNewQty).toLocaleString()} Pcs less`
+                                    : `+${(vrSelectedNewQty - vrSelectedOrigQty).toLocaleString()} Pcs`}
+                                </span>
+                              )}
+                            </td>
+                            <td colSpan="5"></td>
+                          </tr>
+                        </tfoot>
+                      )}
                     </table>
                   </div>
                 </div>
