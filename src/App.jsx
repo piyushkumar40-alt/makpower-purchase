@@ -23,6 +23,7 @@ import {
 } from "./utils/userIntentionTracker";
 import { isDateInBetween } from "./components/DateRangeFilter";
 import { cleanCategoryName } from "./utils/formatters";
+import "./utils/useModalEscape";
 
 // Helper to ensure party name acts as primary key and duplicates above the last party are deleted
 export function deduplicatePartiesKeepLast(parties) {

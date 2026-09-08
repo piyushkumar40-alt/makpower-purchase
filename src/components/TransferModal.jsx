@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { AlertTriangle, UserMinus, ShieldAlert, Check } from "lucide-react";
+import { useModalEscape } from "../utils/useModalEscape";
 
 export default function TransferModal({ purchaser, activeUsers, requests, vendors, onClose, onConfirm }) {
+  useModalEscape(onClose);
   const [transferDestId, setTransferDestId] = useState("");
 
   // Calculate statistics of the departing purchaser

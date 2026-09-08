@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Columns, Copy, Check, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { useModalEscape } from "../utils/useModalEscape";
 
 /**
  * Column Selector Dropdown Component
@@ -8,6 +9,7 @@ import { Columns, Copy, Check, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-re
 export function ColumnSelectorModal({ allColumns = [], visibleColumns = [], onToggleColumn, onResetColumns }) {
   const [isOpen, setIsOpen] = useState(false);
   const ref = useRef(null);
+  useModalEscape(() => setIsOpen(false), isOpen);
 
   useEffect(() => {
     const handleClickOutside = (e) => {

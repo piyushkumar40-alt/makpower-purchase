@@ -11,6 +11,7 @@ import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
 import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName } from "../utils/formatters";
+import { useModalEscape } from "../utils/useModalEscape";
 
 // ==================== TOP-LEVEL UTILITIES & METRIC CALCULATION HELPERS ====================
 export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange, placeholder, accentColor = "var(--primary)" }) {
@@ -23,9 +24,18 @@ export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange,
         setIsOpen(false);
       }
     };
+    const handleEscape = (e) => {
+      if (e.key === "Escape" && isOpen) {
+        setIsOpen(false);
+      }
+    };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isOpen]);
 
   const selectedOpt = options.find(o => o.value === value);
 
@@ -408,6 +418,7 @@ export default function PurchaserDashboard({
   const [step1Mode, setStep1Mode] = useState("inline"); // "inline" | "standard"
   const [step1InlineEdits, setStep1InlineEdits] = useState({}); // { [reqId]: { vendorId, vendorSearchText, priceRmb, vendorEdd } }
   const [showStep1PasteModal, setShowStep1PasteModal] = useState(false);
+  useModalEscape(() => setShowStep1PasteModal(false), showStep1PasteModal);
   const [step1PasteText, setStep1PasteText] = useState("");
   const [step1BatchVendorId, setStep1BatchVendorId] = useState("");
   const [step1BatchCurrency, setStep1BatchCurrency] = useState("RMB");
@@ -3215,6 +3226,7 @@ export const getEffectivePhoto = (request, items = [], requests = []) => {
 // 1. STEP 2: EDIT REQUEST DETAILS MODAL
 // 1. EDIT REQUEST DETAILS MODAL (FULL ORDER EDITING ACROSS ALL STEPS)
 function EditRequestModal({ request, requests, vendors, cargos = [], currentUser, onAddVendor, items = [], onUpdateItem, onAddItem, onClose, onSave }) {
+  useModalEscape(onClose);
   const [model, setModel] = useState(request.model || "");
   const [orderDate, setOrderDate] = useState(request.orderDate || "");
   const [orderQuantity, setOrderQuantity] = useState(request.orderQuantity || "");
@@ -3610,6 +3622,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
 
 // 2. DETAILED READ-ONLY VIEW MODAL (ALL 27 FIELDS)
 function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purchasers, items = [], requests = [], onClose, onCancelOrder }) {
+  useModalEscape(onClose);
   const pName = purchasers.find(p => p.id === request.purchaserId)?.name || "Unknown";
   const vName = vendors.find(v => v.id === request.vendorId)?.name || "Unknown";
   
@@ -3745,6 +3758,7 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
 
 // 2b. CANCEL ORDER CONFIRMATION MODAL
 function CancelOrderModal({ request, vendors, onClose, onConfirm }) {
+  useModalEscape(onClose);
   const [reason, setReason] = useState("");
   const vName = vendors.find(v => v.id === request.vendorId)?.name || "—";
 
@@ -3797,6 +3811,7 @@ function CancelOrderModal({ request, vendors, onClose, onConfirm }) {
 
 // 2c. RECEIVE CARGO DATE MODAL
 function ReceiveCargoModal({ cargo, requests, onClose, onConfirm }) {
+  useModalEscape(onClose);
   const [receiveDate, setReceiveDate] = useState(new Date().toISOString().split("T")[0]);
   const activeItems = requests.filter(r => r.status !== "Cancelled");
 
@@ -4102,6 +4117,7 @@ function ExcelShippingUpdateModal({
   onApplyMatches,
   onDownloadSample
 }) {
+  useModalEscape(onClose);
   const [inputMode, setInputMode] = useState("file"); // "file" | "paste"
   const [pastedText, setPastedText] = useState("");
   const [fileName, setFileName] = useState("");
@@ -4533,6 +4549,7 @@ function ExcelShippingUpdateModal({
 
 // 3. CREATE CARGO BUNDLE MODAL
 function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos = [], cargoCompanies = [], onAddCargoCompany, onClose, onSave, initialPickedQtyMap = {} }) {
+  useModalEscape(onClose);
   const [detail, setDetail] = useState("");
   const [currency, setCurrency] = useState("RMB");
   const [price, setPrice] = useState("");
@@ -4904,6 +4921,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
 
 // 4. EDIT CARGO MODAL
 function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = [], onAddCargoCompany, onClose, onSave }) {
+  useModalEscape(onClose);
   const [detail, setDetail] = useState(cargo.cargoDetail || "");
   const [currency, setCurrency] = useState(cargo.currency || "RMB");
   const [price, setPrice] = useState(cargo.cargoPrice || "");
@@ -5734,6 +5752,7 @@ export function VendorDetailModal({
   onRemoveVendor, 
   onClose 
 }) {
+  useModalEscape(onClose, !!vendor);
   if (!vendor) return null;
 
   const [name, setName] = useState(vendor.name || "");
@@ -6104,6 +6123,7 @@ export function CargoCompanyDetailModal({
   onRemoveCargoCompany,
   onClose
 }) {
+  useModalEscape(onClose);
   const [name, setName] = useState(company.name);
   const [location, setLocation] = useState(company.location || "");
   const [phone, setPhone] = useState(company.phone || "");

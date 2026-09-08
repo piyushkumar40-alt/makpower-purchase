@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { Plus, X, Sparkles, Building2, Truck, Package, UserPlus, Tag, CheckCircle2, Loader2 } from "lucide-react";
+import { useModalEscape } from "../utils/useModalEscape";
 
 // ==================== 1. QUICK VENDOR MODAL ====================
 export function QuickCreateVendorModal({ isOpen, onClose, onAddVendor, currentUser, onVendorCreated }) {
+  useModalEscape(onClose, isOpen);
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
   const [phone, setPhone] = useState("");
@@ -141,6 +143,7 @@ export function QuickCreateVendorModal({ isOpen, onClose, onAddVendor, currentUs
 
 // ==================== 2. QUICK CARGO COMPANY MODAL ====================
 export function QuickCreateCargoCompanyModal({ isOpen, onClose, onAddCargoCompany, onCompanyCreated }) {
+  useModalEscape(onClose, isOpen);
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
   const [phone, setPhone] = useState("");
@@ -268,6 +271,7 @@ export function QuickCreateCargoCompanyModal({ isOpen, onClose, onAddCargoCompan
 
 // ==================== 3. QUICK CATALOG ITEM MODAL ====================
 export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated }) {
+  useModalEscape(onClose, isOpen);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [itemType, setItemType] = useState("FG");
@@ -427,6 +431,7 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
 
 // ==================== 4. QUICK PURCHASER USER MODAL ====================
 export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCreated }) {
+  useModalEscape(onClose, isOpen);
   const [salutation, setSalutation] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -590,6 +595,7 @@ export function QuickCreateUserModal({ isOpen, onClose, onAddPurchaser, onUserCr
 
 // ==================== 5. QUICK DESIGNATION MODAL ====================
 export function QuickCreateDesignationModal({ isOpen, onClose, onAddDesignation, onDesignationCreated }) {
+  useModalEscape(onClose, isOpen);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [role, setRole] = useState("purchaser");
