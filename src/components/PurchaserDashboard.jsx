@@ -383,6 +383,10 @@ export default function PurchaserDashboard({
   const [vrFilter, setVrFilter] = useState("");        // vendor filter for vendor-ready tab
   const [vrChecked, setVrChecked] = useState([]);     // checked request ids
   const [vrDate, setVrDate] = useState(new Date().toISOString().split("T")[0]);
+  const [vrNewQtyMap, setVrNewQtyMap] = useState({}); // { [reqId]: number }
+  const [vrNewReadyDateMap, setVrNewReadyDateMap] = useState({}); // { [reqId]: string }
+  const [showVrExcelModal, setShowVrExcelModal] = useState(false);
+  const [vrExcelNotification, setVrExcelNotification] = useState(null); // { matchedCount, dateAdjustedCount, unmatchedCount, unmatchedList, timestamp }
   // Cargo-pickup bulk selection
   const [cpFilter, setCpFilter] = useState("");        // vendor filter for cargo-pickup tab
   const [cpChecked, setCpChecked] = useState([]);     // checked request ids
@@ -414,6 +418,27 @@ export default function PurchaserDashboard({
       ];
     }
     downloadExcelOrCsv(headers, rows, "Sample_Shipping_Update");
+  };
+
+  const handleDownloadVrSampleFile = (availableItems = []) => {
+    const headers = ["Order Date", "Item Name", "Qty"];
+    let rows = [];
+    if (availableItems && availableItems.length > 0) {
+      rows = availableItems.slice(0, 10).map(r => [
+        r.orderDate || new Date().toISOString().split("T")[0],
+        r.model || "Item Model",
+        r.vendorOrderQuantity || r.orderQuantity || 50
+      ]);
+    } else {
+      rows = [
+        ["2026-08-19", "M11", 50],
+        ["2026-08-19", "39LX", 100],
+        ["2026-09-07", "BLP837", 30],
+        ["2026-09-07", "BN51", 352],
+        ["2026-09-07", "BN5M", 50]
+      ];
+    }
+    downloadExcelOrCsv(headers, rows, "Sample_Vendor_Ready_Update");
   };
 
   // Step 1 Batch Update & Paste State
@@ -1666,6 +1691,9 @@ export default function PurchaserDashboard({
                     const matched = activeVendors.find(v => v.name.toLowerCase() === val.toLowerCase());
                     setVrFilter(matched ? matched.id : "");
                     setVrChecked([]);
+                    setVrNewQtyMap({});
+                    setVrNewReadyDateMap({});
+                    setVrExcelNotification(null);
                   }}
                   style={{ minWidth: "200px" }}
                 />
@@ -1685,7 +1713,22 @@ export default function PurchaserDashboard({
                   const toUpdate = [];
                   vrChecked.forEach(id => {
                     const r = myRequests.find(x => x.id === id);
-                    if (r) toUpdate.push({ ...r, vendorReadyDate: vrDate });
+                    if (r) {
+                      const itemReadyDate = (vrNewReadyDateMap && vrNewReadyDateMap[id]) || vrDate;
+                      const updated = { ...r, vendorReadyDate: itemReadyDate };
+                      const customNewQty = vrNewQtyMap[id];
+                      if (customNewQty !== undefined && customNewQty !== null && customNewQty !== "") {
+                        const parsedQty = parseInt(customNewQty, 10);
+                        if (!isNaN(parsedQty) && parsedQty > 0) {
+                          updated.vendorOrderQuantity = parsedQty;
+                          const unitPrice = parseFloat(r.priceRmb || 0);
+                          if (unitPrice > 0) {
+                            updated.totalRmb = unitPrice * parsedQty;
+                          }
+                        }
+                      }
+                      toUpdate.push(updated);
+                    }
                   });
                   if (toUpdate.length > 0) {
                     if (batchUpdateRequests) {
@@ -1695,13 +1738,89 @@ export default function PurchaserDashboard({
                     }
                   }
                   setVrChecked([]);
+                  setVrNewQtyMap({});
+                  setVrNewReadyDateMap({});
                 }}
                 className="btn btn-success"
                 style={{ alignSelf: "flex-end" }}
               >
                 <Check size={15} /> Mark {vrChecked.length || ""} Selected as Vendor Ready
               </button>
+
+              <div style={{ marginLeft: "auto", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                <button 
+                  type="button"
+                  onClick={() => handleDownloadVrSampleFile(rawVrItems)}
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", padding: "8px 12px" }}
+                  title="Download sample Excel template (Order Date, Item Name, Qty)"
+                >
+                  <Download size={14} /> Download Sample File
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setShowVrExcelModal(true)}
+                  className="btn btn-primary btn-sm"
+                  style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", padding: "8px 14px", fontWeight: 600 }}
+                >
+                  <FileSpreadsheet size={15} /> Update from Excel File
+                </button>
+              </div>
             </div>
+
+            {vrExcelNotification && (
+              <div 
+                style={{ 
+                  marginBottom: "16px", 
+                  padding: "12px 16px", 
+                  borderRadius: "10px", 
+                  background: vrExcelNotification.unmatchedCount > 0 ? "rgba(245, 158, 11, 0.12)" : "rgba(34, 197, 94, 0.12)",
+                  border: vrExcelNotification.unmatchedCount > 0 ? "1px solid rgba(245, 158, 11, 0.35)" : "1px solid rgba(34, 197, 94, 0.35)",
+                  display: "flex", 
+                  justifyContent: "space-between", 
+                  alignItems: "center", 
+                  flexWrap: "wrap", 
+                  gap: "10px" 
+                }}
+              >
+                <div style={{ fontSize: "0.86rem", color: "var(--text-main)" }}>
+                  <strong style={{ color: "var(--success, #16a34a)" }}>✓ {vrExcelNotification.matchedCount} item(s) matched & selected</strong> with updated quantities
+                  {vrExcelNotification.dateAdjustedCount > 0 && (
+                    <span style={{ marginLeft: "6px", fontSize: "0.8rem", color: "var(--primary, #0284c7)" }}>
+                      ({vrExcelNotification.dateAdjustedCount} date(s) smart-matched & corrected)
+                    </span>
+                  )}.
+                  {vrExcelNotification.unmatchedCount > 0 && (
+                    <span style={{ marginLeft: "8px", color: "var(--warning, #d97706)" }}>
+                      ⚠️ <strong>{vrExcelNotification.unmatchedCount} item(s) not found</strong> (downloaded to <code>NotFound_VendorReady_Items.xlsx</code>).
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  {vrExcelNotification.unmatchedCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const notFoundHeaders = ["Order Date", "Item Name", "Qty", "Reason"];
+                        const notFoundRows = vrExcelNotification.unmatchedList.map(u => [u.orderDate, u.itemName, u.qty, u.reason]);
+                        downloadExcelOrCsv(notFoundHeaders, notFoundRows, "NotFound_VendorReady_Items");
+                      }}
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: "3px 8px", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "4px" }}
+                    >
+                      <Download size={12} /> Re-download Not Found File
+                    </button>
+                  )}
+                  <button 
+                    type="button"
+                    onClick={() => setVrExcelNotification(null)} 
+                    style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: "0.9rem" }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            )}
 
             {vrToast && (
               <div className="alert-strip alert-success" style={{ marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
@@ -1730,6 +1849,7 @@ export default function PurchaserDashboard({
                           </th>
                           <RenderStep2SortHeader colKey="model" title="Item / Model" />
                           <RenderStep2SortHeader colKey="vendorOrderQuantity" title="Qty" getValue={r => Number(r.vendorOrderQuantity || r.orderQuantity)} />
+                          <th style={{ color: "#38bdf8", minWidth: "125px" }}>New Qty</th>
                           <RenderStep2SortHeader colKey="vendorId" title="Vendor" getValue={r => vendors.find(v => v.id === r.vendorId)?.name || ""} />
                           <RenderStep2SortHeader colKey="orderDate" title="Order Date" />
                           <RenderStep2SortHeader colKey="vendorEdd" title="EDD" />
@@ -1741,6 +1861,10 @@ export default function PurchaserDashboard({
                         {vrItems.map(r => {
                           const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
                           const isLate = vrDate && r.vendorEdd && vrDate > r.vendorEdd;
+                          const origQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+                          const customNewQty = vrNewQtyMap[r.id];
+                          const hasNewQty = customNewQty !== undefined && customNewQty !== null && customNewQty !== "";
+                          const effectiveQty = hasNewQty ? parseInt(customNewQty, 10) : origQty;
                           return (
                             <tr key={r.id} className={vrChecked.includes(r.id) ? "planner-row-selected" : ""}>
                               <td>
@@ -1777,6 +1901,56 @@ export default function PurchaserDashboard({
                                   </span>
                                 ) : null}
                               </td>
+
+                              {/* New Qty */}
+                              <td>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                    <input 
+                                      type="number"
+                                      min="1"
+                                      className="form-control"
+                                      style={{
+                                        width: "85px",
+                                        padding: "4px 8px",
+                                        fontSize: "0.85rem",
+                                        fontWeight: 700,
+                                        textAlign: "center",
+                                        borderColor: hasNewQty ? "#38bdf8" : undefined,
+                                        background: hasNewQty ? "rgba(56, 189, 248, 0.1)" : undefined,
+                                        color: hasNewQty ? "#38bdf8" : undefined
+                                      }}
+                                      value={vrNewQtyMap[r.id] ?? ""}
+                                      placeholder={String(origQty)}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setVrNewQtyMap(prev => {
+                                          const next = { ...prev };
+                                          if (val === "") {
+                                            delete next[r.id];
+                                          } else {
+                                            const num = parseInt(val, 10);
+                                            if (!isNaN(num)) {
+                                              next[r.id] = num;
+                                            }
+                                          }
+                                          return next;
+                                        });
+                                        if (val !== "" && !vrChecked.includes(r.id)) {
+                                          setVrChecked(prev => [...prev, r.id]);
+                                        }
+                                      }}
+                                    />
+                                    <span style={{ fontSize: "0.76rem", color: "var(--text-muted)" }}>Pcs</span>
+                                  </div>
+                                  {hasNewQty && effectiveQty !== origQty && (
+                                    <span style={{ fontSize: "0.68rem", color: "#fbbf24", whiteSpace: "nowrap" }}>
+                                      {effectiveQty < origQty ? `${origQty - effectiveQty} Pcs less` : `+${effectiveQty - origQty} Pcs`}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
                               <td>{vName}</td>
                               <td>{r.orderDate}</td>
                               <td>{r.vendorEdd || "—"}</td>
@@ -1811,7 +1985,12 @@ export default function PurchaserDashboard({
                       const isLate = r.vendorEdd && r.vendorReadyDate > r.vendorEdd;
                       return (
                         <div key={r.id} className="glass-panel" style={{ padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", opacity: 0.75 }}>
-                          <div style={{ fontSize: "0.87rem" }}><strong>{r.model}</strong> — {vName} — Qty: {r.orderQuantity}</div>
+                          <div style={{ fontSize: "0.87rem" }}>
+                            <strong>{r.model}</strong> — {vName} — Qty: <strong>{r.vendorOrderQuantity || r.orderQuantity}</strong> Pcs
+                            {r.vendorOrderQuantity && r.vendorOrderQuantity !== r.orderQuantity && (
+                              <span style={{ fontSize: "0.74rem", color: "#38bdf8", marginLeft: "6px" }}>(Req: {r.orderQuantity} Pcs)</span>
+                            )}
+                          </div>
                           <div style={{ display: "flex", gap: "12px", alignItems: "center", fontSize: "0.82rem" }}>
                             <span style={{ color: "var(--success)" }}>Ready: {r.vendorReadyDate}</span>
                             {isLate && <span style={{ color: "var(--danger)" }}>⚠ Late ({Math.ceil((new Date(r.vendorReadyDate)-new Date(r.vendorEdd))/(1000*60*60*24))} days)</span>}
@@ -2576,6 +2755,68 @@ export default function PurchaserDashboard({
           onDownloadSample={() => {
             const readyRequests = myRequests.filter(r => r.vendorId === plannerVendorId && r.priceRmb && !r.cargoId);
             handleDownloadShippingSampleFile(readyRequests);
+          }}
+        />
+      )}
+
+      {/* ==================== EXCEL VENDOR READY UPDATE MODAL ==================== */}
+      {showVrExcelModal && (
+        <ExcelShippingUpdateModal 
+          title="Update & Confirm Vendor Ready from Excel"
+          availableItems={rawVrItems}
+          vendorName={vrFilter ? (vendors.find(v => v.id === vrFilter)?.name || "Selected Vendor") : "All Pending Vendors"}
+          notFoundFileName="NotFound_VendorReady_Items"
+          onClose={() => setShowVrExcelModal(false)}
+          onApplyMatches={(analysis) => {
+            const { matchedReqIds, newQtyMap, newDateMap, newReadyDateMap, matched, unmatched, syncOrderDates } = analysis;
+
+            setVrChecked(prev => Array.from(new Set([...prev, ...matchedReqIds])));
+            setVrNewQtyMap(prev => ({ ...prev, ...newQtyMap }));
+            if (newReadyDateMap && Object.keys(newReadyDateMap).length > 0) {
+              setVrNewReadyDateMap(prev => ({ ...prev, ...newReadyDateMap }));
+            }
+
+            // If auto-correct date is enabled and we have date updates, sync them into the requests!
+            if (syncOrderDates && newDateMap && Object.keys(newDateMap).length > 0) {
+              const dateUpdates = [];
+              matched.forEach(m => {
+                if (newDateMap[m.reqId] && newDateMap[m.reqId] !== m.orderDate) {
+                  const originalReq = (requests || []).find(r => r.id === m.reqId);
+                  if (originalReq) {
+                    dateUpdates.push({ ...originalReq, orderDate: newDateMap[m.reqId] });
+                  }
+                }
+              });
+
+              if (dateUpdates.length > 0) {
+                if (batchUpdateRequests) {
+                  batchUpdateRequests(dateUpdates, "SYNC_EXCEL_ORDER_DATE", `Corrected order dates for ${dateUpdates.length} item(s) from Excel`);
+                } else if (onUpdateRequest) {
+                  dateUpdates.forEach(u => onUpdateRequest(u));
+                }
+              }
+            }
+
+            // If item not found, download file showing what item not found with qty and order date
+            if (unmatched && unmatched.length > 0) {
+              const notFoundHeaders = ["Order Date", "Item Name", "Qty", "Reason"];
+              const notFoundRows = unmatched.map(u => [u.orderDate, u.itemName, u.qty, u.reason]);
+              downloadExcelOrCsv(notFoundHeaders, notFoundRows, "NotFound_VendorReady_Items");
+            }
+
+            const dateAdjustedCount = matched.filter(m => m.isDateCorrected).length;
+            setVrExcelNotification({
+              matchedCount: matched.length,
+              dateAdjustedCount,
+              unmatchedCount: unmatched.length,
+              unmatchedList: unmatched,
+              timestamp: new Date().toLocaleTimeString()
+            });
+
+            setShowVrExcelModal(false);
+          }}
+          onDownloadSample={() => {
+            handleDownloadVrSampleFile(rawVrItems);
           }}
         />
       )}
@@ -3417,13 +3658,15 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
   let dateColIdx = -1;
   let itemColIdx = -1;
   let qtyColIdx = -1;
+  let readyDateColIdx = -1;
 
   for (let i = 0; i < Math.min(rawRows.length, 5); i++) {
     const row = rawRows[i];
     if (!Array.isArray(row)) continue;
     row.forEach((cell, idx) => {
       const cStr = String(cell || "").toLowerCase().trim();
-      if (dateColIdx === -1 && (cStr.includes("date") || cStr === "d")) dateColIdx = idx;
+      if (readyDateColIdx === -1 && (cStr.includes("ready") || cStr.includes("vendor ready"))) readyDateColIdx = idx;
+      if (dateColIdx === -1 && (cStr.includes("date") || cStr === "d") && idx !== readyDateColIdx) dateColIdx = idx;
       if (itemColIdx === -1 && (cStr.includes("model") || cStr.includes("item") || cStr.includes("name") || cStr === "e")) itemColIdx = idx;
       if (qtyColIdx === -1 && (cStr.includes("qty") || cStr.includes("quantity") || cStr.includes("count") || cStr === "f")) qtyColIdx = idx;
     });
@@ -3463,6 +3706,7 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
   const matchedReqIds = new Set();
   const newQtyMap = {};
   const newDateMap = {};
+  const newReadyDateMap = {};
 
   dataRows.forEach((row) => {
     if (!Array.isArray(row) || row.every(c => c === "" || c == null)) return;
@@ -3470,8 +3714,10 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
     const rawDate = row[dateColIdx];
     const rawItem = row[itemColIdx];
     const rawQty = row[qtyColIdx];
+    const rawReadyDate = readyDateColIdx !== -1 ? row[readyDateColIdx] : null;
 
     const cleanDate = parseFlexibleDate(rawDate);
+    const cleanReadyDate = rawReadyDate ? parseFlexibleDate(rawReadyDate) : null;
     const itemStr = String(rawItem || "").trim();
     const qtyNum = parseInt(String(rawQty || "").replace(/[^0-9]/g, ""), 10);
 
@@ -3532,6 +3778,9 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
       if (cleanDate) {
         newDateMap[matchedReq.id] = cleanDate;
       }
+      if (cleanReadyDate) {
+        newReadyDateMap[matchedReq.id] = cleanReadyDate;
+      }
 
       matched.push({
         reqId: matchedReq.id,
@@ -3565,13 +3814,15 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
     }
   });
 
-  return { matched, unmatched, newQtyMap, newDateMap, matchedReqIds: Array.from(matchedReqIds) };
+  return { matched, unmatched, newQtyMap, newDateMap, newReadyDateMap, matchedReqIds: Array.from(matchedReqIds) };
 };
 
-// ==================== EXCEL SHIPPING QUANTITY UPDATE MODAL ====================
+// ==================== EXCEL SHIPPING / VENDOR READY QUANTITY UPDATE MODAL ====================
 function ExcelShippingUpdateModal({
   availableItems = [],
   vendorName = "",
+  title = "Update Quantities from Excel File",
+  notFoundFileName = "NotFound_Items",
   onClose,
   onApplyMatches,
   onDownloadSample
@@ -3683,7 +3934,7 @@ function ExcelShippingUpdateModal({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid var(--border-glass, rgba(0,0,0,0.1))", paddingBottom: "12px" }}>
           <div>
             <h3 style={{ fontSize: "1.25rem", margin: 0, color: "var(--primary, #0284c7)", display: "flex", alignItems: "center", gap: "8px" }}>
-              <FileSpreadsheet size={22} /> Update Quantities from Excel File
+              <FileSpreadsheet size={22} /> {title}
             </h3>
             <p style={{ margin: "4px 0 0 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
               Vendor: <strong>{vendorName}</strong> • {availableItems.length} items available for matching
@@ -3707,7 +3958,7 @@ function ExcelShippingUpdateModal({
                 Required Columns: <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Order Date</code>, <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Item Name</code>, <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Qty</code>
               </div>
               <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                Matches by Order Date & Item Name. Matched items are auto-selected with New Qty filled. Any unmatched items will be automatically downloaded to <code style={{ padding: "1px 5px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)" }}>NotFound_Items.xlsx</code>.
+                Matches by Order Date & Item Name. Matched items are auto-selected with New Qty filled. Any unmatched items will be automatically downloaded to <code style={{ padding: "1px 5px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)" }}>{notFoundFileName}.xlsx</code>.
               </div>
             </div>
             <button
@@ -3855,7 +4106,7 @@ function ExcelShippingUpdateModal({
                 <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Not Found Items</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: analysis.unmatched.length > 0 ? "var(--warning, #d97706)" : "var(--text-muted)" }}>{analysis.unmatched.length}</div>
                 <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>
-                  {analysis.unmatched.length > 0 ? "Will auto-download as NotFound_Items.xlsx" : "All items matched perfectly"}
+                  {analysis.unmatched.length > 0 ? `Will auto-download as ${notFoundFileName}.xlsx` : "All items matched perfectly"}
                 </div>
               </div>
             </div>
