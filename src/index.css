@@ -857,6 +857,16 @@ table th {
   background: rgba(56, 189, 248, 0.04) !important;
 }
 
+.planner-row-diff-highlight {
+  background: rgba(245, 158, 11, 0.18) !important;
+  box-shadow: inset 4px 0 0 #f59e0b !important;
+}
+
+[data-theme="light"] .planner-row-diff-highlight {
+  background: #fef3c7 !important;
+  box-shadow: inset 4px 0 0 #d97706 !important;
+}
+
 /* Quick login grid */
 .login-presets-grid {
   display: grid;

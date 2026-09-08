@@ -356,6 +356,7 @@ export default function PurchaserDashboard({
   const [vrChecked, setVrChecked] = useState([]);     // checked request ids
   const [vrDate, setVrDate] = useState(new Date().toISOString().split("T")[0]);
   const [vrNewQtyMap, setVrNewQtyMap] = useState({}); // { [reqId]: number }
+  const [vrNewPriceMap, setVrNewPriceMap] = useState({}); // { [reqId]: number }
   const [vrNewReadyDateMap, setVrNewReadyDateMap] = useState({}); // { [reqId]: string }
   const [showVrExcelModal, setShowVrExcelModal] = useState(false);
   const [vrExcelNotification, setVrExcelNotification] = useState(null); // { matchedCount, dateAdjustedCount, unmatchedCount, unmatchedList, timestamp }
@@ -368,46 +369,49 @@ export default function PurchaserDashboard({
   const [plannerVendorId, setPlannerVendorId] = useState("");
   const [checkedRequestIds, setCheckedRequestIds] = useState([]);
   const [plannerNewQtyMap, setPlannerNewQtyMap] = useState({}); // { [reqId]: number }
+  const [plannerNewPriceMap, setPlannerNewPriceMap] = useState({}); // { [reqId]: number }
   const [showExcelUpdateModal, setShowExcelUpdateModal] = useState(false);
   const [excelNotification, setExcelNotification] = useState(null); // { matchedCount, unmatchedCount, unmatchedList, timestamp }
 
   const handleDownloadShippingSampleFile = (availableItems = []) => {
-    const headers = ["Order Date", "Item Name", "Qty"];
+    const headers = ["Order Date", "Item Name", "Qty", "Price"];
     let rows = [];
     if (availableItems && availableItems.length > 0) {
       rows = availableItems.slice(0, 8).map(r => [
         r.orderDate || new Date().toISOString().split("T")[0],
         r.model || "Item Model",
-        r.vendorOrderQuantity || r.orderQuantity || 50
+        r.vendorOrderQuantity || r.orderQuantity || 50,
+        r.priceRmb || 10
       ]);
     } else {
       rows = [
-        ["2026-08-19", "M11", 50],
-        ["2026-08-19", "39LX", 100],
-        ["2026-09-07", "BLP837", 30],
-        ["2026-09-07", "BN51", 352],
-        ["2026-09-07", "BN5M", 50]
+        ["2026-08-19", "M11", 50, 15.5],
+        ["2026-08-19", "39LX", 100, 22.0],
+        ["2026-09-07", "BLP837", 30, 8.5],
+        ["2026-09-07", "BN51", 352, 12.0],
+        ["2026-09-07", "BN5M", 50, 14.2]
       ];
     }
     downloadExcelOrCsv(headers, rows, "Sample_Shipping_Update");
   };
 
   const handleDownloadVrSampleFile = (availableItems = []) => {
-    const headers = ["Order Date", "Item Name", "Qty"];
+    const headers = ["Order Date", "Item Name", "Qty", "Price"];
     let rows = [];
     if (availableItems && availableItems.length > 0) {
       rows = availableItems.slice(0, 10).map(r => [
         r.orderDate || new Date().toISOString().split("T")[0],
         r.model || "Item Model",
-        r.vendorOrderQuantity || r.orderQuantity || 50
+        r.vendorOrderQuantity || r.orderQuantity || 50,
+        r.priceRmb || 10
       ]);
     } else {
       rows = [
-        ["2026-08-19", "M11", 50],
-        ["2026-08-19", "39LX", 100],
-        ["2026-09-07", "BLP837", 30],
-        ["2026-09-07", "BN51", 352],
-        ["2026-09-07", "BN5M", 50]
+        ["2026-08-19", "M11", 50, 15.5],
+        ["2026-08-19", "39LX", 100, 22.0],
+        ["2026-09-07", "BLP837", 30, 8.5],
+        ["2026-09-07", "BN51", 352, 12.0],
+        ["2026-09-07", "BN5M", 50, 14.2]
       ];
     }
     downloadExcelOrCsv(headers, rows, "Sample_Vendor_Ready_Update");
@@ -1417,12 +1421,27 @@ export default function PurchaserDashboard({
               }, 0);
               const selectedTotalPrice = selectedReadyRequests.reduce((acc, r) => {
                 const orig = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
-                const custom = plannerNewQtyMap[r.id];
-                const eff = (custom !== undefined && custom !== null && custom !== "") ? parseInt(custom, 10) : orig;
-                const unit = parseFloat(r.priceRmb || 0);
-                const total = unit > 0 ? unit * eff : parseFloat(r.totalRmb || 0);
+                const customQ = plannerNewQtyMap[r.id];
+                const effQ = (customQ !== undefined && customQ !== null && customQ !== "") ? parseInt(customQ, 10) : orig;
+                const origP = parseFloat(r.priceRmb || 0);
+                const customP = plannerNewPriceMap[r.id];
+                const effP = (customP !== undefined && customP !== null && customP !== "") ? parseFloat(customP) : origP;
+                const total = effP > 0 ? effP * effQ : parseFloat(r.totalRmb || 0);
                 return acc + (isNaN(total) ? 0 : total);
               }, 0);
+              const selectedDiffCount = selectedReadyRequests.filter(r => {
+                const origQ = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+                const customQ = plannerNewQtyMap[r.id];
+                const hasQ = customQ !== undefined && customQ !== null && customQ !== "";
+                const effQ = hasQ ? parseInt(customQ, 10) : origQ;
+
+                const origP = parseFloat(r.priceRmb || 0);
+                const customP = plannerNewPriceMap[r.id];
+                const hasP = customP !== undefined && customP !== null && customP !== "";
+                const effP = hasP ? parseFloat(customP) : origP;
+
+                return (hasQ && effQ !== origQ) || (hasP && Math.abs(effP - origP) > 0.0001);
+              }).length;
               const selectedCurrency = selectedReadyRequests[0]?.currency || "RMB";
 
               return (
@@ -1439,7 +1458,7 @@ export default function PurchaserDashboard({
                       }}
                       className="btn btn-secondary btn-sm"
                       style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", padding: "6px 12px" }}
-                      title="Download sample Excel template (Order Date, Item Name, Qty)"
+                      title="Download sample Excel template (Order Date, Item Name, Qty, Price)"
                     >
                       <Download size={14} /> Download Sample File
                     </button>
@@ -1470,7 +1489,7 @@ export default function PurchaserDashboard({
                     }}
                   >
                     <div style={{ fontSize: "0.86rem", color: "var(--text-main)" }}>
-                      <strong style={{ color: "var(--success, #16a34a)" }}>✓ {excelNotification.matchedCount} item(s) matched & selected</strong> with updated quantities
+                      <strong style={{ color: "var(--success, #16a34a)" }}>✓ {excelNotification.matchedCount} item(s) matched & selected</strong> with updated details
                       {excelNotification.dateAdjustedCount > 0 && (
                         <span style={{ marginLeft: "6px", fontSize: "0.8rem", color: "var(--primary, #0284c7)" }}>
                           ({excelNotification.dateAdjustedCount} date(s) smart-matched & corrected)
@@ -1544,6 +1563,11 @@ export default function PurchaserDashboard({
                             : `+${(selectedNewQty - selectedOrigQty).toLocaleString()} Pcs`}
                         </span>
                       )}
+                      {selectedDiffCount > 0 && (
+                        <span className="badge badge-warning" style={{ fontSize: "0.78rem", padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: "5px", fontWeight: 700 }}>
+                          ⚠️ {selectedDiffCount} item{selectedDiffCount !== 1 ? "s" : ""} with differences
+                        </span>
+                      )}
                       <span style={{ color: "var(--border-glass, #cbd5e1)", opacity: 0.6 }}>|</span>
                       <span style={{ fontSize: "0.9rem", color: "var(--text-main)" }}>
                         Total Price: <strong style={{ fontWeight: 800, fontSize: "1.02rem" }}>{getCurrencySymbol(selectedCurrency)}{Number(selectedTotalPrice.toFixed(2)).toLocaleString()}</strong>
@@ -1585,6 +1609,8 @@ export default function PurchaserDashboard({
                         <th>Model</th>
                         <th>Quantity</th>
                         <th style={{ color: "#38bdf8", minWidth: "125px" }}>New Qty</th>
+                        <th>Unit Price</th>
+                        <th style={{ color: "#38bdf8", minWidth: "125px" }}>New Price</th>
                         <th>Total Price</th>
                         <th>Vendor EDD</th>
                         <th>Ready Date</th>
@@ -1595,7 +1621,7 @@ export default function PurchaserDashboard({
                     <tbody>
                       {readyRequests.length === 0 ? (
                         <tr>
-                          <td colSpan="10" style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                          <td colSpan="12" style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
                             No items priced for this vendor. Go to <strong>Step 1: Commercial & Timeline Specification</strong> to assign vendor and price.
                           </td>
                         </tr>
@@ -1607,11 +1633,20 @@ export default function PurchaserDashboard({
                           const customNewQty = plannerNewQtyMap[r.id];
                           const hasNewQty = customNewQty !== undefined && customNewQty !== null && customNewQty !== "";
                           const effectiveQty = hasNewQty ? parseInt(customNewQty, 10) : origQty;
-                          const unitPrice = parseFloat(r.priceRmb || 0);
-                          const effectiveTotalPrice = unitPrice > 0 ? unitPrice * effectiveQty : r.totalRmb;
+
+                          const origPrice = parseFloat(r.priceRmb || 0);
+                          const customNewPrice = plannerNewPriceMap[r.id];
+                          const hasNewPrice = customNewPrice !== undefined && customNewPrice !== null && customNewPrice !== "";
+                          const effectivePrice = hasNewPrice ? parseFloat(customNewPrice) : origPrice;
+
+                          const isQtyDiff = hasNewQty && effectiveQty !== origQty;
+                          const isPriceDiff = hasNewPrice && Math.abs(effectivePrice - origPrice) > 0.0001;
+                          const isDiff = isChecked && (isQtyDiff || isPriceDiff);
+
+                          const effectiveTotalPrice = effectivePrice > 0 ? effectivePrice * effectiveQty : r.totalRmb;
 
                           return (
-                            <tr key={r.id} className={isChecked ? "planner-row-selected" : ""}>
+                            <tr key={r.id} className={`${isChecked ? "planner-row-selected" : ""} ${isDiff ? "planner-row-diff-highlight" : ""}`}>
                               <td>
                                 <input 
                                   type="checkbox"
@@ -1702,9 +1737,62 @@ export default function PurchaserDashboard({
                                     />
                                     <span style={{ fontSize: "0.76rem", color: "var(--text-muted)" }}>Pcs</span>
                                   </div>
-                                  {hasNewQty && effectiveQty < origQty && (
+                                  {hasNewQty && effectiveQty !== origQty && (
                                     <span style={{ fontSize: "0.68rem", color: "#fbbf24", whiteSpace: "nowrap" }}>
-                                      {origQty - effectiveQty} Pcs at vendor
+                                      {effectiveQty < origQty ? `${origQty - effectiveQty} Pcs at vendor` : `+${effectiveQty - origQty} Pcs`}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Unit Price */}
+                              <td>
+                                <div><strong>{getCurrencySymbol(r.currency)}{Number(origPrice.toFixed(2)).toLocaleString()}</strong></div>
+                              </td>
+
+                              {/* New Price */}
+                              <td>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                    <input 
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      className="form-control"
+                                      style={{
+                                        width: "85px",
+                                        padding: "4px 8px",
+                                        fontSize: "0.85rem",
+                                        fontWeight: 700,
+                                        textAlign: "center",
+                                        borderColor: hasNewPrice ? "#38bdf8" : undefined,
+                                        background: hasNewPrice ? "rgba(56, 189, 248, 0.1)" : undefined,
+                                        color: hasNewPrice ? "#38bdf8" : undefined
+                                      }}
+                                      value={plannerNewPriceMap[r.id] ?? ""}
+                                      placeholder={origPrice > 0 ? String(origPrice) : "0.00"}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setPlannerNewPriceMap(prev => {
+                                          const next = { ...prev };
+                                          if (val === "") {
+                                            delete next[r.id];
+                                          } else {
+                                            const num = parseFloat(val);
+                                            if (!isNaN(num)) next[r.id] = num;
+                                          }
+                                          return next;
+                                        });
+                                        if (val !== "" && !checkedRequestIds.includes(r.id)) {
+                                          setCheckedRequestIds(prev => [...prev, r.id]);
+                                        }
+                                      }}
+                                    />
+                                    <span style={{ fontSize: "0.76rem", color: "var(--text-muted)" }}>{getCurrencySymbol(r.currency || "RMB")}</span>
+                                  </div>
+                                  {hasNewPrice && Math.abs(effectivePrice - origPrice) > 0.0001 && (
+                                    <span style={{ fontSize: "0.68rem", color: "#fbbf24", whiteSpace: "nowrap" }}>
+                                      {effectivePrice < origPrice ? `-${(origPrice - effectivePrice).toFixed(2)} less` : `+${(effectivePrice - origPrice).toFixed(2)}`}
                                     </span>
                                   )}
                                 </div>
@@ -1712,12 +1800,12 @@ export default function PurchaserDashboard({
 
                               {/* Total Price */}
                               <td>
-                                <div style={{ fontWeight: hasNewQty ? 700 : 500, color: hasNewQty ? "#38bdf8" : "inherit" }}>
+                                <div style={{ fontWeight: (hasNewQty || hasNewPrice) ? 700 : 500, color: (hasNewQty || hasNewPrice) ? "#38bdf8" : "inherit" }}>
                                   {getCurrencySymbol(r.currency)}{Number(effectiveTotalPrice).toLocaleString()}
                                 </div>
-                                {hasNewQty && effectiveTotalPrice !== r.totalRmb && (
+                                {(hasNewQty || hasNewPrice) && Math.abs(effectiveTotalPrice - (r.totalRmb || 0)) > 0.01 && (
                                   <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", display: "block" }}>
-                                    (Orig: {getCurrencySymbol(r.currency)}{Number(r.totalRmb).toLocaleString()})
+                                    (Orig: {getCurrencySymbol(r.currency)}{Number(parseFloat(r.totalRmb || 0).toFixed(2)).toLocaleString()})
                                   </span>
                                 )}
                               </td>
@@ -1780,6 +1868,7 @@ export default function PurchaserDashboard({
                               </span>
                             )}
                           </td>
+                          <td colSpan="2"></td>
                           <td>
                             <strong style={{ fontSize: "0.95rem", color: "var(--primary, #0284c7)" }}>
                               {getCurrencySymbol(selectedCurrency)}{Number(selectedTotalPrice.toFixed(2)).toLocaleString()}
@@ -1807,49 +1896,50 @@ export default function PurchaserDashboard({
                         <span>Total Price: <strong>{getCurrencySymbol(selectedCurrency)}{Number(selectedTotalPrice.toFixed(2)).toLocaleString()}</strong></span>
                       </>
                     )}
-                    {checkedRequestIds.filter(id => plannerNewQtyMap[id] != null).length > 0 && (
+                    {checkedRequestIds.filter(id => plannerNewQtyMap[id] != null || plannerNewPriceMap[id] != null).length > 0 && (
                       <span style={{ color: "#38bdf8", marginLeft: "4px" }}>
-                        ({checkedRequestIds.filter(id => plannerNewQtyMap[id] != null).length} with updated quantity)
+                        ({checkedRequestIds.filter(id => plannerNewQtyMap[id] != null || plannerNewPriceMap[id] != null).length} with updated quantity/price)
                       </span>
                     )}
                   </div>
                   <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-                    {checkedRequestIds.some(id => plannerNewQtyMap[id] != null) && (
+                    {checkedRequestIds.some(id => plannerNewQtyMap[id] != null || plannerNewPriceMap[id] != null) && (
                       <button
                         type="button"
                         onClick={async () => {
                           const itemsToUpdate = checkedRequestIds
-                            .filter(id => plannerNewQtyMap[id] != null)
+                            .filter(id => plannerNewQtyMap[id] != null || plannerNewPriceMap[id] != null)
                             .map(id => {
                               const r = myRequests.find(x => x.id === id);
                               if (!r) return null;
-                              const newQty = plannerNewQtyMap[id];
-                              const unitPrice = parseFloat(r.priceRmb || 0);
+                              const newQty = plannerNewQtyMap[id] != null ? plannerNewQtyMap[id] : parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+                              const newPrice = plannerNewPriceMap[id] != null ? plannerNewPriceMap[id] : parseFloat(r.priceRmb || 0);
                               return {
                                 ...r,
                                 vendorOrderQuantity: newQty,
-                                totalRmb: unitPrice > 0 ? unitPrice * newQty : r.totalRmb
+                                priceRmb: newPrice,
+                                totalRmb: newPrice > 0 ? newPrice * newQty : r.totalRmb
                               };
                             })
                             .filter(Boolean);
 
                           if (itemsToUpdate.length === 0) return;
-                          if (window.confirm(`Update order quantity for ${itemsToUpdate.length} item(s) in system?`)) {
+                          if (window.confirm(`Update order quantity and/or price for ${itemsToUpdate.length} item(s) in system?`)) {
                             if (batchUpdateRequests) {
-                              await batchUpdateRequests(itemsToUpdate, "UPDATE_QUANTITY", `Updated order quantities for ${itemsToUpdate.length} item(s)`);
+                              await batchUpdateRequests(itemsToUpdate, "UPDATE_QUANTITY_PRICE", `Updated order quantities and prices for ${itemsToUpdate.length} item(s)`);
                             } else {
                               for (const itm of itemsToUpdate) {
                                 await onUpdateRequest(itm);
                               }
                             }
-                            alert(`Successfully updated order quantity for ${itemsToUpdate.length} item(s).`);
+                            alert(`Successfully updated quantity/price for ${itemsToUpdate.length} item(s).`);
                           }
                         }}
                         className="btn btn-secondary"
                         style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem" }}
-                        title="Permanently save updated quantities to order records"
+                        title="Permanently save updated quantities and prices to order records"
                       >
-                        <CheckCircle2 size={16} style={{ color: "#10b981" }} /> Save New Quantities
+                        <CheckCircle2 size={16} style={{ color: "#10b981" }} /> Save New Quantities & Prices
                       </button>
                     )}
                     <button 
@@ -1917,15 +2007,25 @@ export default function PurchaserDashboard({
                       const itemReadyDate = (vrNewReadyDateMap && vrNewReadyDateMap[id]) || vrDate;
                       const updated = { ...r, vendorReadyDate: itemReadyDate };
                       const customNewQty = vrNewQtyMap[id];
+                      let currentQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
                       if (customNewQty !== undefined && customNewQty !== null && customNewQty !== "") {
                         const parsedQty = parseInt(customNewQty, 10);
                         if (!isNaN(parsedQty) && parsedQty > 0) {
                           updated.vendorOrderQuantity = parsedQty;
-                          const unitPrice = parseFloat(r.priceRmb || 0);
-                          if (unitPrice > 0) {
-                            updated.totalRmb = unitPrice * parsedQty;
-                          }
+                          currentQty = parsedQty;
                         }
+                      }
+                      const customNewPrice = vrNewPriceMap[id];
+                      let unitPrice = parseFloat(r.priceRmb || 0);
+                      if (customNewPrice !== undefined && customNewPrice !== null && customNewPrice !== "") {
+                        const parsedPrice = parseFloat(customNewPrice);
+                        if (!isNaN(parsedPrice) && parsedPrice >= 0) {
+                          updated.priceRmb = parsedPrice;
+                          unitPrice = parsedPrice;
+                        }
+                      }
+                      if (unitPrice > 0) {
+                        updated.totalRmb = unitPrice * currentQty;
                       }
                       toUpdate.push(updated);
                     }
@@ -1939,6 +2039,7 @@ export default function PurchaserDashboard({
                   }
                   setVrChecked([]);
                   setVrNewQtyMap({});
+                  setVrNewPriceMap({});
                   setVrNewReadyDateMap({});
                 }}
                 className="btn btn-success"
@@ -1953,7 +2054,7 @@ export default function PurchaserDashboard({
                   onClick={() => handleDownloadVrSampleFile(rawVrItems)}
                   className="btn btn-secondary btn-sm"
                   style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", padding: "8px 12px" }}
-                  title="Download sample Excel template (Order Date, Item Name, Qty)"
+                  title="Download sample Excel template (Order Date, Item Name, Qty, Price)"
                 >
                   <Download size={14} /> Download Sample File
                 </button>
@@ -1984,7 +2085,7 @@ export default function PurchaserDashboard({
                 }}
               >
                 <div style={{ fontSize: "0.86rem", color: "var(--text-main)" }}>
-                  <strong style={{ color: "var(--success, #16a34a)" }}>✓ {vrExcelNotification.matchedCount} item(s) matched & selected</strong> with updated quantities
+                  <strong style={{ color: "var(--success, #16a34a)" }}>✓ {vrExcelNotification.matchedCount} item(s) matched & selected</strong> with updated details
                   {vrExcelNotification.dateAdjustedCount > 0 && (
                     <span style={{ marginLeft: "6px", fontSize: "0.8rem", color: "var(--primary, #0284c7)" }}>
                       ({vrExcelNotification.dateAdjustedCount} date(s) smart-matched & corrected)
@@ -2038,6 +2139,30 @@ export default function PurchaserDashboard({
                 const val = (custom !== undefined && custom !== null && custom !== "") ? parseInt(custom, 10) : parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
                 return acc + (isNaN(val) ? 0 : val);
               }, 0);
+              const vrSelectedTotalPrice = vrSelectedItems.reduce((acc, r) => {
+                const origQ = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+                const customQ = vrNewQtyMap[r.id];
+                const effQ = (customQ !== undefined && customQ !== null && customQ !== "") ? parseInt(customQ, 10) : origQ;
+                const origP = parseFloat(r.priceRmb || 0);
+                const customP = vrNewPriceMap[r.id];
+                const effP = (customP !== undefined && customP !== null && customP !== "") ? parseFloat(customP) : origP;
+                const total = effP > 0 ? effP * effQ : parseFloat(r.totalRmb || 0);
+                return acc + (isNaN(total) ? 0 : total);
+              }, 0);
+              const vrSelectedDiffCount = vrSelectedItems.filter(r => {
+                const origQ = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+                const customQ = vrNewQtyMap[r.id];
+                const hasQ = customQ !== undefined && customQ !== null && customQ !== "";
+                const effQ = hasQ ? parseInt(customQ, 10) : origQ;
+
+                const origP = parseFloat(r.priceRmb || 0);
+                const customP = vrNewPriceMap[r.id];
+                const hasP = customP !== undefined && customP !== null && customP !== "";
+                const effP = hasP ? parseFloat(customP) : origP;
+
+                return (hasQ && effQ !== origQ) || (hasP && Math.abs(effP - origP) > 0.0001);
+              }).length;
+              const vrCurrency = vrSelectedItems[0]?.currency || "RMB";
 
               return vrItems.length === 0 ? (
                 <div className="glass-panel" style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
@@ -2081,6 +2206,15 @@ export default function PurchaserDashboard({
                               : `+${(vrSelectedNewQty - vrSelectedOrigQty).toLocaleString()} Pcs`}
                           </span>
                         )}
+                        {vrSelectedDiffCount > 0 && (
+                          <span className="badge badge-warning" style={{ fontSize: "0.78rem", padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: "5px", fontWeight: 700 }}>
+                            ⚠️ {vrSelectedDiffCount} item{vrSelectedDiffCount !== 1 ? "s" : ""} with differences
+                          </span>
+                        )}
+                        <span style={{ color: "var(--border-glass, #cbd5e1)", opacity: 0.6 }}>|</span>
+                        <span style={{ fontSize: "0.9rem", color: "var(--text-main)" }}>
+                          Total Price: <strong style={{ fontWeight: 800, fontSize: "1.02rem" }}>{getCurrencySymbol(vrCurrency)}{Number(vrSelectedTotalPrice.toFixed(2)).toLocaleString()}</strong>
+                        </span>
                       </div>
                       <button
                         type="button"
@@ -2106,6 +2240,8 @@ export default function PurchaserDashboard({
                           <RenderStep2SortHeader colKey="model" title="Item / Model" />
                           <RenderStep2SortHeader colKey="vendorOrderQuantity" title="Qty" getValue={r => Number(r.vendorOrderQuantity || r.orderQuantity)} />
                           <th style={{ color: "#38bdf8", minWidth: "125px" }}>New Qty</th>
+                          <RenderStep2SortHeader colKey="priceRmb" title="Unit Price" getValue={r => Number(r.priceRmb || 0)} />
+                          <th style={{ color: "#38bdf8", minWidth: "125px" }}>New Price</th>
                           <RenderStep2SortHeader colKey="vendorId" title="Vendor" getValue={r => vendors.find(v => v.id === r.vendorId)?.name || ""} />
                           <RenderStep2SortHeader colKey="orderDate" title="Order Date" />
                           <RenderStep2SortHeader colKey="vendorEdd" title="EDD" />
@@ -2117,15 +2253,26 @@ export default function PurchaserDashboard({
                         {vrItems.map(r => {
                           const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
                           const isLate = vrDate && r.vendorEdd && vrDate > r.vendorEdd;
+                          const isChecked = vrChecked.includes(r.id);
                           const origQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
                           const customNewQty = vrNewQtyMap[r.id];
                           const hasNewQty = customNewQty !== undefined && customNewQty !== null && customNewQty !== "";
                           const effectiveQty = hasNewQty ? parseInt(customNewQty, 10) : origQty;
+
+                          const origPrice = parseFloat(r.priceRmb || 0);
+                          const customNewPrice = vrNewPriceMap[r.id];
+                          const hasNewPrice = customNewPrice !== undefined && customNewPrice !== null && customNewPrice !== "";
+                          const effectivePrice = hasNewPrice ? parseFloat(customNewPrice) : origPrice;
+
+                          const isQtyDiff = hasNewQty && effectiveQty !== origQty;
+                          const isPriceDiff = hasNewPrice && Math.abs(effectivePrice - origPrice) > 0.0001;
+                          const isDiff = isChecked && (isQtyDiff || isPriceDiff);
+
                           return (
-                            <tr key={r.id} className={vrChecked.includes(r.id) ? "planner-row-selected" : ""}>
+                            <tr key={r.id} className={`${isChecked ? "planner-row-selected" : ""} ${isDiff ? "planner-row-diff-highlight" : ""}`}>
                               <td>
                                 <input type="checkbox" className="checkbox-input"
-                                  checked={vrChecked.includes(r.id)}
+                                  checked={isChecked}
                                   onChange={e => setVrChecked(prev => e.target.checked ? [...prev, r.id] : prev.filter(id => id !== r.id))}
                                 />
                               </td>
@@ -2207,6 +2354,59 @@ export default function PurchaserDashboard({
                                 </div>
                               </td>
 
+                              {/* Unit Price */}
+                              <td>
+                                <div><strong>{getCurrencySymbol(r.currency)}{Number(origPrice.toFixed(2)).toLocaleString()}</strong></div>
+                              </td>
+
+                              {/* New Price */}
+                              <td>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                    <input 
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      className="form-control"
+                                      style={{
+                                        width: "85px",
+                                        padding: "4px 8px",
+                                        fontSize: "0.85rem",
+                                        fontWeight: 700,
+                                        textAlign: "center",
+                                        borderColor: hasNewPrice ? "#38bdf8" : undefined,
+                                        background: hasNewPrice ? "rgba(56, 189, 248, 0.1)" : undefined,
+                                        color: hasNewPrice ? "#38bdf8" : undefined
+                                      }}
+                                      value={vrNewPriceMap[r.id] ?? ""}
+                                      placeholder={origPrice > 0 ? String(origPrice) : "0.00"}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setVrNewPriceMap(prev => {
+                                          const next = { ...prev };
+                                          if (val === "") {
+                                            delete next[r.id];
+                                          } else {
+                                            const num = parseFloat(val);
+                                            if (!isNaN(num)) next[r.id] = num;
+                                          }
+                                          return next;
+                                        });
+                                        if (val !== "" && !vrChecked.includes(r.id)) {
+                                          setVrChecked(prev => [...prev, r.id]);
+                                        }
+                                      }}
+                                    />
+                                    <span style={{ fontSize: "0.76rem", color: "var(--text-muted)" }}>{getCurrencySymbol(r.currency || "RMB")}</span>
+                                  </div>
+                                  {hasNewPrice && Math.abs(effectivePrice - origPrice) > 0.0001 && (
+                                    <span style={{ fontSize: "0.68rem", color: "#fbbf24", whiteSpace: "nowrap" }}>
+                                      {effectivePrice < origPrice ? `-${(origPrice - effectivePrice).toFixed(2)} less` : `+${(effectivePrice - origPrice).toFixed(2)}`}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
                               <td>{vName}</td>
                               <td>{r.orderDate}</td>
                               <td>{r.vendorEdd || "—"}</td>
@@ -2248,6 +2448,7 @@ export default function PurchaserDashboard({
                                 </span>
                               )}
                             </td>
+                            <td colSpan="2"></td>
                             <td colSpan="5"></td>
                           </tr>
                         </tfoot>
@@ -2978,10 +3179,11 @@ export default function PurchaserDashboard({
           onAddCargoCompany={onAddCargoCompany}
           onClose={() => setCreatingCargo(false)}
           onSave={(cargoDetails, itemPickedQtyMap) => {
-            onAddCargo(cargoDetails, checkedRequestIds, itemPickedQtyMap);
+            onAddCargo(cargoDetails, checkedRequestIds, itemPickedQtyMap, plannerNewPriceMap);
             setCreatingCargo(false);
             setCheckedRequestIds([]);
             setPlannerNewQtyMap({});
+            setPlannerNewPriceMap({});
             setActiveTab("cargopickup"); // Go to Cargo Pickup step next
           }}
         />
@@ -2994,10 +3196,13 @@ export default function PurchaserDashboard({
           vendorName={vendors.find(v => v.id === plannerVendorId)?.name || "Selected Vendor"}
           onClose={() => setShowExcelUpdateModal(false)}
           onApplyMatches={(analysis) => {
-            const { matchedReqIds, newQtyMap, newDateMap, matched, unmatched, syncOrderDates } = analysis;
+            const { matchedReqIds, newQtyMap, newPriceMap, newDateMap, matched, unmatched, syncOrderDates } = analysis;
 
             setCheckedRequestIds(prev => Array.from(new Set([...prev, ...matchedReqIds])));
             setPlannerNewQtyMap(prev => ({ ...prev, ...newQtyMap }));
+            if (newPriceMap && Object.keys(newPriceMap).length > 0) {
+              setPlannerNewPriceMap(prev => ({ ...prev, ...newPriceMap }));
+            }
 
             // If auto-correct date is enabled and we have date updates, sync them into the requests!
             if (syncOrderDates && newDateMap && Object.keys(newDateMap).length > 0) {
@@ -3054,10 +3259,13 @@ export default function PurchaserDashboard({
           notFoundFileName="NotFound_VendorReady_Items"
           onClose={() => setShowVrExcelModal(false)}
           onApplyMatches={(analysis) => {
-            const { matchedReqIds, newQtyMap, newDateMap, newReadyDateMap, matched, unmatched, syncOrderDates } = analysis;
+            const { matchedReqIds, newQtyMap, newPriceMap, newDateMap, newReadyDateMap, matched, unmatched, syncOrderDates } = analysis;
 
             setVrChecked(prev => Array.from(new Set([...prev, ...matchedReqIds])));
             setVrNewQtyMap(prev => ({ ...prev, ...newQtyMap }));
+            if (newPriceMap && Object.keys(newPriceMap).length > 0) {
+              setVrNewPriceMap(prev => ({ ...prev, ...newPriceMap }));
+            }
             if (newReadyDateMap && Object.keys(newReadyDateMap).length > 0) {
               setVrNewReadyDateMap(prev => ({ ...prev, ...newReadyDateMap }));
             }
@@ -3949,6 +4157,7 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
   let itemColIdx = -1;
   let qtyColIdx = -1;
   let readyDateColIdx = -1;
+  let priceColIdx = -1;
 
   for (let i = 0; i < Math.min(rawRows.length, 5); i++) {
     const row = rawRows[i];
@@ -3959,6 +4168,7 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
       if (dateColIdx === -1 && (cStr.includes("date") || cStr === "d") && idx !== readyDateColIdx) dateColIdx = idx;
       if (itemColIdx === -1 && (cStr.includes("model") || cStr.includes("item") || cStr.includes("name") || cStr === "e")) itemColIdx = idx;
       if (qtyColIdx === -1 && (cStr.includes("qty") || cStr.includes("quantity") || cStr.includes("count") || cStr === "f")) qtyColIdx = idx;
+      if (priceColIdx === -1 && (cStr.includes("price") || cStr.includes("rate") || cStr.includes("rmb") || cStr.includes("amount") || cStr.includes("cost") || cStr === "price rmb")) priceColIdx = idx;
     });
     if (dateColIdx !== -1 && (itemColIdx !== -1 || qtyColIdx !== -1)) {
       headerRowIdx = i;
@@ -3990,11 +4200,18 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
   if (dateColIdx === -1) dateColIdx = 0;
   if (itemColIdx === -1) itemColIdx = 1;
   if (qtyColIdx === -1) qtyColIdx = 2;
+  if (priceColIdx === -1) {
+    const col3HasPrice = dataRows.some(r => Array.isArray(r) && r[3] !== undefined && r[3] !== null && r[3] !== "" && !isNaN(parseFloat(String(r[3]).replace(/[^0-9.]/g, ""))));
+    if (col3HasPrice && readyDateColIdx !== 3 && dateColIdx !== 3 && itemColIdx !== 3 && qtyColIdx !== 3) {
+      priceColIdx = 3;
+    }
+  }
 
   const matched = [];
   const unmatched = [];
   const matchedReqIds = new Set();
   const newQtyMap = {};
+  const newPriceMap = {};
   const newDateMap = {};
   const newReadyDateMap = {};
 
@@ -4005,6 +4222,15 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
     const rawItem = row[itemColIdx];
     const rawQty = row[qtyColIdx];
     const rawReadyDate = readyDateColIdx !== -1 ? row[readyDateColIdx] : null;
+    const rawPrice = priceColIdx !== -1 ? row[priceColIdx] : null;
+
+    let priceNum = null;
+    if (rawPrice !== null && rawPrice !== undefined && String(rawPrice).trim() !== "") {
+      const parsedP = parseFloat(String(rawPrice).replace(/[^0-9.]/g, ""));
+      if (!isNaN(parsedP) && parsedP >= 0) {
+        priceNum = parsedP;
+      }
+    }
 
     const cleanDate = parseFlexibleDate(rawDate);
     const cleanReadyDate = rawReadyDate ? parseFlexibleDate(rawReadyDate) : null;
@@ -4018,6 +4244,7 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
         orderDate: cleanDate || String(rawDate || "—"),
         itemName: "—",
         qty: !isNaN(qtyNum) ? qtyNum : String(rawQty || "—"),
+        price: priceNum !== null ? priceNum : String(rawPrice || "—"),
         reason: "Item Name missing in file"
       });
       return;
@@ -4028,6 +4255,7 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
         orderDate: cleanDate || String(rawDate || "—"),
         itemName: itemStr,
         qty: String(rawQty || "—"),
+        price: priceNum !== null ? priceNum : String(rawPrice || "—"),
         reason: "Quantity missing or invalid in file"
       });
       return;
@@ -4065,6 +4293,9 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
 
       matchedReqIds.add(matchedReq.id);
       newQtyMap[matchedReq.id] = qtyNum;
+      if (priceNum !== null) {
+        newPriceMap[matchedReq.id] = priceNum;
+      }
       if (cleanDate) {
         newDateMap[matchedReq.id] = cleanDate;
       }
@@ -4079,7 +4310,9 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
         excelDate: cleanDate || String(rawDate || matchedReq.orderDate),
         isDateCorrected,
         originalQty: matchedReq.vendorOrderQuantity || matchedReq.orderQuantity,
-        newQty: qtyNum
+        newQty: qtyNum,
+        originalPrice: matchedReq.priceRmb,
+        newPrice: priceNum
       });
     } else {
       // No unclaimed candidate for this model
@@ -4099,12 +4332,13 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
         orderDate: cleanDate || String(rawDate || "—"),
         itemName: itemStr,
         qty: qtyNum,
+        price: priceNum !== null ? priceNum : String(rawPrice || "—"),
         reason: specificReason
       });
     }
   });
 
-  return { matched, unmatched, newQtyMap, newDateMap, newReadyDateMap, matchedReqIds: Array.from(matchedReqIds) };
+  return { matched, unmatched, newQtyMap, newPriceMap, newDateMap, newReadyDateMap, matchedReqIds: Array.from(matchedReqIds) };
 };
 
 // ==================== EXCEL SHIPPING / VENDOR READY QUANTITY UPDATE MODAL ====================
@@ -4246,10 +4480,10 @@ function ExcelShippingUpdateModal({
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
             <div>
               <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-main)", marginBottom: "4px" }}>
-                Required Columns: <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Order Date</code>, <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Item Name</code>, <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Qty</code>
+                Required Columns: <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Order Date</code>, <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Item Name</code>, <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Qty</code>, <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Price (Optional)</code>
               </div>
               <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                Matches by Order Date & Item Name. Matched items are auto-selected with New Qty filled. Any unmatched items will be automatically downloaded to <code style={{ padding: "1px 5px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)" }}>{notFoundFileName}.xlsx</code>.
+                Matches by Order Date & Item Name. Matched items are auto-selected with New Qty and New Price filled. Any unmatched items will be automatically downloaded to <code style={{ padding: "1px 5px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)" }}>{notFoundFileName}.xlsx</code>.
               </div>
             </div>
             <button
@@ -4357,7 +4591,7 @@ function ExcelShippingUpdateModal({
             <textarea
               className="form-control"
               rows={5}
-              placeholder={`Paste rows from Excel or Google Sheets here...\nExample:\n9/7/2026\tBLP837\t30\n9/7/2026\tBN51\t352`}
+              placeholder={`Paste rows from Excel or Google Sheets here...\nExample:\n9/7/2026\tBLP837\t30\t15.5\n9/7/2026\tBN51\t352\t12.0`}
               value={pastedText}
               onChange={e => setPastedText(e.target.value)}
               style={{ fontSize: "0.82rem", fontFamily: "monospace" }}
@@ -4416,6 +4650,8 @@ function ExcelShippingUpdateModal({
                         <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Model</th>
                         <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Current Qty</th>
                         <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>New Qty</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Current Price</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>New Price</th>
                         <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Match Status</th>
                       </tr>
                     </thead>
@@ -4433,6 +4669,10 @@ function ExcelShippingUpdateModal({
                           <td style={{ padding: "6px 10px", fontWeight: 600, color: "var(--primary, #0284c7)" }}>{m.model}</td>
                           <td style={{ padding: "6px 10px", color: "var(--text-muted)" }}>{m.originalQty} Pcs</td>
                           <td style={{ padding: "6px 10px", fontWeight: 700, color: "var(--success, #16a34a)" }}>{m.newQty} Pcs</td>
+                          <td style={{ padding: "6px 10px", color: "var(--text-muted)" }}>{m.originalPrice != null ? `¥${m.originalPrice}` : "—"}</td>
+                          <td style={{ padding: "6px 10px", fontWeight: 700, color: m.newPrice != null ? "var(--primary, #0284c7)" : "var(--text-muted)" }}>
+                            {m.newPrice != null ? `¥${m.newPrice}` : "—"}
+                          </td>
                           <td style={{ padding: "6px 10px" }}>
                             {m.isDateCorrected ? (
                               <span style={{ fontSize: "0.7rem", padding: "2px 7px", borderRadius: "4px", background: "rgba(56, 189, 248, 0.12)", color: "var(--primary, #0284c7)", fontWeight: 600, border: "1px solid rgba(56, 189, 248, 0.25)" }}>
@@ -4470,6 +4710,7 @@ function ExcelShippingUpdateModal({
                         <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Date</th>
                         <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Item Name</th>
                         <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Qty</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Price</th>
                         <th style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-muted)" }}>Reason Not Found</th>
                       </tr>
                     </thead>
@@ -4481,6 +4722,7 @@ function ExcelShippingUpdateModal({
                             <td style={{ padding: "6px 10px", color: "var(--text-main)" }}>{u.orderDate}</td>
                             <td style={{ padding: "6px 10px", fontWeight: 600, color: "var(--danger, #dc2626)" }}>{u.itemName}</td>
                             <td style={{ padding: "6px 10px", color: "var(--text-main)" }}>{u.qty}</td>
+                            <td style={{ padding: "6px 10px", color: "var(--text-main)" }}>{u.price || "—"}</td>
                             <td style={{ padding: "6px 10px" }}>
                               <span style={{ 
                                 display: "inline-block", 
@@ -4699,7 +4941,6 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
                         <input 
                           type="number" 
                           min="1" 
-                          max={vendorQty}
                           style={{ width: "95px", padding: "5px 10px", fontSize: "0.88rem", fontWeight: 700, textAlign: "center" }}
                           className="form-control"
                           value={currentPicked}
@@ -4709,11 +4950,15 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
                           }}
                         />
                       </div>
-                      {remaining > 0 && (
+                      {remaining > 0 ? (
                         <span style={{ fontSize: "0.75rem", fontWeight: 700, background: "rgba(245,158,11,0.15)", color: "#b45309", border: "1px solid rgba(245,158,11,0.3)", padding: "4px 10px", borderRadius: "6px", whiteSpace: "nowrap" }}>
                           {remaining} Pcs stays at vendor
                         </span>
-                      )}
+                      ) : currentPicked > vendorQty ? (
+                        <span style={{ fontSize: "0.75rem", fontWeight: 700, background: "rgba(16,185,129,0.15)", color: "#059669", border: "1px solid rgba(16,185,129,0.3)", padding: "4px 10px", borderRadius: "6px", whiteSpace: "nowrap" }}>
+                          +{currentPicked - vendorQty} Pcs extra
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 );

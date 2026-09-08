@@ -952,7 +952,7 @@ export default function App() {
     logSystemActivity("UNDO_PRICING", `Undid pricing for ${target.model} (#${target.id})`, "Requisition", target.id, target, updated);
   };
 
-  const addCargo = async (cargoDetails, selectedRequestIds, itemPickedQtyMap = {}) => {
+  const addCargo = async (cargoDetails, selectedRequestIds, itemPickedQtyMap = {}, itemPickedPriceMap = {}) => {
     const newCargoId = `cargo-${Date.now()}`;
     const newCargo = {
       id: newCargoId,
@@ -971,16 +971,19 @@ export default function App() {
       const totalVendorQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0);
       const pickedQty = itemPickedQtyMap[r.id] != null ? parseInt(itemPickedQtyMap[r.id]) : totalVendorQty;
       const remainingQty = totalVendorQty > pickedQty ? totalVendorQty - pickedQty : 0;
+      const customPrice = itemPickedPriceMap[r.id] != null ? parseFloat(itemPickedPriceMap[r.id]) : null;
+      const effectivePrice = (customPrice !== null && !isNaN(customPrice) && customPrice >= 0) ? customPrice : (r.priceRmb ? parseFloat(r.priceRmb) : 0);
 
       const updatedReq = {
         ...r,
         cargoId: newCargoId,
         cargoPickedQty: pickedQty,
         vendorOrderQuantity: pickedQty,
+        priceRmb: effectivePrice > 0 ? effectivePrice : r.priceRmb,
         cargoAssignedAt: new Date().toISOString(),
         isMaterialRec: newCargo.isMaterialRec,
         actualReceivedDate: newCargo.isMaterialRec === "Yes" ? (cargoDetails.receivedDate || new Date().toISOString().split("T")[0]) : "",
-        totalRmb: r.priceRmb ? parseFloat(r.priceRmb) * pickedQty : r.totalRmb
+        totalRmb: effectivePrice > 0 ? effectivePrice * pickedQty : (r.priceRmb ? parseFloat(r.priceRmb) * pickedQty : r.totalRmb)
       };
       updatedItems.push(updatedReq);
 
@@ -990,6 +993,8 @@ export default function App() {
           id: `req-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
           orderQuantity: remainingQty,
           vendorOrderQuantity: remainingQty,
+          priceRmb: effectivePrice > 0 ? effectivePrice : r.priceRmb,
+          totalRmb: effectivePrice > 0 ? effectivePrice * remainingQty : (r.priceRmb ? parseFloat(r.priceRmb) * remainingQty : r.totalRmb),
           cargoId: "",
           cargoPickedQty: 0,
           cargoAssignedAt: "",
