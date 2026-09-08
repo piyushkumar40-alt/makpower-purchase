@@ -360,6 +360,7 @@ export default function PurchaserDashboard({
   const [vrNewReadyDateMap, setVrNewReadyDateMap] = useState({}); // { [reqId]: string }
   const [showVrExcelModal, setShowVrExcelModal] = useState(false);
   const [vrExcelNotification, setVrExcelNotification] = useState(null); // { matchedCount, dateAdjustedCount, unmatchedCount, unmatchedList, timestamp }
+  const [vrSortDiffTop, setVrSortDiffTop] = useState(false);
   // Cargo-pickup bulk selection
   const [cpFilter, setCpFilter] = useState("");        // vendor filter for cargo-pickup tab
   const [cpChecked, setCpChecked] = useState([]);     // checked request ids
@@ -370,6 +371,7 @@ export default function PurchaserDashboard({
   const [checkedRequestIds, setCheckedRequestIds] = useState([]);
   const [plannerNewQtyMap, setPlannerNewQtyMap] = useState({}); // { [reqId]: number }
   const [plannerNewPriceMap, setPlannerNewPriceMap] = useState({}); // { [reqId]: number }
+  const [plannerSortDiffTop, setPlannerSortDiffTop] = useState(false);
   const [showExcelUpdateModal, setShowExcelUpdateModal] = useState(false);
   const [excelNotification, setExcelNotification] = useState(null); // { matchedCount, unmatchedCount, unmatchedList, timestamp }
 
@@ -1557,16 +1559,62 @@ export default function PurchaserDashboard({
                         Total New Qty: <strong style={{ fontWeight: 800, fontSize: "1.05rem" }}>{selectedNewQty.toLocaleString()} Pcs</strong>
                       </span>
                       {selectedOrigQty !== selectedNewQty && (
-                        <span className="badge badge-warning" style={{ fontSize: "0.75rem", padding: "4px 8px" }}>
-                          {selectedNewQty < selectedOrigQty
-                            ? `${(selectedOrigQty - selectedNewQty).toLocaleString()} Pcs at vendor`
-                            : `+${(selectedNewQty - selectedOrigQty).toLocaleString()} Pcs`}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPlannerSortDiffTop(prev => !prev)}
+                          className="badge badge-warning"
+                          style={{
+                            fontSize: "0.75rem",
+                            padding: "4px 10px",
+                            cursor: "pointer",
+                            border: plannerSortDiffTop ? "2px solid #0284c7" : "1px solid rgba(245,158,11,0.4)",
+                            boxShadow: plannerSortDiffTop ? "0 0 10px rgba(56, 189, 248, 0.5)" : "none",
+                            background: plannerSortDiffTop ? "rgba(56, 189, 248, 0.25)" : undefined,
+                            color: plannerSortDiffTop ? "#0284c7" : undefined,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                            fontWeight: 700,
+                            transition: "all 0.15s ease"
+                          }}
+                          title={plannerSortDiffTop ? "Click to restore normal sorting" : "Click to show difference item(s) on top"}
+                        >
+                          <span>
+                            {selectedNewQty < selectedOrigQty
+                              ? `${(selectedOrigQty - selectedNewQty).toLocaleString()} Pcs at vendor`
+                              : `+${(selectedNewQty - selectedOrigQty).toLocaleString()} Pcs`}
+                          </span>
+                          {plannerSortDiffTop && <span style={{ fontSize: "0.7rem", fontWeight: 800 }}>↑ (On Top)</span>}
+                        </button>
                       )}
                       {selectedDiffCount > 0 && (
-                        <span className="badge badge-warning" style={{ fontSize: "0.78rem", padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: "5px", fontWeight: 700 }}>
-                          ⚠️ {selectedDiffCount} item{selectedDiffCount !== 1 ? "s" : ""} with differences
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPlannerSortDiffTop(prev => !prev)}
+                          className="badge badge-warning"
+                          style={{
+                            fontSize: "0.78rem",
+                            padding: "4px 10px",
+                            cursor: "pointer",
+                            border: plannerSortDiffTop ? "2px solid #0284c7" : "1px solid rgba(245,158,11,0.4)",
+                            boxShadow: plannerSortDiffTop ? "0 0 10px rgba(56, 189, 248, 0.5)" : "none",
+                            background: plannerSortDiffTop ? "rgba(56, 189, 248, 0.25)" : undefined,
+                            color: plannerSortDiffTop ? "#0284c7" : undefined,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                            fontWeight: 700,
+                            transition: "all 0.15s ease"
+                          }}
+                          title={plannerSortDiffTop ? "Click to restore normal sorting" : "Click to show difference item(s) on top"}
+                        >
+                          <span>⚠️ {selectedDiffCount} item{selectedDiffCount !== 1 ? "s" : ""} with differences</span>
+                          {plannerSortDiffTop ? (
+                            <span style={{ fontSize: "0.7rem", fontWeight: 800 }}>↑ (On Top)</span>
+                          ) : (
+                            <span style={{ fontSize: "0.7rem", opacity: 0.8 }}>(Click to show on top)</span>
+                          )}
+                        </button>
                       )}
                       <span style={{ color: "var(--border-glass, #cbd5e1)", opacity: 0.6 }}>|</span>
                       <span style={{ fontSize: "0.9rem", color: "var(--text-main)" }}>
@@ -1619,14 +1667,41 @@ export default function PurchaserDashboard({
                       </tr>
                     </thead>
                     <tbody>
-                      {readyRequests.length === 0 ? (
-                        <tr>
-                          <td colSpan="12" style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
-                            No items priced for this vendor. Go to <strong>Step 1: Commercial & Timeline Specification</strong> to assign vendor and price.
-                          </td>
-                        </tr>
-                      ) : (
-                        readyRequests.map(r => {
+                      {(() => {
+                        const itemsToRender = [...readyRequests].sort((a, b) => {
+                          if (!plannerSortDiffTop) return 0;
+                          const getDiffScore = (r) => {
+                            const isChecked = checkedRequestIds.includes(r.id);
+                            const origQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+                            const customNewQty = plannerNewQtyMap[r.id];
+                            const hasNewQty = customNewQty !== undefined && customNewQty !== null && customNewQty !== "";
+                            const effectiveQty = hasNewQty ? parseInt(customNewQty, 10) : origQty;
+
+                            const origPrice = parseFloat(r.priceRmb || 0);
+                            const customNewPrice = plannerNewPriceMap[r.id];
+                            const hasNewPrice = customNewPrice !== undefined && customNewPrice !== null && customNewPrice !== "";
+                            const effectivePrice = hasNewPrice ? parseFloat(customNewPrice) : origPrice;
+
+                            const isQtyDiff = hasNewQty && effectiveQty !== origQty;
+                            const isPriceDiff = hasNewPrice && Math.abs(effectivePrice - origPrice) > 0.0001;
+                            const hasDiff = isQtyDiff || isPriceDiff;
+
+                            if (isChecked && hasDiff) return 3;
+                            if (hasDiff) return 2;
+                            if (isChecked) return 1;
+                            return 0;
+                          };
+                          return getDiffScore(b) - getDiffScore(a);
+                        });
+
+                        return itemsToRender.length === 0 ? (
+                          <tr>
+                            <td colSpan="12" style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                              No items priced for this vendor. Go to <strong>Step 1: Commercial & Timeline Specification</strong> to assign vendor and price.
+                            </td>
+                          </tr>
+                        ) : (
+                          itemsToRender.map(r => {
                           const isChecked = checkedRequestIds.includes(r.id);
                           const undoHours = hoursRemaining48(r.pricedAt);
                           const origQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
@@ -1840,7 +1915,8 @@ export default function PurchaserDashboard({
                             </tr>
                           );
                         })
-                      )}
+                      );
+                    })()}
                     </tbody>
                     {selectedCount > 0 && (
                       <tfoot>
@@ -2200,16 +2276,62 @@ export default function PurchaserDashboard({
                           Total New Qty: <strong style={{ fontWeight: 800, fontSize: "1.05rem" }}>{vrSelectedNewQty.toLocaleString()} Pcs</strong>
                         </span>
                         {vrSelectedOrigQty !== vrSelectedNewQty && (
-                          <span className="badge badge-warning" style={{ fontSize: "0.75rem", padding: "4px 8px" }}>
-                            {vrSelectedNewQty < vrSelectedOrigQty
-                              ? `${(vrSelectedOrigQty - vrSelectedNewQty).toLocaleString()} Pcs less`
-                              : `+${(vrSelectedNewQty - vrSelectedOrigQty).toLocaleString()} Pcs`}
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setVrSortDiffTop(prev => !prev)}
+                            className="badge badge-warning"
+                            style={{
+                              fontSize: "0.75rem",
+                              padding: "4px 10px",
+                              cursor: "pointer",
+                              border: vrSortDiffTop ? "2px solid #0284c7" : "1px solid rgba(245,158,11,0.4)",
+                              boxShadow: vrSortDiffTop ? "0 0 10px rgba(56, 189, 248, 0.5)" : "none",
+                              background: vrSortDiffTop ? "rgba(56, 189, 248, 0.25)" : undefined,
+                              color: vrSortDiffTop ? "#0284c7" : undefined,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "5px",
+                              fontWeight: 700,
+                              transition: "all 0.15s ease"
+                            }}
+                            title={vrSortDiffTop ? "Click to restore normal sorting" : "Click to show difference item(s) on top"}
+                          >
+                            <span>
+                              {vrSelectedNewQty < vrSelectedOrigQty
+                                ? `${(vrSelectedOrigQty - vrSelectedNewQty).toLocaleString()} Pcs less`
+                                : `+${(vrSelectedNewQty - vrSelectedOrigQty).toLocaleString()} Pcs`}
+                            </span>
+                            {vrSortDiffTop && <span style={{ fontSize: "0.7rem", fontWeight: 800 }}>↑ (On Top)</span>}
+                          </button>
                         )}
                         {vrSelectedDiffCount > 0 && (
-                          <span className="badge badge-warning" style={{ fontSize: "0.78rem", padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: "5px", fontWeight: 700 }}>
-                            ⚠️ {vrSelectedDiffCount} item{vrSelectedDiffCount !== 1 ? "s" : ""} with differences
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setVrSortDiffTop(prev => !prev)}
+                            className="badge badge-warning"
+                            style={{
+                              fontSize: "0.78rem",
+                              padding: "4px 10px",
+                              cursor: "pointer",
+                              border: vrSortDiffTop ? "2px solid #0284c7" : "1px solid rgba(245,158,11,0.4)",
+                              boxShadow: vrSortDiffTop ? "0 0 10px rgba(56, 189, 248, 0.5)" : "none",
+                              background: vrSortDiffTop ? "rgba(56, 189, 248, 0.25)" : undefined,
+                              color: vrSortDiffTop ? "#0284c7" : undefined,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "5px",
+                              fontWeight: 700,
+                              transition: "all 0.15s ease"
+                            }}
+                            title={vrSortDiffTop ? "Click to restore normal sorting" : "Click to show difference item(s) on top"}
+                          >
+                            <span>⚠️ {vrSelectedDiffCount} item{vrSelectedDiffCount !== 1 ? "s" : ""} with differences</span>
+                            {vrSortDiffTop ? (
+                              <span style={{ fontSize: "0.7rem", fontWeight: 800 }}>↑ (On Top)</span>
+                            ) : (
+                              <span style={{ fontSize: "0.7rem", opacity: 0.8 }}>(Click to show on top)</span>
+                            )}
+                          </button>
                         )}
                         <span style={{ color: "var(--border-glass, #cbd5e1)", opacity: 0.6 }}>|</span>
                         <span style={{ fontSize: "0.9rem", color: "var(--text-main)" }}>
@@ -2250,7 +2372,34 @@ export default function PurchaserDashboard({
                         </tr>
                       </thead>
                       <tbody>
-                        {vrItems.map(r => {
+                        {(() => {
+                          const itemsToRender = [...vrItems].sort((a, b) => {
+                            if (!vrSortDiffTop) return 0;
+                            const getDiffScore = (r) => {
+                              const isChecked = vrChecked.includes(r.id);
+                              const origQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+                              const customNewQty = vrNewQtyMap[r.id];
+                              const hasNewQty = customNewQty !== undefined && customNewQty !== null && customNewQty !== "";
+                              const effectiveQty = hasNewQty ? parseInt(customNewQty, 10) : origQty;
+
+                              const origPrice = parseFloat(r.priceRmb || 0);
+                              const customNewPrice = vrNewPriceMap[r.id];
+                              const hasNewPrice = customNewPrice !== undefined && customNewPrice !== null && customNewPrice !== "";
+                              const effectivePrice = hasNewPrice ? parseFloat(customNewPrice) : origPrice;
+
+                              const isQtyDiff = hasNewQty && effectiveQty !== origQty;
+                              const isPriceDiff = hasNewPrice && Math.abs(effectivePrice - origPrice) > 0.0001;
+                              const hasDiff = isQtyDiff || isPriceDiff;
+
+                              if (isChecked && hasDiff) return 3;
+                              if (hasDiff) return 2;
+                              if (isChecked) return 1;
+                              return 0;
+                            };
+                            return getDiffScore(b) - getDiffScore(a);
+                          });
+
+                          return itemsToRender.map(r => {
                           const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
                           const isLate = vrDate && r.vendorEdd && vrDate > r.vendorEdd;
                           const isChecked = vrChecked.includes(r.id);
@@ -2420,7 +2569,8 @@ export default function PurchaserDashboard({
                               </td>
                             </tr>
                           );
-                        })}
+                        });
+                      })()}
                       </tbody>
                       {vrSelectedCount > 0 && (
                         <tfoot>
