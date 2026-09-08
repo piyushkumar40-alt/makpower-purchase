@@ -169,9 +169,9 @@ export default function AuditLogsPanel({ auditLogs = [], users = [], requests = 
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <User size={15} style={{ color: "var(--primary)" }} />
           <select className="form-control" value={selectedUser} onChange={e => setSelectedUser(e.target.value)} style={{ minWidth: "160px" }}>
-            <option value="all" style={{ background: "#0f172a" }}>All Staff Users ({users.length})</option>
+            <option value="all">All Staff Users ({users.length})</option>
             {users.map(u => (
-              <option key={u.id} value={u.id} style={{ background: "#0f172a" }}>
+              <option key={u.id} value={u.id}>
                 {u.name} ({u.role})
               </option>
             ))}
@@ -182,13 +182,13 @@ export default function AuditLogsPanel({ auditLogs = [], users = [], requests = 
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <Filter size={15} style={{ color: "var(--secondary)" }} />
           <select className="form-control" value={selectedAction} onChange={e => setSelectedAction(e.target.value)} style={{ minWidth: "160px" }}>
-            <option value="all" style={{ background: "#0f172a" }}>All Action Types</option>
-            <option value="PRICING" style={{ background: "#0f172a" }}>Pricing & Commercials</option>
-            <option value="CARGO" style={{ background: "#0f172a" }}>Cargo & Logistics</option>
-            <option value="REQUEST" style={{ background: "#0f172a" }}>Requisitions & Orders</option>
-            <option value="VENDOR" style={{ background: "#0f172a" }}>Vendor Operations</option>
-            <option value="ITEM" style={{ background: "#0f172a" }}>Master Item Catalog</option>
-            <option value="USER" style={{ background: "#0f172a" }}>User Sessions & Security</option>
+            <option value="all">All Action Types</option>
+            <option value="PRICING">Pricing & Commercials</option>
+            <option value="CARGO">Cargo & Logistics</option>
+            <option value="REQUEST">Requisitions & Orders</option>
+            <option value="VENDOR">Vendor Operations</option>
+            <option value="ITEM">Master Item Catalog</option>
+            <option value="USER">User Sessions & Security</option>
           </select>
         </div>
 

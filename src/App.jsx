@@ -22,6 +22,7 @@ import {
   TRACKABLE_MODULES 
 } from "./utils/userIntentionTracker";
 import { isDateInBetween } from "./components/DateRangeFilter";
+import { cleanCategoryName } from "./utils/formatters";
 
 // Helper to ensure party name acts as primary key and duplicates above the last party are deleted
 export function deduplicatePartiesKeepLast(parties) {
@@ -57,6 +58,9 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
+    document.documentElement.setAttribute("data-bs-theme", theme);
+    document.body.setAttribute("data-theme", theme);
+    document.body.setAttribute("data-bs-theme", theme);
     localStorage.setItem("makpower_theme", theme);
   }, [theme]);
 
@@ -150,8 +154,18 @@ export default function App() {
   });
   const [partyCategoryMonthlySales, setPartyCategoryMonthlySales] = useState(() => cachedState?.partyCategoryMonthlySales || []);
   const [partyCategoryMonths, setPartyCategoryMonths] = useState(() => cachedState?.partyCategoryMonths || []);
-  const [settings, setSettings] = useState(() => cachedState?.settings || { isHidden: false, redirectUrl: "https://www.google.com" });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => {
+    try {
+      const saved = localStorage.getItem("makpower_app_state_cache");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && Array.isArray(parsed.users) && parsed.users.length > 0) {
+          return false; // Instant 0ms startup from local cache!
+        }
+      }
+    } catch (e) {}
+    return true;
+  });
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
 
@@ -487,13 +501,13 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
 
-    // Safety timeout: only fallback after 3 minutes if backend fails completely
+    // Safety timeout: only fallback after 8 seconds if backend is unresponsive
     const safetyTimer = setTimeout(() => {
       if (isMounted) {
         setLoading(false);
         setInitialLoadComplete(true);
       }
-    }, 180000);
+    }, 8000);
 
     async function loadData(isInterval = false) {
       try {
@@ -502,34 +516,34 @@ export default function App() {
         const data = await res.json();
         if (!isMounted) return;
 
-        if (Array.isArray(data.users)) setUsers(data.users.map(normalizeUserData));
+        if (Array.isArray(data.users) && data.users.length > 0) setUsers(data.users.map(normalizeUserData));
         if (Array.isArray(data.vendors)) setVendors(data.vendors);
         if (Array.isArray(data.requests)) setRequests(data.requests.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
         if (Array.isArray(data.cargos)) setCargos(data.cargos);
         if (Array.isArray(data.cargoCompanies)) setCargoCompanies(data.cargoCompanies);
         if (Array.isArray(data.items)) setItems(data.items);
-        if (Array.isArray(data.designations)) setDesignations(data.designations);
-        if (Array.isArray(data.crmParties)) setCrmParties(deduplicatePartiesKeepLast(data.crmParties));
-        if (Array.isArray(data.crmSalesOrders)) setCrmSalesOrders(data.crmSalesOrders);
-        if (Array.isArray(data.crmDispatches)) setCrmDispatches(data.crmDispatches);
+        if (Array.isArray(data.designations) && data.designations.length > 0) setDesignations(data.designations);
+        if (Array.isArray(data.crmParties) && data.crmParties.length > 0) setCrmParties(deduplicatePartiesKeepLast(data.crmParties));
+        if (Array.isArray(data.crmSalesOrders) && data.crmSalesOrders.length > 0) setCrmSalesOrders(data.crmSalesOrders);
+        if (Array.isArray(data.crmDispatches) && data.crmDispatches.length > 0) setCrmDispatches(data.crmDispatches);
         if (data.imsSummary) {
           setImsSummary(data.imsSummary);
         }
-        if (Array.isArray(data.imsTransactions)) {
+        if (Array.isArray(data.imsTransactions) && data.imsTransactions.length > 0) {
           if (!loadedModulesRef.current.has(TRACKABLE_MODULES.IMS_TRANSACTIONS) && !loadedModulesRef.current.has("imsTransactions")) {
             setImsTransactions(data.imsTransactions);
           }
         }
-        if (Array.isArray(data.itemPrices)) {
+        if (Array.isArray(data.itemPrices) && data.itemPrices.length > 0) {
           setItemPrices(data.itemPrices);
         }
-        if (Array.isArray(data.crmPartyRemarks)) {
+        if (Array.isArray(data.crmPartyRemarks) && data.crmPartyRemarks.length > 0) {
           setCrmPartyRemarks(data.crmPartyRemarks);
         }
-        if (Array.isArray(data.partyCategoryMonthlySales)) {
+        if (Array.isArray(data.partyCategoryMonthlySales) && data.partyCategoryMonthlySales.length > 0) {
           setPartyCategoryMonthlySales(data.partyCategoryMonthlySales);
         }
-        if (Array.isArray(data.partyCategoryMonths)) {
+        if (Array.isArray(data.partyCategoryMonths) && data.partyCategoryMonths.length > 0) {
           setPartyCategoryMonths(data.partyCategoryMonths);
         }
         
@@ -549,22 +563,29 @@ export default function App() {
 
         setTimeout(() => {
           try {
+            const existingCache = (() => {
+              try {
+                const s = localStorage.getItem("makpower_app_state_cache");
+                return s ? JSON.parse(s) : {};
+              } catch (e) { return {}; }
+            })();
+
             localStorage.setItem("makpower_app_state_cache", JSON.stringify({
-              users: data.users || [],
-              vendors: data.vendors || [],
-              requests: data.requests || [],
-              cargos: data.cargos || [],
-              cargoCompanies: data.cargoCompanies || [],
-              items: data.items || [],
-              designations: data.designations || [],
-              crmParties: deduplicatePartiesKeepLast(data.crmParties || []),
-              crmSalesOrders: data.crmSalesOrders || [],
-              crmDispatches: data.crmDispatches || [],
-              imsTransactions: (data.imsTransactions || []).slice(0, 1000),
-              imsSummary: data.imsSummary || null,
-              itemPrices: data.itemPrices || [],
-              crmPartyRemarks: data.crmPartyRemarks || [],
-              settings: data.settings || {}
+              users: (Array.isArray(data.users) && data.users.length > 0) ? data.users : (existingCache.users || []),
+              vendors: Array.isArray(data.vendors) ? data.vendors : (existingCache.vendors || []),
+              requests: Array.isArray(data.requests) ? data.requests : (existingCache.requests || []),
+              cargos: Array.isArray(data.cargos) ? data.cargos : (existingCache.cargos || []),
+              cargoCompanies: Array.isArray(data.cargoCompanies) ? data.cargoCompanies : (existingCache.cargoCompanies || []),
+              items: Array.isArray(data.items) ? data.items : (existingCache.items || []),
+              designations: (Array.isArray(data.designations) && data.designations.length > 0) ? data.designations : (existingCache.designations || []),
+              crmParties: (Array.isArray(data.crmParties) && data.crmParties.length > 0) ? deduplicatePartiesKeepLast(data.crmParties) : (existingCache.crmParties || []),
+              crmSalesOrders: (Array.isArray(data.crmSalesOrders) && data.crmSalesOrders.length > 0) ? data.crmSalesOrders : (existingCache.crmSalesOrders || []),
+              crmDispatches: (Array.isArray(data.crmDispatches) && data.crmDispatches.length > 0) ? data.crmDispatches : (existingCache.crmDispatches || []),
+              imsTransactions: (Array.isArray(data.imsTransactions) && data.imsTransactions.length > 0) ? data.imsTransactions.slice(0, 1000) : (existingCache.imsTransactions || []),
+              imsSummary: data.imsSummary || existingCache.imsSummary || null,
+              itemPrices: (Array.isArray(data.itemPrices) && data.itemPrices.length > 0) ? data.itemPrices : (existingCache.itemPrices || []),
+              crmPartyRemarks: (Array.isArray(data.crmPartyRemarks) && data.crmPartyRemarks.length > 0) ? data.crmPartyRemarks : (existingCache.crmPartyRemarks || []),
+              settings: data.settings || existingCache.settings || {}
             }));
           } catch (e) {
             console.warn("Local cache save warning:", e);
@@ -1652,7 +1673,7 @@ export default function App() {
     const allPurchaserIds = users.filter(u => u.role === "purchaser").map(u => u.id);
     const validPurchaserIds = Array.isArray(purchaserIds) && purchaserIds.length > 0 
       ? purchaserIds 
-      : allPurchaserIds;
+      : (currentUser?.role === "purchaser" && currentUser?.id ? [currentUser.id] : allPurchaserIds);
 
     const newVendor = {
       id: `v-${Date.now()}`,
@@ -2326,7 +2347,9 @@ export default function App() {
             <div>
               <h2 style={{ fontSize: "1.45rem", fontWeight: 800, color: "#fff", margin: "0 0 8px 0" }}>Loading data please wait!</h2>
               <p style={{ color: "var(--text-muted)", fontSize: "0.88rem", margin: 0, lineHeight: 1.5 }}>
-                Syncing party accounts, orders, dispatches & dashboard metrics from cloud server...
+                {currentUser?.role === "purchaser" || currentUser?.role === "requester"
+                  ? "Syncing purchase orders, vendors, transit cargos & items from cloud server..."
+                  : "Syncing party accounts, orders, dispatches & dashboard metrics from cloud server..."}
               </p>
             </div>
             <div style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "0.8rem", color: "#38bdf8", background: "rgba(56, 189, 248, 0.1)", padding: "6px 14px", borderRadius: "20px" }}>

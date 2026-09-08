@@ -16,9 +16,18 @@ export const formatIndianCurrency = (amount, symbol = "₹") => {
   return `${sign}${symbol} ${Math.round(num).toLocaleString("en-IN")}`;
 };
 
+export const cleanCategoryName = (category) => {
+  if (!category || typeof category !== "string") return category || "";
+  let str = category.trim();
+  // Strip leading prefixes like "Z ", "ZZ ", "S " (case-insensitive, including any chained combinations)
+  str = str.replace(/^((ZZ|Z|S)\s+)+/i, "").trim();
+  return str;
+};
+
 export const normalizeCategoryName = (category) => {
   if (!category) return "General";
-  const str = String(category).trim();
+  let str = cleanCategoryName(String(category));
+  if (!str) return "General";
   if (str.toLowerCase().includes("polymer")) {
     return "Polymer";
   }

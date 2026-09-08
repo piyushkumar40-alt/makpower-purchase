@@ -2853,9 +2853,9 @@ export default function SuperAdminDashboard({
                       value={storageFilterSource}
                       onChange={e => setStorageFilterSource(e.target.value)}
                     >
-                      <option value="all" style={{ background: "#0f172a" }}>All Storage Sources</option>
-                      <option value="postgres" style={{ background: "#0f172a" }}>PostgreSQL Database Only</option>
-                      <option value="cloudinary" style={{ background: "#0f172a" }}>Cloudinary CDN Only</option>
+                      <option value="all">All Storage Sources</option>
+                      <option value="postgres">PostgreSQL Database Only</option>
+                      <option value="cloudinary">Cloudinary CDN Only</option>
                     </select>
 
                     {/* File Format Filter */}
@@ -2865,9 +2865,9 @@ export default function SuperAdminDashboard({
                       value={storageFileType}
                       onChange={e => setStorageFileType(e.target.value)}
                     >
-                      <option value="all" style={{ background: "#0f172a" }}>All File Types</option>
-                      <option value="image" style={{ background: "#0f172a" }}>Images Only</option>
-                      <option value="pdf" style={{ background: "#0f172a" }}>PDF Documents</option>
+                      <option value="all">All File Types</option>
+                      <option value="image">Images Only</option>
+                      <option value="pdf">PDF Documents</option>
                     </select>
 
                     {/* Search Input */}

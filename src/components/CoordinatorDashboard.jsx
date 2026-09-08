@@ -259,9 +259,9 @@ export default function CoordinatorDashboard({ currentUser, requests, vendors, c
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Assignee Name (Purchaser/Nitin/Rahul)</label>
             <select className="form-control" value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)}>
-              <option value="" style={{ background: "#0f172a" }}>All Staff Members</option>
+              <option value="">All Staff Members</option>
               {activeStaffList.map(u => (
-                <option key={u.id} value={u.id} style={{ background: "#0f172a" }}>{u.name} ({u.role})</option>
+                <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
               ))}
             </select>
           </div>
@@ -270,12 +270,12 @@ export default function CoordinatorDashboard({ currentUser, requests, vendors, c
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Workflow Task Type</label>
             <select className="form-control" value={filterType} onChange={e => setFilterType(e.target.value)}>
-              <option value="" style={{ background: "#0f172a" }}>All Task Types</option>
-              <option value="Pricing" style={{ background: "#0f172a" }}>Pricing</option>
-              <option value="Packing" style={{ background: "#0f172a" }}>Nitin Packing</option>
-              <option value="Purchase Update" style={{ background: "#0f172a" }}>Rahul Ledger Update</option>
-              <option value="Cargo Assignment" style={{ background: "#0f172a" }}>Cargo Planner</option>
-              <option value="Transit Tracking" style={{ background: "#0f172a" }}>Transit Tracking</option>
+              <option value="">All Task Types</option>
+              <option value="Pricing">Pricing</option>
+              <option value="Packing">Nitin Packing</option>
+              <option value="Purchase Update">Rahul Ledger Update</option>
+              <option value="Cargo Assignment">Cargo Planner</option>
+              <option value="Transit Tracking">Transit Tracking</option>
             </select>
           </div>
 

@@ -3,6 +3,7 @@ import { Package, Search, Filter, Truck, CheckCircle2, Clock, Building, ArrowLef
 import { uploadToCloudinary } from "../utils/upload";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 import Pagination from "./Pagination";
+import { cleanCategoryName } from "../utils/formatters";
 
 export default function ItemMasterView({ requests = [], vendors = [], cargos = [], cargoCompanies = [], purchasers = [], settings = {}, onUpdateSettings, onBatchUpdateRequests }) {
   const [selectedModel, setSelectedModel] = useState(null);
@@ -104,7 +105,7 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
       if (!map[lowerKey]) {
         map[lowerKey] = {
           model: key,
-          category: r.category || "Uncategorized",
+          category: cleanCategoryName(r.category) || "Uncategorized",
           itemNature: r.itemNature || "Non Consumables",
           photo: r.photo || "",
           requests: [],
@@ -126,7 +127,7 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
         item.photo = r.photo;
       }
       if (r.category && item.category === "Uncategorized") {
-        item.category = r.category;
+        item.category = cleanCategoryName(r.category) || "Uncategorized";
       }
 
       item.requests.push(r);

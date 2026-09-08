@@ -28,11 +28,15 @@ app.use(express.urlencoded({ limit: "200mb", extended: true }));
 // High-performance State Cache to prevent DB pool exhaustion
 let stateCache = null;
 let stateCacheTimestamp = 0;
-const STATE_CACHE_TTL_MS = 3000;
+let purchaserStateCache = null;
+let purchaserStateCacheTimestamp = 0;
+const STATE_CACHE_TTL_MS = 5000;
 
 function invalidateStateCache() {
   stateCache = null;
   stateCacheTimestamp = 0;
+  purchaserStateCache = null;
+  purchaserStateCacheTimestamp = 0;
 }
 
 // Automatically invalidate full-state cache on any mutating request
@@ -2147,9 +2151,14 @@ app.get("/api/state", async (req, res) => {
   const isTsmRole = userRole === "tsm";
   const isAsmTsmRole = isAsmRole || isTsmRole;
   const isRestrictedRole = isCrmRole || isAsmTsmRole;
+  const isPurchaserRole = userRole === "purchaser";
+  const isPurchaseOnlyRole = isPurchaserRole || ["requester", "coordinator", "nitin", "rahul", "warehouse", "packing", "accounts"].includes(userRole);
 
   const now = Date.now();
-  if (!isRestrictedRole && stateCache && (now - stateCacheTimestamp < STATE_CACHE_TTL_MS)) {
+  if (isPurchaseOnlyRole && purchaserStateCache && (now - purchaserStateCacheTimestamp < STATE_CACHE_TTL_MS)) {
+    return res.json(purchaserStateCache);
+  }
+  if (!isRestrictedRole && !isPurchaseOnlyRole && stateCache && (now - stateCacheTimestamp < STATE_CACHE_TTL_MS)) {
     return res.json(stateCache);
   }
 
@@ -2160,6 +2169,88 @@ app.get("/api/state", async (req, res) => {
 
   if (isPg) {
     try {
+      // ⚡ Fast Path: For purchasers and requisitioners, query ONLY purchase-related tables
+      if (isPurchaseOnlyRole) {
+        const [
+          usersRes,
+          vendorsRes,
+          cargoCompaniesRes,
+          cargosRes,
+          requestsRes,
+          settingsRes,
+          itemsRes,
+          designationsRes,
+          itemPricesRes
+        ] = await Promise.all([
+          pool.query("SELECT * FROM users"),
+          pool.query("SELECT * FROM vendors"),
+          pool.query("SELECT * FROM cargo_companies"),
+          pool.query("SELECT * FROM cargos"),
+          pool.query("SELECT * FROM requests"),
+          pool.query("SELECT * FROM settings"),
+          pool.query("SELECT * FROM items ORDER BY CAST(NULLIF(regexp_replace(\"id\", '\\D', '', 'g'), '') AS INTEGER) ASC, \"id\" ASC"),
+          pool.query("SELECT * FROM designations"),
+          pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC")
+        ]);
+
+        const vendors = vendorsRes.rows.map(v => ({
+          ...v,
+          purchaserIds: v.purchaserIds ? (typeof v.purchaserIds === "string" ? JSON.parse(v.purchaserIds) : v.purchaserIds) : []
+        }));
+
+        const requests = requestsRes.rows.map(r => ({
+          ...r,
+          orderQuantity: r.orderQuantity ? parseInt(r.orderQuantity) : 0,
+          priceRmb: r.priceRmb ? parseFloat(r.priceRmb) : "",
+          totalRmb: r.totalRmb ? parseFloat(r.totalRmb) : "",
+          advancePayment: r.advancePayment ? parseFloat(r.advancePayment) : "",
+          balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : ""
+        }));
+
+        const cargos = cargosRes.rows.map(c => ({
+          ...c,
+          cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
+          cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
+          totalCargoPrice: c.totalCargoPrice ? parseFloat(c.totalCargoPrice) : ""
+        }));
+
+        const settings = {};
+        settingsRes.rows.forEach(row => {
+          if (row.value === "true") settings[row.key] = true;
+          else if (row.value === "false") settings[row.key] = false;
+          else settings[row.key] = row.value;
+        });
+        if (settings.isHidden === undefined) settings.isHidden = false;
+        if (!settings.redirectUrl) settings.redirectUrl = "https://www.google.com";
+
+        const purchaserState = {
+          users: (usersRes.rows || []).map(u => ({ ...u, status: u.status || "active" })),
+          vendors,
+          cargoCompanies: cargoCompaniesRes.rows || [],
+          cargos,
+          requests,
+          settings,
+          items: itemsRes.rows || [],
+          designations: (designationsRes.rows && designationsRes.rows.length > 0) ? designationsRes.rows : initialDesignations,
+          crmParties: [],
+          crmSalesOrders: [],
+          crmDispatches: [],
+          imsTransactions: [],
+          imsSummary: null,
+          itemPrices: (itemPricesRes?.rows || []).map(p => ({
+            ...p,
+            pp: p.pp ? parseFloat(p.pp) : 0
+          })),
+          crmPartyRemarks: [],
+          partyCategoryMonths: [],
+          partyCategoryMonthlySales: []
+        };
+
+        purchaserStateCache = purchaserState;
+        purchaserStateCacheTimestamp = Date.now();
+
+        return res.json(purchaserState);
+      }
       let crmPartiesQuery = 'SELECT * FROM crm_parties ORDER BY "name" ASC';
       let crmPartiesParams = [];
 
@@ -2381,6 +2472,9 @@ app.get("/api/state", async (req, res) => {
       res.json(fullState);
     } catch (err) {
       console.error("GET /api/state error:", err.message);
+      if (isPurchaseOnlyRole && purchaserStateCache) {
+        return res.json(purchaserStateCache);
+      }
       if (stateCache && !isRestrictedRole) {
         return res.json(stateCache);
       }
@@ -2388,6 +2482,19 @@ app.get("/api/state", async (req, res) => {
     }
   } else {
     const data = readLocalJson();
+    if (isPurchaseOnlyRole) {
+      return res.json({
+        ...data,
+        crmParties: [],
+        crmSalesOrders: [],
+        crmDispatches: [],
+        crmPartyRemarks: [],
+        partyCategoryMonths: [],
+        partyCategoryMonthlySales: [],
+        imsTransactions: [],
+        imsSummary: null
+      });
+    }
     const imsSummary = await calculateImsFullSummary();
     const livePartySales = await getLivePartyCategoryMonthlySales();
     if (isRestrictedRole && (userId || userName)) {

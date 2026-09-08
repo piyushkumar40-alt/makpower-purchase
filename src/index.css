@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --bg-main: #070a13;
   --bg-card: rgba(13, 20, 38, 0.55);
   --bg-card-hover: rgba(20, 30, 58, 0.7);
@@ -1270,6 +1271,7 @@ table th {
 
 /* ==================== COMPLETE LIGHT THEME SYSTEM OVERRIDES ==================== */
 [data-theme="light"] {
+  color-scheme: light;
   --bg-main: #f8fafc;
   --bg-card: #ffffff;
   --bg-card-hover: #f1f5f9;
@@ -2080,6 +2082,287 @@ table th {
   border: 1px solid #e2e8f0 !important;
   padding: 2px 6px;
   border-radius: 4px;
+}
+
+/* ==================== MDB CUSTOM DROPDOWN (WORKFLOW & DIRECTORIES) ==================== */
+.mdb-custom-dropdown-btn {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  font-size: 0.88rem;
+  padding: 9px 14px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(12px);
+  color: var(--text-muted);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mdb-custom-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65);
+  padding: 6px 0;
+  max-height: 300px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+}
+
+.mdb-custom-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 16px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #e2e8f0;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: none;
+  width: 100%;
+  text-align: left;
+}
+
+.mdb-custom-dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #38bdf8;
+}
+
+[data-theme="light"] .mdb-custom-dropdown-btn {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #334155 !important;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04) !important;
+}
+
+[data-theme="light"] .mdb-custom-dropdown-menu {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.12) !important;
+}
+
+[data-theme="light"] .mdb-custom-dropdown-item {
+  color: #0f172a !important;
+  background: transparent !important;
+}
+
+[data-theme="light"] .mdb-custom-dropdown-item:hover {
+  background: #f1f5f9 !important;
+  color: #0284c7 !important;
+}
+
+/* ==================== REQUESTER FORM POPUP DROPDOWNS & BADGES ==================== */
+.requester-dropdown-menu {
+  position: fixed;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  z-index: 99999;
+  text-align: left;
+}
+
+.requester-dropdown-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.83rem;
+  color: var(--text-main);
+  text-align: left;
+  border-bottom: 1px solid var(--border-glass);
+  transition: all 0.1s ease;
+}
+
+.requester-dropdown-item span {
+  color: var(--text-main);
+}
+
+.requester-dropdown-item.highlighted,
+.requester-dropdown-item:hover {
+  background: var(--primary-glow) !important;
+  color: var(--primary) !important;
+  border-left: 3px solid var(--primary) !important;
+}
+
+.requester-dropdown-item.highlighted span,
+.requester-dropdown-item:hover span {
+  color: var(--primary) !important;
+}
+
+.requester-dropdown-item .requester-item-subtitle {
+  color: var(--text-muted) !important;
+}
+
+[data-theme="light"] .requester-dropdown-menu {
+  background: #ffffff !important;
+  border: 1px solid #0284c7 !important;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.15) !important;
+}
+
+[data-theme="light"] .requester-dropdown-item {
+  color: #0f172a !important;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .requester-dropdown-item span {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .requester-dropdown-item.highlighted,
+[data-theme="light"] .requester-dropdown-item:hover {
+  background: #e0f2fe !important;
+  color: #0284c7 !important;
+  border-left: 3px solid #0284c7 !important;
+}
+
+[data-theme="light"] .requester-dropdown-item.highlighted span,
+[data-theme="light"] .requester-dropdown-item:hover span {
+  color: #0284c7 !important;
+}
+
+[data-theme="light"] .requester-dropdown-item .requester-item-subtitle {
+  color: #64748b !important;
+}
+
+[data-theme="light"] select option,
+[data-theme="light"] .form-control option,
+[data-theme="light"] option {
+  background: #ffffff !important;
+  color: #0f172a !important;
+}
+
+[data-theme="dark"] select option,
+[data-theme="dark"] .form-control option,
+[data-theme="dark"] option {
+  background: #0f172a !important;
+  color: #f8fafc !important;
+}
+
+.requester-qty-badge-pcs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(56, 189, 248, 0.15);
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid #38bdf8;
+  color: #38bdf8;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.requester-qty-badge-pcs strong {
+  font-size: 1rem;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+[data-theme="light"] .requester-qty-badge-pcs {
+  background: #e0f2fe !important;
+  border: 1px solid #0284c7 !important;
+  color: #0369a1 !important;
+}
+
+[data-theme="light"] .requester-qty-badge-pcs strong {
+  color: #0369a1 !important;
+}
+
+.requester-qty-badge-units {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(16, 185, 129, 0.15);
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid #10b981;
+  color: #10b981;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.requester-qty-badge-units strong {
+  font-size: 1rem;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+[data-theme="light"] .requester-qty-badge-units {
+  background: #dcfce7 !important;
+  border: 1px solid #16a34a !important;
+  color: #15803d !important;
+}
+
+[data-theme="light"] .requester-qty-badge-units strong {
+  color: #15803d !important;
+}
+
+.requester-hint-pill {
+  font-size: 0.78rem;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+[data-theme="light"] .requester-hint-pill {
+  color: #0284c7 !important;
+  background: #e0f2fe !important;
+  border: 1px solid #bae6fd !important;
+}
+
+.requester-entry-by-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-glass);
+}
+
+[data-theme="light"] .requester-entry-by-box {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+/* Batch Controls Toolbar in Step 1 */
+.batch-controls-toolbar {
+  padding: 14px 20px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 12px;
+}
+
+[data-theme="light"] .batch-controls-toolbar {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05) !important;
 }
 
 

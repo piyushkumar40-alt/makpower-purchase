@@ -656,11 +656,11 @@ export default function CapitalPipelineStudio({
               onChange={e => setStageFilter(e.target.value)}
               style={{ fontSize: "0.82rem", minWidth: "160px" }}
             >
-              <option value="all" style={{ background: "#0f172a" }}>All Pipeline Stages ({filteredTableRows.length})</option>
-              <option value="ordered" style={{ background: "#0f172a" }}>1. Money at Ordered Items</option>
-              <option value="vendor" style={{ background: "#0f172a" }}>2. Money at Vendor</option>
-              <option value="transit" style={{ background: "#0f172a" }}>3. Money at Transit</option>
-              <option value="received" style={{ background: "#0f172a" }}>4. Warehouse Received</option>
+              <option value="all">All Pipeline Stages ({filteredTableRows.length})</option>
+              <option value="ordered">1. Money at Ordered Items</option>
+              <option value="vendor">2. Money at Vendor</option>
+              <option value="transit">3. Money at Transit</option>
+              <option value="received">4. Warehouse Received</option>
             </select>
 
             {/* Vendor Filter */}
@@ -670,9 +670,9 @@ export default function CapitalPipelineStudio({
               onChange={e => setVendorFilter(e.target.value)}
               style={{ fontSize: "0.82rem", minWidth: "140px" }}
             >
-              <option value="all" style={{ background: "#0f172a" }}>All Vendors ({vendors.length})</option>
+              <option value="all">All Vendors ({vendors.length})</option>
               {vendors.map(v => (
-                <option key={v.id} value={v.id} style={{ background: "#0f172a" }}>{v.name}</option>
+                <option key={v.id} value={v.id}>{v.name}</option>
               ))}
             </select>
 

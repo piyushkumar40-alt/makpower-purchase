@@ -10,7 +10,7 @@ import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
-import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants } from "../utils/formatters";
+import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName } from "../utils/formatters";
 
 // ==================== TOP-LEVEL UTILITIES & METRIC CALCULATION HELPERS ====================
 export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange, placeholder, accentColor = "var(--primary)" }) {
@@ -40,24 +40,10 @@ export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange,
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="form-control"
+          className="form-control mdb-custom-dropdown-btn"
           style={{
-            width: "100%",
-            textAlign: "left",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            fontWeight: 600,
-            fontSize: "0.88rem",
-            padding: "9px 14px",
-            borderRadius: "10px",
-            border: selectedOpt ? `1px solid ${accentColor}` : "1px solid rgba(255, 255, 255, 0.1)",
-            boxShadow: selectedOpt ? `0 0 10px ${accentColor}25` : "none",
-            background: "rgba(15, 23, 42, 0.75)",
-            backdropFilter: "blur(12px)",
-            color: selectedOpt ? "#f8fafc" : "var(--text-muted)",
-            transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-            cursor: "pointer"
+            border: selectedOpt ? `1px solid ${accentColor}` : undefined,
+            boxShadow: selectedOpt ? `0 0 10px ${accentColor}25` : undefined
           }}
         >
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -67,24 +53,7 @@ export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange,
         </button>
 
         {isOpen && (
-          <ul
-            style={{
-              position: "absolute",
-              top: "calc(100% + 6px)",
-              left: 0,
-              right: 0,
-              zIndex: 9999,
-              background: "#0f172a",
-              border: "1px solid rgba(255, 255, 255, 0.12)",
-              borderRadius: "12px",
-              boxShadow: "0 16px 36px rgba(0, 0, 0, 0.65)",
-              padding: "6px 0",
-              maxHeight: "300px",
-              overflowY: "auto",
-              listStyle: "none",
-              margin: 0
-            }}
-          >
+          <ul className="mdb-custom-dropdown-menu">
             {options.map((opt) => {
               const isSelected = opt.value === value;
               return (
@@ -95,26 +64,11 @@ export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange,
                       onChange(opt.value);
                       setIsOpen(false);
                     }}
+                    className="mdb-custom-dropdown-item"
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "9px 16px",
-                      fontSize: "0.85rem",
                       fontWeight: isSelected ? 700 : 500,
-                      color: isSelected ? accentColor : "#e2e8f0",
-                      background: isSelected ? "rgba(56, 189, 248, 0.12)" : "transparent",
-                      cursor: "pointer",
-                      transition: "all 0.15s ease",
-                      border: "none",
-                      width: "100%",
-                      textAlign: "left"
-                    }}
-                    onMouseEnter={e => {
-                      if (!isSelected) e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)";
-                    }}
-                    onMouseLeave={e => {
-                      if (!isSelected) e.currentTarget.style.background = "transparent";
+                      color: isSelected ? accentColor : undefined,
+                      background: isSelected ? "rgba(56, 189, 248, 0.12)" : undefined
                     }}
                   >
                     <span>{opt.label}</span>
@@ -183,7 +137,7 @@ export const calculateVendorMetrics = (vendor, requests = []) => {
       statusCount.awaitingPrice += 1;
     }
 
-    const cat = r.category || "Other";
+    const cat = cleanCategoryName(r.category) || "Other";
     categoryCount[cat] = (categoryCount[cat] || 0) + 1;
 
     let delay = 0;
@@ -351,6 +305,14 @@ export default function PurchaserDashboard({
     return localStorage.getItem("makpower_purchaser_tab") || "alerts";
   });
 
+  // Filter vendors by current user to enforce vendor isolation (e.g. Himanshi's vendors shouldn't be in Anees's dashboard)
+  const accessibleVendors = useMemo(() => {
+    if (!currentUser || currentUser.role === "superadmin" || currentUser.role === "owner") {
+      return vendors;
+    }
+    return vendors.filter(v => Array.isArray(v.purchaserIds) && v.purchaserIds.includes(currentUser.id));
+  }, [vendors, currentUser]);
+
   React.useEffect(() => {
     localStorage.setItem("makpower_purchaser_tab", activeTab);
   }, [activeTab]);
@@ -448,6 +410,7 @@ export default function PurchaserDashboard({
   const [showStep1PasteModal, setShowStep1PasteModal] = useState(false);
   const [step1PasteText, setStep1PasteText] = useState("");
   const [step1BatchVendorId, setStep1BatchVendorId] = useState("");
+  const [step1BatchCurrency, setStep1BatchCurrency] = useState("RMB");
   const [step1BatchEdd, setStep1BatchEdd] = useState("");
 
   const handleStep1PricePaste = (e, startRowIdx, pendingReqs) => {
@@ -549,10 +512,13 @@ export default function PurchaserDashboard({
       const totalRmb = priceNum * qty;
       const advance = parseFloat(r.advancePayment || 0);
 
+      const finalCurrency = edit.currency || r.currency || step1BatchCurrency || "RMB";
+
       toUpdate.push({
         ...r,
         vendorId: finalVendorId,
         vendorOrderQuantity: finalVendorOrderQty,
+        currency: finalCurrency,
         priceRmb: priceNum,
         totalRmb: totalRmb,
         advancePayment: advance,
@@ -865,7 +831,7 @@ export default function PurchaserDashboard({
 
               {/* Batch Actions Toolbar for Checked Items */}
               {pendingReqs.length > 0 && (
-                <div className="glass-panel" style={{ padding: "14px 20px", marginBottom: "16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(56, 189, 248, 0.25)" }}>
+                <div className="glass-panel batch-controls-toolbar">
                   <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
                     <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "#38bdf8" }}>
                       Batch Controls ({step1CheckedIds.length > 0 ? `${step1CheckedIds.length} Selected` : "All Unpriced Items"}):
@@ -879,17 +845,17 @@ export default function PurchaserDashboard({
                         list="batch-step1-vendor-list"
                         className="form-control"
                         placeholder="Select Vendor..."
-                        value={vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").find(v => v.id === step1BatchVendorId)?.name || step1BatchVendorId}
+                        value={accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").find(v => v.id === step1BatchVendorId)?.name || step1BatchVendorId}
                         onChange={e => {
                           const val = e.target.value;
-                          const activeVendors = vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
+                          const activeVendors = accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
                           const matched = activeVendors.find(v => v.name.toLowerCase() === val.toLowerCase());
                           setStep1BatchVendorId(matched ? matched.id : val);
                         }}
                         style={{ width: "180px", padding: "4px 8px", fontSize: "0.82rem", height: "auto" }}
                       />
                       <datalist id="batch-step1-vendor-list">
-                        {vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
+                        {accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
                           <option key={v.id} value={v.name}>{v.name}</option>
                         ))}
                       </datalist>
@@ -910,6 +876,38 @@ export default function PurchaserDashboard({
                         style={{ padding: "4px 10px", fontSize: "0.78rem" }}
                       >
                         Apply Vendor
+                      </button>
+                    </div>
+
+                    {/* Batch Currency Selector */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Currency:</span>
+                      <select
+                        className="form-control"
+                        value={step1BatchCurrency}
+                        onChange={e => setStep1BatchCurrency(e.target.value)}
+                        style={{ width: "115px", padding: "4px 8px", fontSize: "0.82rem", height: "auto", fontWeight: 600 }}
+                      >
+                        <option value="RMB">RMB (¥)</option>
+                        <option value="USD">USD ($)</option>
+                        <option value="INR">INR (₹)</option>
+                      </select>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const targetIds = step1CheckedIds.length > 0 ? step1CheckedIds : pendingReqs.map(r => r.id);
+                          setStep1InlineEdits(prev => {
+                            const updated = { ...prev };
+                            targetIds.forEach(id => {
+                              updated[id] = { ...updated[id], currency: step1BatchCurrency };
+                            });
+                            return updated;
+                          });
+                        }}
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: "4px 10px", fontSize: "0.78rem" }}
+                      >
+                        Apply Currency
                       </button>
                     </div>
 
@@ -951,9 +949,10 @@ export default function PurchaserDashboard({
                       onClick={() => {
                         const targetIds = step1CheckedIds.length > 0 ? step1CheckedIds : pendingReqs.map(r => r.id);
                         const targetRows = pendingReqs.filter(r => targetIds.includes(r.id));
-                        const headers = ["Order ID", "Date", "Model / Item", "Order Qty", "Vendor", "Unit Price (RMB)", "Total (RMB)", "Advance", "Balance", "Vendor EDD"];
+                        const headers = ["Order ID", "Date", "Model / Item", "Order Qty", "Vendor", "Currency", "Unit Price", "Total Amount", "Advance", "Balance", "Vendor EDD"];
                         const rows = targetRows.map(r => {
                           const edits = step1InlineEdits[r.id] || {};
+                          const cur = edits.currency || r.currency || "RMB";
                           const price = edits.priceRmb !== undefined ? edits.priceRmb : (r.priceRmb || 0);
                           const qty = r.orderQuantity || 0;
                           const total = edits.totalRmb !== undefined ? edits.totalRmb : (r.totalRmb || price * qty);
@@ -967,6 +966,7 @@ export default function PurchaserDashboard({
                             r.model || "",
                             qty,
                             v,
+                            cur,
                             price,
                             total,
                             adv,
@@ -1019,9 +1019,9 @@ export default function PurchaserDashboard({
                         <RenderStep1SortHeader colKey="orderDate" title="Order Date" style={{ width: "100px" }} />
                         <RenderStep1SortHeader colKey="model" title="Model / Description" />
                         <RenderStep1SortHeader colKey="orderQuantity" title="Qty" style={{ width: "80px" }} />
-                        <RenderStep1SortHeader colKey="vendorId" title="Vendor / Supplier" getValue={r => vendors.find(v => v.id === (step1InlineEdits[r.id]?.vendorId || r.vendorId))?.name || ""} style={{ minWidth: "180px" }} />
-                        <RenderStep1SortHeader colKey="priceRmb" title="Price (RMB / Amount)" style={{ minWidth: "130px" }} />
-                        <RenderStep1SortHeader colKey="totalRmb" title="Total (RMB)" style={{ minWidth: "130px" }} />
+                        <RenderStep1SortHeader colKey="vendorId" title="Vendor / Supplier" getValue={r => accessibleVendors.find(v => v.id === (step1InlineEdits[r.id]?.vendorId || r.vendorId))?.name || ""} style={{ minWidth: "180px" }} />
+                        <RenderStep1SortHeader colKey="priceRmb" title="Price / Currency" style={{ minWidth: "160px" }} />
+                        <RenderStep1SortHeader colKey="totalRmb" title="Total Amount" style={{ minWidth: "130px" }} />
                         <RenderStep1SortHeader colKey="vendorEdd" title="Vendor EDD" style={{ minWidth: "140px" }} />
                             <th style={{ width: "90px", textAlign: "center" }}>Actions</th>
                             <th style={{ width: "70px", textAlign: "center" }}>Cancel</th>
@@ -1044,7 +1044,8 @@ export default function PurchaserDashboard({
                           const currentVendorId = edits.vendorId !== undefined ? edits.vendorId : (r.vendorId || "");
                           const currentVendorText = edits.vendorSearchText !== undefined 
                             ? edits.vendorSearchText 
-                            : (vendors.find(v => v.id === currentVendorId)?.name || "");
+                            : (accessibleVendors.find(v => v.id === currentVendorId)?.name || "");
+                          const currentCurrency = edits.currency || r.currency || "RMB";
                           const currentPrice = edits.priceRmb !== undefined ? edits.priceRmb : (r.priceRmb || "");
                           const currentEdd = edits.vendorEdd !== undefined ? edits.vendorEdd : (r.vendorEdd || "");
                           const currentVendorOrderQty = edits.vendorOrderQuantity !== undefined 
@@ -1056,7 +1057,7 @@ export default function PurchaserDashboard({
                           const totalCalc = !isNaN(priceNum) ? priceNum * qty : 0;
 
                           if (step1Mode === "standard") {
-                            const vName = vendors.find(v => v.id === r.vendorId)?.name || "Unknown";
+                            const vName = accessibleVendors.find(v => v.id === r.vendorId)?.name || vendors.find(v => v.id === r.vendorId)?.name || "Unknown";
                             return (
                               <tr key={r.id} className={isChecked ? "planner-row-selected" : ""}>
                                 <td style={{ textAlign: "center" }}>
@@ -1085,9 +1086,9 @@ export default function PurchaserDashboard({
                                 </td>
                                 <td>{vName}</td>
                                 <td style={{ fontWeight: 700, color: r.priceRmb ? "var(--primary)" : "var(--text-muted)" }}>
-                                  {r.priceRmb ? `¥${r.priceRmb}` : "—"}
+                                  {r.priceRmb ? `${getCurrencySymbol(r.currency)}${r.priceRmb}` : "—"}
                                 </td>
-                                <td>{r.totalRmb ? `¥${r.totalRmb.toLocaleString()}` : "—"}</td>
+                                <td>{r.totalRmb ? `${getCurrencySymbol(r.currency)}${Number(r.totalRmb).toLocaleString()}` : "—"}</td>
                                 <td>{r.vendorEdd || "—"}</td>
                                 <td style={{ textAlign: "center" }}>
                                   <button onClick={() => setEditingRequest(r)} className="btn btn-primary btn-sm">
@@ -1184,7 +1185,7 @@ export default function PurchaserDashboard({
                                   value={currentVendorText}
                                   onChange={e => {
                                     const val = e.target.value;
-                                    const activeVendors = vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
+                                    const activeVendors = accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
                                     const matched = activeVendors.find(v => v.name.toLowerCase() === val.toLowerCase());
                                     setStep1InlineEdits(prev => ({
                                       ...prev,
@@ -1198,44 +1199,66 @@ export default function PurchaserDashboard({
                                   style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
                                 />
                                 <datalist id={`step1-vendor-list-${r.id}`}>
-                                  {vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
+                                  {accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
                                     <option key={v.id} value={v.name}>{v.name}</option>
                                   ))}
                                 </datalist>
                               </td>
 
-                              {/* Price (RMB) Input with Paste Handler */}
+                              {/* Price & Currency Input with Paste Handler */}
                               <td>
-                                <input 
-                                  type="text" 
-                                  inputMode="decimal"
-                                  className="form-control"
-                                  placeholder="Price (¥)"
-                                  value={currentPrice}
-                                  onChange={e => {
-                                    const val = e.target.value.replace(/[^0-9.]/g, "");
-                                    setStep1InlineEdits(prev => ({
-                                      ...prev,
-                                      [r.id]: {
-                                        ...prev[r.id],
-                                        priceRmb: val
-                                      }
-                                    }));
-                                  }}
-                                  onPaste={e => handleStep1PricePaste(e, index, pendingReqs)}
-                                  style={{ 
-                                    padding: "4px 8px", 
-                                    fontSize: "0.85rem", 
-                                    height: "auto",
-                                    borderColor: currentPrice ? "rgba(16, 185, 129, 0.4)" : undefined,
-                                    background: currentPrice ? "rgba(16, 185, 129, 0.05)" : undefined
-                                  }}
-                                />
+                                <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                                  <select
+                                    className="form-control"
+                                    style={{ width: "74px", padding: "4px 4px", fontSize: "0.78rem", height: "auto", fontWeight: 700, flexShrink: 0 }}
+                                    value={currentCurrency}
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      setStep1InlineEdits(prev => ({
+                                        ...prev,
+                                        [r.id]: {
+                                          ...prev[r.id],
+                                          currency: val
+                                        }
+                                      }));
+                                    }}
+                                  >
+                                    <option value="RMB">¥ RMB</option>
+                                    <option value="USD">$ USD</option>
+                                    <option value="INR">₹ INR</option>
+                                  </select>
+                                  <input 
+                                    type="text" 
+                                    inputMode="decimal"
+                                    className="form-control"
+                                    placeholder={`Price (${getCurrencySymbol(currentCurrency)})`}
+                                    value={currentPrice}
+                                    onChange={e => {
+                                      const val = e.target.value.replace(/[^0-9.]/g, "");
+                                      setStep1InlineEdits(prev => ({
+                                        ...prev,
+                                        [r.id]: {
+                                          ...prev[r.id],
+                                          priceRmb: val
+                                        }
+                                      }));
+                                    }}
+                                    onPaste={e => handleStep1PricePaste(e, index, pendingReqs)}
+                                    style={{ 
+                                      padding: "4px 8px", 
+                                      fontSize: "0.85rem", 
+                                      height: "auto",
+                                      minWidth: "75px",
+                                      borderColor: currentPrice ? "rgba(16, 185, 129, 0.4)" : undefined,
+                                      background: currentPrice ? "rgba(16, 185, 129, 0.05)" : undefined
+                                    }}
+                                  />
+                                </div>
                               </td>
 
-                              {/* Total Calculated RMB */}
+                              {/* Total Calculated Amount */}
                               <td style={{ fontWeight: 700, color: totalCalc > 0 ? "var(--primary)" : "var(--text-muted)" }}>
-                                {totalCalc > 0 ? `¥${totalCalc.toLocaleString()}` : "—"}
+                                {totalCalc > 0 ? `${getCurrencySymbol(currentCurrency)}${totalCalc.toLocaleString()}` : "—"}
                               </td>
 
                               {/* EDD Date Selector (Inline) */}
@@ -1684,10 +1707,10 @@ export default function PurchaserDashboard({
                   list="list-vr-vendors"
                   className="form-control" 
                   placeholder="Type or Select Vendor..." 
-                  value={vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").find(v => v.id === vrFilter)?.name || ""}
+                  value={accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").find(v => v.id === vrFilter)?.name || ""}
                   onChange={e => {
                     const val = e.target.value;
-                    const activeVendors = vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
+                    const activeVendors = accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
                     const matched = activeVendors.find(v => v.name.toLowerCase() === val.toLowerCase());
                     setVrFilter(matched ? matched.id : "");
                     setVrChecked([]);
@@ -1698,7 +1721,7 @@ export default function PurchaserDashboard({
                   style={{ minWidth: "200px" }}
                 />
                 <datalist id="list-vr-vendors">
-                  {vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
+                  {accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
                     <option key={v.id} value={v.name}>{v.name}</option>
                   ))}
                 </datalist>
@@ -2023,10 +2046,10 @@ export default function PurchaserDashboard({
                   list="list-cp-vendors"
                   className="form-control" 
                   placeholder="Type or Select Vendor..." 
-                  value={vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").find(v => v.id === cpFilter)?.name || ""}
+                  value={accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").find(v => v.id === cpFilter)?.name || ""}
                   onChange={e => {
                     const val = e.target.value;
-                    const activeVendors = vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
+                    const activeVendors = accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
                     const matched = activeVendors.find(v => v.name.toLowerCase() === val.toLowerCase());
                     setCpFilter(matched ? matched.id : "");
                     setCpChecked([]);
@@ -2034,7 +2057,7 @@ export default function PurchaserDashboard({
                   style={{ minWidth: "200px" }}
                 />
                 <datalist id="list-cp-vendors">
-                  {vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
+                  {accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
                     <option key={v.id} value={v.name}>{v.name}</option>
                   ))}
                 </datalist>
@@ -2241,8 +2264,8 @@ export default function PurchaserDashboard({
                           </div>
                         </div>
                         <div>
-                          <div style={{ color: "var(--text-muted)" }}>Volume (CBM):</div>
-                          <div style={{ fontWeight: 500 }}>{cargo.cbmPackingList ? `${cargo.cbmPackingList} CBM` : "—"}</div>
+                          <div style={{ color: "var(--text-muted)" }}>{cargo.cargoPriceUom === "per Pc" ? "Total Pieces:" : cargo.cargoPriceUom === "per KG" ? "Weight (KG):" : "Volume (CBM):"}</div>
+                          <div style={{ fontWeight: 500 }}>{cargo.cbmPackingList ? `${cargo.cbmPackingList} ${cargo.cargoPriceUom === "per Pc" ? "Pcs" : cargo.cargoPriceUom === "per KG" ? "KG" : "CBM"}` : "—"}</div>
                         </div>
                         <div>
                           <div style={{ color: "var(--text-muted)" }}>Cargo Cost:</div>
@@ -2624,7 +2647,7 @@ export default function PurchaserDashboard({
         <EditRequestModal 
           request={editingRequest}
           requests={requests}
-          vendors={vendors}
+          vendors={accessibleVendors}
           currentUser={currentUser}
           onAddVendor={onAddVendor}
           items={items}
@@ -2962,7 +2985,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
   const [itemType, setItemType] = useState(request.itemType || "FG");
   const [type, setType] = useState(request.type || "Import");
   const [itemNature, setItemNature] = useState(request.itemNature || "Non Consumables");
-  const [category, setCategory] = useState(request.category || "");
+  const [category, setCategory] = useState(cleanCategoryName(request.category) || "");
   const [showQuickVendorModal, setShowQuickVendorModal] = useState(false);
 
   // Auto-calculated totals
@@ -3003,7 +3026,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
         onAddItem({
           id: `item-${Date.now()}`,
           name: model || request.model,
-          category: category || request.category || "",
+          category: cleanCategoryName(category || request.category || ""),
           itemType: itemType || "FG",
           type: type || "Import",
           itemNature: itemNature || "Non Consumables",
@@ -3036,7 +3059,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
       itemType: itemType,
       type: type,
       itemNature: itemNature,
-      category: category,
+      category: cleanCategoryName(category),
       vendorId: finalVendorId,
       currency: currency,
       priceRmb: priceNum,
@@ -3404,7 +3427,7 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
               <div className="details-term">Item Name:</div><div className="details-def" style={{ fontWeight: 600 }}>{request.model}</div>
               <div className="details-term">Item Type:</div><div className="details-def" style={{ fontWeight: 700, color: "var(--primary)" }}>{request.itemType || "FG"}</div>
               <div className="details-term">Item Nature:</div><div className="details-def">{request.itemNature || "—"}</div>
-              <div className="details-term">Category:</div><div className="details-def">{request.category || "—"}</div>
+              <div className="details-term">Category:</div><div className="details-def">{cleanCategoryName(request.category) || "—"}</div>
               <div className="details-term">Quantity:</div><div className="details-def">{request.orderQuantity}</div>
               <div className="details-term">Type:</div><div className="details-def">{request.type || "Import"}</div>
               <div className="details-term">Required By Date:</div><div className="details-def">{request.requiredByDate || "—"}</div>
@@ -3429,7 +3452,7 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
                 <div className="details-term">Cargo Order Date:</div><div className="details-def">{cargo.cargoOrderDate || "—"}</div>
                 <div className="details-term">Cargo Detail:</div><div className="details-def">{cargo.cargoDetail || "—"}</div>
                 <div className="details-term">Cargo Cost:</div><div className="details-def">{cargo.cargoPrice ? `${getCurrencySymbol(cargo.currency)}${cargo.cargoPrice} (${cargo.cargoPriceUom || "Total"})` : "—"}</div>
-                <div className="details-term">Volume (CBM):</div><div className="details-def">{cargo.cbmPackingList ? `${cargo.cbmPackingList} CBM` : "—"}</div>
+                <div className="details-term">{cargo.cargoPriceUom === "per Pc" ? "Total Pieces:" : cargo.cargoPriceUom === "per KG" ? "Weight (KG):" : "Volume (CBM):"}</div><div className="details-def">{cargo.cbmPackingList ? `${cargo.cbmPackingList} ${cargo.cargoPriceUom === "per Pc" ? "Pcs" : cargo.cargoPriceUom === "per KG" ? "KG" : "CBM"}` : "—"}</div>
                 <div className="details-term">Total Cargo Price:</div><div className="details-def">{cargo.totalCargoPrice ? `${getCurrencySymbol(cargo.currency)}${Number(cargo.totalCargoPrice).toLocaleString()}` : "—"}</div>
                 <div className="details-term">Transport Mode:</div><div className="details-def" style={{ fontWeight: 600 }}>{cargo.modeOfTransport || "—"}</div>
                 <div className="details-term">Cargo Company:</div><div className="details-def">{cargoCompanies.find(cc => cc.id === cargo.cargoCompanyId)?.name || "—"}</div>
@@ -4295,10 +4318,13 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
   // Sum of total price of items combined (converting to RMB base)
   const combinedRequests = requests.filter(r => selectedIds.includes(r.id));
   const totalItemSpendInRmb = combinedRequests.reduce((sum, r) => sum + convertToRmb(r.totalRmb, r.currency), 0);
+  const totalPickedQty = Object.values(itemPickedQtyMap).reduce((sum, q) => sum + (parseFloat(q) || 0), 0);
 
   // Total Cargo price calculation
   const totalCargoPrice = uom === "per CBM" 
     ? (parseFloat(price || 0) * parseFloat(cbm || 0)) 
+    : uom === "per Pc"
+    ? (parseFloat(price || 0) * (parseFloat(cbm) || totalPickedQty || 1))
     : parseFloat(price || 0);
 
   const handleSubmit = (e) => {
@@ -4450,8 +4476,15 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
             
             <div className="form-group">
               <label className="form-label">Price Unit (UOM)</label>
-              <select className="form-control" value={uom} onChange={e => setUom(e.target.value)}>
+              <select className="form-control" value={uom} onChange={e => {
+                const newUom = e.target.value;
+                setUom(newUom);
+                if (newUom === "per Pc" && !cbm) {
+                  setCbm(totalPickedQty);
+                }
+              }}>
                 <option value="per CBM">per CBM</option>
+                <option value="per Pc">per Pc</option>
                 <option value="Flat Rate">Flat Rate</option>
                 <option value="per KG">per KG</option>
               </select>
@@ -4460,11 +4493,13 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
 
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">CBM Volume (Packing List)</label>
+              <label className="form-label">
+                {uom === "per CBM" ? "CBM Volume (Packing List)" : uom === "per Pc" ? "Total Pieces (Packing List)" : uom === "per KG" ? "Total Weight (KG)" : "Rate Basis"}
+              </label>
               <input 
                 type="number" 
                 className="form-control" 
-                placeholder="Volume in m³" 
+                placeholder={uom === "per CBM" ? "Volume in m³" : uom === "per Pc" ? `Default: ${totalPickedQty} Pcs` : "Basis"} 
                 value={cbm}
                 onChange={e => setCbm(e.target.value)}
                 min="0"
@@ -4648,8 +4683,13 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
     setter(result);
   };
 
+  const cargoItems = requests.filter(r => r.cargoId === cargo.id);
+  const totalItemPieces = cargoItems.reduce((sum, r) => sum + (parseFloat(r.vendorOrderQuantity || r.orderQuantity || 0)), 0);
+
   const totalCargoPrice = uom === "per CBM" 
     ? (parseFloat(price || 0) * parseFloat(cbm || 0)) 
+    : uom === "per Pc"
+    ? (parseFloat(price || 0) * (parseFloat(cbm) || totalItemPieces || 1))
     : parseFloat(price || 0);
 
   const handleSubmit = (e) => {
@@ -4750,8 +4790,15 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
             
             <div className="form-group">
               <label className="form-label">Price Unit (UOM)</label>
-              <select className="form-control" value={uom} onChange={e => setUom(e.target.value)}>
+              <select className="form-control" value={uom} onChange={e => {
+                const newUom = e.target.value;
+                setUom(newUom);
+                if (newUom === "per Pc" && !cbm) {
+                  setCbm(totalItemPieces);
+                }
+              }}>
                 <option value="per CBM">per CBM</option>
+                <option value="per Pc">per Pc</option>
                 <option value="Flat Rate">Flat Rate</option>
                 <option value="per KG">per KG</option>
               </select>
@@ -4760,10 +4807,13 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
 
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">CBM Volume (Packing List)</label>
+              <label className="form-label">
+                {uom === "per CBM" ? "CBM Volume (Packing List)" : uom === "per Pc" ? "Total Pieces (Packing List)" : uom === "per KG" ? "Total Weight (KG)" : "Rate Basis"}
+              </label>
               <input 
                 type="number" 
                 className="form-control" 
+                placeholder={uom === "per CBM" ? "Volume in m³" : uom === "per Pc" ? `Default: ${totalItemPieces} Pcs` : "Basis"}
                 value={cbm}
                 onChange={e => setCbm(e.target.value)}
                 min="0"
@@ -5638,8 +5688,8 @@ export function VendorDetailModal({
                 value={status} 
                 onChange={e => setStatus(e.target.value)}
               >
-                <option value="Active" style={{ background: "#0f172a" }}>Active</option>
-                <option value="Inactive" style={{ background: "#0f172a" }}>Inactive</option>
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
               </select>
             </div>
           </div>
@@ -6001,8 +6051,8 @@ export function CargoCompanyDetailModal({
                 value={status} 
                 onChange={e => setStatus(e.target.value)}
               >
-                <option value="Active" style={{ background: "#0f172a" }}>Active</option>
-                <option value="Inactive" style={{ background: "#0f172a" }}>Inactive</option>
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
               </select>
             </div>
           </div>
@@ -6077,7 +6127,7 @@ export function CargoCompanyDetailModal({
                     <th>Cargo Code</th>
                     <th>Shipping Date</th>
                     <th>ETA</th>
-                    <th>Volume (CBM)</th>
+                    <th>Volume / Pieces</th>
                     <th>Transport Mode</th>
                     <th>Cargo Cost</th>
                     <th>Bundled Items</th>
@@ -6092,7 +6142,7 @@ export function CargoCompanyDetailModal({
                         <td style={{ fontWeight: 600 }}>{c.id}</td>
                         <td>{c.cargoShippingDate || "—"}</td>
                         <td>{c.cargoEta || "—"}</td>
-                        <td>{c.cbmPackingList ? `${c.cbmPackingList} CBM` : "—"}</td>
+                        <td>{c.cbmPackingList ? `${c.cbmPackingList} ${c.cargoPriceUom === "per Pc" ? "Pcs" : c.cargoPriceUom === "per KG" ? "KG" : "CBM"}` : "—"}</td>
                         <td>{c.modeOfTransport || "—"}</td>
                         <td>{getCurrencySymbol(c.currency)}{Number(c.totalCargoPrice || 0).toLocaleString()}</td>
                         <td>{cargoItems.length} items</td>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Plus, Trash2, CheckCircle2, Clipboard, ShieldAlert, Sparkles, X, Package, Copy, Check } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
 import { QuickCreateItemModal, QuickCreateUserModal } from "./QuickCreateModals";
+import { cleanCategoryName } from "../utils/formatters";
 
 export default function RequesterForm({ onAddRequests, purchasers, vendors, currentUser, requests = [], cargos = [], cargoCompanies = [], items = [], onAddItem, onAddPurchaser }) {
   // Combine items from items prop and requests prop so dropdown has options even if master catalog isn't populated
@@ -15,7 +16,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
           map.set(key, {
             id: i.id || name,
             name: name,
-            category: i.category || "",
+            category: cleanCategoryName(i.category || ""),
             type: i.type || "Import",
             itemType: i.itemType || "FG",
             itemNature: i.itemNature || "Non Consumables"
@@ -31,7 +32,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
           map.set(key, {
             id: r.id || name,
             name: name,
-            category: r.category || "",
+            category: cleanCategoryName(r.category || ""),
             type: r.type || "Import",
             itemType: r.itemType || "FG",
             itemNature: r.itemNature || "Non Consumables"
@@ -46,13 +47,16 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
   const catalogCategories = useMemo(() => {
     const cats = new Set();
     combinedItems.forEach(i => {
-      if (i.category && i.category.trim()) cats.add(i.category.trim());
+      const c = cleanCategoryName(i.category || "");
+      if (c) cats.add(c);
     });
     (requests || []).forEach(r => {
-      if (r.category && r.category.trim()) cats.add(r.category.trim());
+      const c = cleanCategoryName(r.category || "");
+      if (c) cats.add(c);
     });
     (items || []).forEach(i => {
-      if (i.category && i.category.trim()) cats.add(i.category.trim());
+      const c = cleanCategoryName(i.category || "");
+      if (c) cats.add(c);
     });
     return Array.from(cats).sort();
   }, [combinedItems, items, requests]);
@@ -253,10 +257,11 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
   };
 
   const selectCategoryOption = (rowId, categoryName) => {
-    const isRmCat = categoryName.toUpperCase() === "RM" || categoryName.toUpperCase().includes("RAW MATERIAL");
+    const cleanedCat = cleanCategoryName(categoryName);
+    const isRmCat = cleanedCat.toUpperCase() === "RM" || cleanedCat.toUpperCase().includes("RAW MATERIAL");
     setRows(prev => prev.map(r => r.id === rowId ? {
       ...r,
-      category: categoryName,
+      category: cleanedCat,
       itemType: isRmCat ? "RM" : r.itemType
     } : r));
     setActiveDropdown(null);
@@ -266,11 +271,12 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
   const selectModelOption = (rowId, item) => {
     setRows(prev => prev.map(r => {
       if (r.id === rowId) {
-        const isRmItem = item.itemType === "RM" || (item.category && item.category.toUpperCase() === "RM") || item.name.toUpperCase().includes(" (RM)") || item.name.toUpperCase().startsWith("RM ");
+        const itemCat = cleanCategoryName(item.category || r.category);
+        const isRmItem = item.itemType === "RM" || (itemCat && itemCat.toUpperCase() === "RM") || item.name.toUpperCase().includes(" (RM)") || item.name.toUpperCase().startsWith("RM ");
         return {
           ...r,
           model: item.name,
-          category: item.category || r.category,
+          category: itemCat,
           type: item.type || r.type,
           itemType: isRmItem ? "RM" : (item.itemType || r.itemType || "FG"),
           itemNature: item.itemNature || r.itemNature
@@ -356,8 +362,9 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
               updatedRow.purchaserId = matchPurchaser(val);
             } else if (fieldName === "category") {
               if (val) {
-                updatedRow.category = val;
-                if (val.toUpperCase() === "RM" || val.toUpperCase().includes("RAW MATERIAL")) {
+                const cleanedVal = cleanCategoryName(val);
+                updatedRow.category = cleanedVal;
+                if (cleanedVal.toUpperCase() === "RM" || cleanedVal.toUpperCase().includes("RAW MATERIAL")) {
                   updatedRow.itemType = "RM";
                 }
               }
@@ -366,7 +373,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                 const matched = combinedItems.find(i => i.name.trim().toLowerCase() === val.toLowerCase());
                 if (matched) {
                   updatedRow.model = matched.name;
-                  updatedRow.category = matched.category || updatedRow.category;
+                  updatedRow.category = cleanCategoryName(matched.category || updatedRow.category);
                   updatedRow.type = matched.type || updatedRow.type;
                   const isRmItem = matched.itemType === "RM" || (matched.category && matched.category.toUpperCase() === "RM") || val.toUpperCase().includes(" (RM)") || val.toUpperCase().startsWith("RM ");
                   updatedRow.itemType = isRmItem ? "RM" : (matched.itemType || updatedRow.itemType || "FG");
@@ -374,7 +381,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                 } else {
                   const catMatch = catalogCategories.find(c => c.trim().toLowerCase() === val.toLowerCase());
                   if (catMatch) {
-                    updatedRow.category = catMatch;
+                    updatedRow.category = cleanCategoryName(catMatch);
                   } else {
                     updatedRow.model = val;
                     const upperVal = val.toUpperCase();
@@ -621,7 +628,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
           type: ["Import", "Local"].includes(type) ? type : "Import",
           itemType: ["FG", "Finished Goods"].includes(itemType) ? "FG" : "RM",
           itemNature: ["Consumables", "Non Consumables"].includes(itemNature) ? itemNature : "Non Consumables",
-          category,
+          category: cleanCategoryName(category),
           model,
           orderQuantity: isNaN(qty) ? "" : qty,
           requiredByDate: parseExcelDate(dateStr),
@@ -785,20 +792,20 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
             <Plus size={14} /> Create New Item
           </button>
 
-          <span style={{ fontSize: "0.78rem", color: "#38bdf8", background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.3)", padding: "5px 12px", borderRadius: "6px", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "6px" }}>
+          <span className="requester-hint-pill">
             <Sparkles size={14} /> Shift+Click to select range & press Ctrl+D to Fill Down
           </span>
           
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(56, 189, 248, 0.15)", padding: "6px 14px", borderRadius: "8px", border: "1px solid #38bdf8", color: "#38bdf8", fontSize: "0.88rem", fontWeight: 700 }}>
-            <Package size={16} /> Total Qty: <span style={{ fontSize: "1rem", color: "#fff", fontWeight: 800 }}>{totalQty.toLocaleString()} Pcs</span>
+          <div className="requester-qty-badge-pcs">
+            <Package size={16} /> Total Qty: <strong>{totalQty.toLocaleString()} Pcs</strong>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(255, 255, 255, 0.04)", padding: "6px 12px", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+          <div className="requester-entry-by-box">
             <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Entry By:</span>
             <input 
               type="text" 
               className="form-control" 
-              style={{ width: "160px", padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+              style={{ width: "160px", padding: "4px 8px", fontSize: "0.85rem", height: "auto", color: "var(--text-main)", backgroundColor: "var(--bg-card)" }}
               value={entryBy}
               onChange={e => setEntryBy(e.target.value)}
               required
@@ -813,7 +820,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
         <div className="table-container" style={{ maxHeight: "500px", overflowY: "auto" }}>
           <table className="custom-table" style={{ fontSize: "0.85rem" }}>
             <thead>
-              <tr style={{ background: "rgba(15, 23, 42, 0.8)" }}>
+              <tr style={{ background: "var(--bg-card)" }}>
                 <th style={{ width: "50px", textAlign: "center" }}>Sno.</th>
                 <th 
                   onClick={() => setSelectedRange({ startIdx: 0, endIdx: rows.length - 1, field: "type" })}
@@ -894,7 +901,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         padding: "4px 8px", 
                         fontSize: "0.85rem", 
                         height: "auto",
-                        background: isCellSelected(index, "type") ? "rgba(56, 189, 248, 0.25)" : undefined,
+                        color: "var(--text-main)",
+                        background: isCellSelected(index, "type") ? "rgba(56, 189, 248, 0.25)" : "var(--bg-card)",
                         borderColor: isCellSelected(index, "type") ? "#38bdf8" : undefined
                       }}
                       value={row.type}
@@ -909,8 +917,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         }
                       }}
                     >
-                      <option value="Import" style={{ background: "#0f172a" }}>Import</option>
-                      <option value="Local" style={{ background: "#0f172a" }}>Local</option>
+                      <option value="Import">Import</option>
+                      <option value="Local">Local</option>
                     </select>
                   </td>
 
@@ -929,7 +937,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         padding: "4px 8px", 
                         fontSize: "0.85rem", 
                         height: "auto",
-                        background: isCellSelected(index, "itemType") ? "rgba(56, 189, 248, 0.25)" : undefined,
+                        color: "var(--text-main)",
+                        background: isCellSelected(index, "itemType") ? "rgba(56, 189, 248, 0.25)" : "var(--bg-card)",
                         borderColor: isCellSelected(index, "itemType") ? "#38bdf8" : undefined
                       }}
                       value={row.itemType || "FG"}
@@ -944,8 +953,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         }
                       }}
                     >
-                      <option value="FG" style={{ background: "#0f172a" }}>Finished Goods (FG)</option>
-                      <option value="RM" style={{ background: "#0f172a" }}>Raw Material (RM)</option>
+                      <option value="FG">Finished Goods (FG)</option>
+                      <option value="RM">Raw Material (RM)</option>
                     </select>
                   </td>
 
@@ -964,7 +973,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         padding: "4px 8px", 
                         fontSize: "0.85rem", 
                         height: "auto",
-                        background: isCellSelected(index, "itemNature") ? "rgba(56, 189, 248, 0.25)" : undefined,
+                        color: "var(--text-main)",
+                        background: isCellSelected(index, "itemNature") ? "rgba(56, 189, 248, 0.25)" : "var(--bg-card)",
                         borderColor: isCellSelected(index, "itemNature") ? "#38bdf8" : undefined
                       }}
                       value={row.itemNature}
@@ -979,8 +989,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         }
                       }}
                     >
-                      <option value="Non Consumables" style={{ background: "#0f172a" }}>Non Consumables</option>
-                      <option value="Consumables" style={{ background: "#0f172a" }}>Consumables</option>
+                      <option value="Non Consumables">Non Consumables</option>
+                      <option value="Consumables">Consumables</option>
                     </select>
                   </td>
 
@@ -1002,7 +1012,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         fontSize: "0.85rem", 
                         height: "auto", 
                         textAlign: "left",
-                        background: isCellSelected(index, "category") ? "rgba(56, 189, 248, 0.25)" : undefined,
+                        color: "var(--text-main)",
+                        background: isCellSelected(index, "category") ? "rgba(56, 189, 248, 0.25)" : "var(--bg-card)",
                         borderColor: isCellSelected(index, "category") ? "#38bdf8" : undefined
                       }}
                       placeholder="Type or Select Category..." 
@@ -1055,7 +1066,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
 
                       // Get unique categories for this Item Type
                       const catsForType = Array.from(
-                        new Set(itemsForType.map(i => i.category && i.category.trim()).filter(Boolean))
+                        new Set(itemsForType.map(i => cleanCategoryName(i.category || "")).filter(Boolean))
                       ).sort();
 
                       const candidateCats = catsForType.length > 0 ? catsForType : catalogCategories;
@@ -1063,6 +1074,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
 
                       return (
                         <div 
+                          className="requester-dropdown-menu"
                           onMouseDown={(e) => e.preventDefault()}
                           style={{
                             position: "fixed",
@@ -1071,27 +1083,23 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                             width: `${dropdownPos.width}px`,
                             maxHeight: "220px",
                             overflowY: "auto",
-                            background: "#0f172a",
-                            border: "1px solid #38bdf8",
-                            borderRadius: "8px",
-                            boxShadow: "0 12px 30px rgba(0,0,0,0.95)",
                             zIndex: 99999,
-                            textAlign: "left"
+                            textAlign: "left",
+                            background: "var(--bg-card)",
+                            color: "var(--text-main)",
+                            border: "1px solid var(--border-glass)"
                           }}
                         >
                           {filteredCats.length > 0 ? (
                             filteredCats.map((cat, idx) => (
                               <div
                                 key={cat}
+                                className={`requester-dropdown-item ${idx === highlightedIndex ? "highlighted" : ""}`}
                                 style={{
-                                  padding: "8px 12px",
-                                  cursor: "pointer",
-                                  fontSize: "0.83rem",
-                                  color: "#f8fafc",
-                                  textAlign: "left",
-                                  borderBottom: "1px solid rgba(255,255,255,0.05)",
-                                  background: idx === highlightedIndex ? "#1e293b" : "transparent",
-                                  borderLeft: idx === highlightedIndex ? "3px solid #38bdf8" : "3px solid transparent"
+                                  color: idx === highlightedIndex ? "var(--primary)" : "var(--text-main)",
+                                  backgroundColor: idx === highlightedIndex ? "var(--primary-glow)" : "transparent",
+                                  borderLeft: idx === highlightedIndex ? "3px solid var(--primary)" : "3px solid transparent",
+                                  borderBottom: "1px solid var(--border-glass)"
                                 }}
                                 onMouseDown={(e) => {
                                   e.preventDefault();
@@ -1130,7 +1138,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         fontSize: "0.85rem", 
                         height: "auto", 
                         textAlign: "left",
-                        background: isCellSelected(index, "model") ? "rgba(56, 189, 248, 0.25)" : undefined,
+                        color: "var(--text-main)",
+                        background: isCellSelected(index, "model") ? "rgba(56, 189, 248, 0.25)" : "var(--bg-card)",
                         borderColor: isCellSelected(index, "model") ? "#38bdf8" : row.model && !isValidModel(row.model, row.itemType) ? "#ef4444" : undefined,
                         boxShadow: row.model && !isValidModel(row.model, row.itemType) ? "0 0 8px rgba(239, 68, 68, 0.4)" : undefined
                       }}
@@ -1190,7 +1199,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       required
                     />
                     {row.model && !isValidModel(row.model, row.itemType) && (
-                      <div style={{ fontSize: "0.72rem", color: "#fca5a5", marginTop: "2px", fontWeight: 500 }}>
+                      <div style={{ fontSize: "0.72rem", color: "#ef4444", marginTop: "2px", fontWeight: 600 }}>
                         Invalid model for {row.itemType || "FG"} (select from dropdown)
                       </div>
                     )}
@@ -1227,6 +1236,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
 
                       return (
                         <div 
+                          className="requester-dropdown-menu"
                           onMouseDown={(e) => e.preventDefault()}
                           style={{
                             position: "fixed",
@@ -1235,30 +1245,26 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                             width: `${dropdownPos.width}px`,
                             maxHeight: "220px",
                             overflowY: "auto",
-                            background: "#0f172a",
-                            border: "1px solid #38bdf8",
-                            borderRadius: "8px",
-                            boxShadow: "0 12px 30px rgba(0,0,0,0.95)",
                             zIndex: 99999,
-                            textAlign: "left"
+                            textAlign: "left",
+                            background: "var(--bg-card)",
+                            color: "var(--text-main)",
+                            border: "1px solid var(--border-glass)"
                           }}
                         >
                           {filteredModels.length > 0 ? (
                             filteredModels.map((item, idx) => (
                               <div
                                 key={item.id || item.name}
+                                className={`requester-dropdown-item ${idx === highlightedIndex ? "highlighted" : ""}`}
                                 style={{
-                                  padding: "8px 12px",
-                                  cursor: "pointer",
-                                  fontSize: "0.83rem",
-                                  color: "#f8fafc",
-                                  textAlign: "left",
-                                  borderBottom: "1px solid rgba(255,255,255,0.05)",
                                   display: "flex",
                                   justifyContent: "space-between",
                                   alignItems: "center",
-                                  background: idx === highlightedIndex ? "#1e293b" : "transparent",
-                                  borderLeft: idx === highlightedIndex ? "3px solid #38bdf8" : "3px solid transparent"
+                                  color: idx === highlightedIndex ? "var(--primary)" : "var(--text-main)",
+                                  backgroundColor: idx === highlightedIndex ? "var(--primary-glow)" : "transparent",
+                                  borderLeft: idx === highlightedIndex ? "3px solid var(--primary)" : "3px solid transparent",
+                                  borderBottom: "1px solid var(--border-glass)"
                                 }}
                                 onMouseDown={(e) => {
                                   e.preventDefault();
@@ -1267,10 +1273,12 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                                 onMouseEnter={() => setHighlightedIndex(idx)}
                               >
                                 <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                                  <span style={{ fontWeight: 600 }}>{item.name}</span>
+                                  <span style={{ fontWeight: 600, color: idx === highlightedIndex ? "var(--primary)" : "var(--text-main)" }}>
+                                    {item.name}
+                                  </span>
                                   {item.category && (
-                                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                                      {item.category} • {item.itemType || "RM"} ({item.type || "Import"})
+                                    <span className="requester-item-subtitle" style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                      {cleanCategoryName(item.category)} • {item.itemType || "RM"} ({item.type || "Import"})
                                     </span>
                                   )}
                                 </div>
@@ -1280,8 +1288,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                                   onClick={(e) => handleCopyModelName(item.name, e)}
                                   onMouseDown={(e) => e.stopPropagation()}
                                   style={{
-                                    background: "rgba(255,255,255,0.08)",
-                                    border: "1px solid rgba(255,255,255,0.15)",
+                                    background: "var(--bg-card)",
+                                    border: "1px solid var(--border-glass)",
                                     color: copiedModelText === item.name ? "var(--success)" : "var(--text-muted)",
                                     borderRadius: "4px",
                                     padding: "2px 6px",
@@ -1298,7 +1306,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                               </div>
                             ))
                           ) : (
-                            <div style={{ padding: "10px 12px", fontSize: "0.8rem", color: "#fca5a5", fontStyle: "italic" }}>
+                            <div style={{ padding: "10px 12px", fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic" }}>
                               {modelQuery ? `"${row.model}" is invalid for ${row.itemType || "FG"}. Select from dropdown.` : `No ${row.itemType || "FG"} items available`}
                             </div>
                           )}
@@ -1318,13 +1326,14 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                   >
                     <input 
                       type="text" 
-                      inputMode="numeric"
+                      inputMode="numeric" 
                       className="form-control" 
                       style={{ 
                         padding: "4px 8px", 
                         fontSize: "0.85rem", 
                         height: "auto",
-                        background: isCellSelected(index, "orderQuantity") ? "rgba(56, 189, 248, 0.25)" : undefined,
+                        color: "var(--text-main)",
+                        background: isCellSelected(index, "orderQuantity") ? "rgba(56, 189, 248, 0.25)" : "var(--bg-card)",
                         borderColor: isCellSelected(index, "orderQuantity") ? "#38bdf8" : undefined
                       }}
                       placeholder="Qty" 
@@ -1363,7 +1372,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         padding: "4px 8px", 
                         fontSize: "0.85rem", 
                         height: "auto",
-                        background: isCellSelected(index, "requiredByDate") ? "rgba(56, 189, 248, 0.25)" : undefined,
+                        color: "var(--text-main)",
+                        background: isCellSelected(index, "requiredByDate") ? "rgba(56, 189, 248, 0.25)" : "var(--bg-card)",
                         borderColor: isCellSelected(index, "requiredByDate") ? "#38bdf8" : undefined
                       }}
                       value={row.requiredByDate}
@@ -1396,7 +1406,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         padding: "4px 8px", 
                         fontSize: "0.85rem", 
                         height: "auto",
-                        background: isCellSelected(index, "purchaserId") ? "rgba(56, 189, 248, 0.25)" : undefined,
+                        color: "var(--text-main)",
+                        background: isCellSelected(index, "purchaserId") ? "rgba(56, 189, 248, 0.25)" : "var(--bg-card)",
                         borderColor: isCellSelected(index, "purchaserId") ? "#38bdf8" : undefined
                       }}
                       value={row.purchaserId}
@@ -1412,11 +1423,16 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                       }}
                       required
                     >
-                      {purchasers.map(p => (
-                        <option key={p.id} value={p.id} style={{ background: "#0f172a" }}>
-                          Mr. {p.name}
-                        </option>
-                      ))}
+                      {purchasers.map(p => {
+                        const rawName = (p.name || "").trim();
+                        const hasSalutation = /^(mr|mrs|ms|dr|shri|smt)\.?\s+/i.test(rawName);
+                        const displayName = hasSalutation ? rawName : `Mr. ${rawName}`;
+                        return (
+                          <option key={p.id} value={p.id}>
+                            {displayName}
+                          </option>
+                        );
+                      })}
                     </select>
                   </td>
 
@@ -1471,19 +1487,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
         {/* Submit action block */}
         <div style={{ display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap" }}>
           {/* Total Quantity Summary Badge */}
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            background: "rgba(16, 185, 129, 0.12)",
-            border: "1px solid rgba(16, 185, 129, 0.3)",
-            color: "#34d399",
-            padding: "8px 16px",
-            borderRadius: "8px",
-            fontWeight: 700,
-            fontSize: "0.88rem"
-          }}>
-            Total Qty: <span style={{ fontSize: "1rem", color: "#fff", fontWeight: 800 }}>{totalQty.toLocaleString()} Units</span>
+          <div className="requester-qty-badge-units">
+            Total Qty: <strong>{totalQty.toLocaleString()} Units</strong>
           </div>
 
           {/* Status bar resembling the "Good to Go" Excel bar */}

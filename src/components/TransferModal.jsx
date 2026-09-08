@@ -86,7 +86,7 @@ export default function TransferModal({ purchaser, activeUsers, requests, vendor
               required
             >
               {potentialDestinations.map(u => (
-                <option key={u.id} value={u.id} style={{ background: "#0f172a" }}>
+                <option key={u.id} value={u.id}>
                   {u.name} ({u.role === "superadmin" ? "Super Admin - Hold Data" : `Purchaser - ${u.email}`})
                 </option>
               ))}

@@ -4,7 +4,7 @@ import ItemDetailModal from "./ItemDetailModal";
 import { useSortableData } from "../utils/useSortableData";
 import Pagination, { SmartSelectionBar } from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
-import { downloadCsv } from "../utils/formatters";
+import { downloadCsv, cleanCategoryName } from "../utils/formatters";
 
 // Normalize item names for fuzzy duplicate detection (e.g. DC02, DC 02, DC2, DC-2, DC-02 -> DC2)
 export function normalizeItemKey(str) {
@@ -188,7 +188,7 @@ export default function ItemCatalogPanel({
   const [merging, setMerging] = useState(false);
 
   // Filter items by search, category & type
-  const categories = useMemo(() => ["all", ...new Set(items.map(i => i.category).filter(Boolean))], [items]);
+  const categories = useMemo(() => ["all", ...new Set(items.map(i => cleanCategoryName(i.category)).filter(Boolean))], [items]);
   const filteredItems = useMemo(() => {
     return items.filter(i => {
       const matchesCategory = categoryFilter === "all" || i.category === categoryFilter;
@@ -1642,7 +1642,7 @@ export default function ItemCatalogPanel({
                       </td>
                       <td style={{ cursor: "pointer" }} onClick={() => handleItemClick(item)}>
                         <span className="badge badge-secondary" style={{ fontSize: "0.75rem" }}>
-                          {item.category || "General"}
+                          {cleanCategoryName(item.category) || "General"}
                         </span>
                       </td>
                       <td style={{ cursor: "pointer" }} onClick={() => handleItemClick(item)}>

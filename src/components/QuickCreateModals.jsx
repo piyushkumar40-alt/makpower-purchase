@@ -391,16 +391,16 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
             <div className="form-group">
               <label className="form-label">Item Type</label>
               <select className="form-control" value={itemType} onChange={e => setItemType(e.target.value)} disabled={submitting || !!successMsg}>
-                <option value="FG" style={{ background: "#0f172a" }}>Finished Goods (FG)</option>
-                <option value="RM" style={{ background: "#0f172a" }}>Raw Material (RM)</option>
+                <option value="FG">Finished Goods (FG)</option>
+                <option value="RM">Raw Material (RM)</option>
               </select>
             </div>
 
             <div className="form-group">
               <label className="form-label">Purchase Type</label>
               <select className="form-control" value={type} onChange={e => setType(e.target.value)} disabled={submitting || !!successMsg}>
-                <option value="Import" style={{ background: "#0f172a" }}>Import</option>
-                <option value="Local" style={{ background: "#0f172a" }}>Local</option>
+                <option value="Import">Import</option>
+                <option value="Local">Local</option>
               </select>
             </div>
           </div>
@@ -408,8 +408,8 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
           <div className="form-group">
             <label className="form-label">Item Nature</label>
             <select className="form-control" value={itemNature} onChange={e => setItemNature(e.target.value)} disabled={submitting || !!successMsg}>
-              <option value="Non Consumables" style={{ background: "#0f172a" }}>Non Consumables</option>
-              <option value="Consumables" style={{ background: "#0f172a" }}>Consumables</option>
+              <option value="Non Consumables">Non Consumables</option>
+              <option value="Consumables">Consumables</option>
             </select>
           </div>
 
@@ -690,10 +690,10 @@ export function QuickCreateDesignationModal({ isOpen, onClose, onAddDesignation,
           <div className="form-group">
             <label className="form-label">System Access Role</label>
             <select className="form-control" value={role} onChange={e => setRole(e.target.value)} disabled={submitting || !!successMsg}>
-              <option value="purchaser" style={{ background: "#0f172a" }}>Purchaser (Standard Access)</option>
-              <option value="coordinator" style={{ background: "#0f172a" }}>Logistics Coordinator</option>
-              <option value="owner" style={{ background: "#0f172a" }}>Company Executive / Owner</option>
-              <option value="superadmin" style={{ background: "#0f172a" }}>System Administrator</option>
+              <option value="purchaser">Purchaser (Standard Access)</option>
+              <option value="coordinator">Logistics Coordinator</option>
+              <option value="owner">Company Executive / Owner</option>
+              <option value="superadmin">System Administrator</option>
             </select>
           </div>
 
