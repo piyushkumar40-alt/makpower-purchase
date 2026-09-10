@@ -116,6 +116,7 @@ export const initialDesignations = [
   { id: "d-crm", title: "CRM Executive", role: "crm", description: "Customer Relationship & Party Sales Management" },
   { id: "d-asm", title: "Area Sales Manager (ASM)", role: "asm", description: "Area Sales Team & Regional Party Network" },
   { id: "d-tsm", title: "Territory Sales Manager (TSM)", role: "tsm", description: "Territory Sales & Direct Dealer Relations" },
+  { id: "d-rsm", title: "Regional Sales Manager (RSM)", role: "rsm", description: "Regional Sales & Territory Oversight" },
   { id: "d-accounts-updates", title: "Accounts and Updates", role: "purchaser", description: "Accounts & Financial Order Updates" },
   { id: "d-purchaser", title: "Purchaser", role: "purchaser", description: "Purchase Requisitions & Vendor Management" },
   { id: "d-packing", title: "Packing", role: "purchaser", description: "Packing & Production Purchasing" },

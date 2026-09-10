@@ -276,7 +276,7 @@ async function setupPgDatabase() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS "phone" TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS "territory" TEXT;
       UPDATE users SET "parentCrmId" = 'u-ankita' 
-      WHERE (role = 'asm' OR role = 'tsm') 
+      WHERE (role = 'asm' OR role = 'tsm' OR role = 'rsm') 
         AND ("parentCrmId" IS NULL OR "parentCrmId" = '') 
         AND (LOWER(name) LIKE '%ashutosh%' OR LOWER(email) LIKE '%ashutosh%');
     `);
@@ -300,6 +300,8 @@ async function setupPgDatabase() {
         "assignedAsmName" TEXT,
         "assignedTsmId" TEXT,
         "assignedTsmName" TEXT,
+        "assignedRsmId" TEXT,
+        "assignedRsmName" TEXT,
         "status" TEXT,
         "createdAt" TEXT
       );
@@ -388,6 +390,7 @@ async function setupPgDatabase() {
         "assignedCrmId" TEXT,
         "assignedAsmId" TEXT,
         "assignedTsmId" TEXT,
+        "assignedRsmId" TEXT,
         "notes" TEXT
       );
     `);
@@ -409,7 +412,8 @@ async function setupPgDatabase() {
         "status" TEXT,
         "assignedCrmId" TEXT,
         "assignedAsmId" TEXT,
-        "assignedTsmId" TEXT
+        "assignedTsmId" TEXT,
+        "assignedRsmId" TEXT
       );
     `);
 
@@ -481,14 +485,22 @@ async function setupPgDatabase() {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_item_name ON ims_transactions("itemName");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_category ON ims_transactions("category");`);
 
+      // CRM Column Migrations for RSM
+      await pool.query(`ALTER TABLE crm_parties ADD COLUMN IF NOT EXISTS "assignedRsmId" TEXT;`);
+      await pool.query(`ALTER TABLE crm_parties ADD COLUMN IF NOT EXISTS "assignedRsmName" TEXT;`);
+      await pool.query(`ALTER TABLE crm_sales_orders ADD COLUMN IF NOT EXISTS "assignedRsmId" TEXT;`);
+      await pool.query(`ALTER TABLE crm_dispatches ADD COLUMN IF NOT EXISTS "assignedRsmId" TEXT;`);
+
       // CRM Database Indexes for instant sub-millisecond querying
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_parties_asm ON crm_parties("assignedAsmId");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_parties_tsm ON crm_parties("assignedTsmId");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_parties_rsm ON crm_parties("assignedRsmId");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_parties_crm ON crm_parties("assignedCrmId");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_orders_party ON crm_sales_orders("partyId");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_orders_date ON crm_sales_orders("orderDate" DESC);`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_orders_asm ON crm_sales_orders("assignedAsmId");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_orders_tsm ON crm_sales_orders("assignedTsmId");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_orders_rsm ON crm_sales_orders("assignedRsmId");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_dispatches_party ON crm_dispatches("partyId");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_dispatches_date ON crm_dispatches("dispatchDate" DESC);`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_remarks_party ON crm_party_remarks("partyId");`);
@@ -675,20 +687,24 @@ async function setupPgDatabase() {
       CREATE INDEX IF NOT EXISTS idx_party_cat_sales_month ON crm_party_category_monthly_sales("month" DESC);
     `);
 
-    // Seed default designations if empty
-    try {
-      const desCheck = await pool.query("SELECT COUNT(*) FROM designations");
-      if (parseInt(desCheck.rows[0].count) === 0) {
-        for (const d of initialDesignations) {
-          await pool.query(
-            `INSERT INTO designations ("id", "title", "description", "role") VALUES ($1, $2, $3, $4) ON CONFLICT ("id") DO NOTHING`,
-            [d.id, d.title, d.description || "", d.role || "purchaser"]
-          );
+      // Seed default designations if empty
+      try {
+        const desCheck = await pool.query("SELECT COUNT(*) FROM designations");
+        if (parseInt(desCheck.rows[0].count) === 0) {
+          for (const d of initialDesignations) {
+            await pool.query(
+              `INSERT INTO designations ("id", "title", "description", "role") VALUES ($1, $2, $3, $4) ON CONFLICT ("id") DO NOTHING`,
+              [d.id, d.title, d.description || "", d.role || "purchaser"]
+            );
+          }
         }
+        // Ensure RSM designation exists in database
+        await pool.query(
+          `INSERT INTO designations ("id", "title", "description", "role") VALUES ('d-rsm', 'Regional Sales Manager (RSM)', 'Regional Sales & Territory Oversight', 'rsm') ON CONFLICT ("id") DO NOTHING`
+        );
+      } catch (desErr) {
+        console.warn("Designations table seed warning:", desErr.message);
       }
-    } catch (desErr) {
-      console.warn("Designations table seed warning:", desErr.message);
-    }
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS audit_logs (
@@ -2149,7 +2165,8 @@ app.get("/api/state", async (req, res) => {
   const isCrmRole = userRole === "crm";
   const isAsmRole = userRole === "asm";
   const isTsmRole = userRole === "tsm";
-  const isAsmTsmRole = isAsmRole || isTsmRole;
+  const isRsmRole = userRole === "rsm";
+  const isAsmTsmRole = isAsmRole || isTsmRole || isRsmRole;
   const isRestrictedRole = isCrmRole || isAsmTsmRole;
   const isPurchaserRole = userRole === "purchaser";
   const isPurchaseOnlyRole = isPurchaserRole || ["requester", "coordinator", "nitin", "rahul", "warehouse", "packing", "accounts"].includes(userRole);
@@ -2255,7 +2272,7 @@ app.get("/api/state", async (req, res) => {
       let crmPartiesParams = [];
 
       if (isRestrictedRole && (userId || userName)) {
-        const cleanName = (userName || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+        const cleanName = (userName || "").replace(/\s*\((ASM|TSM|RSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
         if (isCrmRole) {
           crmPartiesQuery = `
             SELECT * FROM crm_parties 
@@ -2283,6 +2300,16 @@ app.get("/api/state", async (req, res) => {
                OR ($2 <> '' AND TRIM(COALESCE("assignedTsmName", '')) <> '' AND (
                      LOWER(TRIM("assignedTsmName")) LIKE '%' || $2 || '%' 
                   OR $2 LIKE '%' || LOWER(TRIM("assignedTsmName")) || '%'
+               ))
+            ORDER BY "name" ASC
+          `;
+        } else if (isRsmRole) {
+          crmPartiesQuery = `
+            SELECT * FROM crm_parties 
+            WHERE ($1 <> '' AND "assignedRsmId" = $1)
+               OR ($2 <> '' AND TRIM(COALESCE("assignedRsmName", '')) <> '' AND (
+                     LOWER(TRIM("assignedRsmName")) LIKE '%' || $2 || '%' 
+                  OR $2 LIKE '%' || LOWER(TRIM("assignedRsmName")) || '%'
                ))
             ORDER BY "name" ASC
           `;
@@ -2344,7 +2371,7 @@ app.get("/api/state", async (req, res) => {
           const orderQuery = `
             SELECT * FROM crm_sales_orders 
             WHERE ("partyId" = ANY($1) OR LOWER(TRIM("partyName")) = ANY($2) 
-               OR ($3 <> '' AND ("assignedCrmId" = $3 OR "assignedAsmId" = $3 OR "assignedTsmId" = $3)))
+               OR ($3 <> '' AND ("assignedCrmId" = $3 OR "assignedAsmId" = $3 OR "assignedTsmId" = $3 OR "assignedRsmId" = $3)))
             ORDER BY "orderDate" DESC
           `;
           const orderParams = [partyIds, partyNames, effectiveUserId];
@@ -2352,7 +2379,7 @@ app.get("/api/state", async (req, res) => {
           const dispatchQuery = `
             SELECT * FROM crm_dispatches 
             WHERE ("partyId" = ANY($1) OR LOWER(TRIM("partyName")) = ANY($2)
-               OR ($3 <> '' AND ("assignedCrmId" = $3 OR "assignedAsmId" = $3 OR "assignedTsmId" = $3)))
+               OR ($3 <> '' AND ("assignedCrmId" = $3 OR "assignedAsmId" = $3 OR "assignedTsmId" = $3 OR "assignedRsmId" = $3)))
             ORDER BY "dispatchDate" DESC
           `;
           const dispatchParams = [partyIds, partyNames, effectiveUserId];
@@ -2499,7 +2526,7 @@ app.get("/api/state", async (req, res) => {
     const livePartySales = await getLivePartyCategoryMonthlySales();
     if (isRestrictedRole && (userId || userName)) {
       const effectiveId = userId || "";
-      const cleanName = (userName || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+      const cleanName = (userName || "").replace(/\s*\((ASM|TSM|RSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       const myParties = (data.crmParties || []).filter(p => {
         if (isCrmRole) {
           const matchId = effectiveId && (p.assignedCrmId === effectiveId);
@@ -2515,6 +2542,11 @@ app.get("/api/state", async (req, res) => {
           const matchId = effectiveId && (p.assignedTsmId === effectiveId);
           const pTsm = (p.assignedTsmName || "").trim().toLowerCase();
           const matchName = cleanName && pTsm && (pTsm.includes(cleanName) || cleanName.includes(pTsm));
+          return matchId || matchName;
+        } else if (isRsmRole) {
+          const matchId = effectiveId && (p.assignedRsmId === effectiveId);
+          const pRsm = (p.assignedRsmName || "").trim().toLowerCase();
+          const matchName = cleanName && pRsm && (pRsm.includes(cleanName) || cleanName.includes(pRsm));
           return matchId || matchName;
         }
         return false;
@@ -2662,8 +2694,8 @@ app.get("/api/designations", async (req, res) => {
 
 // GET /api/crm/sales-orders - On-demand CRM Sales Orders pull
 app.get("/api/crm/sales-orders", async (req, res) => {
-  const { userId, userRole, userName, asmId, tsmId, partyId, startDate, endDate } = req.query;
-  const isRestrictedRole = userRole === "asm" || userRole === "tsm" || !!asmId || !!tsmId;
+  const { userId, userRole, userName, asmId, tsmId, rsmId, partyId, startDate, endDate } = req.query;
+  const isRestrictedRole = userRole === "asm" || userRole === "tsm" || userRole === "rsm" || !!asmId || !!tsmId || !!rsmId;
 
   if (isPg) {
     try {
@@ -2678,14 +2710,15 @@ app.get("/api/crm/sales-orders", async (req, res) => {
       }
 
       if (isRestrictedRole) {
-        const effectiveId = asmId || tsmId || userId || "";
+        const effectiveId = asmId || tsmId || rsmId || userId || "";
         const effectiveName = (userName || "").trim().toLowerCase();
 
         const pRes = await pool.query(`
           SELECT id, name FROM crm_parties 
-          WHERE "assignedAsmId" = $1 OR "assignedTsmId" = $1 
+          WHERE "assignedAsmId" = $1 OR "assignedTsmId" = $1 OR "assignedRsmId" = $1 
              OR ($2 <> '' AND LOWER(TRIM("assignedAsmName")) = $2) 
              OR ($2 <> '' AND LOWER(TRIM("assignedTsmName")) = $2)
+             OR ($2 <> '' AND LOWER(TRIM("assignedRsmName")) = $2)
         `, [effectiveId, effectiveName]);
 
         const assignedIds = (pRes.rows || []).map(p => p.id);
@@ -2737,11 +2770,11 @@ app.get("/api/crm/sales-orders", async (req, res) => {
     const data = readLocalJson();
     let list = data.crmSalesOrders || [];
     if (isRestrictedRole) {
-      const effectiveId = asmId || tsmId || userId;
+      const effectiveId = asmId || tsmId || rsmId || userId;
       const effectiveName = (userName || "").trim().toLowerCase();
       const myParties = (data.crmParties || []).filter(p => 
-        p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId || 
-        (effectiveName && (p.assignedAsmName?.trim().toLowerCase() === effectiveName || p.assignedTsmName?.trim().toLowerCase() === effectiveName))
+        p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId || p.assignedRsmId === effectiveId ||
+        (effectiveName && (p.assignedAsmName?.trim().toLowerCase() === effectiveName || p.assignedTsmName?.trim().toLowerCase() === effectiveName || p.assignedRsmName?.trim().toLowerCase() === effectiveName))
       );
       const pIdSet = new Set(myParties.map(p => p.id));
       const pNameSet = new Set(myParties.map(p => (p.name || "").trim().toLowerCase()));
@@ -2768,8 +2801,8 @@ app.get("/api/crm/sales-orders", async (req, res) => {
 
 // GET /api/crm/dispatches - On-demand CRM Dispatches pull
 app.get("/api/crm/dispatches", async (req, res) => {
-  const { userId, userRole, userName, asmId, tsmId, partyId, startDate, endDate } = req.query;
-  const isRestrictedRole = userRole === "asm" || userRole === "tsm" || !!asmId || !!tsmId;
+  const { userId, userRole, userName, asmId, tsmId, rsmId, partyId, startDate, endDate } = req.query;
+  const isRestrictedRole = userRole === "asm" || userRole === "tsm" || userRole === "rsm" || !!asmId || !!tsmId || !!rsmId;
 
   if (isPg) {
     try {
@@ -2784,14 +2817,15 @@ app.get("/api/crm/dispatches", async (req, res) => {
       }
 
       if (isRestrictedRole) {
-        const effectiveId = asmId || tsmId || userId || "";
+        const effectiveId = asmId || tsmId || rsmId || userId || "";
         const effectiveName = (userName || "").trim().toLowerCase();
 
         const pRes = await pool.query(`
           SELECT id, name FROM crm_parties 
-          WHERE "assignedAsmId" = $1 OR "assignedTsmId" = $1 
+          WHERE "assignedAsmId" = $1 OR "assignedTsmId" = $1 OR "assignedRsmId" = $1 
              OR ($2 <> '' AND LOWER(TRIM("assignedAsmName")) = $2) 
              OR ($2 <> '' AND LOWER(TRIM("assignedTsmName")) = $2)
+             OR ($2 <> '' AND LOWER(TRIM("assignedRsmName")) = $2)
         `, [effectiveId, effectiveName]);
 
         const assignedIds = (pRes.rows || []).map(p => p.id);
@@ -2839,11 +2873,11 @@ app.get("/api/crm/dispatches", async (req, res) => {
     const data = readLocalJson();
     let list = data.crmDispatches || [];
     if (isRestrictedRole) {
-      const effectiveId = asmId || tsmId || userId;
+      const effectiveId = asmId || tsmId || rsmId || userId;
       const effectiveName = (userName || "").trim().toLowerCase();
       const myParties = (data.crmParties || []).filter(p => 
-        p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId || 
-        (effectiveName && (p.assignedAsmName?.trim().toLowerCase() === effectiveName || p.assignedTsmName?.trim().toLowerCase() === effectiveName))
+        p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId || p.assignedRsmId === effectiveId || 
+        (effectiveName && (p.assignedAsmName?.trim().toLowerCase() === effectiveName || p.assignedTsmName?.trim().toLowerCase() === effectiveName || p.assignedRsmName?.trim().toLowerCase() === effectiveName))
       );
       const pIdSet = new Set(myParties.map(p => p.id));
       const pNameSet = new Set(myParties.map(p => (p.name || "").trim().toLowerCase()));
@@ -3264,6 +3298,7 @@ app.delete("/api/users/:id", async (req, res) => {
       // Also unassign this user from crm_parties
       await pool.query('UPDATE crm_parties SET "assignedAsmId" = NULL, "assignedAsmName" = NULL WHERE "assignedAsmId" = $1', [id]);
       await pool.query('UPDATE crm_parties SET "assignedTsmId" = NULL, "assignedTsmName" = NULL WHERE "assignedTsmId" = $1', [id]);
+      await pool.query('UPDATE crm_parties SET "assignedRsmId" = NULL, "assignedRsmName" = NULL WHERE "assignedRsmId" = $1', [id]);
       res.json({ success: true });
     } catch (err) {
       console.error("DELETE /api/users/:id error:", err.message);
@@ -3283,8 +3318,8 @@ app.delete("/api/users/:id", async (req, res) => {
 
 // 1. GET /api/crm/parties - Retrieve CRM Parties
 app.get("/api/crm/parties", async (req, res) => {
-  const { crmId, asmId, tsmId, userId, userRole, userName } = req.query;
-  const isRestrictedRole = userRole === "asm" || userRole === "tsm" || !!asmId || !!tsmId;
+  const { crmId, asmId, tsmId, rsmId, userId, userRole, userName } = req.query;
+  const isRestrictedRole = userRole === "asm" || userRole === "tsm" || userRole === "rsm" || !!asmId || !!tsmId || !!rsmId;
 
   if (isPg) {
     try {
@@ -3298,10 +3333,10 @@ app.get("/api/crm/parties", async (req, res) => {
         values.push(crmId);
       }
       if (isRestrictedRole) {
-        const effectiveId = asmId || tsmId || userId || "";
-        const cleanName = (userName || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+        const effectiveId = asmId || tsmId || rsmId || userId || "";
+        const cleanName = (userName || "").replace(/\s*\((ASM|TSM|RSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
         conditions.push(`(
-          ($${idx} <> '' AND ("assignedAsmId" = $${idx} OR "assignedTsmId" = $${idx}))
+          ($${idx} <> '' AND ("assignedAsmId" = $${idx} OR "assignedTsmId" = $${idx} OR "assignedRsmId" = $${idx}))
           OR ($${idx + 1} <> '' AND TRIM(COALESCE("assignedAsmName", '')) <> '' AND (
                 LOWER(TRIM("assignedAsmName")) LIKE '%' || $${idx + 1} || '%' 
              OR $${idx + 1} LIKE '%' || LOWER(TRIM("assignedAsmName")) || '%'
@@ -3309,6 +3344,10 @@ app.get("/api/crm/parties", async (req, res) => {
           OR ($${idx + 1} <> '' AND TRIM(COALESCE("assignedTsmName", '')) <> '' AND (
                 LOWER(TRIM("assignedTsmName")) LIKE '%' || $${idx + 1} || '%' 
              OR $${idx + 1} LIKE '%' || LOWER(TRIM("assignedTsmName")) || '%'
+          ))
+          OR ($${idx + 1} <> '' AND TRIM(COALESCE("assignedRsmName", '')) <> '' AND (
+                LOWER(TRIM("assignedRsmName")) LIKE '%' || $${idx + 1} || '%' 
+             OR $${idx + 1} LIKE '%' || LOWER(TRIM("assignedRsmName")) || '%'
           ))
         )`);
         values.push(effectiveId, cleanName);
@@ -3344,15 +3383,17 @@ app.get("/api/crm/parties", async (req, res) => {
     let list = data.crmParties || [];
     if (crmId) list = list.filter(p => p.assignedCrmId === crmId);
     if (isRestrictedRole) {
-      const effectiveId = asmId || tsmId || userId || "";
-      const cleanName = (userName || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+      const effectiveId = asmId || tsmId || rsmId || userId || "";
+      const cleanName = (userName || "").replace(/\s*\((ASM|TSM|RSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       list = list.filter(p => {
-        const matchId = effectiveId && (p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId);
+        const matchId = effectiveId && (p.assignedAsmId === effectiveId || p.assignedTsmId === effectiveId || p.assignedRsmId === effectiveId);
         const pAsm = (p.assignedAsmName || "").trim().toLowerCase();
         const pTsm = (p.assignedTsmName || "").trim().toLowerCase();
+        const pRsm = (p.assignedRsmName || "").trim().toLowerCase();
         const matchName = cleanName && (
           (pAsm && (pAsm.includes(cleanName) || cleanName.includes(pAsm))) ||
-          (pTsm && (pTsm.includes(cleanName) || cleanName.includes(pTsm)))
+          (pTsm && (pTsm.includes(cleanName) || cleanName.includes(pTsm))) ||
+          (pRsm && (pRsm.includes(cleanName) || cleanName.includes(pRsm)))
         );
         return matchId || matchName;
       });
@@ -3401,6 +3442,8 @@ app.post("/api/crm/parties", async (req, res) => {
     assignedAsmName: p.assignedAsmName || "",
     assignedTsmId: p.assignedTsmId || "",
     assignedTsmName: p.assignedTsmName || "",
+    assignedRsmId: p.assignedRsmId || "",
+    assignedRsmName: p.assignedRsmName || "",
     status: p.status || "Active",
     createdAt: p.createdAt || new Date().toISOString().split("T")[0]
   };
@@ -3411,8 +3454,9 @@ app.post("/api/crm/parties", async (req, res) => {
         INSERT INTO crm_parties (
           "id", "name", "contactPerson", "phone", "email", "city", "state", "gstin",
           "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName",
-          "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt"
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+          "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName",
+          "assignedRsmId", "assignedRsmName", "status", "createdAt"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
         ON CONFLICT ("name") DO UPDATE SET
           "id" = EXCLUDED."name",
           "contactPerson" = EXCLUDED."contactPerson",
@@ -3430,25 +3474,28 @@ app.post("/api/crm/parties", async (req, res) => {
           "assignedAsmName" = EXCLUDED."assignedAsmName",
           "assignedTsmId" = EXCLUDED."assignedTsmId",
           "assignedTsmName" = EXCLUDED."assignedTsmName",
+          "assignedRsmId" = EXCLUDED."assignedRsmId",
+          "assignedRsmName" = EXCLUDED."assignedRsmName",
           "status" = EXCLUDED."status"
       `;
       const values = [
         partyObj.id, partyObj.name, partyObj.contactPerson, partyObj.phone, partyObj.email,
         partyObj.city, partyObj.state, partyObj.gstin, partyObj.creditLimit, partyObj.outstanding,
         partyObj.paymentTerms, partyObj.assignedCrmId, partyObj.assignedCrmName, partyObj.assignedAsmId,
-        partyObj.assignedAsmName, partyObj.assignedTsmId, partyObj.assignedTsmName, partyObj.status, partyObj.createdAt
+        partyObj.assignedAsmName, partyObj.assignedTsmId, partyObj.assignedTsmName,
+        partyObj.assignedRsmId, partyObj.assignedRsmName, partyObj.status, partyObj.createdAt
       ];
       try {
         await pool.query(query, values);
       } catch (insertErr) {
         // Fallback if constraint differs: update existing by name or insert
         const updateRes = await pool.query(
-          `UPDATE crm_parties SET "contactPerson" = $1, "phone" = $2, "email" = $3, "city" = $4, "state" = $5, "gstin" = $6, "creditLimit" = $7, "outstanding" = $8, "paymentTerms" = $9, "assignedCrmId" = $10, "assignedCrmName" = $11, "assignedAsmId" = $12, "assignedAsmName" = $13, "assignedTsmId" = $14, "assignedTsmName" = $15, "status" = $16 WHERE LOWER(TRIM("name")) = LOWER(TRIM($17))`,
-          [partyObj.contactPerson, partyObj.phone, partyObj.email, partyObj.city, partyObj.state, partyObj.gstin, partyObj.creditLimit, partyObj.outstanding, partyObj.paymentTerms, partyObj.assignedCrmId, partyObj.assignedCrmName, partyObj.assignedAsmId, partyObj.assignedAsmName, partyObj.assignedTsmId, partyObj.assignedTsmName, partyObj.status, partyObj.name]
+          `UPDATE crm_parties SET "contactPerson" = $1, "phone" = $2, "email" = $3, "city" = $4, "state" = $5, "gstin" = $6, "creditLimit" = $7, "outstanding" = $8, "paymentTerms" = $9, "assignedCrmId" = $10, "assignedCrmName" = $11, "assignedAsmId" = $12, "assignedAsmName" = $13, "assignedTsmId" = $14, "assignedTsmName" = $15, "assignedRsmId" = $16, "assignedRsmName" = $17, "status" = $18 WHERE LOWER(TRIM("name")) = LOWER(TRIM($19))`,
+          [partyObj.contactPerson, partyObj.phone, partyObj.email, partyObj.city, partyObj.state, partyObj.gstin, partyObj.creditLimit, partyObj.outstanding, partyObj.paymentTerms, partyObj.assignedCrmId, partyObj.assignedCrmName, partyObj.assignedAsmId, partyObj.assignedAsmName, partyObj.assignedTsmId, partyObj.assignedTsmName, partyObj.assignedRsmId, partyObj.assignedRsmName, partyObj.status, partyObj.name]
         );
         if (updateRes.rowCount === 0) {
           await pool.query(
-            `INSERT INTO crm_parties ("id", "name", "contactPerson", "phone", "email", "city", "state", "gstin", "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName", "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+            `INSERT INTO crm_parties ("id", "name", "contactPerson", "phone", "email", "city", "state", "gstin", "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName", "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "assignedRsmId", "assignedRsmName", "status", "createdAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
             values
           );
         }
@@ -3522,6 +3569,8 @@ app.post("/api/crm/parties/batch", async (req, res) => {
         assignedAsmName: p.assignedAsmName || "",
         assignedTsmId: p.assignedTsmId || "",
         assignedTsmName: p.assignedTsmName || "",
+        assignedRsmId: p.assignedRsmId || "",
+        assignedRsmName: p.assignedRsmName || "",
         status: p.status || "Active",
         createdAt: p.createdAt || new Date().toISOString().split("T")[0]
       });
@@ -3542,7 +3591,7 @@ app.post("/api/crm/parties/batch", async (req, res) => {
 
         for (const p of chunk) {
           if (!p.name) continue;
-          valuePlaceholders.push(`($${pIdx}, $${pIdx+1}, $${pIdx+2}, $${pIdx+3}, $${pIdx+4}, $${pIdx+5}, $${pIdx+6}, $${pIdx+7}, $${pIdx+8}, $${pIdx+9}, $${pIdx+10}, $${pIdx+11}, $${pIdx+12}, $${pIdx+13}, $${pIdx+14}, $${pIdx+15}, $${pIdx+16}, $${pIdx+17}, $${pIdx+18})`);
+          valuePlaceholders.push(`($${pIdx}, $${pIdx+1}, $${pIdx+2}, $${pIdx+3}, $${pIdx+4}, $${pIdx+5}, $${pIdx+6}, $${pIdx+7}, $${pIdx+8}, $${pIdx+9}, $${pIdx+10}, $${pIdx+11}, $${pIdx+12}, $${pIdx+13}, $${pIdx+14}, $${pIdx+15}, $${pIdx+16}, $${pIdx+17}, $${pIdx+18}, $${pIdx+19}, $${pIdx+20})`);
           queryParams.push(
             p.name, // id is party name
             p.name, // name is primary key
@@ -3561,10 +3610,12 @@ app.post("/api/crm/parties/batch", async (req, res) => {
             p.assignedAsmName || "",
             p.assignedTsmId || "",
             p.assignedTsmName || "",
+            p.assignedRsmId || "",
+            p.assignedRsmName || "",
             p.status || "Active",
             p.createdAt || new Date().toISOString().split("T")[0]
           );
-          pIdx += 19;
+          pIdx += 21;
         }
 
         if (valuePlaceholders.length > 0) {
@@ -3574,7 +3625,8 @@ app.post("/api/crm/parties/batch", async (req, res) => {
               INSERT INTO crm_parties (
                 "id", "name", "contactPerson", "phone", "email", "city", "state", "gstin",
                 "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName",
-                "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt"
+                "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName",
+                "assignedRsmId", "assignedRsmName", "status", "createdAt"
               ) VALUES ${valuePlaceholders.join(", ")}
               ON CONFLICT ("name") DO UPDATE SET
                 "id" = EXCLUDED."name",
@@ -3593,6 +3645,8 @@ app.post("/api/crm/parties/batch", async (req, res) => {
                 "assignedAsmName" = EXCLUDED."assignedAsmName",
                 "assignedTsmId" = EXCLUDED."assignedTsmId",
                 "assignedTsmName" = EXCLUDED."assignedTsmName",
+                "assignedRsmId" = EXCLUDED."assignedRsmId",
+                "assignedRsmName" = EXCLUDED."assignedRsmName",
                 "status" = EXCLUDED."status"
             `;
             await pool.query(bulkSql, queryParams);
@@ -3612,8 +3666,9 @@ app.post("/api/crm/parties/batch", async (req, res) => {
                   INSERT INTO crm_parties (
                     "id", "name", "contactPerson", "phone", "email", "city", "state", "gstin",
                     "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName",
-                    "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt"
-                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+                    "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName",
+                    "assignedRsmId", "assignedRsmName", "status", "createdAt"
+                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
                   ON CONFLICT ("name") DO UPDATE SET
                     "id" = EXCLUDED."name",
                     "contactPerson" = EXCLUDED."contactPerson",
@@ -3631,24 +3686,27 @@ app.post("/api/crm/parties/batch", async (req, res) => {
                     "assignedAsmName" = EXCLUDED."assignedAsmName",
                     "assignedTsmId" = EXCLUDED."assignedTsmId",
                     "assignedTsmName" = EXCLUDED."assignedTsmName",
+                    "assignedRsmId" = EXCLUDED."assignedRsmId",
+                    "assignedRsmName" = EXCLUDED."assignedRsmName",
                     "status" = EXCLUDED."status"
                 `, [
                   p.name, p.name, p.contactPerson || "", p.phone || "", p.email || "", p.city || "",
                   p.state || "", p.gstin || "", p.creditLimit || 0, p.outstanding || 0,
                   p.paymentTerms || "30 Days", p.assignedCrmId || "", p.assignedCrmName || "",
                   p.assignedAsmId || "", p.assignedAsmName || "", p.assignedTsmId || "",
-                  p.assignedTsmName || "", p.status || "Active", p.createdAt || new Date().toISOString().split("T")[0]
+                  p.assignedTsmName || "", p.assignedRsmId || "", p.assignedRsmName || "",
+                  p.status || "Active", p.createdAt || new Date().toISOString().split("T")[0]
                 ]);
               } catch (singleErr) {
                 // Last-resort fallback: update or insert without ON CONFLICT clause
                 const updateRes = await pool.query(
-                  `UPDATE crm_parties SET "contactPerson" = $1, "phone" = $2, "email" = $3, "city" = $4, "state" = $5, "gstin" = $6, "creditLimit" = $7, "outstanding" = $8, "paymentTerms" = $9, "assignedCrmId" = $10, "assignedCrmName" = $11, "assignedAsmId" = $12, "assignedAsmName" = $13, "assignedTsmId" = $14, "assignedTsmName" = $15, "status" = $16 WHERE LOWER(TRIM("name")) = LOWER(TRIM($17))`,
-                  [p.contactPerson || "", p.phone || "", p.email || "", p.city || "", p.state || "", p.gstin || "", p.creditLimit || 0, p.outstanding || 0, p.paymentTerms || "30 Days", p.assignedCrmId || "", p.assignedCrmName || "", p.assignedAsmId || "", p.assignedAsmName || "", p.assignedTsmId || "", p.assignedTsmName || "", p.status || "Active", p.name]
+                  `UPDATE crm_parties SET "contactPerson" = $1, "phone" = $2, "email" = $3, "city" = $4, "state" = $5, "gstin" = $6, "creditLimit" = $7, "outstanding" = $8, "paymentTerms" = $9, "assignedCrmId" = $10, "assignedCrmName" = $11, "assignedAsmId" = $12, "assignedAsmName" = $13, "assignedTsmId" = $14, "assignedTsmName" = $15, "assignedRsmId" = $16, "assignedRsmName" = $17, "status" = $18 WHERE LOWER(TRIM("name")) = LOWER(TRIM($19))`,
+                  [p.contactPerson || "", p.phone || "", p.email || "", p.city || "", p.state || "", p.gstin || "", p.creditLimit || 0, p.outstanding || 0, p.paymentTerms || "30 Days", p.assignedCrmId || "", p.assignedCrmName || "", p.assignedAsmId || "", p.assignedAsmName || "", p.assignedTsmId || "", p.assignedTsmName || "", p.assignedRsmId || "", p.assignedRsmName || "", p.status || "Active", p.name]
                 );
                 if (updateRes.rowCount === 0) {
                   await pool.query(
-                    `INSERT INTO crm_parties ("id", "name", "contactPerson", "phone", "email", "city", "state", "gstin", "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName", "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "status", "createdAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
-                    [p.name, p.name, p.contactPerson || "", p.phone || "", p.email || "", p.city || "", p.state || "", p.gstin || "", p.creditLimit || 0, p.outstanding || 0, p.paymentTerms || "30 Days", p.assignedCrmId || "", p.assignedCrmName || "", p.assignedAsmId || "", p.assignedAsmName || "", p.assignedTsmId || "", p.assignedTsmName || "", p.status || "Active", p.createdAt || new Date().toISOString().split("T")[0]]
+                    `INSERT INTO crm_parties ("id", "name", "contactPerson", "phone", "email", "city", "state", "gstin", "creditLimit", "outstanding", "paymentTerms", "assignedCrmId", "assignedCrmName", "assignedAsmId", "assignedAsmName", "assignedTsmId", "assignedTsmName", "assignedRsmId", "assignedRsmName", "status", "createdAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+                    [p.name, p.name, p.contactPerson || "", p.phone || "", p.email || "", p.city || "", p.state || "", p.gstin || "", p.creditLimit || 0, p.outstanding || 0, p.paymentTerms || "30 Days", p.assignedCrmId || "", p.assignedCrmName || "", p.assignedAsmId || "", p.assignedAsmName || "", p.assignedTsmId || "", p.assignedTsmName || "", p.assignedRsmId || "", p.assignedRsmName || "", p.status || "Active", p.createdAt || new Date().toISOString().split("T")[0]]
                   );
                 }
               }
@@ -3754,9 +3812,9 @@ app.post("/api/crm/parties/delete", async (req, res) => {
   }
 });
 
-// 4b. POST /api/crm/parties/batch-assign - Assign multiple parties to an ASM or TSM
+// 4b. POST /api/crm/parties/batch-assign - Assign multiple parties to an ASM, TSM, or RSM
 app.post("/api/crm/parties/batch-assign", async (req, res) => {
-  const { partyIds, assignedAsmId, assignedTsmId, assignedAsmName, assignedTsmName } = req.body;
+  const { partyIds, assignedAsmId, assignedTsmId, assignedRsmId, assignedAsmName, assignedTsmName, assignedRsmName } = req.body;
   if (!Array.isArray(partyIds)) {
     return res.status(400).json({ error: "No party IDs provided for assignment." });
   }
@@ -3783,6 +3841,16 @@ app.post("/api/crm/parties/batch-assign", async (req, res) => {
           );
         }
       }
+      if (assignedRsmId !== undefined) {
+        // Clear prior assignments for this RSM so unselected ones are cleanly unassigned
+        await pool.query('UPDATE crm_parties SET "assignedRsmId" = NULL, "assignedRsmName" = NULL WHERE "assignedRsmId" = $1', [assignedRsmId]);
+        if (partyIds.length > 0) {
+          await pool.query(
+            'UPDATE crm_parties SET "assignedRsmId" = $1, "assignedRsmName" = $2 WHERE "id" = ANY($3::text[])',
+            [assignedRsmId, assignedRsmName || "", partyIds]
+          );
+        }
+      }
       res.json({ success: true, count: partyIds.length });
     } catch (err) {
       console.error("POST /api/crm/parties/batch-assign error:", err.message);
@@ -3798,12 +3866,16 @@ app.post("/api/crm/parties/batch-assign", async (req, res) => {
           assignedAsmId: assignedAsmId !== undefined ? assignedAsmId : p.assignedAsmId,
           assignedAsmName: assignedAsmName !== undefined ? assignedAsmName : p.assignedAsmName,
           assignedTsmId: assignedTsmId !== undefined ? assignedTsmId : p.assignedTsmId,
-          assignedTsmName: assignedTsmName !== undefined ? assignedTsmName : p.assignedTsmName
+          assignedTsmName: assignedTsmName !== undefined ? assignedTsmName : p.assignedTsmName,
+          assignedRsmId: assignedRsmId !== undefined ? assignedRsmId : p.assignedRsmId,
+          assignedRsmName: assignedRsmName !== undefined ? assignedRsmName : p.assignedRsmName
         };
       } else if (assignedAsmId && p.assignedAsmId === assignedAsmId) {
         return { ...p, assignedAsmId: "", assignedAsmName: "" };
       } else if (assignedTsmId && p.assignedTsmId === assignedTsmId) {
         return { ...p, assignedTsmId: "", assignedTsmName: "" };
+      } else if (assignedRsmId && p.assignedRsmId === assignedRsmId) {
+        return { ...p, assignedRsmId: "", assignedRsmName: "" };
       }
       return p;
     });
@@ -3836,6 +3908,7 @@ app.post("/api/crm/sales-orders", async (req, res) => {
     assignedCrmId: so.assignedCrmId || "",
     assignedAsmId: so.assignedAsmId || "",
     assignedTsmId: so.assignedTsmId || "",
+    assignedRsmId: so.assignedRsmId || "",
     notes: so.notes || ""
   };
 
@@ -3845,8 +3918,8 @@ app.post("/api/crm/sales-orders", async (req, res) => {
         INSERT INTO crm_sales_orders (
           "id", "orderNo", "orderDate", "partyId", "partyName", "itemModel", "category",
           "orderQty", "unitPriceInr", "totalInr", "dispatchedQty", "pendingQty", "status",
-          "assignedCrmId", "assignedAsmId", "assignedTsmId", "notes"
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+          "assignedCrmId", "assignedAsmId", "assignedTsmId", "assignedRsmId", "notes"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
         ON CONFLICT ("id") DO UPDATE SET
           "orderNo" = EXCLUDED."orderNo",
           "orderDate" = EXCLUDED."orderDate",
@@ -3863,13 +3936,14 @@ app.post("/api/crm/sales-orders", async (req, res) => {
           "assignedCrmId" = EXCLUDED."assignedCrmId",
           "assignedAsmId" = EXCLUDED."assignedAsmId",
           "assignedTsmId" = EXCLUDED."assignedTsmId",
+          "assignedRsmId" = EXCLUDED."assignedRsmId",
           "notes" = EXCLUDED."notes"
       `;
       const values = [
         orderObj.id, orderObj.orderNo, orderObj.orderDate, orderObj.partyId, orderObj.partyName,
         orderObj.itemModel, orderObj.category, orderObj.orderQty, orderObj.unitPriceInr, orderObj.totalInr,
         orderObj.dispatchedQty, orderObj.pendingQty, orderObj.status, orderObj.assignedCrmId, orderObj.assignedAsmId,
-        orderObj.assignedTsmId, orderObj.notes
+        orderObj.assignedTsmId, orderObj.assignedRsmId, orderObj.notes
       ];
       await pool.query(query, values);
       res.json({ success: true, order: orderObj });
@@ -3933,7 +4007,8 @@ app.post("/api/crm/dispatches", async (req, res) => {
     status: d.status || "In Transit",
     assignedCrmId: d.assignedCrmId || "",
     assignedAsmId: d.assignedAsmId || "",
-    assignedTsmId: d.assignedTsmId || ""
+    assignedTsmId: d.assignedTsmId || "",
+    assignedRsmId: d.assignedRsmId || ""
   };
 
   if (isPg) {
@@ -3942,8 +4017,8 @@ app.post("/api/crm/dispatches", async (req, res) => {
         INSERT INTO crm_dispatches (
           "id", "orderId", "orderNo", "partyId", "partyName", "itemModel", "dispatchedQty",
           "transporterName", "docketNo", "invoiceNo", "dispatchDate", "deliveryDate", "status",
-          "assignedCrmId", "assignedAsmId", "assignedTsmId"
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+          "assignedCrmId", "assignedAsmId", "assignedTsmId", "assignedRsmId"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
         ON CONFLICT ("id") DO UPDATE SET
           "orderId" = EXCLUDED."orderId",
           "orderNo" = EXCLUDED."orderNo",
@@ -3959,13 +4034,14 @@ app.post("/api/crm/dispatches", async (req, res) => {
           "status" = EXCLUDED."status",
           "assignedCrmId" = EXCLUDED."assignedCrmId",
           "assignedAsmId" = EXCLUDED."assignedAsmId",
-          "assignedTsmId" = EXCLUDED."assignedTsmId"
+          "assignedTsmId" = EXCLUDED."assignedTsmId",
+          "assignedRsmId" = EXCLUDED."assignedRsmId"
       `;
       const values = [
         dispatchObj.id, dispatchObj.orderId, dispatchObj.orderNo, dispatchObj.partyId, dispatchObj.partyName,
         dispatchObj.itemModel, dispatchObj.dispatchedQty, dispatchObj.transporterName, dispatchObj.docketNo,
         dispatchObj.invoiceNo, dispatchObj.dispatchDate, dispatchObj.deliveryDate, dispatchObj.status,
-        dispatchObj.assignedCrmId, dispatchObj.assignedAsmId, dispatchObj.assignedTsmId
+        dispatchObj.assignedCrmId, dispatchObj.assignedAsmId, dispatchObj.assignedTsmId, dispatchObj.assignedRsmId
       ];
       await pool.query(query, values);
 

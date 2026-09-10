@@ -117,7 +117,7 @@ export default function HomePage({
             </h1>
           </div>
           <p style={{ color: "var(--text-muted)", fontSize: "0.92rem", margin: 0 }}>
-            {["crm", "asm", "tsm"].includes(currentUser?.role)
+            {["crm", "asm", "tsm", "rsm"].includes(currentUser?.role)
               ? "CRM & Field Sales Command Center"
               : "Purchase Ledger & Operations Command Center"} • Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{currentUser?.role || "Staff"}</strong>
           </p>
@@ -132,7 +132,7 @@ export default function HomePage({
               <ShieldCheck size={14} /> Open Admin Panel
             </button>
           )}
-          {(currentUser?.role === "crm" || currentUser?.role === "asm" || currentUser?.role === "tsm" || currentUser?.role === "superadmin" || currentUser?.role === "owner") && (
+          {(currentUser?.role === "crm" || currentUser?.role === "asm" || currentUser?.role === "tsm" || currentUser?.role === "rsm" || currentUser?.role === "superadmin" || currentUser?.role === "owner") && (
             <button onClick={() => onNavigateView("crm")} className="btn btn-primary btn-sm" style={{ background: "linear-gradient(135deg, #0284c7, #6366f1)" }}>
               <Activity size={14} /> Dashboard
             </button>
@@ -151,7 +151,7 @@ export default function HomePage({
       </div>
 
       {/* ==================== ROLE VIEW: CRM EXECUTIVE HOME DASHBOARD ==================== */}
-      {(currentUser?.role === "crm" || currentUser?.role === "asm" || currentUser?.role === "tsm") && (
+      {(currentUser?.role === "crm" || currentUser?.role === "asm" || currentUser?.role === "tsm" || currentUser?.role === "rsm") && (
         <div className="card-fade-in glass-panel" style={{ padding: "26px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "20px", background: "linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(15, 23, 42, 0.8) 100%)" }}>
           <div>
             <span className="badge badge-primary" style={{ marginBottom: "6px" }}>Customer Relationship Management</span>
@@ -159,7 +159,7 @@ export default function HomePage({
               {currentUser.name}'s Dashboard
             </h2>
             <p style={{ color: "var(--text-muted)", fontSize: "0.88rem", marginTop: "4px", margin: 0 }}>
-              Manage your assigned party accounts, field sales representatives (ASM/TSM), item-wise sales, and dispatch fulfillment.
+              Manage your assigned party accounts, field sales representatives (ASM/TSM/RSM), item-wise sales, and dispatch fulfillment.
             </p>
           </div>
           <button onClick={() => onNavigateView("crm")} className="btn btn-primary" style={{ padding: "10px 22px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
@@ -460,7 +460,7 @@ export default function HomePage({
   )}
 
   {/* ==================== GLOBAL VISUAL REPORTS & CHARTS SECTION (PURCHASE TEAM ONLY) ==================== */}
-  {!["crm", "asm", "tsm"].includes(currentUser?.role) && (
+  {!["crm", "asm", "tsm", "rsm"].includes(currentUser?.role) && (
     <div className="glass-panel" style={{ padding: "24px" }}>
       <h3 style={{ fontSize: "1.3rem", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px", marginBottom: "20px" }}>
         <BarChart2 size={20} /> System Performance Analytics & Progress Charts

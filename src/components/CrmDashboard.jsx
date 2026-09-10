@@ -97,7 +97,7 @@ export default function CrmDashboard({
 
   // Selected Executive (for Admin/Owner switching or defaults to current logged in CRM)
   const [selectedExecutiveId, setSelectedExecutiveId] = useState(() => {
-    if (currentUser?.role === "crm" || currentUser?.role === "asm" || currentUser?.role === "tsm") {
+    if (currentUser?.role === "crm" || currentUser?.role === "asm" || currentUser?.role === "tsm" || currentUser?.role === "rsm") {
       return currentUser.id;
     }
     return "all"; // "all" | specific CRM id
@@ -109,9 +109,10 @@ export default function CrmDashboard({
   }, [selectedExecutiveId, crmExecutives, users, currentUser]);
 
   const canViewFinancials = currentUser?.role === "superadmin" || currentUser?.role === "owner";
+  const isRsmUser = currentUser?.role === "rsm";
   const isAsmUser = currentUser?.role === "asm";
   const isTsmUser = currentUser?.role === "tsm";
-  const isAsmOrTsm = isAsmUser || isTsmUser;
+  const isAsmOrTsm = isAsmUser || isTsmUser || isRsmUser;
   const isCrmUser = currentUser?.role === "crm";
 
   // Navigation Tabs: "parties" | "team" | "salesreport" | "dispatchreport" | "orders"
@@ -323,7 +324,7 @@ export default function CrmDashboard({
     const cleanParties = cleanListReversed.reverse();
 
     if (isAsmUser) {
-      const myName = (currentUser?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+      const myName = (currentUser?.name || "").replace(/\s*\((ASM|TSM|RSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       const myId = currentUser?.id || "";
       return cleanParties.filter(p => {
         const matchId = myId && (p.assignedAsmId === myId);
@@ -333,7 +334,7 @@ export default function CrmDashboard({
       });
     }
     if (isTsmUser) {
-      const myName = (currentUser?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+      const myName = (currentUser?.name || "").replace(/\s*\((ASM|TSM|RSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       const myId = currentUser?.id || "";
       return cleanParties.filter(p => {
         const matchId = myId && (p.assignedTsmId === myId);
@@ -342,8 +343,18 @@ export default function CrmDashboard({
         return matchId || matchName;
       });
     }
+    if (isRsmUser) {
+      const myName = (currentUser?.name || "").replace(/\s*\((ASM|TSM|RSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+      const myId = currentUser?.id || "";
+      return cleanParties.filter(p => {
+        const matchId = myId && (p.assignedRsmId === myId);
+        const pRsm = (p.assignedRsmName || "").trim().toLowerCase();
+        const matchName = myName && pRsm && (pRsm.includes(myName) || myName.includes(pRsm));
+        return matchId || matchName;
+      });
+    }
     if (isCrmUser) {
-      const myName = (currentUser?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+      const myName = (currentUser?.name || "").replace(/\s*\((ASM|TSM|RSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       const myId = currentUser?.id || "";
       const normMyName = normParty(myName);
       return cleanParties.filter(p => {
@@ -360,16 +371,18 @@ export default function CrmDashboard({
       });
     }
     if (selectedExecutiveId === "all") return cleanParties;
-    const execName = (activeExecutive?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+    const execName = (activeExecutive?.name || "").replace(/\s*\((ASM|TSM|RSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
     return cleanParties.filter(p => {
-      const matchId = p.assignedCrmId === selectedExecutiveId || p.assignedAsmId === selectedExecutiveId || p.assignedTsmId === selectedExecutiveId;
+      const matchId = p.assignedCrmId === selectedExecutiveId || p.assignedAsmId === selectedExecutiveId || p.assignedTsmId === selectedExecutiveId || p.assignedRsmId === selectedExecutiveId;
       const pCrm = (p.assignedCrmName || "").trim().toLowerCase();
       const pAsm = (p.assignedAsmName || "").trim().toLowerCase();
       const pTsm = (p.assignedTsmName || "").trim().toLowerCase();
+      const pRsm = (p.assignedRsmName || "").trim().toLowerCase();
       const matchName = execName && (
         (pCrm && (pCrm.includes(execName) || execName.includes(pCrm))) ||
         (pAsm && (pAsm.includes(execName) || execName.includes(pAsm))) ||
-        (pTsm && (pTsm.includes(execName) || execName.includes(pTsm)))
+        (pTsm && (pTsm.includes(execName) || execName.includes(pTsm))) ||
+        (pRsm && (pRsm.includes(execName) || execName.includes(pRsm)))
       );
       return matchId || matchName;
     });
@@ -388,13 +401,14 @@ export default function CrmDashboard({
         return currentParties.some(p => matchParty(p.name, so.partyName, p.id, so.partyId));
       });
     } else if (selectedExecutiveId !== "all") {
-      const execName = (activeExecutive?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+      const execName = (activeExecutive?.name || "").replace(/\s*\((ASM|TSM|RSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       list = list.filter(so => {
-        if (so.assignedCrmId === selectedExecutiveId || so.assignedAsmId === selectedExecutiveId || so.assignedTsmId === selectedExecutiveId) return true;
+        if (so.assignedCrmId === selectedExecutiveId || so.assignedAsmId === selectedExecutiveId || so.assignedTsmId === selectedExecutiveId || so.assignedRsmId === selectedExecutiveId) return true;
         if (currentParties.some(p => matchParty(p.name, so.partyName, p.id, so.partyId))) return true;
         const soAsm = (so.assignedAsmName || "").trim().toLowerCase();
         const soTsm = (so.assignedTsmName || "").trim().toLowerCase();
-        if (execName && (soAsm.includes(execName) || soTsm.includes(execName))) return true;
+        const soRsm = (so.assignedRsmName || "").trim().toLowerCase();
+        if (execName && (soAsm.includes(execName) || soTsm.includes(execName) || soRsm.includes(execName))) return true;
         return false;
       });
     }
@@ -428,13 +442,14 @@ export default function CrmDashboard({
         return currentParties.some(p => matchParty(p.name, d.partyName, p.id, d.partyId));
       });
     } else if (selectedExecutiveId !== "all") {
-      const execName = (activeExecutive?.name || "").replace(/\s*\((ASM|TSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+      const execName = (activeExecutive?.name || "").replace(/\s*\((ASM|TSM|RSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       list = list.filter(d => {
-        if (d.assignedCrmId === selectedExecutiveId || d.assignedAsmId === selectedExecutiveId || d.assignedTsmId === selectedExecutiveId) return true;
+        if (d.assignedCrmId === selectedExecutiveId || d.assignedAsmId === selectedExecutiveId || d.assignedTsmId === selectedExecutiveId || d.assignedRsmId === selectedExecutiveId) return true;
         if (currentParties.some(p => matchParty(p.name, d.partyName, p.id, d.partyId))) return true;
         const dAsm = (d.assignedAsmName || "").trim().toLowerCase();
         const dTsm = (d.assignedTsmName || "").trim().toLowerCase();
-        if (execName && (dAsm.includes(execName) || dTsm.includes(execName))) return true;
+        const dRsm = (d.assignedRsmName || "").trim().toLowerCase();
+        if (execName && (dAsm.includes(execName) || dTsm.includes(execName) || dRsm.includes(execName))) return true;
         return false;
       });
     }
@@ -451,7 +466,7 @@ export default function CrmDashboard({
     return list;
   }, [allUnifiedDispatches, selectedExecutiveId, currentParties, globalStartDate, globalEndDate, dispatchStartDate, dispatchEndDate, activeTab, isAsmOrTsm, isCrmUser, activeExecutive]);
 
-  // Resolve effective parent CRM ID for an ASM/TSM user (handles Ashutosh -> Ankita default)
+  // Resolve effective parent CRM ID for an ASM/TSM/RSM user (handles Ashutosh -> Ankita default)
   const getEffectiveParentCrmId = (u) => {
     if (!u) return "";
     if (u.parentCrmId) return u.parentCrmId;
@@ -461,21 +476,21 @@ export default function CrmDashboard({
     return "";
   };
 
-  // ASMs and TSMs under this executive or all (only active and non-deleted accounts)
+  // ASMs, TSMs, and RSMs under this executive or all (only active and non-deleted accounts)
   const teamMembers = useMemo(() => {
     return users.filter(u => {
-      if (u.role !== "asm" && u.role !== "tsm") return false;
+      if (u.role !== "asm" && u.role !== "tsm" && u.role !== "rsm") return false;
       if (u.status === "inactive" || u.status === "deleted") return false;
       if (["u-asm-vikram", "u-asm-rohit", "u-tsm-manoj", "u-tsm-suresh"].includes(u.id)) return false;
       
       const parentId = getEffectiveParentCrmId(u);
 
-      // If logged in as CRM user: strictly show ONLY ASMs/TSMs owned by this CRM!
+      // If logged in as CRM user: strictly show ONLY ASMs/TSMs/RSMs owned by this CRM!
       if (isCrmUser) {
         return parentId === currentUser?.id;
       }
 
-      // If logged in as ASM or TSM: only see their own account
+      // If logged in as ASM, TSM, or RSM: only see their own account
       if (isAsmOrTsm) {
         return u.id === currentUser?.id;
       }
@@ -493,7 +508,7 @@ export default function CrmDashboard({
     });
   }, [users, selectedExecutiveId, isCrmUser, currentUser, isAdminOrOwner, isAsmOrTsm]);
 
-  // ASM and TSM lists for party creation / assignment & filtering
+  // ASM, TSM, and RSM lists for party creation / assignment & filtering
   const asmList = useMemo(() => {
     return users.filter(u => {
       if (u.role !== "asm" || u.status !== "active") return false;
@@ -532,7 +547,25 @@ export default function CrmDashboard({
     });
   }, [users, isCrmUser, currentUser, isAsmOrTsm, isAdminOrOwner, selectedExecutiveId]);
 
-  // Helpers to strictly resolve active ASM and TSM names (never show deleted/dummy staff)
+  const rsmList = useMemo(() => {
+    return users.filter(u => {
+      if (u.role !== "rsm" || u.status !== "active") return false;
+      const parentId = getEffectiveParentCrmId(u);
+
+      if (isCrmUser) {
+        return parentId === currentUser?.id;
+      }
+      if (isAsmOrTsm) {
+        return u.id === currentUser?.id;
+      }
+      if (isAdminOrOwner && selectedExecutiveId !== "all") {
+        return parentId === selectedExecutiveId;
+      }
+      return true;
+    });
+  }, [users, isCrmUser, currentUser, isAsmOrTsm, isAdminOrOwner, selectedExecutiveId]);
+
+  // Helpers to strictly resolve active ASM, TSM, and RSM names (never show deleted/dummy staff)
   const getActiveAsmName = (party) => {
     if (!party) return null;
     const pId = party.assignedAsmId;
@@ -561,6 +594,18 @@ export default function CrmDashboard({
     return match ? (match.name || party.assignedTsmName) : null;
   };
 
+  const getActiveRsmName = (party) => {
+    if (!party) return null;
+    const pId = party.assignedRsmId;
+    const pName = (party.assignedRsmName || "").trim().toLowerCase();
+    if (!pId && !pName) return null;
+    const match = users.find(u => 
+      (u.id === pId || (pName && (u.name || "").trim().toLowerCase() === pName)) &&
+      u.status !== "inactive" && u.status !== "deleted"
+    );
+    return match ? (match.name || party.assignedRsmName) : null;
+  };
+
   // KPI Metrics Calculation
   const totalPartiesCount = currentParties.length;
   const activePartiesCount = currentParties.filter(p => p.status === "Active").length;
@@ -575,6 +620,7 @@ export default function CrmDashboard({
   const [partyStateFilter, setPartyStateFilter] = useState("all");
   const [partyAsmFilter, setPartyAsmFilter] = useState("all");
   const [partyTsmFilter, setPartyTsmFilter] = useState("all");
+  const [partyRsmFilter, setPartyRsmFilter] = useState("all");
 
   // Party Modals State
   const [selectedPartyFor360, setSelectedPartyFor360] = useState(null);
@@ -701,10 +747,11 @@ export default function CrmDashboard({
       const matchState = partyStateFilter === "all" || p.state === partyStateFilter;
       const matchAsm = isAsmOrTsm || partyAsmFilter === "all" || p.assignedAsmId === partyAsmFilter;
       const matchTsm = isAsmOrTsm || partyTsmFilter === "all" || p.assignedTsmId === partyTsmFilter;
+      const matchRsm = isAsmOrTsm || partyRsmFilter === "all" || p.assignedRsmId === partyRsmFilter;
 
-      return matchSearch && matchState && matchAsm && matchTsm;
+      return matchSearch && matchState && matchAsm && matchTsm && matchRsm;
     });
-  }, [currentParties, partySearch, partyStateFilter, partyAsmFilter, partyTsmFilter, isAsmOrTsm]);
+  }, [currentParties, partySearch, partyStateFilter, partyAsmFilter, partyTsmFilter, partyRsmFilter, isAsmOrTsm]);
 
   // Parties Pagination State (Default 100 rows per page)
   const [partiesPage, setPartiesPage] = useState(1);
@@ -712,7 +759,7 @@ export default function CrmDashboard({
 
   useEffect(() => {
     setPartiesPage(1);
-  }, [partySearch, partyStateFilter, partyAsmFilter, partyTsmFilter, selectedExecutiveId]);
+  }, [partySearch, partyStateFilter, partyAsmFilter, partyTsmFilter, partyRsmFilter, selectedExecutiveId]);
 
   const paginatedParties = useMemo(() => {
     const start = (partiesPage - 1) * partiesPerPage;
@@ -1158,7 +1205,7 @@ export default function CrmDashboard({
           </div>
         </div>
 
-        {/* Card 4: Sales Team Strength (Hidden for ASM / TSM) */}
+        {/* Card 4: Sales Team Strength (Hidden for ASM / TSM / RSM) */}
         {!isAsmOrTsm && (
           <div className="glass-panel" style={{ padding: "20px", display: "flex", alignItems: "center", gap: "16px", borderRadius: "14px" }}>
             <div style={{ padding: "14px", borderRadius: "12px", background: "rgba(139, 92, 246, 0.12)", color: "#a855f7" }}>
@@ -1170,7 +1217,7 @@ export default function CrmDashboard({
                 {teamMembers.length} <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Members</span>
               </div>
               <div style={{ fontSize: "0.75rem", color: "#a855f7", marginTop: "2px" }}>
-                {teamMembers.filter(t => t.role === "asm").length} ASMs • {teamMembers.filter(t => t.role === "tsm").length} TSMs
+                {teamMembers.filter(t => t.role === "rsm").length} RSMs • {teamMembers.filter(t => t.role === "asm").length} ASMs • {teamMembers.filter(t => t.role === "tsm").length} TSMs
               </div>
             </div>
           </div>
@@ -1178,14 +1225,14 @@ export default function CrmDashboard({
 
       </div>
 
-      {/* ==================== TAB NAVIGATION BAR ==================== */}
-      <div className="crm-tabs-bar" style={{ display: "flex", gap: "10px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "10px" }}>
+      {/* ==================== DASHBOARD TAB NAVIGATION ==================== */}
+      <div className="tab-navigation-bar" style={{ display: "flex", gap: "8px", overflowX: "auto", borderBottom: "1px solid var(--border-glass)", paddingBottom: "8px" }}>
         <button
           onClick={() => setActiveTab("parties")}
           className={`nav-tab-item ${activeTab === "parties" ? "active" : ""}`}
           style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 18px", borderRadius: "10px", fontSize: "0.92rem", fontWeight: 600 }}
         >
-          <Building2 size={16} /> <span>My Parties ({filteredParties.length})</span>
+          <Building2 size={16} /> <span>Party Directory ({filteredParties.length})</span>
         </button>
 
         {!isAsmOrTsm && (
@@ -1194,7 +1241,7 @@ export default function CrmDashboard({
             className={`nav-tab-item ${activeTab === "team" ? "active" : ""}`}
             style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 18px", borderRadius: "10px", fontSize: "0.92rem", fontWeight: 600 }}
           >
-            <Users size={16} /> <span>Sales Team (ASM / TSM) ({teamMembers.length})</span>
+            <Users size={16} /> <span>Sales Team (ASM / TSM / RSM) ({teamMembers.length})</span>
           </button>
         )}
 
@@ -1265,6 +1312,19 @@ export default function CrmDashboard({
                 ))}
               </select>
 
+              {/* RSM Filter */}
+              <select
+                value={partyRsmFilter}
+                onChange={e => setPartyRsmFilter(e.target.value)}
+                className="form-control"
+                style={{ width: "auto", height: "38px", fontSize: "0.85rem" }}
+              >
+                <option value="all">All RSMs</option>
+                {rsmList.map(r => (
+                  <option key={r.id} value={r.id}>{r.name} (RSM)</option>
+                ))}
+              </select>
+
               {/* ASM Filter */}
               <select
                 value={partyAsmFilter}
@@ -1296,9 +1356,9 @@ export default function CrmDashboard({
               {isAdminOrOwner && (
                 <button 
                   onClick={() => {
-                    const headers = ["Party Name", "Contact Person", "Phone", "Email", "City", "State", "GSTIN", "Assigned CRM", "Assigned ASM", "Assigned TSM", "Status"];
+                    const headers = ["Party Name", "Contact Person", "Phone", "Email", "City", "State", "GSTIN", "Assigned CRM", "Assigned RSM", "Assigned ASM", "Assigned TSM", "Status"];
                     const rows = filteredParties.map(p => [
-                      p.name, p.contactPerson, p.phone, p.email, p.city, p.state, p.gstin, p.assignedCrmName, p.assignedAsmName, p.assignedTsmName, p.status
+                      p.name, p.contactPerson, p.phone, p.email, p.city, p.state, p.gstin, p.assignedCrmName, p.assignedRsmName, p.assignedAsmName, p.assignedTsmName, p.status
                     ]);
                     exportCsv(headers, rows, "makpower_parties_list");
                   }}
@@ -1338,7 +1398,7 @@ export default function CrmDashboard({
                       <tr>
                         <th>Party Name & Location</th>
                         <th>Contact Person</th>
-                        <th>Assigned CRM / ASM / TSM</th>
+                        <th>Assigned CRM / RSM / ASM / TSM</th>
                         <th>Status</th>
                         <th style={{ textAlign: "center" }}>Actions</th>
                       </tr>
@@ -1377,6 +1437,11 @@ export default function CrmDashboard({
                                 <span className="badge" style={{ fontSize: "0.72rem", background: "rgba(99, 102, 241, 0.15)", color: "#a5b4fc", border: "1px solid rgba(99, 102, 241, 0.3)", width: "fit-content" }}>
                                   CRM: {party.assignedCrmName || crmExecutives.find(c => c.id === party.assignedCrmId)?.name || "Unassigned"}
                                 </span>
+                                {getActiveRsmName(party) && (
+                                  <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(139, 92, 246, 0.15)", color: "#c084fc", border: "1px solid rgba(139, 92, 246, 0.3)", width: "fit-content" }}>
+                                    RSM: {getActiveRsmName(party)}
+                                  </span>
+                                )}
                                 {getActiveAsmName(party) && (
                                   <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(16, 185, 129, 0.12)", color: "#6ee7b7", border: "1px solid rgba(16, 185, 129, 0.3)", width: "fit-content" }}>
                                     ASM: {getActiveAsmName(party)}
@@ -1490,6 +1555,11 @@ export default function CrmDashboard({
                         <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(99, 102, 241, 0.15)", color: "#818cf8", border: "1px solid rgba(99, 102, 241, 0.3)" }}>
                           CRM: {party.assignedCrmName || crmExecutives.find(c => c.id === party.assignedCrmId)?.name || "Unassigned"}
                         </span>
+                        {getActiveRsmName(party) && (
+                          <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(139, 92, 246, 0.15)", color: "#c084fc", border: "1px solid rgba(139, 92, 246, 0.3)" }}>
+                            RSM: {getActiveRsmName(party)}
+                          </span>
+                        )}
                         {getActiveAsmName(party) && (
                           <span className="badge" style={{ fontSize: "0.7rem", background: "rgba(16, 185, 129, 0.12)", color: "#10b981", border: "1px solid rgba(16, 185, 129, 0.3)" }}>
                             ASM: {getActiveAsmName(party)}
@@ -1558,7 +1628,7 @@ export default function CrmDashboard({
         </div>
       )}
 
-      {/* ==================== TAB 2: MY SALES TEAM (ASM & TSM) ==================== */}
+      {/* ==================== TAB 2: MY SALES TEAM (ASM / TSM / RSM) ==================== */}
       {activeTab === "team" && (
         <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           
@@ -1568,7 +1638,7 @@ export default function CrmDashboard({
                 <Users size={20} /> Sales Team Hierarchy & Role Management
               </h3>
               <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: "4px 0 0 0" }}>
-                Create and manage Area Sales Managers (ASM) and Territory Sales Managers (TSM), and assign party territories.
+                Create and manage Regional Sales Managers (RSM), Area Sales Managers (ASM), and Territory Sales Managers (TSM), and assign party territories.
               </p>
             </div>
 
@@ -1577,7 +1647,7 @@ export default function CrmDashboard({
               className="btn btn-primary"
               style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
             >
-              <UserPlus size={16} /> Create ASM / TSM User
+              <UserPlus size={16} /> Create ASM / TSM / RSM User
             </button>
           </div>
 
@@ -1587,7 +1657,8 @@ export default function CrmDashboard({
               const mId = member.id;
               const mName = (member.name || "").trim().toLowerCase();
               const assignedParties = crmParties.filter(p => {
-                if (p.assignedAsmId === mId || p.assignedTsmId === mId) return true;
+                if (p.assignedRsmId === mId || p.assignedAsmId === mId || p.assignedTsmId === mId) return true;
+                if (p.assignedRsmName && p.assignedRsmName.trim().toLowerCase() === mName) return true;
                 if (p.assignedAsmName && p.assignedAsmName.trim().toLowerCase() === mName) return true;
                 if (p.assignedTsmName && p.assignedTsmName.trim().toLowerCase() === mName) return true;
                 return false;
@@ -1596,7 +1667,7 @@ export default function CrmDashboard({
               const assignedPartyNames = new Set(assignedParties.map(p => (p.name || "").trim().toLowerCase()).filter(Boolean));
 
               const memberOrders = crmSalesOrders.filter(o => {
-                if (o.assignedAsmId === mId || o.assignedTsmId === mId) return true;
+                if (o.assignedRsmId === mId || o.assignedAsmId === mId || o.assignedTsmId === mId) return true;
                 if (assignedPartyIds.has(o.partyId) || assignedPartyNames.has((o.partyName || "").trim().toLowerCase())) return true;
                 return false;
               });
@@ -1606,7 +1677,19 @@ export default function CrmDashboard({
                 <div key={member.id} className="glass-panel sales-team-card" style={{ padding: "18px", display: "flex", flexDirection: "column", gap: "14px", borderRadius: "14px", border: "1px solid var(--border-glass)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: "180px", flex: "1 1 auto" }}>
-                      <div style={{ width: "42px", height: "42px", minWidth: "42px", borderRadius: "50%", background: member.role === "asm" ? "linear-gradient(135deg, #10b981, #059669)" : "linear-gradient(135deg, #f59e0b, #d97706)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1rem" }}>
+                      <div style={{ 
+                        width: "42px", 
+                        height: "42px", 
+                        minWidth: "42px", 
+                        borderRadius: "50%", 
+                        background: member.role === "rsm" ? "linear-gradient(135deg, #8b5cf6, #6d28d9)" : member.role === "asm" ? "linear-gradient(135deg, #10b981, #059669)" : "linear-gradient(135deg, #f59e0b, #d97706)", 
+                        color: "#fff", 
+                        display: "flex", 
+                        alignItems: "center", 
+                        justifyContent: "center", 
+                        fontWeight: 800, 
+                        fontSize: "1rem" 
+                      }}>
                         {member.name ? member.name.slice(0, 2).toUpperCase() : "SM"}
                       </div>
                       <div style={{ overflow: "hidden" }}>
@@ -1616,16 +1699,16 @@ export default function CrmDashboard({
                     </div>
 
                     <span className="badge" style={{ 
-                      background: member.role === "asm" ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)",
-                      color: member.role === "asm" ? "#34d399" : "#fbbf24",
-                      border: member.role === "asm" ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(245, 158, 11, 0.3)",
+                      background: member.role === "rsm" ? "rgba(139, 92, 246, 0.15)" : member.role === "asm" ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                      color: member.role === "rsm" ? "#c084fc" : member.role === "asm" ? "#34d399" : "#fbbf24",
+                      border: member.role === "rsm" ? "1px solid rgba(139, 92, 246, 0.3)" : member.role === "asm" ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(245, 158, 11, 0.3)",
                       fontWeight: 700,
                       fontSize: "0.74rem",
                       whiteSpace: "normal",
                       textAlign: "center",
                       padding: "4px 8px"
                     }}>
-                      {member.role === "asm" ? "ASM (Area Manager)" : "TSM (Territory Manager)"}
+                      {member.role === "rsm" ? "RSM (Regional Manager)" : member.role === "asm" ? "ASM (Area Manager)" : "TSM (Territory Manager)"}
                     </span>
                   </div>
 
@@ -1758,12 +1841,12 @@ export default function CrmDashboard({
               {isAdminOrOwner && (
                 <button
                   onClick={() => {
-                    const headers = ["Party Name", "City", "State", "Assigned CRM", "Assigned ASM", "Assigned TSM", "Total Orders Count", "Total Remarks Count"];
+                    const headers = ["Party Name", "City", "State", "Assigned CRM", "Assigned RSM", "Assigned ASM", "Assigned TSM", "Total Orders Count", "Total Remarks Count"];
                     const rows = filteredParties.map(p => {
                       const partyOrders = allUnifiedSalesOrders.filter(o => matchParty(o.partyName, p.name, o.partyId, p.id));
                       const partyRemarks = (crmPartyRemarks || []).filter(r => matchParty(r.partyName, p.name, r.partyId, p.id));
                       return [
-                        p.name, p.city, p.state, p.assignedCrmName, p.assignedAsmName, p.assignedTsmName, partyOrders.length, partyRemarks.length
+                        p.name, p.city, p.state, p.assignedCrmName, p.assignedRsmName, p.assignedAsmName, p.assignedTsmName, partyOrders.length, partyRemarks.length
                       ];
                     });
                     exportCsv(headers, rows, "monthly_category_parties_list");
@@ -1914,6 +1997,7 @@ export default function CrmDashboard({
                               <td>
                                 <div style={{ display: "flex", flexDirection: "column", gap: "2px", fontSize: "0.78rem" }}>
                                   <span style={{ color: "var(--text-muted)" }}>CRM: <strong style={{ color: "var(--text-main)" }}>{party.assignedCrmName || "—"}</strong></span>
+                                  {getActiveRsmName(party) && <span style={{ color: "var(--text-muted)" }}>RSM: <strong style={{ color: "#c084fc" }}>{getActiveRsmName(party)}</strong></span>}
                                   {getActiveAsmName(party) && <span style={{ color: "var(--text-muted)" }}>ASM: <strong style={{ color: "#34d399" }}>{getActiveAsmName(party)}</strong></span>}
                                   {getActiveTsmName(party) && <span style={{ color: "var(--text-muted)" }}>TSM: <strong style={{ color: "#fbbf24" }}>{getActiveTsmName(party)}</strong></span>}
                                 </div>
@@ -2820,6 +2904,7 @@ export default function CrmDashboard({
           crmExecutives={crmExecutives}
           asmList={asmList}
           tsmList={tsmList}
+          rsmList={rsmList}
           currentExecutive={activeExecutive || currentUser}
           currentUser={currentUser}
           onSave={async (partyData) => {
@@ -2883,7 +2968,7 @@ export default function CrmDashboard({
         />
       )}
 
-      {/* ==================== MODAL: ADD / EDIT SALES TEAM MEMBER (ASM / TSM) ==================== */}
+      {/* ==================== MODAL: ADD / EDIT SALES TEAM MEMBER (ASM / TSM / RSM) ==================== */}
       {(showAddTeamModal || editingTeamMember) && (
         <TeamMemberModal
           member={editingTeamMember}
@@ -2927,7 +3012,7 @@ export default function CrmDashboard({
         />
       )}
 
-      {/* ==================== MODAL: ASSIGN PARTIES TO ASM / TSM ==================== */}
+      {/* ==================== MODAL: ASSIGN PARTIES TO ASM / TSM / RSM ==================== */}
       {assigningTeamMember && (
         <AssignPartiesModal
           teamMember={assigningTeamMember}
@@ -2935,12 +3020,16 @@ export default function CrmDashboard({
           onAssign={async (partyIds) => {
             try {
               const isAsm = assigningTeamMember.role === "asm";
+              const isTsm = assigningTeamMember.role === "tsm";
+              const isRsm = assigningTeamMember.role === "rsm";
               await onBatchAssignParties(
                 partyIds, 
                 isAsm ? assigningTeamMember.id : undefined, 
-                !isAsm ? assigningTeamMember.id : undefined,
+                isTsm ? assigningTeamMember.id : undefined,
                 isAsm ? assigningTeamMember.name : undefined,
-                !isAsm ? assigningTeamMember.name : undefined
+                isTsm ? assigningTeamMember.name : undefined,
+                isRsm ? assigningTeamMember.id : undefined,
+                isRsm ? assigningTeamMember.name : undefined
               );
               showSuccessToast(`✅ Assigned ${partyIds.length} parties to ${assigningTeamMember.name}!`);
               setAssigningTeamMember(null);
@@ -3084,8 +3173,8 @@ export default function CrmDashboard({
 }
 
 // ==================== SUB-COMPONENT: PARTY ADD/EDIT MODAL ====================
-function PartyModal({ party, allParties = [], crmExecutives, asmList, tsmList, currentExecutive, currentUser, onSave, onClose }) {
-  const isCrmRole = currentUser?.role === "crm" || currentUser?.role === "asm" || currentUser?.role === "tsm";
+function PartyModal({ party, allParties = [], crmExecutives, asmList, tsmList, rsmList = [], currentExecutive, currentUser, onSave, onClose }) {
+  const isCrmRole = currentUser?.role === "crm" || currentUser?.role === "asm" || currentUser?.role === "tsm" || currentUser?.role === "rsm";
   const [name, setName] = useState(party?.name || "");
   const [contactPerson, setContactPerson] = useState(party?.contactPerson || "");
   const [phone, setPhone] = useState(party?.phone || "");
@@ -3094,6 +3183,7 @@ function PartyModal({ party, allParties = [], crmExecutives, asmList, tsmList, c
   const [state, setState] = useState(party?.state || "Rajasthan");
   const [gstin, setGstin] = useState(party?.gstin || "");
   const [assignedCrmId, setAssignedCrmId] = useState(party?.assignedCrmId || currentExecutive?.id || "u-ankita");
+  const [assignedRsmId, setAssignedRsmId] = useState(party?.assignedRsmId || "");
   const [assignedAsmId, setAssignedAsmId] = useState(party?.assignedAsmId || "");
   const [assignedTsmId, setAssignedTsmId] = useState(party?.assignedTsmId || "");
   const [status, setStatus] = useState(party?.status || "Active");
@@ -3113,6 +3203,7 @@ function PartyModal({ party, allParties = [], crmExecutives, asmList, tsmList, c
     }
 
     const crmObj = crmExecutives.find(c => c.id === assignedCrmId);
+    const rsmObj = rsmList.find(r => r.id === assignedRsmId);
     const asmObj = asmList.find(a => a.id === assignedAsmId);
     const tsmObj = tsmList.find(t => t.id === assignedTsmId);
 
@@ -3128,6 +3219,8 @@ function PartyModal({ party, allParties = [], crmExecutives, asmList, tsmList, c
       gstin: gstin.trim(),
       assignedCrmId,
       assignedCrmName: crmObj?.name || "Ankita",
+      assignedRsmId,
+      assignedRsmName: rsmObj?.name || "",
       assignedAsmId,
       assignedAsmName: asmObj?.name || "",
       assignedTsmId,
@@ -3138,7 +3231,7 @@ function PartyModal({ party, allParties = [], crmExecutives, asmList, tsmList, c
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "600px", padding: "28px" }}>
+      <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "640px", padding: "28px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
           <h3 style={{ fontSize: "1.3rem", fontWeight: 700, color: "var(--primary)", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
             <Building2 size={20} /> {party ? "Edit Party Account" : "Add New Customer / Dealer Party"}
@@ -3203,12 +3296,22 @@ function PartyModal({ party, allParties = [], crmExecutives, asmList, tsmList, c
             <input type="text" placeholder="e.g. 08AABCS1429B1Z2" value={gstin} onChange={e => setGstin(e.target.value)} className="form-control" />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "10px" }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Assigned CRM</label>
               <select value={assignedCrmId} onChange={e => setAssignedCrmId(e.target.value)} className="form-control">
                 {crmExecutives.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Assigned RSM</label>
+              <select value={assignedRsmId} onChange={e => setAssignedRsmId(e.target.value)} className="form-control">
+                <option value="">(None)</option>
+                {rsmList.map(r => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
                 ))}
               </select>
             </div>
@@ -3677,7 +3780,7 @@ function Party360Modal({
                               {latest && (
                                 <div style={{ display: "flex", flexDirection: "column", gap: "2px", textAlign: "left", padding: "6px 8px", background: "rgba(255,255,255,0.04)", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                    <span style={{ fontSize: "0.7rem", fontWeight: 700, color: latest.authorRole === "asm" ? "#34d399" : latest.authorRole === "tsm" ? "#fbbf24" : "#818cf8" }}>
+                                    <span style={{ fontSize: "0.7rem", fontWeight: 700, color: latest.authorRole === "rsm" ? "#c084fc" : latest.authorRole === "asm" ? "#34d399" : latest.authorRole === "tsm" ? "#fbbf24" : "#818cf8" }}>
                                       {latest.authorName} ({latest.authorRole?.toUpperCase()})
                                     </span>
                                     <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>
@@ -3783,7 +3886,7 @@ function Party360Modal({
                     {latest && (
                       <div style={{ display: "flex", flexDirection: "column", gap: "2px", textAlign: "left", padding: "6px 8px", background: "var(--bg-card-hover, rgba(0,0,0,0.03))", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span style={{ fontSize: "0.7rem", fontWeight: 700, color: latest.authorRole === "asm" ? "#10b981" : latest.authorRole === "tsm" ? "#f59e0b" : "#818cf8" }}>
+                          <span style={{ fontSize: "0.7rem", fontWeight: 700, color: latest.authorRole === "rsm" ? "#c084fc" : latest.authorRole === "asm" ? "#10b981" : latest.authorRole === "tsm" ? "#f59e0b" : "#818cf8" }}>
                             {latest.authorName} ({latest.authorRole?.toUpperCase()})
                           </span>
                           <span style={{ fontSize: "0.66rem", color: "var(--text-muted)" }}>
@@ -4300,8 +4403,8 @@ function PartyMonthlyCategoryStudioModal({
                         <span className="badge" style={{
                           fontSize: "0.7rem",
                           padding: "2px 8px",
-                          background: r.authorRole === "asm" ? "rgba(16, 185, 129, 0.15)" : r.authorRole === "tsm" ? "rgba(245, 158, 11, 0.15)" : "rgba(99, 102, 241, 0.15)",
-                          color: r.authorRole === "asm" ? "#34d399" : r.authorRole === "tsm" ? "#fbbf24" : "#a5b4fc",
+                          background: r.authorRole === "rsm" ? "rgba(139, 92, 246, 0.15)" : r.authorRole === "asm" ? "rgba(16, 185, 129, 0.15)" : r.authorRole === "tsm" ? "rgba(245, 158, 11, 0.15)" : "rgba(99, 102, 241, 0.15)",
+                          color: r.authorRole === "rsm" ? "#c084fc" : r.authorRole === "asm" ? "#34d399" : r.authorRole === "tsm" ? "#fbbf24" : "#a5b4fc",
                           fontWeight: 700
                         }}>
                           {r.authorName} ({r.authorRole?.toUpperCase()})
@@ -4527,8 +4630,8 @@ function CategoryRemarksHistoryModal({ target, crmPartyRemarks = [], currentUser
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                       <span className="badge" style={{
-                        background: r.authorRole === "asm" ? "rgba(16, 185, 129, 0.15)" : r.authorRole === "tsm" ? "rgba(245, 158, 11, 0.15)" : "rgba(99, 102, 241, 0.15)",
-                        color: r.authorRole === "asm" ? "#34d399" : r.authorRole === "tsm" ? "#fbbf24" : "#818cf8",
+                        background: r.authorRole === "rsm" ? "rgba(139, 92, 246, 0.15)" : r.authorRole === "asm" ? "rgba(16, 185, 129, 0.15)" : r.authorRole === "tsm" ? "rgba(245, 158, 11, 0.15)" : "rgba(99, 102, 241, 0.15)",
+                        color: r.authorRole === "rsm" ? "#c084fc" : r.authorRole === "asm" ? "#34d399" : r.authorRole === "tsm" ? "#fbbf24" : "#818cf8",
                         fontWeight: 700,
                         fontSize: "0.72rem"
                       }}>
@@ -4594,7 +4697,9 @@ function TransferAsmCrmModal({ member, crmExecutives = [], allParties = [], onTr
   const mId = member?.id;
   const mName = (member?.name || "").trim().toLowerCase();
   const assignedParties = allParties.filter(p => {
-    if (member?.role === "asm") {
+    if (member?.role === "rsm") {
+      return p.assignedRsmId === mId || (p.assignedRsmName && p.assignedRsmName.trim().toLowerCase() === mName);
+    } else if (member?.role === "asm") {
       return p.assignedAsmId === mId || (p.assignedAsmName && p.assignedAsmName.trim().toLowerCase() === mName);
     } else {
       return p.assignedTsmId === mId || (p.assignedTsmName && p.assignedTsmName.trim().toLowerCase() === mName);
@@ -4629,25 +4734,18 @@ function TransferAsmCrmModal({ member, crmExecutives = [], allParties = [], onTr
             <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "var(--text-main)" }}>
               {member.name} <span className="badge" style={{ fontSize: "0.72rem", marginLeft: "6px" }}>{member.role?.toUpperCase()}</span>
             </div>
-            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{member.email}</div>
-
-            <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px solid var(--border-glass)", display: "flex", justifyContent: "space-between", fontSize: "0.82rem" }}>
-              <span style={{ color: "var(--text-muted)" }}>Current CRM Owner:</span>
-              <strong style={{ color: "#38bdf8" }}>{currentCrm.name}</strong>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem" }}>
-              <span style={{ color: "var(--text-muted)" }}>Assigned Parties:</span>
-              <strong style={{ color: "var(--success)" }}>{assignedParties.length} Parties</strong>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+              Current Owning CRM: <strong style={{ color: "#38bdf8" }}>💼 {currentCrm.name}</strong>
             </div>
           </div>
 
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label" style={{ fontWeight: 700 }}>Transfer Ownership to New CRM Executive *</label>
+            <label className="form-label" style={{ fontWeight: 700 }}>Select New Owning CRM Executive *</label>
             <select
               value={targetCrmId}
               onChange={e => setTargetCrmId(e.target.value)}
               className="form-control"
-              style={{ fontWeight: 700, color: "var(--primary)", height: "42px" }}
+              style={{ fontWeight: 600 }}
               required
             >
               {destinationOptions.map(c => (
@@ -4656,33 +4754,29 @@ function TransferAsmCrmModal({ member, crmExecutives = [], allParties = [], onTr
                 </option>
               ))}
             </select>
-            <small style={{ color: "var(--text-muted)", fontSize: "0.75rem", marginTop: "4px", display: "block" }}>
-              Once transferred, only the selected CRM executive (and Admins) will see and manage this sales member.
+            <small style={{ color: "var(--text-muted)", fontSize: "0.74rem", marginTop: "4px", display: "block" }}>
+              The sales account will strictly belong to this CRM.
             </small>
           </div>
 
-          {assignedParties.length > 0 && (
-            <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer", background: "rgba(99, 102, 241, 0.08)", padding: "12px", borderRadius: "8px", border: "1px solid rgba(99, 102, 241, 0.2)" }}>
+          <div style={{ background: "rgba(99, 102, 241, 0.08)", border: "1px solid rgba(99, 102, 241, 0.25)", borderRadius: "10px", padding: "12px" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-main)", margin: 0 }}>
               <input
                 type="checkbox"
                 checked={transferPartiesToo}
                 onChange={e => setTransferPartiesToo(e.target.checked)}
-                style={{ marginTop: "3px" }}
+                style={{ width: "16px", height: "16px", cursor: "pointer" }}
               />
-              <span style={{ fontSize: "0.83rem", color: "var(--text-main)", lineHeight: 1.4 }}>
-                <strong>Also transfer all {assignedParties.length} assigned parties</strong> to this new CRM executive so their CRM ownership stays in sync.
-              </span>
+              <span>Also transfer {assignedParties.length} assigned parties to this new CRM</span>
             </label>
-          )}
+            <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginTop: "4px", paddingLeft: "24px" }}>
+              If checked, all {assignedParties.length} customer parties currently handled by {member.name} will have their Assigned CRM updated to the selected CRM.
+            </div>
+          </div>
 
           <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
-            <button
-              type="submit"
-              disabled={submitting || !targetCrmId}
-              className="btn btn-primary"
-              style={{ flex: 1, padding: "10px", fontWeight: 700, display: "inline-flex", justifyContent: "center", alignItems: "center", gap: "6px" }}
-            >
-              <Check size={16} /> {submitting ? "Transferring..." : "Complete CRM Transfer"}
+            <button type="submit" disabled={submitting || !targetCrmId} className="btn btn-primary" style={{ flex: 1, padding: "10px" }}>
+              {submitting ? "Transferring..." : "Confirm Transfer"}
             </button>
             <button type="button" onClick={onClose} disabled={submitting} className="btn btn-secondary">
               Cancel
@@ -4694,7 +4788,7 @@ function TransferAsmCrmModal({ member, crmExecutives = [], allParties = [], onTr
   );
 }
 
-// ==================== SUB-COMPONENT: ASM / TSM TEAM CREATION MODAL ====================
+// ==================== SUB-COMPONENT: ASM / TSM / RSM TEAM CREATION MODAL ====================
 function TeamMemberModal({ member, currentExecutive, crmExecutives = [], isAdminOrOwner = false, currentUser, onSave, onClose }) {
   const defaultParent = member?.parentCrmId || 
     (member?.name?.toLowerCase().includes("ashutosh") ? "u-ankita" : "") ||
@@ -4703,7 +4797,7 @@ function TeamMemberModal({ member, currentExecutive, crmExecutives = [], isAdmin
   const [name, setName] = useState(member?.name || "");
   const [email, setEmail] = useState(member?.email || "");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState(member?.role || "asm");
+  const [role, setRole] = useState(member?.role || "rsm");
   const [phone, setPhone] = useState(member?.phone || "");
   const [territory, setTerritory] = useState(member?.territory || "");
   const [parentCrmId, setParentCrmId] = useState(defaultParent);
@@ -4722,7 +4816,7 @@ function TeamMemberModal({ member, currentExecutive, crmExecutives = [], isAdmin
       email: email.trim().toLowerCase(),
       password: password.trim() || (member ? member.password : "MakPower#Sales2026!"),
       role,
-      designation: role === "asm" ? "Area Sales Manager (ASM)" : "Territory Sales Manager (TSM)",
+      designation: role === "rsm" ? "Regional Sales Manager (RSM)" : role === "asm" ? "Area Sales Manager (ASM)" : "Territory Sales Manager (TSM)",
       phone: phone.trim(),
       territory: territory.trim(),
       parentCrmId: effectiveParentCrmId
@@ -4736,7 +4830,7 @@ function TeamMemberModal({ member, currentExecutive, crmExecutives = [], isAdmin
       <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "520px", padding: "26px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
           <h3 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--primary)", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
-            <UserPlus size={20} /> {member ? "Edit Sales Team Account" : "Create ASM / TSM Sales Member"}
+            <UserPlus size={20} /> {member ? "Edit Sales Team Account" : "Create ASM / TSM / RSM Sales Member"}
           </h3>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={20} /></button>
         </div>
@@ -4781,6 +4875,7 @@ function TeamMemberModal({ member, currentExecutive, crmExecutives = [], isAdmin
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Role</label>
               <select value={role} onChange={e => setRole(e.target.value)} className="form-control" style={{ fontWeight: 700, color: "var(--primary)" }}>
+                <option value="rsm">🟣 RSM (Regional Sales Manager)</option>
                 <option value="asm">🟢 ASM (Area Sales Manager)</option>
                 <option value="tsm">🟡 TSM (Territory Sales Manager)</option>
               </select>
@@ -5032,7 +5127,9 @@ function DispatchModal({ order, onSave, onClose }) {
 
 // ==================== SUB-COMPONENT: ASSIGN PARTIES MODAL ====================
 function AssignPartiesModal({ teamMember, allParties = [], onAssign, onClose }) {
+  const isRsm = teamMember.role === "rsm";
   const isAsm = teamMember.role === "asm";
+  const isTsm = teamMember.role === "tsm";
   const [search, setSearch] = useState("");
   const [stateFilter, setStateFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState(() => {
@@ -5040,7 +5137,9 @@ function AssignPartiesModal({ teamMember, allParties = [], onAssign, onClose }) 
     const mName = (teamMember.name || "").trim().toLowerCase();
     return allParties
       .filter(p => {
-        if (isAsm) {
+        if (isRsm) {
+          return p.assignedRsmId === mId || (p.assignedRsmName && p.assignedRsmName.trim().toLowerCase() === mName);
+        } else if (isAsm) {
           return p.assignedAsmId === mId || (p.assignedAsmName && p.assignedAsmName.trim().toLowerCase() === mName);
         } else {
           return p.assignedTsmId === mId || (p.assignedTsmName && p.assignedTsmName.trim().toLowerCase() === mName);
@@ -5091,7 +5190,7 @@ function AssignPartiesModal({ teamMember, allParties = [], onAssign, onClose }) 
               <UserCheck size={20} /> Assign Parties to {teamMember.name}
             </h3>
             <p style={{ color: "var(--text-muted)", fontSize: "0.82rem", margin: "4px 0 0 0" }}>
-              Role: <strong>{isAsm ? "Area Sales Manager (ASM)" : "Territory Sales Manager (TSM)"}</strong> | Selected: <strong style={{ color: "var(--primary)" }}>{selectedIds.length}</strong> parties
+              Role: <strong>{isRsm ? "Regional Sales Manager (RSM)" : isAsm ? "Area Sales Manager (ASM)" : "Territory Sales Manager (TSM)"}</strong> | Selected: <strong style={{ color: "var(--primary)" }}>{selectedIds.length}</strong> parties
             </p>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={20} /></button>
@@ -5246,7 +5345,9 @@ function AsmSalesDetailModal({
   formatInr, 
   onClose 
 }) {
+  const isRsm = member.role === "rsm";
   const isAsm = member.role === "asm";
+  const isTsm = member.role === "tsm";
   const [subTab, setSubTab] = useState("items"); // "items" | "parties" | "matrix" | "leaderboard"
   const [search, setSearch] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -5258,13 +5359,15 @@ function AsmSalesDetailModal({
     const mId = member.id;
     const mName = (member.name || "").trim().toLowerCase();
     return allParties.filter(p => {
-      if (isAsm) {
+      if (isRsm) {
+        return p.assignedRsmId === mId || (p.assignedRsmName && p.assignedRsmName.trim().toLowerCase() === mName);
+      } else if (isAsm) {
         return p.assignedAsmId === mId || (p.assignedAsmName && p.assignedAsmName.trim().toLowerCase() === mName);
       } else {
         return p.assignedTsmId === mId || (p.assignedTsmName && p.assignedTsmName.trim().toLowerCase() === mName);
       }
     });
-  }, [allParties, member, isAsm]);
+  }, [allParties, member, isRsm, isAsm]);
 
   const assignedPartyIdSet = useMemo(() => new Set(assignedParties.map(p => p.id)), [assignedParties]);
   const assignedPartyNameSet = useMemo(() => new Set(assignedParties.map(p => (p.name || "").trim().toLowerCase()).filter(Boolean)), [assignedParties]);
@@ -5274,6 +5377,7 @@ function AsmSalesDetailModal({
     return allSalesOrders.filter(o => {
       const matchParty = assignedPartyIdSet.has(o.partyId) || 
                          assignedPartyNameSet.has((o.partyName || "").trim().toLowerCase()) || 
+                         o.assignedRsmId === member.id ||
                          o.assignedAsmId === member.id || 
                          o.assignedTsmId === member.id;
       if (!matchParty) return false;
@@ -5296,6 +5400,7 @@ function AsmSalesDetailModal({
     return allDispatches.filter(d => {
       const matchParty = assignedPartyIdSet.has(d.partyId) || 
                          assignedPartyNameSet.has((d.partyName || "").trim().toLowerCase()) || 
+                         d.assignedRsmId === member.id ||
                          d.assignedAsmId === member.id || 
                          d.assignedTsmId === member.id;
       if (!matchParty) return false;
@@ -5396,7 +5501,17 @@ function AsmSalesDetailModal({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px" }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: isAsm ? "linear-gradient(135deg, #10b981, #059669)" : "linear-gradient(135deg, #f59e0b, #d97706)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>
+              <div style={{ 
+                width: "36px", 
+                height: "36px", 
+                borderRadius: "50%", 
+                background: isRsm ? "linear-gradient(135deg, #8b5cf6, #6d28d9)" : isAsm ? "linear-gradient(135deg, #10b981, #059669)" : "linear-gradient(135deg, #f59e0b, #d97706)", 
+                color: "#fff", 
+                display: "flex", 
+                alignItems: "center", 
+                justifyContent: "center", 
+                fontWeight: 800 
+              }}>
                 {member.name ? member.name.slice(0, 2).toUpperCase() : "SM"}
               </div>
               <div>
@@ -5404,7 +5519,7 @@ function AsmSalesDetailModal({
                   {member.name} — Performance Studio
                 </h3>
                 <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                  {isAsm ? "Area Sales Manager (ASM)" : "Territory Sales Manager (TSM)"} | Territory: {member.territory || "General"} | Phone: {member.phone || "—"}
+                  {isRsm ? "Regional Sales Manager (RSM)" : isAsm ? "Area Sales Manager (ASM)" : "Territory Sales Manager (TSM)"} | Territory: {member.territory || "General"} | Phone: {member.phone || "—"}
                 </div>
               </div>
             </div>
@@ -5842,8 +5957,8 @@ function PartyCategoryRemarkModal({ target, remarks = [], currentUser, formatInr
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                       <span className="badge" style={{ 
-                        background: r.authorRole === "asm" ? "rgba(16, 185, 129, 0.15)" : r.authorRole === "tsm" ? "rgba(245, 158, 11, 0.15)" : "rgba(99, 102, 241, 0.15)",
-                        color: r.authorRole === "asm" ? "#34d399" : r.authorRole === "tsm" ? "#fbbf24" : "#818cf8",
+                        background: r.authorRole === "rsm" ? "rgba(139, 92, 246, 0.15)" : r.authorRole === "asm" ? "rgba(16, 185, 129, 0.15)" : r.authorRole === "tsm" ? "rgba(245, 158, 11, 0.15)" : "rgba(99, 102, 241, 0.15)",
+                        color: r.authorRole === "rsm" ? "#c084fc" : r.authorRole === "asm" ? "#34d399" : r.authorRole === "tsm" ? "#fbbf24" : "#818cf8",
                         fontWeight: 800,
                         fontSize: "0.72rem"
                       }}>

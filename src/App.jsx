@@ -90,7 +90,7 @@ export default function App() {
   const normalizeUserData = (u) => {
     if (!u) return u;
     let parentCrmId = u.parentCrmId || "";
-    if ((u.role === "asm" || u.role === "tsm") && !parentCrmId) {
+    if ((u.role === "asm" || u.role === "tsm" || u.role === "rsm") && !parentCrmId) {
       const n = (u.name || "").toLowerCase();
       const em = (u.email || "").toLowerCase();
       if (n.includes("ashutosh") || em.includes("ashutosh")) {
@@ -404,7 +404,7 @@ export default function App() {
         const u = JSON.parse(savedUser);
         const r = (u.role || "").toLowerCase();
         if (r === "superadmin") return "admin";
-        if (r === "crm" || r === "asm" || r === "tsm") return "crm";
+        if (r === "crm" || r === "asm" || r === "tsm" || r === "rsm") return "crm";
         if (r === "owner") return "owner";
       } catch (e) {}
       return "home";
@@ -416,7 +416,7 @@ export default function App() {
     if (currentUser && activeView === "login") {
       const r = (currentUser.role || "").toLowerCase();
       if (r === "superadmin") setActiveView("admin");
-      else if (r === "crm" || r === "asm" || r === "tsm") setActiveView("crm");
+      else if (r === "crm" || r === "asm" || r === "tsm" || r === "rsm") setActiveView("crm");
       else if (r === "owner") setActiveView("owner");
       else setActiveView("home");
     }
@@ -472,11 +472,11 @@ export default function App() {
     const list = [];
     const readSet = new Set(readNotificationIds);
 
-    if (["crm", "asm", "tsm", "superadmin", "owner"].includes(currentUser.role)) {
+    if (["crm", "asm", "tsm", "rsm", "superadmin", "owner"].includes(currentUser.role)) {
       (crmPartyRemarks || []).forEach(r => {
         const isOwnParty = (crmParties || []).some(p => 
           (p.id === r.partyId || (p.name && r.partyName && p.name.trim().toLowerCase() === r.partyName.trim().toLowerCase())) &&
-          (currentUser.role === "superadmin" || currentUser.role === "owner" || p.assignedCrmId === currentUser.id || p.assignedAsmId === currentUser.id || p.assignedTsmId === currentUser.id)
+          (currentUser.role === "superadmin" || currentUser.role === "owner" || p.assignedCrmId === currentUser.id || p.assignedAsmId === currentUser.id || p.assignedTsmId === currentUser.id || p.assignedRsmId === currentUser.id)
         );
         const isNotAuthor = r.authorId !== currentUser.id && r.authorName !== currentUser.name;
 
@@ -781,7 +781,7 @@ export default function App() {
         setActiveView("admin");
       } else if (roleLower === "owner" || desigLower === "owner" || cleanEmail === "owner@demo.com" || cleanEmail === "owner@makpowerindia.com") {
         setActiveView("owner");
-      } else if (roleLower === "crm" || roleLower === "asm" || roleLower === "tsm" || desigLower.includes("crm") || desigLower.includes("sales manager")) {
+      } else if (roleLower === "crm" || roleLower === "asm" || roleLower === "tsm" || roleLower === "rsm" || desigLower.includes("crm") || desigLower.includes("sales manager")) {
         setActiveView("crm");
       } else if (user.id === "u-nitin" || cleanEmail === "nitin@demo.com" || cleanEmail === "nitin@makpowerindia.com" || roleLower === "nitin") {
         setActiveView("nitin");
@@ -1090,6 +1090,7 @@ export default function App() {
       if (dLower.includes("crm")) role = "crm";
       else if (dLower.includes("asm") || dLower.includes("area sales")) role = "asm";
       else if (dLower.includes("tsm") || dLower.includes("territory sales")) role = "tsm";
+      else if (dLower.includes("rsm") || dLower.includes("regional sales")) role = "rsm";
       else if (dLower.includes("owner")) role = "owner";
       else if (dLower.includes("admin") || dLower.includes("superadmin")) role = "superadmin";
       else if (dLower.includes("logistics") || dLower.includes("coordinator")) role = "coordinator";
@@ -1346,14 +1347,16 @@ export default function App() {
     }
   };
 
-  const handleBatchAssignParties = async (partyIds, assignedAsmId, assignedTsmId, assignedAsmName, assignedTsmName) => {
+  const handleBatchAssignParties = async (partyIds, assignedAsmId, assignedTsmId, assignedAsmName, assignedTsmName, assignedRsmId, assignedRsmName) => {
     try {
       const res = await postData("/api/crm/parties/batch-assign", { 
         partyIds, 
         assignedAsmId, 
         assignedTsmId,
+        assignedRsmId,
         assignedAsmName,
-        assignedTsmName
+        assignedTsmName,
+        assignedRsmName
       });
       if (res && res.success) {
         setCrmParties(prev => prev.map(p => {
@@ -1363,12 +1366,16 @@ export default function App() {
               assignedAsmId: assignedAsmId !== undefined ? assignedAsmId : p.assignedAsmId,
               assignedAsmName: assignedAsmName !== undefined ? assignedAsmName : p.assignedAsmName,
               assignedTsmId: assignedTsmId !== undefined ? assignedTsmId : p.assignedTsmId,
-              assignedTsmName: assignedTsmName !== undefined ? assignedTsmName : p.assignedTsmName
+              assignedTsmName: assignedTsmName !== undefined ? assignedTsmName : p.assignedTsmName,
+              assignedRsmId: assignedRsmId !== undefined ? assignedRsmId : p.assignedRsmId,
+              assignedRsmName: assignedRsmName !== undefined ? assignedRsmName : p.assignedRsmName
             };
           } else if (assignedAsmId && (p.assignedAsmId === assignedAsmId || (p.assignedAsmName && assignedAsmName && p.assignedAsmName.toLowerCase() === assignedAsmName.toLowerCase()))) {
             return { ...p, assignedAsmId: "", assignedAsmName: "" };
           } else if (assignedTsmId && (p.assignedTsmId === assignedTsmId || (p.assignedTsmName && assignedTsmName && p.assignedTsmName.toLowerCase() === assignedTsmName.toLowerCase()))) {
             return { ...p, assignedTsmId: "", assignedTsmName: "" };
+          } else if (assignedRsmId && (p.assignedRsmId === assignedRsmId || (p.assignedRsmName && assignedRsmName && p.assignedRsmName.toLowerCase() === assignedRsmName.toLowerCase()))) {
+            return { ...p, assignedRsmId: "", assignedRsmName: "" };
           }
           return p;
         }));
@@ -1970,7 +1977,7 @@ export default function App() {
           <div className="nav-links" style={{ display: "flex", alignItems: "center", gap: "22px" }}>
             {currentUser && (
               <>
-                {!["crm", "asm", "tsm"].includes(currentUser.role) && (
+                {!["crm", "asm", "tsm", "rsm"].includes(currentUser.role) && (
                   <button 
                     onClick={handleGoHome} 
                     className={`nav-tab-item ${activeView === "home" ? "active" : ""}`}
@@ -1997,7 +2004,7 @@ export default function App() {
                   </button>
                 )}
 
-                {(currentUser.role === "crm" || currentUser.role === "asm" || currentUser.role === "tsm" || currentUser.role === "superadmin" || currentUser.role === "owner") && (
+                {(currentUser.role === "crm" || currentUser.role === "asm" || currentUser.role === "tsm" || currentUser.role === "rsm" || currentUser.role === "superadmin" || currentUser.role === "owner") && (
                   <button 
                     onClick={() => setActiveView("crm")} 
                     className={`nav-tab-item ${activeView === "crm" ? "active" : ""}`}
@@ -2016,7 +2023,7 @@ export default function App() {
                   </button>
                 )}
                 
-                {currentUser.role !== "superadmin" && !["crm", "asm", "tsm"].includes(currentUser.role) && (
+                {currentUser.role !== "superadmin" && !["crm", "asm", "tsm", "rsm"].includes(currentUser.role) && (
                   <button 
                     onClick={() => {
                       if (currentUser.role === "nitin") setActiveView("nitin");
@@ -2032,7 +2039,7 @@ export default function App() {
               </>
             )}
 
-            {(!currentUser || (!["crm", "asm", "tsm"].includes(currentUser.role))) && (
+            {(!currentUser || (!["crm", "asm", "tsm", "rsm"].includes(currentUser.role))) && (
               <button 
                 onClick={() => setActiveView("requester")} 
                 className={`nav-tab-item ${activeView === "requester" ? "active" : ""}`}
@@ -2041,7 +2048,7 @@ export default function App() {
               </button>
             )}
 
-            {currentUser && currentUser.role !== "superadmin" && !["crm", "asm", "tsm"].includes(currentUser.role) && (
+            {currentUser && currentUser.role !== "superadmin" && !["crm", "asm", "tsm", "rsm"].includes(currentUser.role) && (
               <button 
                 onClick={() => setActiveView("itemcatalog")} 
                 className={`nav-tab-item ${activeView === "itemcatalog" ? "active" : ""}`}
@@ -2228,12 +2235,12 @@ export default function App() {
               <div className="mobile-user-card">
                 <span 
                   className="user-role-dot" 
-                  style={{ background: currentUser.role === "superadmin" ? "#f59e0b" : currentUser.role === "nitin" ? "#ec4899" : currentUser.role === "rahul" ? "#10b981" : currentUser.role === "crm" ? "#6366f1" : "#38bdf8" }}
+                  style={{ background: currentUser.role === "superadmin" ? "#f59e0b" : currentUser.role === "nitin" ? "#ec4899" : currentUser.role === "rahul" ? "#10b981" : currentUser.role === "crm" ? "#6366f1" : currentUser.role === "rsm" ? "#8b5cf6" : "#38bdf8" }}
                 ></span>
                 <div className="mobile-user-details">
                   <span className="mobile-user-name">{currentUser.name}</span>
                   <span className="mobile-user-role">
-                    {currentUser.role === "superadmin" ? "Super Admin" : currentUser.role === "crm" ? "CRM Executive" : currentUser.role === "asm" ? "Area Sales Manager" : currentUser.role === "tsm" ? "Territory Sales Manager" : currentUser.role === "nitin" ? "Nitin Manager" : currentUser.role === "rahul" ? "Rahul Manager" : "Purchaser"}
+                    {currentUser.role === "superadmin" ? "Super Admin" : currentUser.role === "crm" ? "CRM Executive" : currentUser.role === "asm" ? "Area Sales Manager" : currentUser.role === "tsm" ? "Territory Sales Manager" : currentUser.role === "rsm" ? "Regional Sales Manager" : currentUser.role === "nitin" ? "Nitin Manager" : currentUser.role === "rahul" ? "Rahul Manager" : "Purchaser"}
                   </span>
                 </div>
               </div>
@@ -2243,7 +2250,7 @@ export default function App() {
             <div className="mobile-nav-list">
               {currentUser && (
                 <>
-                  {!["crm", "asm", "tsm"].includes(currentUser.role) && (
+                  {!["crm", "asm", "tsm", "rsm"].includes(currentUser.role) && (
                     <button 
                       onClick={() => { handleGoHome(); setMobileMenuOpen(false); }} 
                       className={`mobile-nav-item ${activeView === "home" ? "active" : ""}`}
@@ -2261,7 +2268,7 @@ export default function App() {
                     </button>
                   )}
 
-                  {(currentUser.role === "crm" || currentUser.role === "asm" || currentUser.role === "tsm" || currentUser.role === "superadmin" || currentUser.role === "owner") && (
+                  {(currentUser.role === "crm" || currentUser.role === "asm" || currentUser.role === "tsm" || currentUser.role === "rsm" || currentUser.role === "superadmin" || currentUser.role === "owner") && (
                     <button 
                       onClick={() => { setActiveView("crm"); setMobileMenuOpen(false); }} 
                       className={`mobile-nav-item ${activeView === "crm" ? "active" : ""}`}
@@ -2279,7 +2286,7 @@ export default function App() {
                     </button>
                   )}
                   
-                  {currentUser.role !== "superadmin" && !["crm", "asm", "tsm"].includes(currentUser.role) && (
+                  {currentUser.role !== "superadmin" && !["crm", "asm", "tsm", "rsm"].includes(currentUser.role) && (
                     <button 
                       onClick={() => {
                         setMobileMenuOpen(false);
@@ -2296,7 +2303,7 @@ export default function App() {
                 </>
               )}
 
-              {(!currentUser || (!["crm", "asm", "tsm"].includes(currentUser.role))) && (
+              {(!currentUser || (!["crm", "asm", "tsm", "rsm"].includes(currentUser.role))) && (
                 <button 
                   onClick={() => { setActiveView("requester"); setMobileMenuOpen(false); }} 
                   className={`mobile-nav-item ${activeView === "requester" ? "active" : ""}`}
@@ -2305,7 +2312,7 @@ export default function App() {
                 </button>
               )}
 
-              {currentUser && currentUser.role !== "superadmin" && !["crm", "asm", "tsm"].includes(currentUser.role) && (
+              {currentUser && currentUser.role !== "superadmin" && !["crm", "asm", "tsm", "rsm"].includes(currentUser.role) && (
                 <button 
                   onClick={() => { setActiveView("itemcatalog"); setMobileMenuOpen(false); }} 
                   className={`mobile-nav-item ${activeView === "itemcatalog" ? "active" : ""}`}

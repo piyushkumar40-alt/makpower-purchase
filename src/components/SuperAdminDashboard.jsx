@@ -983,8 +983,9 @@ export default function SuperAdminDashboard({
     else if (dLower.includes("crm")) roleVal = "crm";
     else if (dLower.includes("asm") || dLower.includes("area sales")) roleVal = "asm";
     else if (dLower.includes("tsm") || dLower.includes("territory sales")) roleVal = "tsm";
+    else if (dLower.includes("rsm") || dLower.includes("regional sales")) roleVal = "rsm";
 
-    const res = onAddPurchaser(pName, pEmail, pPassword, finalDesignation, roleVal, "", "", (roleVal === "asm" || roleVal === "tsm") ? pParentCrmId : "");
+    const res = onAddPurchaser(pName, pEmail, pPassword, finalDesignation, roleVal, "", "", (roleVal === "asm" || roleVal === "tsm" || roleVal === "rsm") ? pParentCrmId : "");
     if (res.success) {
       setPSuccess(`Staff account ${pName} created successfully as ${finalDesignation}!`);
       setPName("");
@@ -1411,7 +1412,7 @@ export default function SuperAdminDashboard({
                     className={`btn btn-sm ${staffFilterTab === "sales" ? "btn-primary" : "btn-secondary"}`}
                     style={{ fontSize: "0.78rem" }}
                   >
-                    🟢 ASM/TSM ({effectiveUsers.filter(u => (u.role === "asm" || u.role === "tsm") && u.status !== "inactive" && u.status !== "disabled").length})
+                    🟢 Field Sales ({effectiveUsers.filter(u => (u.role === "asm" || u.role === "tsm" || u.role === "rsm") && u.status !== "inactive" && u.status !== "disabled").length})
                   </button>
                   <button 
                     type="button" 
@@ -1427,7 +1428,7 @@ export default function SuperAdminDashboard({
                   {effectiveUsers.filter(u => {
                     if (u.role === "superadmin" || u.status === "inactive" || u.status === "disabled") return false;
                     if (staffFilterTab === "crm") return u.role === "crm";
-                    if (staffFilterTab === "sales") return u.role === "asm" || u.role === "tsm";
+                    if (staffFilterTab === "sales") return u.role === "asm" || u.role === "tsm" || u.role === "rsm";
                     if (staffFilterTab === "purchaser") return u.role === "purchaser";
                     return true;
                   }).map(staff => {
@@ -1438,10 +1439,11 @@ export default function SuperAdminDashboard({
                       if (role === "crm") return "CRM Executive";
                       if (role === "asm") return "Area Sales Manager";
                       if (role === "tsm") return "Territory Sales Manager";
+                      if (role === "rsm") return "Regional Sales Manager";
                       return "Purchaser";
                     };
                     const isPurchaser = staff.role === "purchaser";
-                    const isCrmStaff = staff.role === "crm" || staff.role === "asm" || staff.role === "tsm";
+                    const isCrmStaff = staff.role === "crm" || staff.role === "asm" || staff.role === "tsm" || staff.role === "rsm";
                     const activeRequests = isPurchaser ? requests.filter(r => r.purchaserId === staff.id && r.isMaterialRec !== "Yes").length : 0;
                     return (
                       <div key={staff.id} className="glass-panel" style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: "10px", background: "rgba(255, 255, 255, 0.01)" }}>
@@ -1452,7 +1454,7 @@ export default function SuperAdminDashboard({
                               <span className="badge" style={{ fontSize: "0.65rem", padding: "2px 8px", background: isCrmStaff ? "rgba(99, 102, 241, 0.15)" : "rgba(56, 189, 248, 0.12)", color: isCrmStaff ? "#a5b4fc" : "#38bdf8", border: isCrmStaff ? "1px solid rgba(99, 102, 241, 0.3)" : "1px solid rgba(56, 189, 248, 0.3)", fontWeight: 700 }}>
                                 {staff.designation || getRoleLabel(staff.role)}
                               </span>
-                              {(staff.role === "asm" || staff.role === "tsm") && (
+                              {(staff.role === "asm" || staff.role === "tsm" || staff.role === "rsm") && (
                                 <span className="badge" style={{ fontSize: "0.65rem", padding: "2px 8px", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)", fontWeight: 700 }}>
                                   💼 CRM: {(() => {
                                     const pid = staff.parentCrmId || ((staff.name || "").toLowerCase().includes("ashutosh") ? "u-ankita" : "");
@@ -1682,9 +1684,11 @@ export default function SuperAdminDashboard({
                                   else if (r === "crm") setEditDesignationVal("CRM Executive");
                                   else if (r === "asm") setEditDesignationVal("Area Sales Manager (ASM)");
                                   else if (r === "tsm") setEditDesignationVal("Territory Sales Manager (TSM)");
+                                  else if (r === "rsm") setEditDesignationVal("Regional Sales Manager (RSM)");
                                 }}
                               >
                                 <option value="crm">💼 CRM (Customer Relationship Management)</option>
+                                <option value="rsm">🟣 RSM (Regional Sales Manager)</option>
                                 <option value="asm">🟢 ASM (Area Sales Manager)</option>
                                 <option value="tsm">🟡 TSM (Territory Sales Manager)</option>
                                 <option value="owner">👑 Owner (Executive Dashboard)</option>
@@ -1705,6 +1709,7 @@ export default function SuperAdminDashboard({
                                 onChange={e => setEditDesignationVal(e.target.value)}
                               >
                                 <option value="CRM Executive">CRM Executive</option>
+                                <option value="Regional Sales Manager (RSM)">Regional Sales Manager (RSM)</option>
                                 <option value="Area Sales Manager (ASM)">Area Sales Manager (ASM)</option>
                                 <option value="Territory Sales Manager (TSM)">Territory Sales Manager (TSM)</option>
                                 <option value="Purchaser">Purchaser</option>
@@ -1721,7 +1726,7 @@ export default function SuperAdminDashboard({
                               </select>
                             </div>
 
-                            {(editRoleVal === "asm" || editRoleVal === "tsm") && (
+                            {(editRoleVal === "asm" || editRoleVal === "tsm" || editRoleVal === "rsm") && (
                               <div className="form-group" style={{ marginBottom: 0, gap: "4px" }}>
                                 <label className="form-label" style={{ fontSize: "0.72rem", fontWeight: 700 }}>Assigned CRM Executive *</label>
                                 <select 
@@ -1766,7 +1771,7 @@ export default function SuperAdminDashboard({
                                     designation: editDesignationVal,
                                     role: roleVal 
                                   };
-                                  if (roleVal === "asm" || roleVal === "tsm") {
+                                  if (roleVal === "asm" || roleVal === "tsm" || roleVal === "rsm") {
                                     updates.parentCrmId = editParentCrmIdVal || "u-ankita";
                                   }
                                   if (editPasswordVal.trim()) {
@@ -1875,6 +1880,7 @@ export default function SuperAdminDashboard({
                         const r = e.target.value;
                         setPRole(r);
                         if (r === "crm") setPDesignation("CRM Executive");
+                        else if (r === "rsm") setPDesignation("Regional Sales Manager (RSM)");
                         else if (r === "asm") setPDesignation("Area Sales Manager (ASM)");
                         else if (r === "tsm") setPDesignation("Territory Sales Manager (TSM)");
                         else if (r === "purchaser") setPDesignation("Purchaser");
@@ -1886,6 +1892,7 @@ export default function SuperAdminDashboard({
                       style={{ fontWeight: 700, borderColor: pRole === "crm" ? "#6366f1" : "" }}
                     >
                       <option value="crm">💼 CRM (Customer Relationship Management)</option>
+                      <option value="rsm">🟣 Regional Sales Manager (RSM)</option>
                       <option value="asm">🟢 Area Sales Manager (ASM)</option>
                       <option value="tsm">🟡 Territory Sales Manager (TSM)</option>
                       <option value="purchaser">🛒 Purchaser</option>
@@ -1896,7 +1903,7 @@ export default function SuperAdminDashboard({
                     </select>
                   </div>
 
-                  {(pRole === "asm" || pRole === "tsm") && (
+                  {(pRole === "asm" || pRole === "tsm" || pRole === "rsm") && (
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label" style={{ fontWeight: 700 }}>Assigned CRM Executive *</label>
                       <select 
@@ -1944,6 +1951,7 @@ export default function SuperAdminDashboard({
                       onChange={e => setPDesignation(e.target.value)}
                     >
                       <option value="CRM Executive">💼 CRM Executive (Customer Relationship)</option>
+                      <option value="Regional Sales Manager (RSM)">🟣 Regional Sales Manager (RSM)</option>
                       <option value="Area Sales Manager (ASM)">🟢 Area Sales Manager (ASM)</option>
                       <option value="Territory Sales Manager (TSM)">🟡 Territory Sales Manager (TSM)</option>
                       <option value="Purchaser">🛒 Purchaser</option>
