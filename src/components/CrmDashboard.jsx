@@ -4823,10 +4823,10 @@ function TeamMemberModal({ member, currentExecutive, crmExecutives = [], isAdmin
     });
   };
 
-  const assignedCrmObj = crmExecutives.find(c => c.id === (isAdminOrOwner ? parentCrmId : (currentUser?.role === "crm" ? currentUser.id : defaultParent)));
+  const assignedCrmObj = (crmExecutives || []).find(c => c.id === (isAdminOrOwner ? parentCrmId : (currentUser?.role === "crm" ? currentUser.id : defaultParent)));
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop modal-overlay" onClick={onClose} style={{ zIndex: 1100, position: "fixed", top: 0, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(5px)" }}>
       <div className="modal-content glass-panel card-fade-in" onClick={e => e.stopPropagation()} style={{ maxWidth: "520px", padding: "26px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
           <h3 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--primary)", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
@@ -4845,7 +4845,7 @@ function TeamMemberModal({ member, currentExecutive, crmExecutives = [], isAdmin
                 className="form-control"
                 style={{ fontWeight: 600 }}
               >
-                {crmExecutives.map(c => (
+                {(crmExecutives || []).map(c => (
                   <option key={c.id} value={c.id}>
                     💼 {c.name} ({c.email})
                   </option>
