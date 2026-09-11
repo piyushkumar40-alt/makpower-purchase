@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { LogIn, ShoppingCart, ShieldAlert, LogOut, Settings, BarChart2, Package, Sun, Moon, Home, Menu, X, Building2, RefreshCw, Search, Bell, Briefcase, Layers } from "lucide-react";
+import { LogIn, ShoppingCart, ShieldAlert, LogOut, Settings, BarChart2, Package, Sun, Moon, Home, Menu, X, Building2, RefreshCw, Search, Bell, Briefcase, Layers, Key } from "lucide-react";
 import LoginPage from "./components/LoginPage";
 import RequesterForm from "./components/RequesterForm";
 import PurchaserDashboard from "./components/PurchaserDashboard";
@@ -14,6 +14,7 @@ import ItemDetailModal from "./components/ItemDetailModal";
 import HomePage from "./components/HomePage";
 import CrmDashboard from "./components/CrmDashboard";
 import ImsDashboard from "./components/ImsDashboard";
+import ChangePasswordModal, { isWeakPassword } from "./components/ChangePasswordModal";
 import { initialUsers, initialVendors, initialRequests, initialCargoShipments, initialCargoCompanies, initialCrmParties, initialCrmSalesOrders, initialCrmDispatches, initialImsTransactions } from "./mockData";
 import { 
   recordUserLogin, 
@@ -189,6 +190,30 @@ export default function App() {
     const saved = localStorage.getItem("makpower_current_user");
     return saved ? JSON.parse(saved) : null;
   });
+
+  // Password Update Modal & Weak Password Prompt States
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [isWeakPasswordPrompt, setIsWeakPasswordPrompt] = useState(false);
+
+  // Check on mount if logged-in user has a weak password
+  useEffect(() => {
+    if (currentUser && currentUser.id) {
+      const skipped = sessionStorage.getItem(`skipped_weak_pwd_${currentUser.id}`);
+      if (!skipped && isWeakPassword(currentUser.password)) {
+        setIsWeakPasswordPrompt(true);
+        setShowPasswordModal(true);
+      }
+    }
+  }, [currentUser?.id]);
+
+  const handleUserPasswordUpdated = (newPassword) => {
+    if (!currentUser) return;
+    const updated = { ...currentUser, password: newPassword };
+    setCurrentUser(updated);
+    localStorage.setItem("makpower_current_user", JSON.stringify(updated));
+    setUsers(prev => prev.map(u => u.id === currentUser.id ? { ...u, password: newPassword } : u));
+    logSystemActivity("USER_UPDATE_PASSWORD", `User "${currentUser.name}" updated their account password`, "Security", currentUser.id);
+  };
 
   // On-Demand Data Pulling & Loading State
   const [loadingModules, setLoadingModules] = useState({});
@@ -795,6 +820,14 @@ export default function App() {
         setActiveView("dashboard");
       }
       logSystemActivity("USER_LOGIN", `User "${user.name}" (${user.role}) logged in successfully`, "User Session", user.id);
+
+      // Check for weak password and prompt security alert on login
+      const skipped = sessionStorage.getItem(`skipped_weak_pwd_${user.id}`);
+      if (!skipped && isWeakPassword(cleanPass || user.password)) {
+        setIsWeakPasswordPrompt(true);
+        setShowPasswordModal(true);
+      }
+
       return { success: true };
     }
     return { success: false, message: "Invalid email, password, or inactive account." };
@@ -2188,6 +2221,28 @@ export default function App() {
                   </span>
                   <span style={{ fontSize: "0.66rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>({currentUser.role?.toUpperCase() || "STAFF"})</span>
                 </div>
+                <button 
+                  onClick={() => {
+                    setIsWeakPasswordPrompt(false);
+                    setShowPasswordModal(true);
+                  }} 
+                  className="btn btn-sm btn-secondary desktop-user-password-btn" 
+                  style={{ 
+                    borderRadius: "8px", 
+                    padding: "3px 8px", 
+                    fontSize: "0.72rem", 
+                    fontWeight: 600,
+                    marginLeft: "4px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    border: "1px solid var(--border-glass, rgba(255, 255, 255, 0.18))"
+                  }}
+                  title="Change your account password"
+                >
+                  <Key size={12} style={{ color: "var(--primary, #38bdf8)" }} />
+                  <span>Password</span>
+                </button>
                 <button onClick={handleLogout} className="btn btn-sm btn-danger desktop-user-logout-btn" style={{ borderRadius: "8px", padding: "2px 6px", fontSize: "0.72rem", marginLeft: "4px" }}>
                   Logout
                 </button>
@@ -2333,12 +2388,24 @@ export default function App() {
               </button>
 
               {currentUser ? (
-                <button 
-                  onClick={() => { handleLogout(); setMobileMenuOpen(false); }} 
-                  className="mobile-nav-item logout-item"
-                >
-                  <LogOut size={18} /> <span>Logout</span>
-                </button>
+                <>
+                  <button 
+                    onClick={() => { 
+                      setIsWeakPasswordPrompt(false);
+                      setShowPasswordModal(true); 
+                      setMobileMenuOpen(false); 
+                    }} 
+                    className="mobile-nav-item"
+                  >
+                    <Key size={18} style={{ color: "var(--primary, #38bdf8)" }} /> <span>Change Password</span>
+                  </button>
+                  <button 
+                    onClick={() => { handleLogout(); setMobileMenuOpen(false); }} 
+                    className="mobile-nav-item logout-item"
+                  >
+                    <LogOut size={18} /> <span>Logout</span>
+                  </button>
+                </>
               ) : (
                 activeView !== "login" && (
                   <button 
@@ -2678,6 +2745,17 @@ export default function App() {
           </div>
         )}
       </main>
+      )}
+
+      {/* Self-Service & Weak Password Security Alert Modal */}
+      {showPasswordModal && currentUser && (
+        <ChangePasswordModal
+          isOpen={showPasswordModal}
+          onClose={() => setShowPasswordModal(false)}
+          currentUser={currentUser}
+          isWeakAlertMode={isWeakPasswordPrompt}
+          onPasswordUpdated={handleUserPasswordUpdated}
+        />
       )}
     </div>
   );
