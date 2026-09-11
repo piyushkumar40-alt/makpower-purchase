@@ -273,16 +273,27 @@ export default function CrmDashboard({
 
   // Unified Dispatches combining crmDispatches + IMS party stock movements
   const allUnifiedDispatches = useMemo(() => {
-    const list = [...crmDispatches];
-    const existingIds = new Set(crmDispatches.map(d => d.id));
+    const list = (crmDispatches || []).map(d => ({
+      ...d,
+      orderNo: d.orderNo || d.salesOrderId || (d.docketNo?.includes('@') ? d.docketNo.split('@')[0].trim() : (d.remarks?.includes('@') ? d.remarks.split('@')[0].trim() : (String(d.id || '').includes('@') ? String(d.id).split('@')[0].trim() : '')))
+    }));
+    const existingIds = new Set(list.map(d => d.id));
     (imsTransactions || []).forEach(tx => {
       if (!tx || !tx.partyName || !tx.partyName.trim()) return;
+      // Do not include opening stock rows in sales dispatches
+      const pLower = (tx.partyName || "").toLowerCase();
+      const rLower = (tx.remarks || tx.narration || "").toLowerCase();
+      if (pLower.includes("opening stock") || rLower.includes("opening stock") || tx.source === "opening_stock" || tx.movementType === "OPENING") return;
+
       const numQty = parseInt(tx.stockQty) || 0;
       const isOutward = (tx.movementType || "").toUpperCase() === "OUT" || numQty < 0 || (!tx.movementType && numQty !== 0);
       if (isOutward) {
         if (!existingIds.has(tx.id)) {
+          const rawOrderNo = tx.orderNo || (tx.remarks?.includes('@') ? tx.remarks.split('@')[0].trim() : (String(tx.id || '').includes('@') ? String(tx.id).split('@')[0].trim() : ''));
           list.push({
             id: tx.id,
+            orderNo: rawOrderNo,
+            salesOrderId: rawOrderNo,
             dispatchDate: tx.date || "",
             partyId: tx.partyId || "",
             partyName: tx.partyName.trim(),
@@ -698,6 +709,9 @@ export default function CrmDashboard({
         if (f.field === "party") {
           const pName = (d.partyName || "").toLowerCase();
           return pName.includes(term) || normParty(pName).includes(normParty(term));
+        } else if (f.field === "order") {
+          const ord = String(d.orderNo || d.salesOrderId || "").toLowerCase();
+          return ord.includes(term);
         } else if (f.field === "item") {
           return (d.itemModel || "").toLowerCase().includes(term);
         } else if (f.field === "invoice") {
@@ -983,9 +997,9 @@ export default function CrmDashboard({
   };
 
   const handleExportDispatchesCsv = () => {
-    const headers = ["Dispatch Date", "Invoice No", "Party Name", "Item Model", "Dispatched Qty", "Transporter", "Docket / LR No", "Status", "Assigned CRM"];
+    const headers = ["Dispatch Date", "Order No", "Invoice No", "Party Name", "Item Model", "Dispatched Qty", "Transporter", "Docket / LR No", "Status", "Assigned CRM"];
     const rows = filteredDispatchesReport.map(d => [
-      d.dispatchDate, d.invoiceNo, d.partyName, d.itemModel, d.dispatchedQty, d.transporterName, d.docketNo, d.status, crmExecutives.find(c => c.id === d.assignedCrmId)?.name || d.assignedCrmId
+      d.dispatchDate, d.orderNo || "", d.invoiceNo, d.partyName, d.itemModel, d.dispatchedQty, d.transporterName, d.docketNo, d.status, crmExecutives.find(c => c.id === d.assignedCrmId)?.name || d.assignedCrmId
     ]);
     exportCsv(headers, rows, "makpower_dispatch_qty_report");
   };
@@ -2494,6 +2508,7 @@ export default function CrmDashboard({
                     style={{ width: "auto", minWidth: "165px", height: "34px", minHeight: "34px", fontSize: "0.82rem", padding: "4px 28px 4px 10px" }}
                   >
                     <option value="all">🔍 All Fields</option>
+                    <option value="order">📄 Order Number</option>
                     <option value="party">🏢 Party Name</option>
                     <option value="item">📦 Item Model / Product</option>
                   </select>
@@ -2503,7 +2518,7 @@ export default function CrmDashboard({
                     <input
                       type="text"
                       className="form-control"
-                      placeholder={`Search by ${filter.field === "all" ? "party name or item model..." : filter.field}...`}
+                      placeholder={`Search by ${filter.field === "all" ? "order no, party name or item model..." : filter.field === "order" ? "Order Number (e.g. HS-AP7684)..." : filter.field}...`}
                       value={filter.value}
                       onChange={e => handleUpdateDispatchSearchFilter(filter.id, "value", e.target.value)}
                       style={{ height: "34px", minHeight: "34px", paddingLeft: "32px", paddingRight: filter.value ? "30px" : "10px", fontSize: "0.85rem" }}
@@ -2572,6 +2587,7 @@ export default function CrmDashboard({
                     <thead>
                       <tr>
                         <th>Dispatch Date</th>
+                        <th>Order No</th>
                         <th>Party Name</th>
                         <th>Item Model</th>
                         <th style={{ textAlign: "right" }}>Dispatched Qty</th>
@@ -2585,6 +2601,16 @@ export default function CrmDashboard({
                             <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", fontWeight: 600 }}>
                               <Calendar size={13} style={{ color: "var(--primary)" }} /> {dsp.dispatchDate}
                             </div>
+                          </td>
+
+                          <td>
+                            {dsp.orderNo ? (
+                              <span className="badge" style={{ background: "rgba(99, 102, 241, 0.15)", color: "#818cf8", border: "1px solid rgba(99, 102, 241, 0.3)", fontWeight: 700, fontSize: "0.78rem", fontFamily: "monospace" }}>
+                                #{dsp.orderNo}
+                              </span>
+                            ) : (
+                              <span style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>—</span>
+                            )}
                           </td>
 
                           <td>
@@ -2623,8 +2649,15 @@ export default function CrmDashboard({
                           <div style={{ fontWeight: 800, color: "var(--text-main)", fontSize: "0.98rem" }}>
                             {dsp.partyName}
                           </div>
-                          <div style={{ fontSize: "0.78rem", color: "var(--primary)", fontWeight: 700, marginTop: "2px" }}>
-                            {dsp.itemModel}
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "3px", flexWrap: "wrap" }}>
+                            <span style={{ fontSize: "0.78rem", color: "var(--primary)", fontWeight: 700 }}>
+                              {dsp.itemModel}
+                            </span>
+                            {dsp.orderNo && (
+                              <span className="badge" style={{ background: "rgba(99, 102, 241, 0.15)", color: "#818cf8", border: "1px solid rgba(99, 102, 241, 0.3)", fontWeight: 700, fontSize: "0.72rem", fontFamily: "monospace" }}>
+                                #{dsp.orderNo}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <span className={`badge ${dsp.status === "Delivered" ? "badge-success" : dsp.status === "In Transit" ? "badge-primary" : "badge-secondary"}`} style={{ fontSize: "0.72rem" }}>
@@ -5411,6 +5444,7 @@ function AsmSalesDetailModal({
         const q = search.toLowerCase();
         const match = (d.partyName || "").toLowerCase().includes(q) ||
                       (d.itemModel || "").toLowerCase().includes(q) ||
+                      (d.orderNo || d.salesOrderId || "").toLowerCase().includes(q) ||
                       (d.invoiceNo || "").toLowerCase().includes(q) ||
                       (d.transporterName || "").toLowerCase().includes(q);
         if (!match) return false;
@@ -5666,6 +5700,7 @@ function AsmSalesDetailModal({
               <thead>
                 <tr>
                   <th>Dispatch Date</th>
+                  <th>Order No</th>
                   <th>Invoice No</th>
                   <th>Party Name</th>
                   <th>Item Model</th>
@@ -5677,7 +5712,7 @@ function AsmSalesDetailModal({
               <tbody>
                 {memberDispatches.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                    <td colSpan={8} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
                       No dispatched shipments logged for assigned parties.
                     </td>
                   </tr>
@@ -5685,6 +5720,15 @@ function AsmSalesDetailModal({
                   memberDispatches.map(dsp => (
                     <tr key={dsp.id}>
                       <td><code style={{ fontSize: "0.78rem" }}>{dsp.dispatchDate}</code></td>
+                      <td>
+                        {dsp.orderNo ? (
+                          <span className="badge" style={{ background: "rgba(99, 102, 241, 0.15)", color: "#818cf8", border: "1px solid rgba(99, 102, 241, 0.3)", fontWeight: 700, fontSize: "0.75rem", fontFamily: "monospace" }}>
+                            #{dsp.orderNo}
+                          </span>
+                        ) : (
+                          <span style={{ color: "var(--text-muted)", fontSize: "0.78rem" }}>—</span>
+                        )}
+                      </td>
                       <td><code style={{ fontSize: "0.8rem", fontWeight: 700 }}>{dsp.invoiceNo || "INV-PENDING"}</code></td>
                       <td><strong style={{ color: "var(--text-main)" }}>{dsp.partyName}</strong></td>
                       <td><strong style={{ color: "var(--primary)" }}>{dsp.itemModel}</strong></td>

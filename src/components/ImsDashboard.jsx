@@ -8,8 +8,41 @@ import {
 import Pagination, { SmartSelectionBar } from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
 import { initialImsTransactions } from "../mockData";
-import DateRangeFilter, { isDateInBetween, parseDateTimestamp, formatDisplayDate } from "./DateRangeFilter";
+import DateRangeFilter, { isDateInBetween, parseDateTimestamp, formatDisplayDate, formatYMD } from "./DateRangeFilter";
 import { downloadCsv } from "../utils/formatters";
+
+// Helper: Extract Order Number from transaction or formatted string (e.g. HS-AP7684@hs-ap144203@46272.5019176042 -> HS-AP7684)
+export const extractOrderNo = (txOrString) => {
+  if (!txOrString) return "";
+  if (typeof txOrString === "string") {
+    const s = txOrString.trim();
+    if (s.includes("@")) return s.split("@")[0].trim();
+    return s;
+  }
+  if (txOrString.orderNo && String(txOrString.orderNo).trim()) {
+    const o = String(txOrString.orderNo).trim();
+    return o.includes("@") ? o.split("@")[0].trim() : o;
+  }
+  const rem = String(txOrString.remarks || txOrString.narration || txOrString.docketNo || "").trim();
+  if (rem.includes("@")) {
+    return rem.split("@")[0].trim();
+  }
+  const idStr = String(txOrString.id || "").trim();
+  if (idStr.includes("@")) {
+    return idStr.split("@")[0].trim();
+  }
+  return "";
+};
+
+// Helper: Detect if a transaction is an Opening Stock baseline calibration entry
+export const isOpeningStockTransaction = (tx) => {
+  if (!tx) return false;
+  if (tx.isOpeningStock || tx.source === "opening_stock" || tx.movementType === "OPENING") return true;
+  const p = (tx.partyName || tx.party || "").toLowerCase();
+  const r = (tx.remarks || tx.narration || "").toLowerCase();
+  const n = (tx.itemName || "").toLowerCase();
+  return p.includes("opening stock") || r.includes("opening stock") || n.includes("opening stock");
+};
 
 export default function ImsDashboard({
   currentUser,
@@ -72,14 +105,8 @@ export default function ImsDashboard({
     return "";
   }, [imsSummary?.firstStockDate, effectiveTransactions]);
 
-  // When user specifies a closing date (e.g. 7 Sept), starting date automatically becomes the 1st day of available stock
   const handleSelectEndDate = (newEnd) => {
     setEndDate(newEnd);
-    if (newEnd && firstAvailableStockDate) {
-      if (!startDate || startDate > newEnd || startDate !== firstAvailableStockDate) {
-        setStartDate(firstAvailableStockDate);
-      }
-    }
   };
 
   useEffect(() => {
@@ -145,12 +172,13 @@ export default function ImsDashboard({
     return list;
   }, [searchFilters]);
 
-  // Distinct Parties found across all transactions for quick dropdown filter
+  // Distinct Parties found across all transactions for quick dropdown filter (excluding Opening Stock)
   const distinctParties = useMemo(() => {
     const set = new Set();
     effectiveTransactions.forEach(tx => {
+      if (isOpeningStockTransaction(tx)) return;
       const p = (tx.partyName || tx.party || "").trim();
-      if (p && p !== "—") set.add(p);
+      if (p && p !== "—" && !p.toLowerCase().includes("opening stock")) set.add(p);
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [effectiveTransactions]);
@@ -221,7 +249,7 @@ export default function ImsDashboard({
     }
   }, [effectiveTransactions, imsRange]);
 
-  // Dynamic backend fetch whenever user changes date range in DateRangeFilter
+  // Dynamic backend fetch whenever user changes date range
   const isInitialMount = useRef(true);
   useEffect(() => {
     if (isInitialMount.current) {
@@ -229,20 +257,12 @@ export default function ImsDashboard({
       return;
     }
 
-    // 1. If all data is already loaded in memory, no need to pull from database
+    // If all data is already loaded in memory, no need to pull from database
     if (loadedRangeRef.current.isAll) {
       return;
     }
 
-    // 2. If the newly selected range is entirely within the already fetched range in memory, skip database query
-    const { minDate, maxDate } = loadedRangeRef.current;
-    if (startDate && endDate && minDate && maxDate) {
-      if (startDate >= minDate && endDate <= maxDate) {
-        return;
-      }
-    }
-
-    // Otherwise, pull requested date range from database
+    // Always pull requested date range from database to guarantee freshness and full coverage
     if (onPullModuleData) {
       onPullModuleData("imsTransactions", { startDate, endDate });
     }
@@ -365,6 +385,9 @@ export default function ImsDashboard({
   // ==================== FILTERED TRANSACTIONS ====================
   const filteredTransactions = useMemo(() => {
     return effectiveTransactions.filter(tx => {
+      // Hide opening stock from movement table - kept strictly in backend stock calculations
+      if (isOpeningStockTransaction(tx)) return false;
+
       // Category resolution for search & filtering: Prioritize master items catalog
       const rawId = String(tx.itemId || "").trim().toLowerCase();
       const cleanId = rawId.replace(/^#+/, "");
@@ -384,6 +407,7 @@ export default function ImsDashboard({
         const party = (tx.partyName || tx.party || tx.customer || tx.vendorName || tx.vendor || "").toLowerCase();
         const item = cleanName;
         const id = cleanId;
+        const order = (extractOrderNo(tx) || tx.orderNo || "").toLowerCase();
         const remarks = (tx.remarks || tx.narration || "").toLowerCase();
         const loc = (tx.location || tx.godown || tx.warehouse || "").toLowerCase();
         const date = tx.date || "";
@@ -393,6 +417,9 @@ export default function ImsDashboard({
           const scope = search.scope || "all";
           const words = term.split(/\s+/).filter(Boolean);
 
+          if (scope === "order") {
+            return words.length > 1 ? words.every(w => order.includes(w)) : order.includes(term);
+          }
           if (scope === "category") {
             return words.length > 1 ? words.every(w => cat.includes(w) || cleanName.includes(w)) : (cat.includes(term) || cleanName.includes(term));
           }
@@ -411,9 +438,9 @@ export default function ImsDashboard({
 
           // scope === "all"
           if (words.length > 1) {
-            return words.every(w => party.includes(w) || item.includes(w) || id.includes(w) || cat.includes(w) || remarks.includes(w) || loc.includes(w) || date.includes(w));
+            return words.every(w => party.includes(w) || item.includes(w) || id.includes(w) || cat.includes(w) || remarks.includes(w) || loc.includes(w) || date.includes(w) || order.includes(w));
           }
-          return party.includes(term) || item.includes(term) || id.includes(term) || cat.includes(term) || remarks.includes(term) || loc.includes(term) || date.includes(term);
+          return party.includes(term) || item.includes(term) || id.includes(term) || cat.includes(term) || remarks.includes(term) || loc.includes(term) || date.includes(term) || order.includes(term);
         });
 
         if (!matchesAll) return false;
@@ -466,6 +493,9 @@ export default function ImsDashboard({
       if (sortField === "date") {
         valA = parseDateTimestamp(a.date) || 0;
         valB = parseDateTimestamp(b.date) || 0;
+      } else if (sortField === "orderNo") {
+        valA = (extractOrderNo(a) || a.orderNo || "").toLowerCase();
+        valB = (extractOrderNo(b) || b.orderNo || "").toLowerCase();
       } else if (sortField === "stockQty") {
         valA = parseInt(valA) || 0;
         valB = parseInt(valB) || 0;
@@ -902,6 +932,9 @@ export default function ImsDashboard({
       } else if (col.includes("remark") || col.includes("narration") || col.includes("note") || col.includes("details") || col.includes("vch no") || col.includes("invoice") || col.includes("bill")) {
         headerMap.remarksIdx = idx;
         hasHeader = true;
+      } else if (col.includes("order") || col === "ord" || col.includes("order no") || col.includes("order_no") || col.includes("ord no") || col.includes("po no")) {
+        headerMap.orderNoIdx = idx;
+        hasHeader = true;
       }
     });
 
@@ -923,6 +956,7 @@ export default function ImsDashboard({
       if (isRepeatedHeader && i !== 0) continue;
 
       let rawDate = "";
+      let rawOrderNo = "";
       let rawItemName = "";
       let rawItemId = "";
       let rawStock = 0;
@@ -932,6 +966,7 @@ export default function ImsDashboard({
 
       if (hasHeader) {
         if (headerMap.dateIdx !== -1 && cols[headerMap.dateIdx] !== undefined) rawDate = cols[headerMap.dateIdx].trim();
+        if (headerMap.orderNoIdx !== -1 && cols[headerMap.orderNoIdx] !== undefined) rawOrderNo = cols[headerMap.orderNoIdx].trim();
         if (headerMap.itemIdx !== -1 && cols[headerMap.itemIdx] !== undefined) rawItemName = cols[headerMap.itemIdx].trim();
         if (headerMap.itemIdIdx !== -1 && cols[headerMap.itemIdIdx] !== undefined) rawItemId = cols[headerMap.itemIdIdx].trim();
         if (headerMap.partyIdx !== -1 && cols[headerMap.partyIdx] !== undefined) rawParty = cols[headerMap.partyIdx].trim();
@@ -1047,9 +1082,23 @@ export default function ImsDashboard({
         isMatched = true;
       }
 
+      if (!rawOrderNo) {
+        if (rawRemarks && rawRemarks.includes("@")) {
+          rawOrderNo = rawRemarks.split("@")[0].trim();
+        } else {
+          for (const c of cols) {
+            if (c && typeof c === "string" && c.includes("@")) {
+              rawOrderNo = c.split("@")[0].trim();
+              break;
+            }
+          }
+        }
+      }
+
       parsed.push({
         id: `ims-upload-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
         date: formatDateForInput(rawDate),
+        orderNo: rawOrderNo || (rawRemarks && rawRemarks.includes("@") ? rawRemarks.split("@")[0].trim() : ""),
         itemName: rawItemName || detectedContextItemName || "BT315",
         stockQty: rawStock,
         movementType: rawStock >= 0 ? "IN" : "OUT",
@@ -1163,9 +1212,10 @@ export default function ImsDashboard({
       return;
     }
 
-    const headers = ["Date", "Item Name", "Item ID", "Warehouse Location", "Stock Movement Qty", "Movement Type", "Party Name", "Remarks", "ID Status", "Source"];
+    const headers = ["Date", "Order No", "Item Name", "Item ID", "Warehouse Location", "Stock Movement Qty", "Movement Type", "Party Name", "Remarks", "ID Status", "Source"];
     const rows = targetTransactions.map(t => [
       t.date || "",
+      extractOrderNo(t) || t.orderNo || "",
       t.itemName || "",
       t.itemId || "UNLINKED",
       t.location || "Delhi",
@@ -1565,13 +1615,14 @@ export default function ImsDashboard({
                         borderRadius: "8px 0 0 8px",
                         borderRight: "none",
                         background: "var(--bg-input, var(--bg-card, rgba(255, 255, 255, 0.08)))",
-                        color: sf.scope === "category" ? "#38bdf8" : sf.scope === "party" ? "#c084fc" : sf.scope === "item" ? "#34d399" : sf.scope === "location" ? "#fbbf24" : sf.scope === "id" ? "#f43f5e" : "var(--text-main)",
+                        color: sf.scope === "order" ? "#818cf8" : sf.scope === "category" ? "#38bdf8" : sf.scope === "party" ? "#c084fc" : sf.scope === "item" ? "#34d399" : sf.scope === "location" ? "#fbbf24" : sf.scope === "id" ? "#f43f5e" : "var(--text-main)",
                         padding: "0 8px",
                         cursor: "pointer"
                       }}
-                      title="Select where to search (All, Category, Party, Item, Location, ID)"
+                      title="Select where to search (All, Order No, Category, Party, Item, Location, ID)"
                     >
                       <option value="all">🌐 All</option>
+                      <option value="order">📄 Order No</option>
                       <option value="category">🏷️ Category</option>
                       <option value="party">👤 Party</option>
                       <option value="item">📦 Item</option>
@@ -1584,12 +1635,13 @@ export default function ImsDashboard({
                         type="text"
                         className="form-control"
                         placeholder={
+                          sf.scope === "order" ? "Search Order No (e.g. HS-AP7684)..." :
                           sf.scope === "category" ? "Search Category (e.g. Neckband, Charger)..." :
                           sf.scope === "party" ? "Search Party Name (e.g. Azam)..." :
                           sf.scope === "item" ? "Search Item Name / Model..." :
                           sf.scope === "location" ? "Search Warehouse Location..." :
                           sf.scope === "id" ? "Search Item ID..." :
-                          "Search anywhere (item, party, category, ID)..."
+                          "Search anywhere (item, party, order no, category, ID)..."
                         }
                         value={sf.query}
                         onChange={e => handleUpdateSearchQuery(idx, e.target.value)}
@@ -1756,6 +1808,75 @@ export default function ImsDashboard({
                   ))}
                 </select>
               )}
+
+              {/* Quick 1-Click Date Presets */}
+              <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                {(() => {
+                  const now = new Date();
+                  const curMonthStart = formatYMD(new Date(now.getFullYear(), now.getMonth(), 1));
+                  const curMonthEnd = formatYMD(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+                  const isThisMonthActive = startDate === curMonthStart && endDate === curMonthEnd;
+                  const lastMonthStart = formatYMD(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+                  const lastMonthEnd = formatYMD(new Date(now.getFullYear(), now.getMonth(), 0));
+                  const isLastMonthActive = startDate === lastMonthStart && endDate === lastMonthEnd;
+
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStartDate(curMonthStart);
+                          setEndDate(curMonthEnd);
+                        }}
+                        className="btn btn-secondary btn-sm"
+                        style={{
+                          height: "36px",
+                          padding: "0 12px",
+                          fontSize: "0.8rem",
+                          fontWeight: 700,
+                          border: "2px solid #38bdf8", // BOLD CRISP BORDER LINE
+                          background: isThisMonthActive ? "rgba(56, 189, 248, 0.22)" : "rgba(56, 189, 248, 0.08)",
+                          color: "#38bdf8",
+                          borderRadius: "8px",
+                          boxShadow: isThisMonthActive ? "0 0 10px rgba(56, 189, 248, 0.35)" : "none",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          cursor: "pointer"
+                        }}
+                        title="Filter to current month (1st day to last day of this month)"
+                      >
+                        <Calendar size={13} /> This Month
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStartDate(lastMonthStart);
+                          setEndDate(lastMonthEnd);
+                        }}
+                        className="btn btn-secondary btn-sm"
+                        style={{
+                          height: "36px",
+                          padding: "0 11px",
+                          fontSize: "0.8rem",
+                          fontWeight: isLastMonthActive ? 700 : 600,
+                          border: isLastMonthActive ? "2px solid #38bdf8" : "1.5px solid var(--border-glass, rgba(255, 255, 255, 0.2))",
+                          background: isLastMonthActive ? "rgba(56, 189, 248, 0.18)" : "var(--bg-card, rgba(255, 255, 255, 0.04))",
+                          color: isLastMonthActive ? "#38bdf8" : "var(--text-main, var(--text-muted))",
+                          borderRadius: "8px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          cursor: "pointer"
+                        }}
+                        title="Filter to last month"
+                      >
+                        Last Month
+                      </button>
+                    </>
+                  );
+                })()}
+              </div>
 
               {/* Date Range Filter with Presets */}
               <DateRangeFilter
@@ -2034,12 +2155,17 @@ export default function ImsDashboard({
                         Location <ArrowUpDown size={12} />
                       </div>
                     </th>
-                    <th style={{ width: "14%", textAlign: "center", cursor: "pointer" }} onClick={() => { setSortField("stockQty"); setSortAsc(!sortAsc); }}>
+                    <th style={{ width: "13%", textAlign: "center", cursor: "pointer" }} onClick={() => { setSortField("stockQty"); setSortAsc(!sortAsc); }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "4px" }}>
                         Stock Movement <ArrowUpDown size={12} />
                       </div>
                     </th>
-                    <th style={{ width: "14%", cursor: "pointer" }} onClick={() => { setSortField("partyName"); setSortAsc(!sortAsc); }}>
+                    <th style={{ width: "11%", cursor: "pointer" }} onClick={() => { setSortField("orderNo"); setSortAsc(!sortAsc); }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        Order No <ArrowUpDown size={12} />
+                      </div>
+                    </th>
+                    <th style={{ width: "13%", cursor: "pointer" }} onClick={() => { setSortField("partyName"); setSortAsc(!sortAsc); }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                         Party Name <ArrowUpDown size={12} />
                       </div>
@@ -2055,6 +2181,7 @@ export default function ImsDashboard({
                     const isRowSelected = selectedTxIds.includes(tx.id);
                     const txLoc = (tx.location || "Delhi").trim();
                     const isMumbai = txLoc.toLowerCase() === "mumbai";
+                    const orderNum = extractOrderNo(tx) || tx.orderNo;
 
                     return (
                       <tr key={tx.id} style={{ background: isRowSelected ? "rgba(99, 102, 241, 0.12)" : tx.isMissingId ? "rgba(245, 158, 11, 0.03)" : "" }}>
@@ -2155,6 +2282,29 @@ export default function ImsDashboard({
                             <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 10px", borderRadius: "8px", background: "rgba(239, 68, 68, 0.12)", border: "1px solid rgba(239, 68, 68, 0.3)", color: "var(--danger)", fontWeight: 800, fontSize: "0.92rem" }}>
                               <TrendingDown size={14} /> {tx.stockQty} <span style={{ fontSize: "0.7rem", opacity: 0.8 }}>(OUT)</span>
                             </div>
+                          )}
+                        </td>
+
+                        {/* 5b. Order Number */}
+                        <td>
+                          {orderNum ? (
+                            <span 
+                              className="badge" 
+                              style={{ 
+                                background: "rgba(99, 102, 241, 0.15)", 
+                                color: "#818cf8", 
+                                border: "1px solid rgba(99, 102, 241, 0.3)", 
+                                fontWeight: 700, 
+                                fontSize: "0.78rem",
+                                letterSpacing: "0.2px",
+                                fontFamily: "monospace"
+                              }}
+                              title={`Order Number: ${orderNum}`}
+                            >
+                              #{orderNum}
+                            </span>
+                          ) : (
+                            <span style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>—</span>
                           )}
                         </td>
 
@@ -2466,6 +2616,7 @@ export default function ImsDashboard({
                 <thead>
                   <tr>
                     <th>Date</th>
+                    <th>Order No</th>
                     <th>Item Name</th>
                     <th>Item ID</th>
                     <th>Location</th>
@@ -2479,6 +2630,15 @@ export default function ImsDashboard({
                   {bulkParsedRows.slice(0, 50).map((row, idx) => (
                     <tr key={idx} style={{ background: row.isMissingId ? "rgba(245, 158, 11, 0.04)" : "" }}>
                       <td>{row.date}</td>
+                      <td>
+                        {row.orderNo ? (
+                          <span className="badge" style={{ background: "rgba(99, 102, 241, 0.15)", color: "#818cf8", border: "1px solid rgba(99, 102, 241, 0.3)", fontWeight: 700, fontSize: "0.74rem", fontFamily: "monospace" }}>
+                            #{row.orderNo}
+                          </span>
+                        ) : (
+                          <span style={{ color: "var(--text-muted)" }}>—</span>
+                        )}
+                      </td>
                       <td style={{ fontWeight: 600 }}>{row.itemName}</td>
                       <td>
                         {row.itemId ? (
@@ -2833,6 +2993,7 @@ export default function ImsDashboard({
 // ==================== SUB-COMPONENT: STOCK MOVEMENT MODAL ====================
 function StockMovementModal({ transaction, items, crmParties, vendors, onSave, onClose }) {
   const [date, setDate] = useState(transaction?.date || new Date().toISOString().split("T")[0]);
+  const [orderNo, setOrderNo] = useState(transaction?.orderNo || (transaction ? extractOrderNo(transaction) : ""));
   const [itemName, setItemName] = useState(transaction?.itemName || "");
   const [itemId, setItemId] = useState(transaction?.itemId || "");
   const [stockQty, setStockQty] = useState(transaction ? Math.abs(parseInt(transaction.stockQty) || 0) : 100);
@@ -2863,6 +3024,7 @@ function StockMovementModal({ transaction, items, crmParties, vendors, onSave, o
     onSave({
       id: transaction?.id || `ims-${Date.now()}`,
       date,
+      orderNo: orderNo.trim(),
       itemName: itemName.trim(),
       itemId: itemId.trim(),
       stockQty: finalQty,
@@ -3014,6 +3176,18 @@ function StockMovementModal({ transaction, items, crmParties, vendors, onSave, o
               placeholder="Item Name / Model..."
               value={itemName}
               onChange={e => setItemName(e.target.value)}
+              className="form-control"
+            />
+          </div>
+
+          {/* Order Number */}
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Order Number (e.g. HS-AP7684)</label>
+            <input
+              type="text"
+              placeholder="e.g. HS-AP7684 (auto-parsed if included in remarks with @)"
+              value={orderNo}
+              onChange={e => setOrderNo(e.target.value)}
               className="form-control"
             />
           </div>

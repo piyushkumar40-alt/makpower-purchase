@@ -478,12 +478,32 @@ async function setupPgDatabase() {
       await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "isMissingId" BOOLEAN;`);
       await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "location" TEXT;`);
       await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "createdAt" TEXT;`);
+      await pool.query(`ALTER TABLE ims_transactions ADD COLUMN IF NOT EXISTS "orderNo" TEXT;`);
 
       // High Performance Database Indexes for 1.6L+ rows
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_date ON ims_transactions("date" DESC, "createdAt" DESC);`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_item_id ON ims_transactions("itemId");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_item_name ON ims_transactions("itemName");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_category ON ims_transactions("category");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_order_no ON ims_transactions("orderNo");`);
+
+      // Auto-extract and populate orderNo for any transactions where orderNo is empty and remarks or id contains '@'
+      try {
+        await pool.query(`
+          UPDATE ims_transactions 
+          SET "orderNo" = SPLIT_PART("remarks", '@', 1)
+          WHERE ("orderNo" IS NULL OR TRIM("orderNo") = '') 
+            AND "remarks" LIKE '%@%';
+        `);
+        await pool.query(`
+          UPDATE ims_transactions 
+          SET "orderNo" = SPLIT_PART("id", '@', 1)
+          WHERE ("orderNo" IS NULL OR TRIM("orderNo") = '') 
+            AND "id" LIKE '%@%';
+        `);
+      } catch (backfillErr) {
+        console.warn("Notice: orderNo backfill check:", backfillErr.message);
+      }
 
       // CRM Column Migrations for RSM
       await pool.query(`ALTER TABLE crm_parties ADD COLUMN IF NOT EXISTS "assignedRsmId" TEXT;`);
@@ -2477,6 +2497,7 @@ app.get("/api/state", async (req, res) => {
         })),
         imsTransactions: (imsRes.rows || []).map(row => ({
           ...row,
+          orderNo: row.orderNo || (row.remarks && row.remarks.includes('@') ? row.remarks.split('@')[0].trim() : (row.id && String(row.id).includes('@') ? String(row.id).split('@')[0].trim() : '')),
           stockQty: row.stockQty ? parseInt(row.stockQty) : 0,
           location: row.location || "Delhi",
           isMissingId: !!row.isMissingId
@@ -4460,6 +4481,7 @@ app.get("/api/ims/transactions", async (req, res) => {
       const result = await pool.query(query, values);
       const rows = result.rows.map(r => ({
         ...r,
+        orderNo: r.orderNo || (r.remarks && r.remarks.includes('@') ? r.remarks.split('@')[0].trim() : (r.id && String(r.id).includes('@') ? String(r.id).split('@')[0].trim() : '')),
         stockQty: r.stockQty ? parseInt(r.stockQty) : 0,
         isMissingId: !!r.isMissingId
       }));
@@ -4689,11 +4711,21 @@ app.post("/api/ims/transactions", async (req, res) => {
         }
       }
 
+      let orderNo = (t.orderNo || "").trim();
+      if (!orderNo) {
+        if (t.remarks && t.remarks.includes("@")) {
+          orderNo = t.remarks.split("@")[0].trim();
+        } else if (t.id && String(t.id).includes("@")) {
+          orderNo = String(t.id).split("@")[0].trim();
+        }
+      }
+
       const txObj = {
         id: t.id || `ims-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
         date: t.date || new Date().toISOString().split("T")[0],
         itemName: (t.itemName || "").trim(),
         itemId,
+        orderNo,
         stockQty: finalStockQty,
         movementType,
         partyName: (t.partyName || "").trim(),
@@ -4707,8 +4739,8 @@ app.post("/api/ims/transactions", async (req, res) => {
       const query = `
         INSERT INTO ims_transactions (
           "id", "date", "itemName", "itemId", "stockQty", "movementType",
-          "partyName", "remarks", "location", "source", "isMissingId", "createdAt"
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          "partyName", "remarks", "location", "source", "isMissingId", "createdAt", "orderNo"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         ON CONFLICT ("id") DO UPDATE SET
           "date" = EXCLUDED."date",
           "itemName" = EXCLUDED."itemName",
@@ -4719,12 +4751,13 @@ app.post("/api/ims/transactions", async (req, res) => {
           "remarks" = EXCLUDED."remarks",
           "location" = EXCLUDED."location",
           "source" = EXCLUDED."source",
-          "isMissingId" = EXCLUDED."isMissingId"
+          "isMissingId" = EXCLUDED."isMissingId",
+          "orderNo" = EXCLUDED."orderNo"
       `;
       const values = [
         txObj.id, txObj.date, txObj.itemName, txObj.itemId, txObj.stockQty,
         txObj.movementType, txObj.partyName, txObj.remarks, txObj.location, txObj.source,
-        txObj.isMissingId, txObj.createdAt
+        txObj.isMissingId, txObj.createdAt, txObj.orderNo
       ];
       await pool.query(query, values);
       imsFullSummaryCache = null;
@@ -4850,11 +4883,21 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
             missingIdCount++;
           }
 
+          let orderNo = (t.orderNo || "").trim();
+          if (!orderNo) {
+            if (t.remarks && t.remarks.includes("@")) {
+              orderNo = t.remarks.split("@")[0].trim();
+            } else if (t.id && String(t.id).includes("@")) {
+              orderNo = String(t.id).split("@")[0].trim();
+            }
+          }
+
           chunkObjects.push({
             id: t.id || `ims-${Date.now()}-${Math.random().toString(36).substr(2, 6)}-${insertedCount + chunkObjects.length}`,
             date: cleanIsoDate(t.date),
             itemName,
             itemId,
+            orderNo,
             stockQty: finalStockQty,
             movementType,
             partyName: (t.partyName || "").trim(),
@@ -4872,19 +4915,19 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
           let pIdx = 1;
 
           for (const tx of chunkObjects) {
-            valuePlaceholders.push(`($${pIdx}, $${pIdx+1}, $${pIdx+2}, $${pIdx+3}, $${pIdx+4}, $${pIdx+5}, $${pIdx+6}, $${pIdx+7}, $${pIdx+8}, $${pIdx+9}, $${pIdx+10}, $${pIdx+11})`);
+            valuePlaceholders.push(`($${pIdx}, $${pIdx+1}, $${pIdx+2}, $${pIdx+3}, $${pIdx+4}, $${pIdx+5}, $${pIdx+6}, $${pIdx+7}, $${pIdx+8}, $${pIdx+9}, $${pIdx+10}, $${pIdx+11}, $${pIdx+12})`);
             queryParams.push(
               tx.id, tx.date, tx.itemName, tx.itemId, tx.stockQty,
               tx.movementType, tx.partyName, tx.remarks, tx.location,
-              tx.source, tx.isMissingId, tx.createdAt
+              tx.source, tx.isMissingId, tx.createdAt, tx.orderNo
             );
-            pIdx += 12;
+            pIdx += 13;
           }
 
           const bulkSql = `
             INSERT INTO ims_transactions (
               "id", "date", "itemName", "itemId", "stockQty", "movementType",
-              "partyName", "remarks", "location", "source", "isMissingId", "createdAt"
+              "partyName", "remarks", "location", "source", "isMissingId", "createdAt", "orderNo"
             ) VALUES ${valuePlaceholders.join(", ")}
             ON CONFLICT ("id") DO UPDATE SET
               "date" = EXCLUDED."date",
@@ -4897,7 +4940,8 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
               "location" = EXCLUDED."location",
               "source" = EXCLUDED."source",
               "isMissingId" = EXCLUDED."isMissingId",
-              "createdAt" = EXCLUDED."createdAt"
+              "createdAt" = EXCLUDED."createdAt",
+              "orderNo" = EXCLUDED."orderNo"
           `;
 
           await pool.query(bulkSql, queryParams);
@@ -4945,11 +4989,21 @@ app.post("/api/ims/transactions/batch", async (req, res) => {
         missingIdCount++;
       }
 
+      let orderNo = (t.orderNo || "").trim();
+      if (!orderNo) {
+        if (t.remarks && t.remarks.includes("@")) {
+          orderNo = t.remarks.split("@")[0].trim();
+        } else if (t.id && String(t.id).includes("@")) {
+          orderNo = String(t.id).split("@")[0].trim();
+        }
+      }
+
       const txObj = {
         id: t.id || `ims-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
         date: t.date || new Date().toISOString().split("T")[0],
         itemName,
         itemId,
+        orderNo,
         stockQty: finalStockQty,
         movementType,
         partyName: (t.partyName || "").trim(),

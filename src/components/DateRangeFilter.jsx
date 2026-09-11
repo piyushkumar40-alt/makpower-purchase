@@ -111,6 +111,11 @@ export default function DateRangeFilter({
       const d = new Date(parseDateTimestamp(endYMD));
       setRightCal({ year: d.getFullYear(), month: d.getMonth() });
     }
+
+    // Immediately commit the preset and close modal on single click
+    if (onStartDateChange) onStartDateChange(startYMD);
+    if (onEndDateChange) onEndDateChange(endYMD);
+    setIsOpen(false);
   };
 
   const handleSelectPreset = (key) => {
@@ -396,36 +401,133 @@ export default function DateRangeFilter({
     return `Up to ${formatDisplayDate(endDate)}`;
   }, [startDate, endDate, placeholder]);
 
-  const [popoverPos, setPopoverPos] = useState({ left: 0, right: "auto" });
+  const [popoverPos, setPopoverPos] = useState({
+    top: "calc(100% + 8px)",
+    bottom: "auto",
+    left: "0px",
+    right: "auto",
+    maxHeight: "88vh"
+  });
+
+  const autoMenuBtnRef = useRef(null);
+  const autoMenuRef = useRef(null);
+  const [autoMenuPos, setAutoMenuPos] = useState({
+    top: "calc(100% + 6px)",
+    bottom: "auto",
+    maxHeight: "320px"
+  });
+
+  // Calculate Popover Position & Viewport Collision Handling
+  const updatePopoverPos = () => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+    const padding = 12;
+
+    // Constrain width to screen
+    const popoverWidth = Math.min(640, screenWidth - padding * 2);
+
+    // Calculate vertical space above and below
+    const spaceBelow = screenHeight - rect.bottom - padding;
+    const spaceAbove = rect.top - padding;
+
+    let vPos = {};
+    let calculatedMaxHeight = "88vh";
+
+    // If space below is constrained (<420px) and space above offers more room, flip UPWARDS
+    if (spaceBelow < 420 && spaceAbove > spaceBelow) {
+      vPos = { bottom: "calc(100% + 8px)", top: "auto" };
+      calculatedMaxHeight = `${Math.max(260, Math.min(spaceAbove, screenHeight - padding * 2))}px`;
+    } else {
+      vPos = { top: "calc(100% + 8px)", bottom: "auto" };
+      calculatedMaxHeight = `${Math.max(260, Math.min(spaceBelow, screenHeight - padding * 2))}px`;
+    }
+
+    // Horizontal clamping within viewport
+    const idealLeftInViewport = Math.max(padding, Math.min(rect.left, screenWidth - popoverWidth - padding));
+    const relativeLeft = idealLeftInViewport - rect.left;
+
+    setPopoverPos({
+      ...vPos,
+      left: `${relativeLeft}px`,
+      right: "auto",
+      maxHeight: calculatedMaxHeight
+    });
+  };
 
   useEffect(() => {
-    if (isOpen && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      const popoverWidth = 640;
-      const screenWidth = window.innerWidth;
-      const padding = 16;
-
-      // 1. If left: 0 fits on the screen (does not overflow right edge):
-      if (rect.left + popoverWidth <= screenWidth - padding) {
-        setPopoverPos({ left: 0, right: "auto" });
-      }
-      // 2. Else if right: 0 fits on the screen (does not overflow left edge):
-      else if (rect.right - popoverWidth >= padding) {
-        setPopoverPos({ right: 0, left: "auto" });
-      }
-      // 3. If neither fits cleanly from button edges, clamp relative offset within screen
-      else {
-        const idealLeftInViewport = Math.max(padding, Math.min(rect.left, screenWidth - popoverWidth - padding));
-        const relativeLeft = idealLeftInViewport - rect.left;
-        setPopoverPos({ left: `${relativeLeft}px`, right: "auto" });
-      }
+    if (isOpen) {
+      updatePopoverPos();
+      window.addEventListener("resize", updatePopoverPos, { passive: true });
+      window.addEventListener("scroll", updatePopoverPos, { passive: true });
+      return () => {
+        window.removeEventListener("resize", updatePopoverPos);
+        window.removeEventListener("scroll", updatePopoverPos);
+      };
     }
   }, [isOpen]);
+
+  // Calculate Preset Dropdown Position inside popover
+  const updateAutoMenuPos = () => {
+    if (!autoMenuBtnRef.current || !popoverRef.current) return;
+    const btnRect = autoMenuBtnRef.current.getBoundingClientRect();
+    const popoverRect = popoverRef.current.getBoundingClientRect();
+    
+    const spaceBelow = popoverRect.bottom - btnRect.bottom - 16;
+    const spaceAbove = btnRect.top - popoverRect.top - 16;
+
+    if (spaceBelow < 250 && spaceAbove > spaceBelow) {
+      setAutoMenuPos({
+        bottom: "calc(100% + 6px)",
+        top: "auto",
+        maxHeight: `${Math.max(160, spaceAbove)}px`
+      });
+    } else {
+      setAutoMenuPos({
+        top: "calc(100% + 6px)",
+        bottom: "auto",
+        maxHeight: `${Math.max(160, spaceBelow)}px`
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (showAutoMenu) {
+      updateAutoMenuPos();
+    }
+  }, [showAutoMenu]);
+
+  // Keep rangeLabel accurate to current dates
+  useEffect(() => {
+    if (!startDate && !endDate) {
+      setRangeLabel("Fixed / Custom");
+      return;
+    }
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth();
+    const sMonth = formatYMD(new Date(curYear, curMonth, 1));
+    const eMonth = formatYMD(new Date(curYear, curMonth + 1, 0));
+    const todayStr = formatYMD(now);
+
+    if (startDate === sMonth && endDate === eMonth) {
+      setRangeLabel("This month");
+    } else if (startDate === sMonth && endDate === todayStr) {
+      setRangeLabel("This month to date");
+    } else if (startDate === formatYMD(new Date(curYear, curMonth - 1, 1)) && endDate === formatYMD(new Date(curYear, curMonth, 0))) {
+      setRangeLabel("Last month");
+    } else if (startDate === formatYMD(new Date(now.getTime() - 7 * 86400000)) && endDate === todayStr) {
+      setRangeLabel("Last 7 days");
+    } else if (firstAvailableDate && startDate === firstAvailableDate) {
+      setRangeLabel(`Closing Stock (${formatDisplayDate(endDate || todayStr)})`);
+    }
+  }, [startDate, endDate, firstAvailableDate]);
 
   return (
     <div style={{ position: "relative", display: "inline-block", userSelect: "none" }}>
       
-      {/* TRIGGER BUTTON (Matches Screenshot 1 Pill Format) */}
+      {/* TRIGGER BUTTON (Matches Pill Format with bold border) */}
       <button
         ref={triggerRef}
         type="button"
@@ -436,16 +538,16 @@ export default function DateRangeFilter({
           alignItems: "center",
           gap: "8px",
           cursor: "pointer",
-          background: (startDate || endDate) ? "rgba(56, 189, 248, 0.12)" : "rgba(15, 23, 42, 0.6)",
-          border: isOpen ? "1px solid var(--primary, #38bdf8)" : (startDate || endDate) ? "1px solid rgba(56, 189, 248, 0.4)" : "1px solid var(--border-glass, rgba(255, 255, 255, 0.15))",
+          background: (startDate || endDate) ? "rgba(56, 189, 248, 0.12)" : "var(--bg-input, rgba(15, 23, 42, 0.6))",
+          border: isOpen ? "2px solid #38bdf8" : (startDate || endDate) ? "2px solid #38bdf8" : "1.5px solid var(--border-glass, rgba(255, 255, 255, 0.2))",
           borderRadius: "10px",
           padding: "6px 12px",
-          color: (startDate || endDate) ? "#38bdf8" : "var(--text-muted)",
+          color: (startDate || endDate) ? "#38bdf8" : "var(--text-main, var(--text-muted))",
           fontSize: "0.82rem",
           fontWeight: 700,
           height: "36px",
           transition: "all 0.2s",
-          boxShadow: isOpen ? "0 0 12px rgba(56, 189, 248, 0.25)" : "none",
+          boxShadow: isOpen ? "0 0 12px rgba(56, 189, 248, 0.3)" : (startDate || endDate) ? "0 0 8px rgba(56, 189, 248, 0.15)" : "none",
           ...buttonStyle
         }}
       >
@@ -466,7 +568,7 @@ export default function DateRangeFilter({
                 width: "18px",
                 height: "18px",
                 borderRadius: "50%",
-                background: "rgba(255, 255, 255, 0.1)",
+                background: "rgba(255, 255, 255, 0.15)",
                 color: "var(--text-muted)",
                 cursor: "pointer",
                 transition: "background 0.15s"
@@ -480,194 +582,358 @@ export default function DateRangeFilter({
         </div>
       </button>
 
-      {/* DROPDOWN POPOVER MODAL (Matches Screenshots 2, 3, 4, 5) */}
+      {/* DROPDOWN POPOVER MODAL (Smart dynamic location & bounds) */}
       {isOpen && (
         <div
           ref={popoverRef}
           className="card-fade-in"
           style={{
             position: "absolute",
-            top: "calc(100% + 8px)",
+            top: popoverPos.top,
+            bottom: popoverPos.bottom,
             right: popoverPos.right,
             left: popoverPos.left,
             zIndex: 9999,
-            background: "#0f172a",
-            color: "var(--text, #f3f4f6)",
-            border: "1px solid rgba(56, 189, 248, 0.35)",
+            background: "var(--bg-panel, var(--bg-card, #0f172a))",
+            color: "var(--text-main, var(--text, #f3f4f6))",
+            border: "2px solid rgba(56, 189, 248, 0.4)",
             borderRadius: "16px",
-            boxShadow: "0 25px 60px rgba(0, 0, 0, 0.8), 0 0 1px rgba(255, 255, 255, 0.2)",
+            boxShadow: "0 25px 60px rgba(0, 0, 0, 0.7), 0 0 1px rgba(255, 255, 255, 0.2)",
             padding: "18px 20px",
             minWidth: "min(640px, calc(100vw - 24px))",
             maxWidth: "calc(100vw - 20px)",
-            maxHeight: "88vh",
+            maxHeight: popoverPos.maxHeight || "88vh",
             overflowY: "auto",
             backdropFilter: "blur(25px)",
             WebkitBackdropFilter: "blur(25px)"
           }}
         >
-          {/* Top Auto Date Range Preset Selector Bar */}
+          {/* Top Quick Preset Bar & Selector with BOLD BORDER */}
           <div style={{ marginBottom: "16px", position: "relative" }}>
-            <button
-              type="button"
-              onClick={() => setShowAutoMenu(prev => !prev)}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "10px",
-                padding: "8px 16px",
-                background: "rgba(255, 255, 255, 0.06)",
-                border: "1px solid rgba(255, 255, 255, 0.15)",
-                borderRadius: "8px",
-                color: "var(--text)",
-                fontSize: "0.88rem",
-                fontWeight: 700,
-                cursor: "pointer",
-                width: "100%"
-              }}
-            >
-              <span>{rangeLabel || "Auto"}</span>
-              <ChevronDown size={14} style={{ color: "var(--text-muted)" }} />
-            </button>
-
-            {/* Auto Dropdown Menu */}
-            {showAutoMenu && (
-              <div
+            
+            {/* Primary Preset Selector Button with 2px solid border */}
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "8px" }}>
+              <button
+                ref={autoMenuBtnRef}
+                type="button"
+                onClick={() => setShowAutoMenu(prev => !prev)}
                 style={{
-                  position: "absolute",
-                  top: "calc(100% + 4px)",
-                  left: 0,
-                  zIndex: 10000,
-                  background: "var(--bg-panel, #1e293b)",
-                  border: "1px solid var(--border-glass, rgba(255, 255, 255, 0.15))",
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "9px 14px",
+                  borderRadius: "10px",
+                  border: "2px solid #38bdf8", // BOLD, HIGH-CONTRAST BORDER LINE
+                  background: "var(--bg-card-hover, rgba(56, 189, 248, 0.08))",
+                  color: "var(--text-main, #38bdf8)",
+                  fontSize: "0.88rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  boxShadow: "0 2px 8px rgba(56, 189, 248, 0.2)",
+                  transition: "all 0.15s"
+                }}
+                title="Click to choose from all date range presets"
+              >
+                <span style={{ display: "flex", alignItems: "center", gap: "8px", color: rangeLabel?.includes("month") ? "#38bdf8" : "inherit" }}>
+                  <span>📅</span>
+                  <span>{rangeLabel || "This month"}</span>
+                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    Presets
+                  </span>
+                  <ChevronDown size={16} style={{ transform: showAutoMenu ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+                </div>
+              </button>
+            </div>
+
+            {/* Quick 1-Click Shortcut Chips */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+              {/* This Month with prominent 2px solid border */}
+              <button
+                type="button"
+                onClick={() => handleSelectPreset("this_month")}
+                style={{
+                  padding: "6px 12px",
                   borderRadius: "8px",
-                  boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
-                  padding: "6px 0",
-                  minWidth: "220px",
-                  width: "100%"
+                  border: "2px solid #38bdf8", // BOLD CRISP BORDER LINE
+                  background: rangeLabel === "This month" ? "rgba(56, 189, 248, 0.22)" : "rgba(56, 189, 248, 0.08)",
+                  color: "#38bdf8",
+                  fontSize: "0.8rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  boxShadow: rangeLabel === "This month" ? "0 0 8px rgba(56, 189, 248, 0.3)" : "none"
                 }}
               >
+                📅 This Month
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSelectPreset("this_month_td")}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "8px",
+                  border: rangeLabel === "This month to date" ? "2px solid #38bdf8" : "1.5px solid var(--border-glass, rgba(255, 255, 255, 0.18))",
+                  background: rangeLabel === "This month to date" ? "rgba(56, 189, 248, 0.2)" : "var(--bg-card-hover, rgba(255, 255, 255, 0.06))",
+                  color: rangeLabel === "This month to date" ? "#38bdf8" : "var(--text-main, var(--text))",
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                  cursor: "pointer"
+                }}
+              >
+                This Month TD
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSelectPreset("last_month")}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "8px",
+                  border: rangeLabel === "Last month" ? "2px solid #38bdf8" : "1.5px solid var(--border-glass, rgba(255, 255, 255, 0.18))",
+                  background: rangeLabel === "Last month" ? "rgba(56, 189, 248, 0.2)" : "var(--bg-card-hover, rgba(255, 255, 255, 0.06))",
+                  color: rangeLabel === "Last month" ? "#38bdf8" : "var(--text-main, var(--text))",
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                  cursor: "pointer"
+                }}
+              >
+                Last Month
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSelectPreset("last_7_days")}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "8px",
+                  border: rangeLabel === "Last 7 days" ? "2px solid #38bdf8" : "1.5px solid var(--border-glass, rgba(255, 255, 255, 0.18))",
+                  background: rangeLabel === "Last 7 days" ? "rgba(56, 189, 248, 0.2)" : "var(--bg-card-hover, rgba(255, 255, 255, 0.06))",
+                  color: rangeLabel === "Last 7 days" ? "#38bdf8" : "var(--text-main, var(--text))",
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                  cursor: "pointer"
+                }}
+              >
+                Last 7 Days
+              </button>
+
+              {firstAvailableDate && (
+                <button
+                  type="button"
+                  onClick={() => handleSelectPreset("closing_as_of")}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: "8px",
+                    border: rangeLabel?.startsWith("Closing") ? "2px solid #38bdf8" : "1.5px solid rgba(56, 189, 248, 0.35)",
+                    background: rangeLabel?.startsWith("Closing") ? "rgba(56, 189, 248, 0.2)" : "rgba(56, 189, 248, 0.1)",
+                    color: "#38bdf8",
+                    fontSize: "0.8rem",
+                    fontWeight: 700,
+                    cursor: "pointer"
+                  }}
+                >
+                  ⭐ Closing Stock
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => handleSelectPreset("all")}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "8px",
+                  border: rangeLabel === "All Time" ? "2px solid #38bdf8" : "1.5px solid var(--border-glass, rgba(255, 255, 255, 0.18))",
+                  background: rangeLabel === "All Time" ? "rgba(56, 189, 248, 0.2)" : "var(--bg-card-hover, rgba(255, 255, 255, 0.06))",
+                  color: rangeLabel === "All Time" ? "#38bdf8" : "var(--text-main, var(--text))",
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                  cursor: "pointer"
+                }}
+              >
+                All Time
+              </button>
+            </div>
+
+            {/* SMART PRESETS DROPDOWN (Categorized, flat, 100% inside container, no right flyouts) */}
+            {showAutoMenu && (
+              <div
+                ref={autoMenuRef}
+                style={{
+                  position: "absolute",
+                  top: autoMenuPos.top,
+                  bottom: autoMenuPos.bottom,
+                  left: 0,
+                  right: 0,
+                  zIndex: 10000,
+                  background: "var(--bg-panel, var(--bg-card, #1e293b))",
+                  border: "2px solid #38bdf8",
+                  borderRadius: "12px",
+                  boxShadow: "0 16px 40px rgba(0,0,0,0.65), 0 0 1px rgba(255, 255, 255, 0.2)",
+                  padding: "8px 0",
+                  maxHeight: autoMenuPos.maxHeight || "320px",
+                  overflowY: "auto",
+                  backdropFilter: "blur(20px)"
+                }}
+              >
+                {/* SECTION: Current Periods */}
+                <div style={{ padding: "4px 14px 2px", fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Current Periods
+                </div>
                 <div 
-                  onClick={() => handleSelectPreset("auto")}
-                  style={{ padding: "8px 14px", fontSize: "0.83rem", cursor: "pointer", fontWeight: 700, color: "var(--primary)" }}
+                  onClick={() => handleSelectPreset("this_month")}
+                  style={{
+                    padding: "8px 14px",
+                    margin: "3px 8px",
+                    borderRadius: "6px",
+                    fontSize: "0.84rem",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                    color: "#38bdf8",
+                    border: "1.5px solid #38bdf8", // BOLD BORDER IN DROPDOWN FOR THIS MONTH
+                    background: "rgba(56, 189, 248, 0.12)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between"
+                  }}
                   className="menu-item-hover"
                 >
-                  Auto
+                  <span>📅 This month (Full current month)</span>
+                  {rangeLabel === "This month" && <Check size={14} color="#38bdf8" />}
+                </div>
+
+                <div 
+                  onClick={() => handleSelectPreset("this_month_td")}
+                  style={{
+                    padding: "7px 14px",
+                    margin: "2px 8px",
+                    borderRadius: "6px",
+                    fontSize: "0.83rem",
+                    cursor: "pointer",
+                    border: "1px solid rgba(56, 189, 248, 0.3)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between"
+                  }}
+                  className="menu-item-hover"
+                >
+                  <span>📅 This month to date (1st to today)</span>
+                  {rangeLabel === "This month to date" && <Check size={14} color="#38bdf8" />}
+                </div>
+
+                <div 
+                  onClick={() => handleSelectPreset("this_week_mon")}
+                  style={{ padding: "7px 14px", margin: "2px 8px", borderRadius: "6px", fontSize: "0.82rem", cursor: "pointer" }}
+                  className="menu-item-hover"
+                >
+                  This week (Mon – Sun)
+                </div>
+
+                <div 
+                  onClick={() => handleSelectPreset("this_week_mon_td")}
+                  style={{ padding: "7px 14px", margin: "2px 8px", borderRadius: "6px", fontSize: "0.82rem", cursor: "pointer" }}
+                  className="menu-item-hover"
+                >
+                  This week to date (Mon to today)
+                </div>
+
+                {/* SECTION: Previous Periods */}
+                <div style={{ padding: "8px 14px 2px", fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", borderTop: "1px solid var(--border-glass, rgba(255,255,255,0.1))", marginTop: "6px" }}>
+                  Previous Periods
+                </div>
+
+                <div 
+                  onClick={() => handleSelectPreset("last_month")}
+                  style={{ padding: "7px 14px", margin: "2px 8px", borderRadius: "6px", fontSize: "0.83rem", cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "space-between" }}
+                  className="menu-item-hover"
+                >
+                  <span>🕒 Last month</span>
+                  {rangeLabel === "Last month" && <Check size={14} color="#38bdf8" />}
+                </div>
+
+                <div 
+                  onClick={() => handleSelectPreset("last_7_days")}
+                  style={{ padding: "7px 14px", margin: "2px 8px", borderRadius: "6px", fontSize: "0.82rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}
+                  className="menu-item-hover"
+                >
+                  <span>🕒 Last 7 days</span>
+                  {rangeLabel === "Last 7 days" && <Check size={14} color="#38bdf8" />}
+                </div>
+
+                <div 
+                  onClick={() => handleSelectPreset("last_14_days")}
+                  style={{ padding: "7px 14px", margin: "2px 8px", borderRadius: "6px", fontSize: "0.82rem", cursor: "pointer" }}
+                  className="menu-item-hover"
+                >
+                  🕒 Last 14 days
+                </div>
+
+                <div 
+                  onClick={() => handleSelectPreset("last_30_days")}
+                  style={{ padding: "7px 14px", margin: "2px 8px", borderRadius: "6px", fontSize: "0.82rem", cursor: "pointer" }}
+                  className="menu-item-hover"
+                >
+                  🕒 Last 30 days
+                </div>
+
+                <div 
+                  onClick={() => handleSelectPreset("yesterday")}
+                  style={{ padding: "7px 14px", margin: "2px 8px", borderRadius: "6px", fontSize: "0.82rem", cursor: "pointer" }}
+                  className="menu-item-hover"
+                >
+                  🕒 Yesterday
+                </div>
+
+                <div 
+                  onClick={() => handleSelectPreset("today")}
+                  style={{ padding: "7px 14px", margin: "2px 8px", borderRadius: "6px", fontSize: "0.82rem", cursor: "pointer" }}
+                  className="menu-item-hover"
+                >
+                  🕒 Today
+                </div>
+
+                {/* SECTION: Closing Stock & Full History */}
+                <div style={{ padding: "8px 14px 2px", fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", borderTop: "1px solid var(--border-glass, rgba(255,255,255,0.1))", marginTop: "6px" }}>
+                  Closing Stock & All-Time
                 </div>
 
                 {firstAvailableDate && (
                   <div 
                     onClick={() => handleSelectPreset("closing_as_of")}
-                    style={{ padding: "8px 14px", fontSize: "0.83rem", cursor: "pointer", fontWeight: 700, color: "#38bdf8", borderBottom: "1px solid var(--border-glass, rgba(255, 255, 255, 0.15))" }}
+                    style={{ padding: "8px 14px", margin: "2px 8px", borderRadius: "6px", fontSize: "0.83rem", cursor: "pointer", fontWeight: 700, color: "#38bdf8" }}
                     className="menu-item-hover"
                   >
                     ⭐ Closing Stock (From 1st Day: {formatDisplayDate(firstAvailableDate)})
                   </div>
                 )}
 
-                {/* Submenu 1: This Month */}
-                <div
-                  onMouseEnter={() => setActiveSubmenu("thisMonth")}
-                  onClick={() => setActiveSubmenu(activeSubmenu === "thisMonth" ? null : "thisMonth")}
-                  style={{
-                    padding: "8px 14px",
-                    fontSize: "0.83rem",
-                    cursor: "pointer",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    position: "relative",
-                    background: activeSubmenu === "thisMonth" ? "rgba(255, 255, 255, 0.08)" : "transparent"
-                  }}
+                <div 
+                  onClick={() => handleSelectPreset("this_year")}
+                  style={{ padding: "7px 14px", margin: "2px 8px", borderRadius: "6px", fontSize: "0.82rem", cursor: "pointer" }}
                   className="menu-item-hover"
                 >
-                  <span>This month</span>
-                  <ChevronRight size={13} style={{ color: "var(--text-muted)" }} />
-
-                  {activeSubmenu === "thisMonth" && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: 0,
-                        left: "100%",
-                        zIndex: 10001,
-                        background: "var(--bg-panel, #1e293b)",
-                        border: "1px solid var(--border-glass, rgba(255, 255, 255, 0.15))",
-                        borderRadius: "8px",
-                        boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
-                        padding: "6px 0",
-                        minWidth: "240px"
-                      }}
-                    >
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("last_7_days"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer", fontWeight: 700 }} className="menu-item-hover">Last 7 days</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("last_14_days"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">Last 14 days</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("last_28_days"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">Last 28 days</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_month_td"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This month to date</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_week_sun"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This week (starts Sunday)</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_week_sun_td"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This week to date (starts Sunday)</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_week_mon"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This week (starts Monday)</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_week_mon_td"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This week to date (starts Monday)</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_quarter"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This quarter</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_quarter_td"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This quarter to date</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_year"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This year</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("this_year_td"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">This year to date</div>
-                    </div>
-                  )}
+                  📅 This year
                 </div>
 
-                {/* Submenu 2: Last 7 Days */}
-                <div
-                  onMouseEnter={() => setActiveSubmenu("last7Days")}
-                  onClick={() => setActiveSubmenu(activeSubmenu === "last7Days" ? null : "last7Days")}
-                  style={{
-                    padding: "8px 14px",
-                    fontSize: "0.83rem",
-                    cursor: "pointer",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    position: "relative",
-                    background: activeSubmenu === "last7Days" ? "rgba(255, 255, 255, 0.08)" : "transparent"
-                  }}
+                <div 
+                  onClick={() => handleSelectPreset("last_year")}
+                  style={{ padding: "7px 14px", margin: "2px 8px", borderRadius: "6px", fontSize: "0.82rem", cursor: "pointer" }}
                   className="menu-item-hover"
                 >
-                  <span>Last 7 days</span>
-                  <ChevronRight size={13} style={{ color: "var(--text-muted)" }} />
-
-                  {activeSubmenu === "last7Days" && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: 0,
-                        left: "100%",
-                        zIndex: 10001,
-                        background: "var(--bg-panel, #1e293b)",
-                        border: "1px solid var(--border-glass, rgba(255, 255, 255, 0.15))",
-                        borderRadius: "8px",
-                        boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
-                        padding: "6px 0",
-                        minWidth: "220px"
-                      }}
-                    >
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("last_7_days"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer", fontWeight: 700 }} className="menu-item-hover">Last 7 days</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("last_14_days"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">Last 14 days</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("last_28_days"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">Last 28 days</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("last_30_days"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">Last 30 days</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("last_week_sun"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">Last week (starts Sunday)</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("last_week_mon"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">Last week (starts Monday)</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("last_month"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">Last month</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("last_quarter"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">Last quarter</div>
-                      <div onClick={(e) => { e.stopPropagation(); handleSelectPreset("last_year"); }} style={{ padding: "7px 14px", fontSize: "0.82rem", cursor: "pointer" }} className="menu-item-hover">Last year</div>
-                    </div>
-                  )}
+                  📅 Last year
                 </div>
 
                 <div 
                   onClick={() => handleSelectPreset("all")}
-                  style={{ padding: "8px 14px", fontSize: "0.83rem", cursor: "pointer", borderTop: "1px solid var(--border-glass)" }}
+                  style={{ padding: "8px 14px", margin: "2px 8px", borderRadius: "6px", fontSize: "0.83rem", cursor: "pointer", fontWeight: 700, borderTop: "1px solid var(--border-glass, rgba(255, 255, 255, 0.15))" }}
                   className="menu-item-hover"
                 >
-                  All Time (Advanced)
+                  🌐 All Time (Full History)
                 </div>
               </div>
             )}
