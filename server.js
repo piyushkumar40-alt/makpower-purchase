@@ -214,7 +214,11 @@ function readLocalJson() {
     data.users = data.users.map(u => ({ ...u, status: u.status || "active" }));
 
     if (Array.isArray(data.requests)) {
-      data.requests = data.requests.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" }));
+      data.requests = data.requests.map(r => ({
+        ...r,
+        purchaseUpdated: r.purchaseUpdated || "No",
+        timestamp: r.timestamp || r.orderDate || ""
+      }));
     }
     const adminIdx = data.users.findIndex(x => x.id === "u-admin" || x.role === "superadmin" || x.email === "admin@company.com" || x.email === "admin@demo.com" || x.email === "admin@makpowerindia.com");
     if (adminIdx !== -1) {
@@ -624,7 +628,8 @@ async function setupPgDatabase() {
         "shortageQty" INTEGER,
         "parentRequestId" TEXT,
         "vendorReadyDate" TEXT,
-        "currency" TEXT
+        "currency" TEXT,
+        "timestamp" TEXT
       );
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "vendorOrderQuantity" INTEGER;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "cargoPickedQty" INTEGER;
@@ -633,6 +638,8 @@ async function setupPgDatabase() {
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "parentRequestId" TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "vendorReadyDate" TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "currency" TEXT;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "timestamp" TEXT;
+      UPDATE requests SET "timestamp" = "orderDate" WHERE ("timestamp" IS NULL OR "timestamp" = '') AND "orderDate" IS NOT NULL;
     `);
 
     await pool.query(`
@@ -2936,8 +2943,8 @@ app.post("/api/requests", async (req, res) => {
           "cargoId", "isMaterialRec", "actualReceivedDate", "notes", "itemNature", "category",
           "requiredByDate", "entryBy", "packingOrderedByNitin", "purchaseUpdated", "status",
             "cancellationReason", "cancelledAt", "cargoAssignedAt",
-            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
+            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency", "timestamp"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
           ON CONFLICT ("id") DO UPDATE SET
             "purchaserId" = EXCLUDED."purchaserId",
             "vendorId" = EXCLUDED."vendorId",
@@ -2971,7 +2978,8 @@ app.post("/api/requests", async (req, res) => {
             "shortageQty" = EXCLUDED."shortageQty",
             "parentRequestId" = EXCLUDED."parentRequestId",
             "vendorReadyDate" = EXCLUDED."vendorReadyDate",
-            "currency" = EXCLUDED."currency"
+            "currency" = EXCLUDED."currency",
+            "timestamp" = COALESCE(EXCLUDED."timestamp", requests."timestamp")
         `;
         const values = [
           r.id, r.purchaserId, r.vendorId, r.orderDate, r.type, r.model, parseInt(r.orderQuantity || 0),
@@ -2987,7 +2995,8 @@ app.post("/api/requests", async (req, res) => {
           r.shortageQty != null ? parseInt(r.shortageQty) : null,
           r.parentRequestId || "",
           r.vendorReadyDate || "",
-          r.currency || "RMB"
+          r.currency || "RMB",
+          r.timestamp || r.orderDate || new Date().toISOString()
         ];
         await pool.query(query, values);
         markAppActivity();
@@ -2998,6 +3007,7 @@ app.post("/api/requests", async (req, res) => {
     }
   } else {
     const data = readLocalJson();
+    r.timestamp = r.timestamp || r.orderDate || new Date().toISOString();
     const index = data.requests.findIndex(x => x.id === r.id);
     if (index !== -1) {
       data.requests[index] = r;
@@ -3028,8 +3038,8 @@ app.post("/api/requests/batch", async (req, res) => {
             "cargoId", "isMaterialRec", "actualReceivedDate", "notes", "itemNature", "category",
             "requiredByDate", "entryBy", "packingOrderedByNitin", "purchaseUpdated", "status",
             "cancellationReason", "cancelledAt", "cargoAssignedAt",
-            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
+            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency", "timestamp"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
           ON CONFLICT ("id") DO UPDATE SET
             "purchaserId" = EXCLUDED."purchaserId",
             "vendorId" = EXCLUDED."vendorId",
@@ -3063,7 +3073,8 @@ app.post("/api/requests/batch", async (req, res) => {
             "shortageQty" = EXCLUDED."shortageQty",
             "parentRequestId" = EXCLUDED."parentRequestId",
             "vendorReadyDate" = EXCLUDED."vendorReadyDate",
-            "currency" = EXCLUDED."currency"
+            "currency" = EXCLUDED."currency",
+            "timestamp" = COALESCE(EXCLUDED."timestamp", requests."timestamp")
         `;
         const values = [
           r.id, r.purchaserId, r.vendorId, r.orderDate, r.type, r.model, parseInt(r.orderQuantity || 0),
@@ -3079,7 +3090,8 @@ app.post("/api/requests/batch", async (req, res) => {
           r.shortageQty != null ? parseInt(r.shortageQty) : null,
           r.parentRequestId || "",
           r.vendorReadyDate || "",
-          r.currency || "RMB"
+          r.currency || "RMB",
+          r.timestamp || r.orderDate || new Date().toISOString()
         ];
         await pool.query(query, values);
       }
@@ -3094,6 +3106,7 @@ app.post("/api/requests/batch", async (req, res) => {
   } else {
     const data = readLocalJson();
     reqs.forEach(r => {
+      r.timestamp = r.timestamp || r.orderDate || new Date().toISOString();
       const idx = data.requests.findIndex(x => x.id === r.id);
       if (idx !== -1) {
         data.requests[idx] = r;

@@ -61,6 +61,10 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
     return Array.from(cats).sort();
   }, [combinedItems, items, requests]);
   const [activeTab, setActiveTab] = useState("form"); // "form" | "catalog"
+  // Helper for today's date in YYYY-MM-DD format
+  const getTodayDate = () => new Date().toISOString().split("T")[0];
+  const [defaultOrderDate, setDefaultOrderDate] = useState(getTodayDate);
+
   // Determine default purchaser based on logged-in user
   const defaultPurchaserId = currentUser?.role === "purchaser" ? currentUser.id : (purchasers[0]?.id || "");
 
@@ -68,6 +72,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
   const [rows, setRows] = useState([
     {
       id: 1,
+      orderDate: getTodayDate(),
       type: "Import",
       itemType: "FG",
       itemNature: "Non Consumables",
@@ -310,7 +315,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
     const lines = pastedText.split(/\r?\n/).filter(line => line.trim() !== "");
     if (lines.length === 0) return;
 
-    const fieldOrder = ["type", "itemType", "itemNature", "category", "model", "orderQuantity", "requiredByDate", "purchaserId"];
+    const fieldOrder = ["type", "itemType", "itemNature", "category", "model", "orderQuantity", "orderDate", "requiredByDate", "purchaserId"];
     const startFieldIdx = Math.max(0, fieldOrder.indexOf(targetField));
 
     const neededRowCount = startRowIdx + lines.length;
@@ -322,6 +327,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
       while (currentRows.length < neededRowCount) {
         currentRows.push({
           id: Date.now() + currentRows.length,
+          orderDate: defaultOrderDate || getTodayDate(),
           type: "Import",
           itemType: "FG",
           itemNature: "Non Consumables",
@@ -350,6 +356,8 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
               const digitsOnly = val.replace(/,/g, "").replace(/[^0-9]/g, "");
               const parsedQty = parseInt(digitsOnly, 10);
               updatedRow.orderQuantity = isNaN(parsedQty) ? "" : parsedQty;
+            } else if (fieldName === "orderDate") {
+              updatedRow.orderDate = parseExcelDate(val) || defaultOrderDate || getTodayDate();
             } else if (fieldName === "requiredByDate") {
               updatedRow.requiredByDate = parseExcelDate(val);
             } else if (fieldName === "type") {
@@ -484,6 +492,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
       ...prev,
       {
         id: Date.now(),
+        orderDate: defaultOrderDate || getTodayDate(),
         type: "Import",
         itemType: "FG",
         itemNature: "Non Consumables",
@@ -503,6 +512,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
     for (let i = 0; i < count; i++) {
       newRows.push({
         id: Date.now() + i,
+        orderDate: defaultOrderDate || getTodayDate(),
         type: "Import",
         itemType: "FG",
         itemNature: "Non Consumables",
@@ -524,6 +534,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
       setRows([
         {
           id: Date.now(),
+          orderDate: defaultOrderDate || getTodayDate(),
           type: "Import",
           itemType: "FG",
           itemNature: "Non Consumables",
@@ -625,6 +636,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
 
         parsedRows.push({
           id: Date.now() + idx,
+          orderDate: defaultOrderDate || getTodayDate(),
           type: ["Import", "Local"].includes(type) ? type : "Import",
           itemType: ["FG", "Finished Goods"].includes(itemType) ? "FG" : "RM",
           itemNature: ["Consumables", "Non Consumables"].includes(itemNature) ? itemNature : "Non Consumables",
@@ -650,12 +662,16 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
   const handleSubmitAll = () => {
     if (!isGoodToGo()) return;
 
+    const currentTimestamp = new Date().toISOString();
+
     // Convert row inputs to submit request format
     const requestsToSubmit = rows.map(r => {
+      const oDate = (r.orderDate || "").trim() || defaultOrderDate || getTodayDate();
       return {
         purchaserId: r.purchaserId,
         vendorId: "", // Reset vendor - will be selected by purchaser in Step 2!
-        orderDate: new Date().toISOString().split("T")[0],
+        orderDate: oDate,
+        timestamp: currentTimestamp,
         type: r.type,
         itemType: r.itemType || "RM",
         itemNature: r.itemNature,
@@ -678,7 +694,9 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
     setRows([
       {
         id: Date.now(),
+        orderDate: defaultOrderDate || getTodayDate(),
         type: "Import",
+        itemType: "FG",
         itemNature: "Non Consumables",
         category: "",
         model: "",
@@ -800,6 +818,22 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
             <Package size={16} /> Total Qty: <strong>{totalQty.toLocaleString()} Pcs</strong>
           </div>
 
+          <div className="requester-entry-by-box" title="Order Date for this requisition (can be customized per row in the table)">
+            <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Order Date:</span>
+            <input 
+              type="date" 
+              className="form-control" 
+              style={{ width: "135px", padding: "4px 8px", fontSize: "0.85rem", height: "auto", color: "var(--text-main)", backgroundColor: "var(--bg-card)" }}
+              value={defaultOrderDate}
+              onChange={e => {
+                const val = e.target.value;
+                setDefaultOrderDate(val);
+                setRows(prev => prev.map(r => ({ ...r, orderDate: val })));
+              }}
+              required
+            />
+          </div>
+
           <div className="requester-entry-by-box">
             <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Entry By:</span>
             <input 
@@ -863,6 +897,13 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                   title="Click to select entire Qty column"
                 >
                   Qty
+                </th>
+                <th 
+                  onClick={() => setSelectedRange({ startIdx: 0, endIdx: rows.length - 1, field: "orderDate" })}
+                  style={{ width: "140px", cursor: "pointer", userSelect: "none" }}
+                  title="Click to select entire Order Date column"
+                >
+                  Order Date
                 </th>
                 <th 
                   onClick={() => setSelectedRange({ startIdx: 0, endIdx: rows.length - 1, field: "requiredByDate" })}
@@ -1352,6 +1393,41 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                         }
                       }}
                       min="1"
+                      required
+                    />
+                  </td>
+
+                  {/* Order Date */}
+                  <td 
+                    onMouseDown={(e) => handleCellMouseDown(index, "orderDate", e.shiftKey)}
+                    onMouseEnter={() => handleCellMouseEnter(index, "orderDate")}
+                    style={{
+                      background: isCellSelected(index, "orderDate") ? "rgba(56, 189, 248, 0.18)" : undefined,
+                      boxShadow: isCellSelected(index, "orderDate") ? "inset 0 0 0 2px #38bdf8" : undefined
+                    }}
+                  >
+                    <input 
+                      type="date" 
+                      className="form-control" 
+                      style={{ 
+                        padding: "4px 8px", 
+                        fontSize: "0.85rem", 
+                        height: "auto",
+                        color: "var(--text-main)",
+                        background: isCellSelected(index, "orderDate") ? "rgba(56, 189, 248, 0.25)" : "var(--bg-card)",
+                        borderColor: isCellSelected(index, "orderDate") ? "#38bdf8" : undefined
+                      }}
+                      value={row.orderDate || defaultOrderDate || getTodayDate()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onFocus={() => handleCellFocus(index, "orderDate")}
+                      onChange={e => updateCell(row.id, "orderDate", e.target.value)}
+                      onPaste={e => handleCellPaste(e, index, "orderDate")}
+                      onKeyDown={e => {
+                        if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+                          e.preventDefault();
+                          handleFillDown();
+                        }
+                      }}
                       required
                     />
                   </td>

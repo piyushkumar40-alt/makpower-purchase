@@ -887,6 +887,7 @@ export default function App() {
   };
 
   const addRequests = async (newReqs) => {
+    const nowIso = new Date().toISOString();
     const reqsWithIds = newReqs.map((req, idx) => {
       const lowerModel = (req.model || "").trim().toLowerCase();
       const existingPhoto = (settings && settings[`photo_${lowerModel}`]) ||
@@ -896,6 +897,8 @@ export default function App() {
       return {
         ...req,
         id: `req-${Date.now()}-${idx}`,
+        orderDate: req.orderDate || nowIso.split("T")[0],
+        timestamp: req.timestamp || nowIso,
         isMaterialRec: "No",
         cargoId: "",
         priceRmb: "",
@@ -931,6 +934,7 @@ export default function App() {
     const oldReq = requests.find(r => r.id === updatedReq.id);
     const newReq = {
       ...updatedReq,
+      timestamp: updatedReq.timestamp || oldReq?.timestamp || updatedReq.orderDate || new Date().toISOString(),
       actualReceivedDate: updatedReq.isMaterialRec === "Yes" ? (updatedReq.actualReceivedDate || "2026-06-11") : ""
     };
     await postData("/api/requests", newReq);
