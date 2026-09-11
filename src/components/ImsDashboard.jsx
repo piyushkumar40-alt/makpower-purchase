@@ -3,7 +3,7 @@ import {
   Package, TrendingUp, TrendingDown, Layers, Search, Filter, Download, 
   Plus, UploadCloud, AlertTriangle, CheckCircle2, RefreshCw, X, Edit2, 
   Trash2, FileText, ArrowUpDown, Calendar, Building2, Tag, ShieldAlert,
-  ChevronRight, Database, Check, Eye
+  ChevronRight, Database, Check, Eye, History
 } from "lucide-react";
 import Pagination, { SmartSelectionBar } from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
@@ -82,7 +82,31 @@ export default function ImsDashboard({
     }
   }, [initialLoadComplete, imsTransactions]);
 
-  const isDataLoading = Boolean(loading) || !initialLoadComplete || Boolean(loadingModules?.imsTransactions) || Boolean(loadingModules?.ims_transactions) || (!hasReceivedData && effectiveTransactions.length === 0);
+  const [isFetchingHistory, setIsFetchingHistory] = useState(false);
+  const [historyLoadedSuccess, setHistoryLoadedSuccess] = useState(false);
+
+  const isDataLoading = Boolean(loading) || !initialLoadComplete || isFetchingHistory || Boolean(loadingModules?.imsTransactions) || Boolean(loadingModules?.ims_transactions) || (!hasReceivedData && effectiveTransactions.length === 0);
+
+  const handleLoadHistory = async () => {
+    setIsFetchingHistory(true);
+    setHistoryLoadedSuccess(false);
+    try {
+      if (onFetchFullHistory) {
+        await onFetchFullHistory();
+      }
+      loadedRangeRef.current.isAll = true;
+      setHasReceivedData(true);
+      // Clear dates so all loaded historical transactions appear in the ledger
+      setStartDate("");
+      setEndDate("");
+      setHistoryLoadedSuccess(true);
+      setTimeout(() => setHistoryLoadedSuccess(false), 6000);
+    } catch (err) {
+      console.error("Failed to load full history:", err);
+    } finally {
+      setIsFetchingHistory(false);
+    }
+  };
 
   // Date Range Defaults to Last 3 Days
   const [startDate, setStartDate] = useState(() => {
@@ -1937,24 +1961,54 @@ export default function ImsDashboard({
 
               {/* Range Indicator / Load All Toggle */}
               <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                {imsRange !== "all" && (
+                {(imsRange === "all" || historyLoadedSuccess) ? (
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                    {startDate && endDate && (
+                      <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                        Showing <strong>{formatDisplayDate(startDate)} - {formatDisplayDate(endDate)}</strong> ({filteredTransactions.length.toLocaleString()} of {effectiveTransactions.length.toLocaleString()} rows)
+                      </span>
+                    )}
+                    <span className="badge" style={{ background: "rgba(16, 185, 129, 0.15)", color: "var(--success)", border: "1.5px solid rgba(16, 185, 129, 0.4)", fontSize: "0.76rem", fontWeight: 700, padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                      <CheckCircle2 size={13} />
+                      <span>All Database Records Loaded ({effectiveTransactions.length.toLocaleString()})</span>
+                    </span>
+                  </div>
+                ) : (
                   <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
                     <span>Showing <strong>{startDate && endDate ? `${formatDisplayDate(startDate)} - ${formatDisplayDate(endDate)}` : "latest transactions"}</strong> ({effectiveTransactions.length.toLocaleString()} rows)</span>
                     <button
-                      onClick={() => {
-                        if (onFetchFullHistory) onFetchFullHistory();
-                      }}
+                      type="button"
+                      onClick={handleLoadHistory}
+                      disabled={isFetchingHistory || Boolean(loadingModules?.imsTransactions)}
                       className="btn btn-secondary btn-sm"
-                      style={{ height: "28px", padding: "0 8px", fontSize: "0.74rem", fontWeight: 700, borderColor: "rgba(56, 189, 248, 0.4)", color: "#38bdf8" }}
+                      style={{
+                        height: "28px",
+                        padding: "0 10px",
+                        fontSize: "0.74rem",
+                        fontWeight: 700,
+                        border: "1.5px solid #38bdf8",
+                        color: "#38bdf8",
+                        background: (isFetchingHistory || Boolean(loadingModules?.imsTransactions)) ? "rgba(56, 189, 248, 0.2)" : "rgba(56, 189, 248, 0.08)",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        cursor: (isFetchingHistory || Boolean(loadingModules?.imsTransactions)) ? "not-allowed" : "pointer",
+                        transition: "all 0.15s"
+                      }}
                       title="Load all historical database transactions"
                     >
-                      Load All History
+                      {(isFetchingHistory || Boolean(loadingModules?.imsTransactions)) ? (
+                        <>
+                          <RefreshCw size={12} className="spin" />
+                          <span>Loading History...</span>
+                        </>
+                      ) : (
+                        <>
+                          <History size={12} />
+                          <span>Load All History</span>
+                        </>
+                      )}
                     </button>
-                  </span>
-                )}
-                {imsRange === "all" && (
-                  <span className="badge" style={{ background: "rgba(16, 185, 129, 0.15)", color: "var(--success)", border: "1px solid rgba(16, 185, 129, 0.3)", fontSize: "0.75rem", fontWeight: 700 }}>
-                    ✓ All Database Records Loaded ({effectiveTransactions.length.toLocaleString()})
                   </span>
                 )}
               </div>

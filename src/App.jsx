@@ -345,10 +345,12 @@ export default function App() {
         console.error(`Error pulling module data [${moduleKey}]:`, err);
       } finally {
         setLoadingModules(prev => ({ ...prev, [moduleKey]: false }));
+        delete activePullPromisesRef.current[pullKey];
         delete activePullPromisesRef.current[moduleKey];
       }
     })();
 
+    activePullPromisesRef.current[pullKey] = pullPromise;
     activePullPromisesRef.current[moduleKey] = pullPromise;
     return pullPromise;
   }, []);
