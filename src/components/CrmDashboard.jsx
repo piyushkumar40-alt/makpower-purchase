@@ -3406,20 +3406,45 @@ function Party360Modal({
 
   // Dynamic Last 4 Months (including current month)
   const last4Months = useMemo(() => {
-    if (partyCategoryMonths && partyCategoryMonths.length === 4) {
-      return partyCategoryMonths;
+    let source = [];
+    if (Array.isArray(partyCategoryMonths) && partyCategoryMonths.length >= 4) {
+      source = partyCategoryMonths.slice(-4);
+    } else {
+      const now = new Date();
+      for (let i = 3; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const yr = d.getFullYear();
+        const mo = String(d.getMonth() + 1).padStart(2, "0");
+        const key = `${yr}-${mo}`;
+        const label = d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+        source.push({ key, label, fullMonth: key });
+      }
     }
-    const months = [];
-    const now = new Date();
-    for (let i = 3; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const yr = d.getFullYear();
-      const mo = String(d.getMonth() + 1).padStart(2, "0");
-      const key = `${yr}-${mo}`;
-      const label = d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
-      months.push({ key, label, fullMonth: key });
-    }
-    return months;
+
+    return source.map((m, idx) => {
+      let displayName = m.label || m.monthName || m.name || m.fullMonthName || "";
+      if (!displayName && m.key) {
+        try {
+          const parts = String(m.key).split(/[-/.]/);
+          if (parts.length >= 2) {
+            const yr = parseInt(parts[0], 10);
+            const mo = parseInt(parts[1], 10);
+            const d = new Date(yr, mo - 1, 1);
+            displayName = d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+          }
+        } catch (e) {
+          displayName = m.key;
+        }
+      }
+      if (!displayName) displayName = `Month ${idx + 1}`;
+      return {
+        key: m.key || `m-${idx}`,
+        label: displayName,
+        monthName: displayName,
+        fullMonth: m.fullMonth || m.key || displayName,
+        isCurrent: idx === 3
+      };
+    });
   }, [partyCategoryMonths]);
 
   const last4MonthKeys = useMemo(() => new Set(last4Months.map(m => m.key)), [last4Months]);
@@ -4095,21 +4120,47 @@ function PartyMonthlyCategoryStudioModal({
 
   // Dynamic Last 4 Months e.g. [Jun 26, Jul 26, Aug 26, Sep 26]
   const last4Months = useMemo(() => {
-    if (partyCategoryMonths && partyCategoryMonths.length === 4) {
-      return partyCategoryMonths;
+    let source = [];
+    if (Array.isArray(partyCategoryMonths) && partyCategoryMonths.length >= 4) {
+      source = partyCategoryMonths.slice(-4);
+    } else {
+      const months = [];
+      const now = new Date();
+      for (let i = 3; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const yr = d.getFullYear();
+        const mo = String(d.getMonth() + 1).padStart(2, "0");
+        const key = `${yr}-${mo}`;
+        const label = d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+        months.push({ key, label, fullMonth: key });
+      }
+      source = months;
     }
-    const months = [];
-    const now = new Date();
-    for (let i = 3; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const yr = d.getFullYear();
-      const mo = String(d.getMonth() + 1).padStart(2, "0");
-      const key = `${yr}-${mo}`;
-      const monthName = d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
-      const fullMonthName = d.toLocaleDateString("en-IN", { month: "long" });
-      months.push({ key, monthName, fullMonthName, label: monthName });
-    }
-    return months;
+
+    return source.map((m, idx) => {
+      let displayName = m.label || m.monthName || m.name || m.fullMonthName || "";
+      if (!displayName && m.key) {
+        try {
+          const parts = String(m.key).split(/[-/.]/);
+          if (parts.length >= 2) {
+            const yr = parseInt(parts[0], 10);
+            const mo = parseInt(parts[1], 10);
+            const d = new Date(yr, mo - 1, 1);
+            displayName = d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+          }
+        } catch (e) {
+          displayName = m.key;
+        }
+      }
+      if (!displayName) displayName = `Month ${idx + 1}`;
+      return {
+        key: m.key || `m-${idx}`,
+        label: displayName,
+        monthName: displayName,
+        fullMonth: m.fullMonth || m.key || displayName,
+        isCurrent: idx === 3
+      };
+    });
   }, [partyCategoryMonths]);
 
   // Helper to extract YYYY-MM from any date format (YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, etc.)
@@ -4503,11 +4554,13 @@ function PartyMonthlyCategoryStudioModal({
             <thead>
               <tr>
                 <th style={{ width: "18%" }}>Category</th>
-                <th style={{ width: "10%", textAlign: "right" }}>{last4Months[0].monthName}</th>
-                <th style={{ width: "10%", textAlign: "right" }}>{last4Months[1].monthName}</th>
-                <th style={{ width: "10%", textAlign: "right" }}>{last4Months[2].monthName}</th>
-                <th style={{ width: "10%", textAlign: "right" }}>{last4Months[3].monthName}</th>
-                <th style={{ width: "30%" }}>Add Remarks ({last4Months[3].monthName})</th>
+                <th style={{ width: "10%", textAlign: "right" }}>{last4Months[0]?.label || last4Months[0]?.monthName || "Month 1"}</th>
+                <th style={{ width: "10%", textAlign: "right" }}>{last4Months[1]?.label || last4Months[1]?.monthName || "Month 2"}</th>
+                <th style={{ width: "10%", textAlign: "right" }}>{last4Months[2]?.label || last4Months[2]?.monthName || "Month 3"}</th>
+                <th style={{ width: "10%", textAlign: "right", color: "var(--primary)", fontWeight: 700 }}>
+                  {last4Months[3]?.label || last4Months[3]?.monthName || "Month 4"} (Current)
+                </th>
+                <th style={{ width: "30%" }}>Add Remarks ({last4Months[3]?.label || last4Months[3]?.monthName || "Current"})</th>
                 <th style={{ width: "12%", textAlign: "center" }}>Remarks History</th>
               </tr>
             </thead>

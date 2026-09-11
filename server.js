@@ -1863,7 +1863,7 @@ function get4TargetMonths() {
     const mo = String(d.getMonth() + 1).padStart(2, "0");
     const key = `${yr}-${mo}`;
     const label = d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
-    months.push({ key, label, fullMonth: key });
+    months.push({ key, label, monthName: label, fullMonth: key });
   }
   return months;
 }
