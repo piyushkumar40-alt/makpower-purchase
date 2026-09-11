@@ -198,13 +198,17 @@ export default function App() {
   // Check on mount if logged-in user has a weak password
   useEffect(() => {
     if (currentUser && currentUser.id) {
-      const skipped = sessionStorage.getItem(`skipped_weak_pwd_${currentUser.id}`);
-      if (!skipped && isWeakPassword(currentUser.password)) {
-        setIsWeakPasswordPrompt(true);
-        setShowPasswordModal(true);
+      if (isWeakPassword(currentUser.password)) {
+        const skipped = sessionStorage.getItem(`skipped_weak_pwd_${currentUser.id}`);
+        if (!skipped) {
+          setIsWeakPasswordPrompt(true);
+          setShowPasswordModal(true);
+        }
+      } else {
+        setIsWeakPasswordPrompt(false);
       }
     }
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.password]);
 
   const handleUserPasswordUpdated = (newPassword) => {
     if (!currentUser) return;
@@ -212,6 +216,24 @@ export default function App() {
     setCurrentUser(updated);
     localStorage.setItem("makpower_current_user", JSON.stringify(updated));
     setUsers(prev => prev.map(u => u.id === currentUser.id ? { ...u, password: newPassword } : u));
+
+    // Update local cache so cachedState reflects the new password immediately
+    try {
+      const saved = localStorage.getItem("makpower_app_state_cache");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && Array.isArray(parsed.users)) {
+          parsed.users = parsed.users.map(u => u.id === currentUser.id ? { ...u, password: newPassword } : u);
+          localStorage.setItem("makpower_app_state_cache", JSON.stringify(parsed));
+        }
+      }
+    } catch (e) {}
+
+    // Password is now changed! Remove any weak password prompt state
+    sessionStorage.removeItem(`skipped_weak_pwd_${currentUser.id}`);
+    setIsWeakPasswordPrompt(false);
+    setShowPasswordModal(false);
+
     logSystemActivity("USER_UPDATE_PASSWORD", `User "${currentUser.name}" updated their account password`, "Security", currentUser.id);
   };
 
@@ -821,9 +843,9 @@ export default function App() {
       }
       logSystemActivity("USER_LOGIN", `User "${user.name}" (${user.role}) logged in successfully`, "User Session", user.id);
 
-      // Check for weak password and prompt security alert on login
-      const skipped = sessionStorage.getItem(`skipped_weak_pwd_${user.id}`);
-      if (!skipped && isWeakPassword(cleanPass || user.password)) {
+      // On every login, ask again for a new password if current password is weak until changed
+      sessionStorage.removeItem(`skipped_weak_pwd_${user.id}`);
+      if (isWeakPassword(cleanPass || user.password)) {
         setIsWeakPasswordPrompt(true);
         setShowPasswordModal(true);
       }
@@ -836,6 +858,7 @@ export default function App() {
   const handleLogout = async () => {
     const sessionId = localStorage.getItem("makpower_session_id");
     if (currentUser) {
+      sessionStorage.removeItem(`skipped_weak_pwd_${currentUser.id}`);
       logSystemActivity("USER_LOGOUT", `User "${currentUser.name}" signed out`, "User Session", currentUser.id);
       try {
         await postData("/api/auth/logout", { userId: currentUser.id, sessionId });
