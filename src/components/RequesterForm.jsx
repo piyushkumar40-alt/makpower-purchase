@@ -1537,7 +1537,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                 <td style={{ fontWeight: 800, fontSize: "0.92rem", color: "#38bdf8", background: "rgba(56, 189, 248, 0.18)", padding: "8px 12px", borderRadius: "4px" }}>
                   {totalQty.toLocaleString()} Pcs
                 </td>
-                <td colSpan={3}></td>
+                <td colSpan={4}></td>
               </tr>
             </tfoot>
           </table>
