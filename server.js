@@ -222,8 +222,10 @@ function readLocalJson() {
     }
     const adminIdx = data.users.findIndex(x => x.id === "u-admin" || x.role === "superadmin" || x.email === "admin@company.com" || x.email === "admin@demo.com" || x.email === "admin@makpowerindia.com");
     if (adminIdx !== -1) {
-      data.users[adminIdx].password = "Demo#Admin2026!";
-      data.users[adminIdx].email = "admin@demo.com";
+      if (!data.users[adminIdx].password) {
+        data.users[adminIdx].password = "Demo#Admin2026!";
+      }
+      data.users[adminIdx].email = data.users[adminIdx].email || "admin@demo.com";
       data.users[adminIdx].status = "active";
     }
     return data;
@@ -657,7 +659,6 @@ async function setupPgDatabase() {
       );
       ALTER TABLE items ADD COLUMN IF NOT EXISTS "itemType" TEXT;
       ALTER TABLE items ADD COLUMN IF NOT EXISTS "createdBy" TEXT;
-      UPDATE users SET "password" = 'MakPower#Admin2026!' WHERE "email" = 'admin@makpowerindia.com' AND ("password" = '112233' OR "password" = 'admin');
     `);
 
     await pool.query(`
@@ -860,9 +861,6 @@ async function setupPgDatabase() {
 
     // Auto-clean any legacy SVG data URIs in PostgreSQL to HTTPS CDN URLs
     await pool.query(`UPDATE requests SET photo = 'https://images.unsplash.com/photo-1586864387967-d02ef85d93e8?w=300&auto=format&fit=crop&q=80' WHERE photo LIKE 'data:image%'`);
-
-    // Auto-update admin user password to 112233 if legacy password is found
-    await pool.query(`UPDATE users SET password = '112233' WHERE (email = 'admin@company.com' OR role = 'superadmin') AND password = 'MakPower#Admin2026!'`);
 
     // Set default 'No' only for NULL or empty purchaseUpdated records
     await pool.query(`UPDATE requests SET "purchaseUpdated" = 'No' WHERE "purchaseUpdated" IS NULL OR "purchaseUpdated" = ''`);
@@ -3290,6 +3288,9 @@ app.post("/api/users", async (req, res) => {
 // 8. POST /api/users/update - Modifies name/password of any user
 app.post("/api/users/update", async (req, res) => {
   const { id, updates } = req.body;
+  if (!updates || Object.keys(updates).length === 0) {
+    return res.json({ success: true });
+  }
   if (isPg) {
     try {
       const setClauses = [];
@@ -3304,7 +3305,13 @@ app.post("/api/users/update", async (req, res) => {
 
       values.push(id);
       const query = `UPDATE users SET ${setClauses.join(", ")} WHERE "id" = $${idx}`;
-      await pool.query(query, values);
+      const result = await pool.query(query, values);
+      if (result.rowCount === 0 && (id === "u-admin" || id === "admin")) {
+        // Fallback for admin user if ID was customized
+        const fallbackQuery = `UPDATE users SET ${setClauses.join(", ")} WHERE "role" = 'superadmin' OR "email" = 'admin@demo.com' OR "email" = 'admin@company.com'`;
+        await pool.query(fallbackQuery, values.slice(0, -1));
+      }
+      invalidateStateCache();
       res.json({ success: true });
     } catch (err) {
       console.error("POST /api/users/update error:", err.message);
@@ -3312,11 +3319,15 @@ app.post("/api/users/update", async (req, res) => {
     }
   } else {
     const data = readLocalJson();
-    const index = data.users.findIndex(x => x.id === id);
+    let index = data.users.findIndex(x => x.id === id);
+    if (index === -1 && (id === "u-admin" || id === "admin")) {
+      index = data.users.findIndex(x => x.role === "superadmin" || x.email === "admin@demo.com" || x.email === "admin@company.com");
+    }
     if (index !== -1) {
       data.users[index] = { ...data.users[index], ...updates };
       writeLocalJson(data);
     }
+    invalidateStateCache();
     res.json({ success: true });
   }
 });
@@ -5481,7 +5492,8 @@ app.post("/api/items", async (req, res) => {
          ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name", "category" = EXCLUDED."category", "itemType" = EXCLUDED."itemType", "itemNature" = EXCLUDED."itemNature", "unit" = EXCLUDED."unit", "description" = EXCLUDED."description", "photo" = EXCLUDED."photo", "currentStock" = EXCLUDED."currentStock", "createdBy" = EXCLUDED."createdBy"`,
         [item.id, item.name, item.category || "", item.itemType || "RM", item.itemNature || "Non Consumables", item.unit || "Pcs", item.description || "", item.photo || "", item.currentStock || 0, item.createdBy || item.entryBy || "Super Admin"]
       );
-      res.json({ success: true });
+      invalidateStateCache();
+      res.json({ success: true, item });
     } catch (err) {
       console.error("POST /api/items error:", err.message);
       res.status(500).json({ error: err.message });
@@ -5503,7 +5515,8 @@ app.post("/api/items", async (req, res) => {
       data.items.push(item);
     }
     writeLocalJson(data);
-    res.json({ success: true });
+    invalidateStateCache();
+    res.json({ success: true, item });
   }
 });
 

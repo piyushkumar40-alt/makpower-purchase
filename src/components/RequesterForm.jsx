@@ -4,11 +4,33 @@ import ItemMasterView from "./ItemMasterView";
 import { QuickCreateItemModal, QuickCreateUserModal } from "./QuickCreateModals";
 import { cleanCategoryName } from "../utils/formatters";
 
-export default function RequesterForm({ onAddRequests, purchasers, vendors, currentUser, requests = [], cargos = [], cargoCompanies = [], items = [], onAddItem, onAddPurchaser }) {
-  // Combine items from items prop and requests prop so dropdown has options even if master catalog isn't populated
+export default function RequesterForm({ 
+  onAddRequests, 
+  purchasers, 
+  vendors, 
+  currentUser, 
+  requests = [], 
+  cargos = [], 
+  cargoCompanies = [], 
+  items = [], 
+  onAddItem, 
+  onAddPurchaser,
+  onPullModuleData 
+}) {
+  const [localItems, setLocalItems] = useState([]);
+
+  // Fetch freshest catalog items on mount
+  useEffect(() => {
+    if (onPullModuleData) {
+      onPullModuleData("items", true);
+    }
+  }, [onPullModuleData]);
+
+  // Combine items from items prop, localItems (instantly created), and requests prop so dropdown has options even if master catalog isn't populated
   const combinedItems = useMemo(() => {
     const map = new Map();
-    (items || []).forEach(i => {
+    // 1. Process items from props and localItems first (localItems take immediate priority)
+    (items || []).concat(localItems || []).forEach(i => {
       if (i && (i.name || i.model)) {
         const name = (i.name || i.model).trim();
         const key = name.toLowerCase();
@@ -41,7 +63,7 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
       }
     });
     return Array.from(map.values());
-  }, [items, requests]);
+  }, [items, localItems, requests]);
 
   // Build a deduplicated list of categories from both items and requests
   const catalogCategories = useMemo(() => {
@@ -440,10 +462,86 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
   });
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [showQuickItemModal, setShowQuickItemModal] = useState(false);
+  const [quickItemTargetRowId, setQuickItemTargetRowId] = useState(null);
+  const [quickItemInitialData, setQuickItemInitialData] = useState({});
   const [showQuickUserModal, setShowQuickUserModal] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [submittedCount, setSubmittedCount] = useState(0);
+
+  // Helper to open item creation modal prefilled for a row
+  const openQuickItemModal = (rowId = null, prefillData = null) => {
+    setQuickItemTargetRowId(rowId);
+    if (prefillData) {
+      setQuickItemInitialData(prefillData);
+    } else if (rowId !== null) {
+      const targetRow = rows.find(r => r.id === rowId);
+      if (targetRow) {
+        setQuickItemInitialData({
+          name: targetRow.model || "",
+          category: targetRow.category || "",
+          itemType: targetRow.itemType || "FG",
+          type: targetRow.type || "Import",
+          itemNature: targetRow.itemNature || "Non Consumables"
+        });
+      } else {
+        setQuickItemInitialData({});
+      }
+    } else {
+      // Pick currently focused/active row if available
+      const activeRow = (activeDropdown?.rowId ? rows.find(r => r.id === activeDropdown.rowId) : null) || rows[0];
+      setQuickItemTargetRowId(activeRow?.id || null);
+      setQuickItemInitialData({
+        name: activeRow?.model || "",
+        category: activeRow?.category || "",
+        itemType: activeRow?.itemType || "FG",
+        type: activeRow?.type || "Import",
+        itemNature: activeRow?.itemNature || "Non Consumables"
+      });
+    }
+    setShowQuickItemModal(true);
+  };
+
+  // Immediate synchronous handler when a new item is created
+  const handleItemCreated = (newItem, targetRowId) => {
+    if (!newItem || !newItem.name) return;
+
+    // 1. Instantly inject into localItems state so combinedItems, catalogCategories and validation update immediately!
+    setLocalItems(prev => {
+      const exists = prev.some(i => (i.name || "").trim().toLowerCase() === newItem.name.trim().toLowerCase());
+      if (exists) return prev;
+      return [...prev, newItem];
+    });
+
+    // 2. Populate the targeted row (or row matching name / empty / row 0)
+    setRows(prev => {
+      const updated = [...prev];
+      let targetIdx = -1;
+      if (targetRowId !== null && targetRowId !== undefined) {
+        targetIdx = updated.findIndex(r => r.id === targetRowId);
+      }
+      if (targetIdx === -1) {
+        targetIdx = updated.findIndex(r => !r.model || r.model.trim().toLowerCase() === newItem.name.trim().toLowerCase());
+      }
+      if (targetIdx === -1) {
+        targetIdx = 0;
+      }
+
+      if (targetIdx !== -1 && updated[targetIdx]) {
+        updated[targetIdx] = {
+          ...updated[targetIdx],
+          model: newItem.name,
+          category: newItem.category || updated[targetIdx].category,
+          type: newItem.type || updated[targetIdx].type,
+          itemType: newItem.itemType || updated[targetIdx].itemType,
+          itemNature: newItem.itemNature || updated[targetIdx].itemNature
+        };
+      }
+      return updated;
+    });
+
+    setActiveDropdown(null);
+  };
 
   // Sync entry author and default purchaser when currentUser changes
   useEffect(() => {
@@ -806,9 +904,26 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
             <Clipboard size={14} /> Paste from Excel / Sheets
           </button>
 
-          <button onClick={() => setShowQuickItemModal(true)} className="btn btn-secondary btn-sm" style={{ color: "#38bdf8", borderColor: "#38bdf8" }}>
-            <Plus size={14} /> Create New Item
-          </button>
+          {currentUser ? (
+            <button 
+              onClick={() => openQuickItemModal(null)} 
+              className="btn btn-secondary btn-sm" 
+              style={{ color: "#38bdf8", borderColor: "#38bdf8", fontWeight: 600 }}
+              title="Add a new item directly to Master Catalog and table"
+            >
+              <Plus size={14} /> Create New Item
+            </button>
+          ) : (
+            <button 
+              type="button"
+              onClick={() => alert("Please log in with staff credentials to create new catalog items directly.")} 
+              className="btn btn-secondary btn-sm" 
+              style={{ color: "var(--text-muted)", borderColor: "var(--border-glass)", opacity: 0.75 }}
+              title="Staff login required to create new items directly"
+            >
+              <Plus size={14} /> Create New Item (Login Required)
+            </button>
+          )}
 
           <span className="requester-hint-pill">
             <Sparkles size={14} /> Shift+Click to select range & press Ctrl+D to Fill Down
@@ -1348,7 +1463,45 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
                             ))
                           ) : (
                             <div style={{ padding: "10px 12px", fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic" }}>
-                              {modelQuery ? `"${row.model}" is invalid for ${row.itemType || "FG"}. Select from dropdown.` : `No ${row.itemType || "FG"} items available`}
+                              {modelQuery ? `"${row.model}" is not in catalog for ${row.itemType || "FG"}.` : `No ${row.itemType || "FG"} items available`}
+                            </div>
+                          )}
+
+                          {/* Direct item creation option in dropdown */}
+                          {currentUser ? (
+                            <div
+                              style={{
+                                padding: "8px 12px",
+                                borderTop: "1px solid var(--border-glass)",
+                                background: "rgba(56, 189, 248, 0.08)",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                color: "var(--primary, #38bdf8)",
+                                fontWeight: 600,
+                                fontSize: "0.82rem",
+                                transition: "background 0.15s"
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = "rgba(56, 189, 248, 0.18)"}
+                              onMouseLeave={(e) => e.currentTarget.style.background = "rgba(56, 189, 248, 0.08)"}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openQuickItemModal(row.id, {
+                                  name: row.model || "",
+                                  category: row.category || "",
+                                  itemType: row.itemType || "FG",
+                                  type: row.type || "Import",
+                                  itemNature: row.itemNature || "Non Consumables"
+                                });
+                              }}
+                            >
+                              <Plus size={14} /> Create {row.model ? `"${row.model}"` : "New Item"} directly...
+                            </div>
+                          ) : (
+                            <div style={{ padding: "6px 12px", fontSize: "0.75rem", color: "var(--text-muted)", fontStyle: "italic", borderTop: "1px solid var(--border-glass)" }}>
+                              Staff login required to add new items.
                             </div>
                           )}
                         </div>
@@ -1650,25 +1803,16 @@ export default function RequesterForm({ onAddRequests, purchasers, vendors, curr
       {/* ==================== QUICK ITEM MODAL ==================== */}
       <QuickCreateItemModal 
         isOpen={showQuickItemModal}
-        onClose={() => setShowQuickItemModal(false)}
+        onClose={() => {
+          setShowQuickItemModal(false);
+          setQuickItemTargetRowId(null);
+          setQuickItemInitialData({});
+        }}
         onAddItem={onAddItem}
-        onItemCreated={(newItem) => {
-          if (newItem && newItem.name) {
-            setRows(prev => {
-              const updated = [...prev];
-              if (updated.length > 0) {
-                updated[0] = {
-                  ...updated[0],
-                  model: newItem.name,
-                  category: newItem.category || updated[0].category,
-                  type: newItem.type || updated[0].type,
-                  itemType: newItem.itemType || updated[0].itemType,
-                  itemNature: newItem.itemNature || updated[0].itemNature
-                };
-              }
-              return updated;
-            });
-          }
+        initialData={quickItemInitialData}
+        targetRowId={quickItemTargetRowId}
+        onItemCreated={(newItem, targetRowId) => {
+          handleItemCreated(newItem, targetRowId);
         }}
       />
 

@@ -270,16 +270,29 @@ export function QuickCreateCargoCompanyModal({ isOpen, onClose, onAddCargoCompan
 }
 
 // ==================== 3. QUICK CATALOG ITEM MODAL ====================
-export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated }) {
+export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated, initialData = {}, targetRowId = null }) {
   useModalEscape(onClose, isOpen);
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState("");
-  const [itemType, setItemType] = useState("FG");
-  const [type, setType] = useState("Import");
-  const [itemNature, setItemNature] = useState("Non Consumables");
+  const [name, setName] = useState(initialData?.name || "");
+  const [category, setCategory] = useState(initialData?.category || "");
+  const [itemType, setItemType] = useState(initialData?.itemType || "FG");
+  const [type, setType] = useState(initialData?.type || "Import");
+  const [itemNature, setItemNature] = useState(initialData?.itemNature || "Non Consumables");
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setName(initialData?.name || "");
+      setCategory(initialData?.category || "");
+      setItemType(initialData?.itemType || "FG");
+      setType(initialData?.type || "Import");
+      setItemNature(initialData?.itemNature || "Non Consumables");
+      setError("");
+      setSuccessMsg("");
+      setSubmitting(false);
+    }
+  }, [isOpen, initialData?.name, initialData?.category, initialData?.itemType, initialData?.type, initialData?.itemNature]);
 
   if (!isOpen) return null;
 
@@ -328,7 +341,7 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
           window.__showSuccessToast(msg);
         }
 
-        if (onItemCreated) onItemCreated(newItem);
+        if (onItemCreated) onItemCreated(newItem, targetRowId);
 
         setTimeout(() => {
           onClose();
@@ -336,7 +349,7 @@ export function QuickCreateItemModal({ isOpen, onClose, onAddItem, onItemCreated
           setCategory("");
           setSuccessMsg("");
           setSubmitting(false);
-        }, 1200);
+        }, 500);
       }
     } catch (err) {
       console.error("Item creation error:", err);

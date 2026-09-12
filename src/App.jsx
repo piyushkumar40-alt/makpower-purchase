@@ -802,15 +802,45 @@ export default function App() {
   const handleLogin = async (email, password) => {
     const cleanEmail = (email || "").trim().toLowerCase();
     const cleanPass = (password || "").trim();
-    const user = users.find(u => {
+
+    let currentUsersList = users;
+    let user = currentUsersList.find(u => {
       if ((u.email || "").toLowerCase() !== cleanEmail) return false;
       if (u.status && u.status !== "active") return false;
       if (u.password === cleanPass) return true;
-      if ((u.id === "u-admin" || u.role === "superadmin" || cleanEmail === "admin@demo.com" || cleanEmail === "admin@makpowerindia.com" || cleanEmail === "admin@company.com") && (cleanPass === "112233" || cleanPass === "Demo#Admin2026!" || cleanPass === "MakPower#Admin2026!")) {
+      const isDefaultUnchanged = !u.password || u.password === "112233" || u.password === "Demo#Admin2026!" || u.password === "MakPower#Admin2026!";
+      if (isDefaultUnchanged && (u.id === "u-admin" || u.role === "superadmin" || cleanEmail === "admin@demo.com" || cleanEmail === "admin@makpowerindia.com" || cleanEmail === "admin@company.com") && (cleanPass === "112233" || cleanPass === "Demo#Admin2026!" || cleanPass === "MakPower#Admin2026!")) {
         return true;
       }
       return false;
     });
+
+    // If not found with current in-memory users, pull freshest users directly from server in case password was recently updated
+    if (!user) {
+      try {
+        const res = await fetch("/api/users");
+        if (res.ok) {
+          const freshUsers = await res.json();
+          if (Array.isArray(freshUsers) && freshUsers.length > 0) {
+            const normalized = freshUsers.map(normalizeUserData);
+            setUsers(normalized);
+            currentUsersList = normalized;
+            user = currentUsersList.find(u => {
+              if ((u.email || "").toLowerCase() !== cleanEmail) return false;
+              if (u.status && u.status !== "active") return false;
+              if (u.password === cleanPass) return true;
+              const isDefaultUnchanged = !u.password || u.password === "112233" || u.password === "Demo#Admin2026!" || u.password === "MakPower#Admin2026!";
+              if (isDefaultUnchanged && (u.id === "u-admin" || u.role === "superadmin" || cleanEmail === "admin@demo.com" || cleanEmail === "admin@makpowerindia.com" || cleanEmail === "admin@company.com") && (cleanPass === "112233" || cleanPass === "Demo#Admin2026!" || cleanPass === "MakPower#Admin2026!")) {
+                return true;
+              }
+              return false;
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch fresh users during login fallback:", err);
+      }
+    }
     if (user) {
       setCurrentUser(user);
       
@@ -1222,7 +1252,29 @@ export default function App() {
       finalFields.name = sanitizeUserName(finalFields.name);
     }
     await postData("/api/users/update", { id: userId, updates: finalFields });
-    setUsers(prev => prev.map(u => u.id === userId ? normalizeUserData({ ...u, ...finalFields }) : u));
+    
+    // Update active users state
+    setUsers(prev => prev.map(u => (u.id === userId || (userId === "u-admin" && u.role === "superadmin")) ? normalizeUserData({ ...u, ...finalFields }) : u));
+    
+    // Update currentUser if modifying the active logged-in user
+    if (currentUser && (currentUser.id === userId || (currentUser.role === "superadmin" && userId === "u-admin"))) {
+      const updatedUser = { ...currentUser, ...finalFields };
+      setCurrentUser(updatedUser);
+      localStorage.setItem("makpower_current_user", JSON.stringify(updatedUser));
+    }
+
+    // Update app state cache in localStorage
+    try {
+      const saved = localStorage.getItem("makpower_app_state_cache");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && Array.isArray(parsed.users)) {
+          parsed.users = parsed.users.map(u => (u.id === userId || (userId === "u-admin" && u.role === "superadmin")) ? { ...u, ...finalFields } : u);
+          localStorage.setItem("makpower_app_state_cache", JSON.stringify(parsed));
+        }
+      }
+    } catch (e) {}
+
     return { success: true };
   };
 
@@ -1874,6 +1926,24 @@ export default function App() {
         }
         return [...prev, newItem];
       });
+
+      // Update local storage cache
+      try {
+        const saved = localStorage.getItem("makpower_app_state_cache");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && Array.isArray(parsed.items)) {
+            const idx = parsed.items.findIndex(i => i.id === newItem.id);
+            if (idx !== -1) {
+              parsed.items[idx] = newItem;
+            } else {
+              parsed.items.push(newItem);
+            }
+            localStorage.setItem("makpower_app_state_cache", JSON.stringify(parsed));
+          }
+        }
+      } catch (e) {}
+
       logSystemActivity(oldItem ? "UPDATE_ITEM" : "CREATE_ITEM", `${oldItem ? "Updated" : "Added"} item "${newItem.name}" (${newItem.category}) in Master Catalog`, "Master Item", newItem.id, oldItem, newItem);
       return { ...res, item: newItem, message: `✅ Item "${newItem.name}" saved to database catalog successfully!` };
     }
@@ -2506,6 +2576,7 @@ export default function App() {
               items={items}
               onAddItem={addItem}
               onAddPurchaser={addPurchaser}
+              onPullModuleData={pullModuleData}
             />
           </div>
         )}
