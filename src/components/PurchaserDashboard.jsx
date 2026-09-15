@@ -713,7 +713,7 @@ export default function PurchaserDashboard({
             icon={Folder}
             options={[
               { value: "alerts", label: `Operations Alerts ${totalAlertsCount > 0 ? `(${totalAlertsCount} Alerts)` : ""}` },
-              { value: "docs", label: `Pending Documents ${myCargos.filter(c => !c.packingListFile || !c.invoiceFile).length > 0 ? `(${myCargos.filter(c => !c.packingListFile || !c.invoiceFile).length} Missing)` : ""}` },
+              { value: "docs", label: `Pending Documents ${myCargos.filter(c => !c.packingListFile || !c.invoiceFile || !c.cargoReceiptFile).length > 0 ? `(${myCargos.filter(c => !c.packingListFile || !c.invoiceFile || !c.cargoReceiptFile).length} Missing)` : ""}` },
               { value: "vendors", label: "Vendor Registry" },
               { value: "cargocompanies", label: "Logistics Carriers" },
               { value: "itemmaster", label: "Item Catalog & Stock" },
@@ -2976,6 +2976,9 @@ export default function PurchaserDashboard({
                         <div>
                           Invoice: {cargo.invoiceFile ? <span className="doc-link">📄 {cargo.invoiceFile}</span> : <span style={{ color: "var(--text-muted)" }}>Missing</span>}
                         </div>
+                        <div>
+                          Cargo Receipt: {cargo.cargoReceiptFile ? <span className="doc-link">📄 {cargo.cargoReceiptFile}</span> : <span style={{ color: "var(--text-muted)" }}>Missing</span>}
+                        </div>
                       </div>
 
                       {/* Combined Items List with Undo Cargo buttons */}
@@ -4209,6 +4212,7 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
                 )}
                 <div className="details-term">Packing List:</div><div className="details-def">{cargo.packingListFile ? <span className="doc-link">📄 {cargo.packingListFile}</span> : "—"}</div>
                 <div className="details-term">Invoice:</div><div className="details-def">{cargo.invoiceFile ? <span className="doc-link">📄 {cargo.invoiceFile}</span> : "—"}</div>
+                <div className="details-term">Cargo Receipt:</div><div className="details-def">{cargo.cargoReceiptFile ? <span className="doc-link">📄 {cargo.cargoReceiptFile}</span> : "—"}</div>
               </div>
             ) : (
               <div style={{ color: "var(--text-muted)", fontSize: "0.9rem", padding: "10px 0" }}>
@@ -5086,6 +5090,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
   const [eta, setEta] = useState("");
   const [packingListFile, setPackingListFile] = useState(null);   // { name, data }
   const [invoiceFile, setInvoiceFile] = useState(null);           // { name, data }
+  const [cargoReceiptFile, setCargoReceiptFile] = useState(null); // { name, data }
   const [isRec, setIsRec] = useState("No");
   const [showQuickCargoCompanyModal, setShowQuickCargoCompanyModal] = useState(false);
 
@@ -5140,6 +5145,8 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
       packingListData: packingListFile?.data || "",
       invoiceFile: invoiceFile?.name || "",
       invoiceData: invoiceFile?.data || "",
+      cargoReceiptFile: cargoReceiptFile?.name || "",
+      cargoReceiptData: cargoReceiptFile?.data || "",
       isMaterialRec: isRec
     }, itemPickedQtyMap);
   };
@@ -5396,7 +5403,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
             <h5 style={{ fontSize: "0.85rem", marginBottom: "12px", color: "var(--secondary)", display: "flex", alignItems: "center", gap: "6px" }}>
               <Upload size={14} /> Cargo Documents <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(Optional — can be uploaded later)</span>
             </h5>
-            <div className="form-row">
+            <div className="form-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "10px" }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>
                   Packing List {packingListFile && <span style={{ color: "var(--success)", fontSize: "0.72rem" }}>✓ {packingListFile.name}</span>}
@@ -5413,6 +5420,15 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
                 <label className="doc-upload-btn" style={{ height: "38px", padding: "6px 12px", fontSize: "0.8rem" }}>
                   <Upload size={13} /> {invoiceFile ? "Replace File" : "Upload Invoice"}
                   <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" onChange={e => handleFileChange(e, setInvoiceFile)} style={{ display: "none" }} />
+                </label>
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>
+                  Cargo Receipt {cargoReceiptFile && <span style={{ color: "var(--success)", fontSize: "0.72rem" }}>✓ {cargoReceiptFile.name}</span>}
+                </label>
+                <label className="doc-upload-btn" style={{ height: "38px", padding: "6px 12px", fontSize: "0.8rem" }}>
+                  <Upload size={13} /> {cargoReceiptFile ? "Replace File" : "Upload Cargo Receipt"}
+                  <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" onChange={e => handleFileChange(e, setCargoReceiptFile)} style={{ display: "none" }} />
                 </label>
               </div>
             </div>
@@ -5467,6 +5483,9 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
   const [invoiceFile, setInvoiceFile] = useState(
     cargo.invoiceFile ? { name: cargo.invoiceFile, data: cargo.invoiceData || "" } : null
   );
+  const [cargoReceiptFile, setCargoReceiptFile] = useState(
+    cargo.cargoReceiptFile ? { name: cargo.cargoReceiptFile, data: cargo.cargoReceiptData || "" } : null
+  );
   const [isRec, setIsRec] = useState(cargo.isMaterialRec || "No");
 
   const readFile = async (file) => {
@@ -5508,6 +5527,8 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
       packingListData: packingListFile?.data || "",
       invoiceFile: invoiceFile?.name || "",
       invoiceData: invoiceFile?.data || "",
+      cargoReceiptFile: cargoReceiptFile?.name || "",
+      cargoReceiptData: cargoReceiptFile?.data || "",
       isMaterialRec: isRec
     });
   };
@@ -5710,7 +5731,7 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
             <h5 style={{ fontSize: "0.85rem", marginBottom: "12px", color: "var(--secondary)", display: "flex", alignItems: "center", gap: "6px" }}>
               <Upload size={14} /> Cargo Documents <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(Optional)</span>
             </h5>
-            <div className="form-row">
+            <div className="form-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "10px" }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>
                   Packing List {packingListFile && <span style={{ color: "var(--success)", fontSize: "0.72rem" }}>✓ {packingListFile.name}</span>}
@@ -5729,6 +5750,16 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
                 <label className="doc-upload-btn" style={{ height: "38px", padding: "6px 12px", fontSize: "0.8rem" }}>
                   <Upload size={13} /> {invoiceFile ? "Replace File" : "Upload Invoice"}
                   <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" onChange={e => handleFileChange(e, setInvoiceFile)} style={{ display: "none" }} />
+                </label>
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>
+                  Cargo Receipt {cargoReceiptFile && <span style={{ color: "var(--success)", fontSize: "0.72rem" }}>✓ {cargoReceiptFile.name}</span>}
+                  {!cargoReceiptFile && <span style={{ color: "#f59e0b", fontSize: "0.72rem" }}> ⚠ Missing</span>}
+                </label>
+                <label className="doc-upload-btn" style={{ height: "38px", padding: "6px 12px", fontSize: "0.8rem" }}>
+                  <Upload size={13} /> {cargoReceiptFile ? "Replace File" : "Upload Cargo Receipt"}
+                  <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" onChange={e => handleFileChange(e, setCargoReceiptFile)} style={{ display: "none" }} />
                 </label>
               </div>
             </div>
@@ -5773,8 +5804,8 @@ function PendingDocumentsPanel({ cargos, requests, vendors, cargoCompanies, onUp
   };
 
   // Cargos that have at least one missing document
-  const pendingCargos = cargos.filter(c => !c.packingListFile || !c.invoiceFile);
-  const completeCargos = cargos.filter(c => c.packingListFile && c.invoiceFile);
+  const pendingCargos = cargos.filter(c => !c.packingListFile || !c.invoiceFile || !c.cargoReceiptFile);
+  const completeCargos = cargos.filter(c => c.packingListFile && c.invoiceFile && c.cargoReceiptFile);
 
   const handleCargoDocUpload = async (cargoId, field, dataField, file) => {
     if (!file) return;
@@ -5803,7 +5834,7 @@ function PendingDocumentsPanel({ cargos, requests, vendors, cargoCompanies, onUp
         <FileText size={22} style={{ color: "#f59e0b" }} /> Pending Document Uploads
       </h3>
       <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "20px" }}>
-        Upload packing lists and invoices for cargo shipments. Packing lists can be uploaded per order item individually within the same cargo.
+        Upload packing lists, invoices, and cargo receipts for cargo shipments. Packing lists can also be uploaded per order item individually within the same cargo.
       </p>
 
       {pendingCargos.length === 0 ? (
@@ -5826,14 +5857,15 @@ function PendingDocumentsPanel({ cargos, requests, vendors, cargoCompanies, onUp
                       Vendor: <strong>{vName}</strong> | Mode: {cargo.modeOfTransport} | {cargoItems.length} item(s)
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: "6px" }}>
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                     {!cargo.packingListFile && <span style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "6px", padding: "3px 10px", fontSize: "0.75rem", fontWeight: 600 }}>⚠ Packing List Missing</span>}
                     {!cargo.invoiceFile && <span style={{ background: "rgba(239,68,68,0.12)", color: "var(--danger)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "6px", padding: "3px 10px", fontSize: "0.75rem", fontWeight: 600 }}>⚠ Invoice Missing</span>}
+                    {!cargo.cargoReceiptFile && <span style={{ background: "rgba(56,189,248,0.12)", color: "#38bdf8", border: "1px solid rgba(56,189,248,0.25)", borderRadius: "6px", padding: "3px 10px", fontSize: "0.75rem", fontWeight: 600 }}>⚠ Cargo Receipt Missing</span>}
                   </div>
                 </div>
 
-                {/* Cargo-level uploads: Invoice (one per cargo) */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "16px" }}>
+                {/* Cargo-level uploads: Packing List, Invoice, Cargo Receipt */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px", marginBottom: "16px" }}>
                   {/* Packing List — cargo level (if cargo has one missing) */}
                   <div style={{ background: "rgba(0,0,0,0.15)", borderRadius: "8px", padding: "12px" }}>
                     <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px", fontWeight: 600 }}>CARGO PACKING LIST</div>
@@ -5874,6 +5906,28 @@ function PendingDocumentsPanel({ cargos, requests, vendors, cargoCompanies, onUp
                         <Upload size={13} /> Upload Invoice
                         <input type="file" accept=".pdf,.xlsx,.xls,image/*" style={{ display: "none" }}
                           onChange={e => handleCargoDocUpload(cargo.id, "invoiceFile", "invoiceData", e.target.files[0])} />
+                      </label>
+                    )}
+                  </div>
+
+                  {/* Cargo Receipt — one per cargo */}
+                  <div style={{ background: "rgba(0,0,0,0.15)", borderRadius: "8px", padding: "12px" }}>
+                    <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px", fontWeight: 600 }}>CARGO RECEIPT</div>
+                    {cargo.cargoReceiptFile ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem" }}>
+                        <span style={{ color: "var(--success)" }}>✓</span>
+                        <span className="doc-link">📄 {cargo.cargoReceiptFile}</span>
+                        <label style={{ cursor: "pointer", color: "var(--primary)", fontSize: "0.75rem" }}>
+                          Replace
+                          <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" style={{ display: "none" }}
+                            onChange={e => handleCargoDocUpload(cargo.id, "cargoReceiptFile", "cargoReceiptData", e.target.files[0])} />
+                        </label>
+                      </div>
+                    ) : (
+                      <label className="doc-upload-btn" style={{ height: "36px", padding: "6px 12px", fontSize: "0.8rem" }}>
+                        <Upload size={13} /> Upload Cargo Receipt
+                        <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" style={{ display: "none" }}
+                          onChange={e => handleCargoDocUpload(cargo.id, "cargoReceiptFile", "cargoReceiptData", e.target.files[0])} />
                       </label>
                     )}
                   </div>
@@ -5943,9 +5997,10 @@ function PendingDocumentsPanel({ cargos, requests, vendors, cargoCompanies, onUp
                     <div style={{ fontSize: "0.9rem" }}>
                       <strong>{cargo.id}</strong> — {vName} — {cargoItems.length} item(s)
                     </div>
-                    <div style={{ display: "flex", gap: "12px", fontSize: "0.8rem" }}>
+                    <div style={{ display: "flex", gap: "12px", fontSize: "0.8rem", flexWrap: "wrap" }}>
                       <span style={{ color: "var(--success)" }}>✓ Packing List: {cargo.packingListFile}</span>
                       <span style={{ color: "var(--success)" }}>✓ Invoice: {cargo.invoiceFile}</span>
+                      <span style={{ color: "var(--success)" }}>✓ Cargo Receipt: {cargo.cargoReceiptFile}</span>
                     </div>
                   </div>
                   {/* Per-item packing list status */}

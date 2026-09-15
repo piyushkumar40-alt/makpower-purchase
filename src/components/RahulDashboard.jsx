@@ -344,7 +344,7 @@ export default function RahulDashboard({ currentUser, requests, vendors, cargos,
 
                       {/* Cargo Slip (Documents) */}
                       <td>
-                        {cargo && (cargo.packingListFile || cargo.invoiceFile) ? (
+                        {cargo && (cargo.packingListFile || cargo.invoiceFile || cargo.cargoReceiptFile) ? (
                           <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                             {cargo.packingListFile && (
                               <span className="doc-link" style={{ fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "2px" }}>
@@ -354,6 +354,11 @@ export default function RahulDashboard({ currentUser, requests, vendors, cargos,
                             {cargo.invoiceFile && (
                               <span className="doc-link" style={{ fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "2px" }}>
                                 📄 INV: {cargo.invoiceFile.length > 12 ? `${cargo.invoiceFile.substring(0, 10)}...` : cargo.invoiceFile}
+                              </span>
+                            )}
+                            {cargo.cargoReceiptFile && (
+                              <span className="doc-link" style={{ fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "2px" }}>
+                                📄 CR: {cargo.cargoReceiptFile.length > 12 ? `${cargo.cargoReceiptFile.substring(0, 10)}...` : cargo.cargoReceiptFile}
                               </span>
                             )}
                           </div>
