@@ -70,6 +70,16 @@ export default function ImsDashboard({
   recordSectionVisit,
   currentUserId
 }) {
+  const { 
+    startLoading, 
+    updateProgress, 
+    finishLoading, 
+    progress: rawProgress, 
+    active: loadingActive, 
+    visible: loadingVisible, 
+    detail: loadingDetail 
+  } = useLoading();
+
   const effectiveTransactions = useMemo(() => {
     return Array.isArray(imsTransactions) ? imsTransactions : [];
   }, [imsTransactions]);
@@ -87,9 +97,14 @@ export default function ImsDashboard({
 
   const isDataLoading = Boolean(loading) || !initialLoadComplete || isFetchingHistory || Boolean(loadingModules?.imsTransactions) || Boolean(loadingModules?.ims_transactions) || (!hasReceivedData && effectiveTransactions.length === 0);
 
+  const displayProgress = (loadingActive || loadingVisible || isDataLoading)
+    ? Math.max(1, rawProgress)
+    : 100;
+
   const handleLoadHistory = async () => {
     setIsFetchingHistory(true);
     setHistoryLoadedSuccess(false);
+    startLoading("Loading Complete Stock History...", "Querying all historical inventory transactions from PostgreSQL...", 10);
     try {
       if (onFetchFullHistory) {
         await onFetchFullHistory();
@@ -100,9 +115,11 @@ export default function ImsDashboard({
       setStartDate("");
       setEndDate("");
       setHistoryLoadedSuccess(true);
+      finishLoading("All historical stock records loaded successfully!");
       setTimeout(() => setHistoryLoadedSuccess(false), 6000);
     } catch (err) {
       console.error("Failed to load full history:", err);
+      finishLoading();
     } finally {
       setIsFetchingHistory(false);
     }
@@ -151,6 +168,7 @@ export default function ImsDashboard({
 
   // Filter States for Ledger - Multi-Search with Field Target Scope (Party, Category, Item, Location, ID, All)
   const [searchFilters, setSearchFilters] = useState([{ query: "", scope: "all" }]);
+  const [isExactMatch, setIsExactMatch] = useState(false);
 
   const handleAddSearchQuery = () => {
     setSearchFilters(prev => [...prev, { query: "", scope: "all" }]);
@@ -182,19 +200,30 @@ export default function ImsDashboard({
   const activeSearchItems = useMemo(() => {
     const list = [];
     searchFilters.forEach(sf => {
-      const q = (sf.query || "").trim().toLowerCase();
+      let rawQ = (sf.query || "").trim();
+      if (!rawQ) return;
+
+      // Check if user enclosed search term in quotes (e.g. "Event Card")
+      const hasQuotes = (rawQ.startsWith('"') && rawQ.endsWith('"')) || (rawQ.startsWith("'") && rawQ.endsWith("'"));
+      if (hasQuotes) {
+        rawQ = rawQ.slice(1, -1).trim();
+      }
+      const q = rawQ.toLowerCase().replace(/\s+/g, ' ');
       if (!q) return;
-      if (q.includes(",")) {
+
+      const exact = isExactMatch || hasQuotes;
+
+      if (!exact && q.includes(",")) {
         q.split(",").forEach(part => {
-          const trimmed = part.trim();
-          if (trimmed) list.push({ query: trimmed, scope: sf.scope || "all" });
+          const trimmed = part.trim().replace(/\s+/g, ' ');
+          if (trimmed) list.push({ query: trimmed, scope: sf.scope || "all", isExact: false });
         });
       } else {
-        list.push({ query: q, scope: sf.scope || "all" });
+        list.push({ query: q, scope: sf.scope || "all", isExact: exact });
       }
     });
     return list;
-  }, [searchFilters]);
+  }, [searchFilters, isExactMatch]);
 
   // Distinct Parties found across all transactions for quick dropdown filter (excluding Opening Stock)
   const distinctParties = useMemo(() => {
@@ -305,7 +334,7 @@ export default function ImsDashboard({
   // Reset current page whenever filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchFilters, selectedPartyFilter, selectedCategoryFilter, startDate, endDate, movementFilter, missingIdFilter, locationFilter, selectedItemFilter]);
+  }, [searchFilters, isExactMatch, selectedPartyFilter, selectedCategoryFilter, startDate, endDate, movementFilter, missingIdFilter, locationFilter, selectedItemFilter]);
 
   // Multi-row Checkbox Selection
   const [selectedTxIds, setSelectedTxIds] = useState([]);
@@ -436,6 +465,41 @@ export default function ImsDashboard({
         const matchesAll = activeSearchItems.every(search => {
           const term = search.query;
           const scope = search.scope || "all";
+          const isExact = Boolean(search.isExact);
+
+          if (isExact) {
+            if (scope === "order") {
+              return order === term;
+            }
+            if (scope === "category") {
+              return cat === term || resolvedCategory.toLowerCase() === term;
+            }
+            if (scope === "party") {
+              return party === term;
+            }
+            if (scope === "item") {
+              return item === term || cleanName === term || rawName === term;
+            }
+            if (scope === "location") {
+              return loc === term;
+            }
+            if (scope === "id") {
+              return id === term || rawId === term;
+            }
+            // scope === "all"
+            return (
+              item === term ||
+              cleanName === term ||
+              rawName === term ||
+              party === term ||
+              id === term ||
+              rawId === term ||
+              cat === term ||
+              order === term ||
+              loc === term
+            );
+          }
+
           const words = term.split(/\s+/).filter(Boolean);
 
           if (scope === "order") {
@@ -588,6 +652,9 @@ export default function ImsDashboard({
         const id = (is.itemId || "").toLowerCase();
         return activeSearchItems.some(search => {
           const term = search.query;
+          if (search.isExact) {
+            return item === term || id === term;
+          }
           const words = term.split(/\s+/).filter(Boolean);
           if (words.length > 1) {
             return words.every(w => item.includes(w) || id.includes(w));
@@ -611,6 +678,9 @@ export default function ImsDashboard({
         const id = (t.itemId || "").toLowerCase();
         return activeSearchItems.some(search => {
           const term = search.query;
+          if (search.isExact) {
+            return item === term || id === term;
+          }
           const words = term.split(/\s+/).filter(Boolean);
           if (words.length > 1) {
             return words.every(w => item.includes(w) || id.includes(w));
@@ -813,11 +883,35 @@ export default function ImsDashboard({
     return Array.from(map.values());
   }, [items, imsItemStocks, effectiveTransactions, endDate]);
 
-  // Paginated Matrix Slice (100 rows per page)
+  // Filtered Stock Matrix honoring active search and exact matching
+  const filteredStockMatrix = useMemo(() => {
+    let list = Array.from(itemStockMatrix);
+    if (activeSearchItems.length > 0) {
+      list = list.filter(m => {
+        const name = (m.name || "").toLowerCase().trim();
+        const id = String(m.id || "").toLowerCase().trim();
+        const cat = (m.category || "").toLowerCase().trim();
+        return activeSearchItems.every(search => {
+          const term = search.query;
+          if (search.isExact) {
+            return name === term || id === term;
+          }
+          const words = term.split(/\s+/).filter(Boolean);
+          if (words.length > 1) {
+            return words.every(w => name.includes(w) || id.includes(w) || cat.includes(w));
+          }
+          return name.includes(term) || id.includes(term) || cat.includes(term);
+        });
+      });
+    }
+    return list;
+  }, [itemStockMatrix, activeSearchItems]);
+
+  // Paginated Matrix Slice (50 rows per page)
   const paginatedMatrix = useMemo(() => {
     const start = (matrixPage - 1) * matrixPerPage;
-    return itemStockMatrix.slice(start, start + matrixPerPage);
-  }, [itemStockMatrix, matrixPage, matrixPerPage]);
+    return filteredStockMatrix.slice(start, start + matrixPerPage);
+  }, [filteredStockMatrix, matrixPage, matrixPerPage]);
 
   // Paginated Missing IDs Slice (100 rows per page)
   const paginatedMissing = useMemo(() => {
@@ -1134,8 +1228,6 @@ export default function ImsDashboard({
 
     setBulkParsedRows(parsed);
   };
-
-  const { startLoading, finishLoading } = useLoading();
 
   const handleExecuteBulkUpload = async () => {
     if (bulkParsedRows.length === 0) return;
@@ -1579,7 +1671,7 @@ export default function ImsDashboard({
           className={`nav-tab-item ${activeTab === "matrix" ? "active" : ""}`}
           style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 18px", borderRadius: "10px", fontSize: "0.92rem", fontWeight: 600 }}
         >
-          <Package size={16} /> <span>Item Stock Matrix {isDataLoading ? "(...)" : `(${itemStockMatrix.length})`}</span>
+          <Package size={16} /> <span>Item Stock Matrix {isDataLoading ? "(...)" : `(${filteredStockMatrix.length})`}</span>
         </button>
 
         <button
@@ -1719,6 +1811,47 @@ export default function ImsDashboard({
                   title="Add another search condition (search 2 or more items simultaneously)"
                 >
                   <Plus size={15} /> Add
+                </button>
+
+                {/* Search Exact Item or Keyword Toggle Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsExactMatch(prev => !prev)}
+                  className={`btn btn-sm ${isExactMatch ? "btn-primary" : "btn-secondary"}`}
+                  style={{
+                    height: "38px",
+                    padding: "0 13px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "7px",
+                    fontSize: "0.82rem",
+                    fontWeight: 700,
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    transition: "all 0.2s ease",
+                    background: isExactMatch 
+                      ? "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)" 
+                      : "var(--bg-input, var(--bg-card, rgba(255, 255, 255, 0.08)))",
+                    color: isExactMatch ? "#ffffff" : "var(--text-muted)",
+                    borderColor: isExactMatch ? "#38bdf8" : "var(--border-glass, rgba(255,255,255,0.15))",
+                    boxShadow: isExactMatch ? "0 0 14px rgba(56, 189, 248, 0.4)" : "none"
+                  }}
+                  title="Search exact item or keyword (e.g. 'Event Card' will not match 'Event Card Pouch')"
+                >
+                  <span style={{ fontSize: "0.95rem" }}>🎯</span>
+                  <span>Search exact item or keyword</span>
+                  {isExactMatch && (
+                    <span style={{ 
+                      fontSize: "0.68rem", 
+                      padding: "1px 6px", 
+                      borderRadius: "10px", 
+                      background: "rgba(255,255,255,0.28)", 
+                      fontWeight: 800,
+                      marginLeft: "2px"
+                    }}>
+                      ON
+                    </span>
+                  )}
                 </button>
               </div>
 
@@ -1941,13 +2074,15 @@ export default function ImsDashboard({
               {hasActiveFilters && (
                 <button
                   onClick={() => {
-                    setSearchQueries([""]);
+                    setSearchFilters([{ query: "", scope: "all" }]);
+                    setIsExactMatch(false);
                     setSelectedPartyFilter("all");
                     setStartDate("");
                     setEndDate("");
                     setLocationFilter("all");
                     setMovementFilter("all");
                     setMissingIdFilter("all");
+                    setSelectedItemFilter("all");
                   }}
                   className="btn btn-secondary btn-sm"
                   style={{ height: "36px", fontSize: "0.78rem" }}
@@ -2025,8 +2160,8 @@ export default function ImsDashboard({
                 <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>{kpiMetrics.onHandTitle || "Total All On-Hand"}</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: kpiMetrics.onHandStock >= 0 ? "var(--text-main)" : "var(--danger)" }}>
                   {isDataLoading ? (
-                    <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                      <RefreshCw size={14} className="spin" /> Loading...
+                    <span style={{ fontSize: "0.95rem", color: "var(--primary)", display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}>
+                      <RefreshCw size={14} className="spin" style={{ color: "var(--primary)" }} /> {displayProgress > 0 ? `${displayProgress}%` : "Syncing..."}
                     </span>
                   ) : (
                     <>{kpiMetrics.onHandStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
@@ -2047,8 +2182,8 @@ export default function ImsDashboard({
                 <div style={{ fontSize: "0.74rem", color: "#38bdf8", fontWeight: 700 }}>{kpiMetrics.delhiTitle || "🏢 Delhi Warehouse"}</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: kpiMetrics.delhiStock >= 0 ? "#38bdf8" : "var(--danger)" }}>
                   {isDataLoading ? (
-                    <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                      <RefreshCw size={14} className="spin" /> Loading...
+                    <span style={{ fontSize: "0.95rem", color: "#38bdf8", display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}>
+                      <RefreshCw size={14} className="spin" style={{ color: "#38bdf8" }} /> {displayProgress > 0 ? `${displayProgress}%` : "Syncing..."}
                     </span>
                   ) : (
                     <>{kpiMetrics.delhiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
@@ -2069,8 +2204,8 @@ export default function ImsDashboard({
                 <div style={{ fontSize: "0.74rem", color: "#c084fc", fontWeight: 700 }}>{kpiMetrics.mumbaiTitle || "🏢 Mumbai Warehouse"}</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: kpiMetrics.mumbaiStock >= 0 ? "#c084fc" : "var(--danger)" }}>
                   {isDataLoading ? (
-                    <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                      <RefreshCw size={14} className="spin" /> Loading...
+                    <span style={{ fontSize: "0.95rem", color: "#c084fc", display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}>
+                      <RefreshCw size={14} className="spin" style={{ color: "#c084fc" }} /> {displayProgress > 0 ? `${displayProgress}%` : "Syncing..."}
                     </span>
                   ) : (
                     <>{kpiMetrics.mumbaiStock.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
@@ -2091,8 +2226,8 @@ export default function ImsDashboard({
                 <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Inward (+)</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--success)" }}>
                   {isDataLoading ? (
-                    <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                      <RefreshCw size={14} className="spin" /> Loading...
+                    <span style={{ fontSize: "0.95rem", color: "var(--success)", display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}>
+                      <RefreshCw size={14} className="spin" style={{ color: "var(--success)" }} /> {displayProgress > 0 ? `${displayProgress}%` : "Syncing..."}
                     </span>
                   ) : (
                     <>+{kpiMetrics.inwardUnits.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
@@ -2113,8 +2248,8 @@ export default function ImsDashboard({
                 <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Dispatched (-)</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--danger)" }}>
                   {isDataLoading ? (
-                    <span style={{ fontSize: "0.95rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                      <RefreshCw size={14} className="spin" /> Loading...
+                    <span style={{ fontSize: "0.95rem", color: "var(--danger)", display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}>
+                      <RefreshCw size={14} className="spin" style={{ color: "var(--danger)" }} /> {displayProgress > 0 ? `${displayProgress}%` : "Syncing..."}
                     </span>
                   ) : (
                     <>-{kpiMetrics.outwardUnits.toLocaleString()} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Pcs</span></>
@@ -2162,10 +2297,106 @@ export default function ImsDashboard({
           {/* Ledger Table */}
           <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
             {isDataLoading ? (
-              <div style={{ padding: "60px 20px", textAlign: "center", color: "var(--text-muted)", display: "flex", flexDirection: "column", alignItems: "center", gap: "14px" }}>
-                <RefreshCw size={38} className="spin" style={{ color: "var(--primary)" }} />
-                <h4 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 700, color: "var(--text-main)" }}>Loading Stock Movement Ledger...</h4>
-                <p style={{ fontSize: "0.85rem", margin: 0, opacity: 0.8 }}>Syncing real-time stock movements and warehouse balances from PostgreSQL database...</p>
+              <div style={{ padding: "50px 24px", textAlign: "center", color: "var(--text-muted)", display: "flex", flexDirection: "column", alignItems: "center", gap: "18px", maxWidth: "560px", margin: "0 auto" }}>
+                
+                {/* Circular Spinning Icon with Pulse */}
+                <div style={{ 
+                  width: "60px", 
+                  height: "60px", 
+                  borderRadius: "50%", 
+                  background: "linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(99, 102, 241, 0.15))",
+                  border: "2px solid #38bdf8",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 0 24px rgba(56, 189, 248, 0.4)"
+                }}>
+                  <RefreshCw size={28} className="spin" style={{ color: "#38bdf8" }} />
+                </div>
+
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", marginBottom: "6px" }}>
+                    <h4 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 800, color: "var(--text-main)" }}>
+                      Loading Stock Movement Ledger...
+                    </h4>
+                    <span style={{
+                      fontSize: "1.05rem",
+                      fontWeight: 900,
+                      color: "#38bdf8",
+                      fontFamily: "monospace",
+                      background: "rgba(56, 189, 248, 0.15)",
+                      padding: "2px 8px",
+                      borderRadius: "6px",
+                      border: "1px solid rgba(56, 189, 248, 0.3)"
+                    }}>
+                      {displayProgress}%
+                    </span>
+                  </div>
+                  <p style={{ fontSize: "0.86rem", margin: 0, opacity: 0.85 }}>
+                    {loadingDetail || "Syncing real-time stock movements and warehouse balances from PostgreSQL database..."}
+                  </p>
+                </div>
+
+                {/* Synchronized Real-time Progress Bar */}
+                <div style={{
+                  width: "100%",
+                  height: "10px",
+                  background: "rgba(255, 255, 255, 0.08)",
+                  borderRadius: "999px",
+                  overflow: "hidden",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  padding: "1px"
+                }}>
+                  <div style={{
+                    width: `${displayProgress}%`,
+                    height: "100%",
+                    borderRadius: "999px",
+                    background: "linear-gradient(90deg, #0284c7 0%, #38bdf8 50%, #818cf8 100%)",
+                    boxShadow: "0 0 14px rgba(56, 189, 248, 0.8)",
+                    transition: "width 0.2s ease-out"
+                  }} />
+                </div>
+
+                {/* Synchronized Real-time Phase Badges */}
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", justifyContent: "center", fontSize: "0.74rem" }}>
+                  <span style={{ 
+                    padding: "3px 8px", 
+                    borderRadius: "6px", 
+                    background: displayProgress >= 15 ? "rgba(16, 185, 129, 0.15)" : "rgba(255, 255, 255, 0.06)",
+                    color: displayProgress >= 15 ? "#34d399" : "var(--text-muted)",
+                    border: `1px solid ${displayProgress >= 15 ? "rgba(16, 185, 129, 0.3)" : "rgba(255, 255, 255, 0.1)"}`
+                  }}>
+                    {displayProgress >= 15 ? "✓" : "•"} Database Connection
+                  </span>
+                  <span style={{ 
+                    padding: "3px 8px", 
+                    borderRadius: "6px", 
+                    background: displayProgress >= 50 ? "rgba(16, 185, 129, 0.15)" : "rgba(255, 255, 255, 0.06)",
+                    color: displayProgress >= 50 ? "#34d399" : "var(--text-muted)",
+                    border: `1px solid ${displayProgress >= 50 ? "rgba(16, 185, 129, 0.3)" : "rgba(255, 255, 255, 0.1)"}`
+                  }}>
+                    {displayProgress >= 50 ? "✓" : "•"} Ingesting Records
+                  </span>
+                  <span style={{ 
+                    padding: "3px 8px", 
+                    borderRadius: "6px", 
+                    background: displayProgress >= 80 ? "rgba(16, 185, 129, 0.15)" : "rgba(255, 255, 255, 0.06)",
+                    color: displayProgress >= 80 ? "#34d399" : "var(--text-muted)",
+                    border: `1px solid ${displayProgress >= 80 ? "rgba(16, 185, 129, 0.3)" : "rgba(255, 255, 255, 0.1)"}`
+                  }}>
+                    {displayProgress >= 80 ? "✓" : "•"} Calculating Balances
+                  </span>
+                  <span style={{ 
+                    padding: "3px 8px", 
+                    borderRadius: "6px", 
+                    background: displayProgress >= 96 ? "rgba(16, 185, 129, 0.15)" : "rgba(255, 255, 255, 0.06)",
+                    color: displayProgress >= 96 ? "#34d399" : "var(--text-muted)",
+                    border: `1px solid ${displayProgress >= 96 ? "rgba(16, 185, 129, 0.3)" : "rgba(255, 255, 255, 0.1)"}`
+                  }}>
+                    {displayProgress >= 96 ? "✓" : "•"} Ledger Ready
+                  </span>
+                </div>
+
               </div>
             ) : filteredTransactions.length === 0 ? (
               <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
@@ -2471,10 +2702,18 @@ export default function ImsDashboard({
 
           <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
             {isDataLoading ? (
-              <div style={{ padding: "60px 20px", textAlign: "center", color: "var(--text-muted)", display: "flex", flexDirection: "column", alignItems: "center", gap: "14px" }}>
-                <RefreshCw size={38} className="spin" style={{ color: "var(--primary)" }} />
-                <h4 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 700, color: "var(--text-main)" }}>Calculating Item Stock Matrix...</h4>
-                <p style={{ fontSize: "0.85rem", margin: 0, opacity: 0.8 }}>Aggregating physical SKU balances across Delhi & Mumbai warehouses...</p>
+              <div style={{ padding: "50px 24px", textAlign: "center", color: "var(--text-muted)", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", maxWidth: "520px", margin: "0 auto" }}>
+                <RefreshCw size={32} className="spin" style={{ color: "#38bdf8" }} />
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", marginBottom: "4px" }}>
+                    <h4 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 700, color: "var(--text-main)" }}>Calculating Item Stock Matrix...</h4>
+                    <span style={{ fontSize: "1rem", fontWeight: 800, color: "#38bdf8", fontFamily: "monospace", background: "rgba(56, 189, 248, 0.15)", padding: "1px 7px", borderRadius: "6px" }}>{displayProgress}%</span>
+                  </div>
+                  <p style={{ fontSize: "0.85rem", margin: 0, opacity: 0.8 }}>Aggregating physical SKU balances across Delhi & Mumbai warehouses...</p>
+                </div>
+                <div style={{ width: "100%", height: "8px", background: "rgba(255, 255, 255, 0.08)", borderRadius: "999px", overflow: "hidden" }}>
+                  <div style={{ width: `${displayProgress}%`, height: "100%", background: "linear-gradient(90deg, #0284c7 0%, #38bdf8 100%)", transition: "width 0.2s ease-out" }} />
+                </div>
               </div>
             ) : paginatedMatrix.length === 0 ? (
               <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
@@ -2496,8 +2735,8 @@ export default function ImsDashboard({
                 </thead>
                 <tbody>
                   {paginatedMatrix.map(item => (
-                  <tr key={item.id} style={{ background: item.isUnlinked ? "rgba(245, 158, 11, 0.03)" : "" }}>
-                    <td>
+                    <tr key={item.id} style={{ background: item.isUnlinked ? "rgba(245, 158, 11, 0.03)" : "" }}>
+                      <td>
                       {item.isUnlinked ? (
                         <button
                           onClick={() => setResolvingMissingItemName(item.name)}
@@ -2512,40 +2751,47 @@ export default function ImsDashboard({
                         </span>
                       )}
                     </td>
-                    <td style={{ fontWeight: 700, color: "var(--text-main)" }}>
-                      {item.name}
+                    <td>
+                      <div style={{ fontWeight: 600, color: "var(--text-main)" }}>{item.name}</div>
+                      {item.isUnlinked && (
+                        <span style={{ fontSize: "0.72rem", color: "#f59e0b", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                          <AlertTriangle size={11} /> Missing Catalog Item ID
+                        </span>
+                      )}
                     </td>
-                    <td style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-                      {item.category}
+                    <td>
+                      <span className="badge" style={{ background: "rgba(56, 189, 248, 0.1)", color: "#38bdf8" }}>
+                        {item.category}
+                      </span>
                     </td>
-                    <td style={{ textAlign: "right", fontWeight: 700, color: (item.delhiStock || 0) >= 0 ? "#38bdf8" : "var(--danger)" }}>
-                      {(item.delhiStock || 0).toLocaleString()} Pcs
+                    <td style={{ textAlign: "right", fontWeight: 700, color: item.delhiStock >= 0 ? "#38bdf8" : "var(--danger)" }}>
+                      {item.delhiStock.toLocaleString()} Pcs
                     </td>
-                    <td style={{ textAlign: "right", fontWeight: 700, color: (item.mumbaiStock || 0) >= 0 ? "#c084fc" : "var(--danger)" }}>
-                      {(item.mumbaiStock || 0).toLocaleString()} Pcs
+                    <td style={{ textAlign: "right", fontWeight: 700, color: item.mumbaiStock >= 0 ? "#c084fc" : "var(--danger)" }}>
+                      {item.mumbaiStock.toLocaleString()} Pcs
                     </td>
                     <td style={{ textAlign: "right", fontWeight: 800, fontSize: "0.95rem", color: item.currentStock >= 0 ? "var(--text-main)" : "var(--danger)" }}>
                       {item.currentStock.toLocaleString()} Pcs
                     </td>
                     <td style={{ textAlign: "center" }}>
-                      {item.currentStock > 100 ? (
-                        <span className="badge badge-success">In Stock</span>
-                      ) : item.currentStock > 0 ? (
-                        <span className="badge badge-warning">Low Stock</span>
+                      {item.currentStock > 0 ? (
+                        <span className="badge" style={{ background: "rgba(16, 185, 129, 0.15)", color: "var(--success)" }}>In Stock</span>
+                      ) : item.currentStock === 0 ? (
+                        <span className="badge" style={{ background: "rgba(255, 255, 255, 0.1)", color: "var(--text-muted)" }}>Nil</span>
                       ) : (
-                        <span className="badge badge-danger">Out of Stock</span>
+                        <span className="badge" style={{ background: "rgba(239, 68, 68, 0.15)", color: "var(--danger)" }}>Negative Balance</span>
                       )}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
             )}
 
             {/* Matrix Pagination */}
             <Pagination
               currentPage={matrixPage}
-              totalItems={itemStockMatrix.length}
+              totalItems={filteredStockMatrix.length}
               itemsPerPage={matrixPerPage}
               onPageChange={setMatrixPage}
               onItemsPerPageChange={(n) => {

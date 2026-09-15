@@ -6,6 +6,12 @@ const LoadingContext = createContext({
   updateProgress: () => {},
   finishLoading: () => {},
   withLoading: async () => {},
+  progress: 0,
+  active: false,
+  visible: false,
+  title: "Processing...",
+  detail: "",
+  isCompleted: false,
   showToast: () => {},
   showSuccessToast: () => {},
   showErrorToast: () => {},
@@ -84,28 +90,23 @@ export function LoadingProvider({ children }) {
 
     activeRef.current = true;
     setActive(true);
-    setVisible(false);
+    setVisible(true);
     setIsCompleted(false);
     setProgress(Math.max(1, initialPercent));
     setTitle(taskTitle);
     setDetail(initialDetail || "Please wait while operation completes...");
 
-    // Show progress modal after brief delay (250ms) so user gets immediate visual reassurance
-    delayTimerRef.current = setTimeout(() => {
-      if (activeRef.current) {
-        setVisible(true);
-        // Smooth, steady progression from 1% up to 96%
-        tickerIntervalRef.current = setInterval(() => {
-          setProgress(prev => {
-            if (prev < 30) return prev + 1; // 1% per step
-            if (prev < 60) return prev + 1;
-            if (prev < 85) return prev + 1;
-            if (prev < 96) return prev + 1;
-            return prev;
-          });
-        }, 140); // 140ms per step = ~14 seconds of calm, steady, incremental progress
-      }
-    }, 250);
+    // Smooth, realistic progression from initialPercent up to 96%
+    tickerIntervalRef.current = setInterval(() => {
+      setProgress(prev => {
+        if (!activeRef.current) return prev;
+        if (prev < 30) return prev + 2;
+        if (prev < 65) return prev + 1;
+        if (prev < 88) return prev + 1;
+        if (prev < 96) return Math.min(96, prev + 1);
+        return prev;
+      });
+    }, 85);
   }, []);
 
   const finishLoading = useCallback((completedMessage = null, showPopup = false) => {
@@ -113,28 +114,19 @@ export function LoadingProvider({ children }) {
     if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
     if (tickerIntervalRef.current) clearInterval(tickerIntervalRef.current);
 
-    if (visible) {
-      setProgress(100);
-      setIsCompleted(true);
-      if (completedMessage) setDetail(completedMessage);
+    setProgress(100);
+    setIsCompleted(true);
+    if (completedMessage) setDetail(completedMessage);
 
-      setTimeout(() => {
-        setVisible(false);
-        setActive(false);
-        setIsCompleted(false);
-        if (showPopup && completedMessage) {
-          showSuccessToast(completedMessage);
-        }
-      }, 400);
-    } else {
+    setTimeout(() => {
       setVisible(false);
       setActive(false);
       setIsCompleted(false);
       if (showPopup && completedMessage) {
         showSuccessToast(completedMessage);
       }
-    }
-  }, [visible, showSuccessToast]);
+    }, 450);
+  }, [showSuccessToast]);
 
   const withLoading = useCallback(async (asyncFn, { title = "Processing...", detail = "", total = null, successMsg = "Saved successfully!" } = {}) => {
     startLoading(title, detail, total ? 5 : 10);
@@ -184,6 +176,12 @@ export function LoadingProvider({ children }) {
       updateProgress, 
       finishLoading, 
       withLoading, 
+      progress,
+      active,
+      visible,
+      title,
+      detail,
+      isCompleted,
       showToast, 
       showSuccessToast, 
       showErrorToast, 

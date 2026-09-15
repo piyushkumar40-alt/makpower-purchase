@@ -75,7 +75,7 @@ export default function CrmDashboard({
   recordSectionVisit,
   currentUserId
 }) {
-  const { startLoading, finishLoading, showSuccessToast, showErrorToast } = useLoading();
+  const { startLoading, finishLoading, showSuccessToast, showErrorToast, progress } = useLoading();
   // Determine if user is superadmin or owner
   const isElevated = currentUser?.role === "superadmin" || currentUser?.role === "owner" || currentUser?.designation?.toLowerCase() === "system admin" || currentUser?.designation?.toLowerCase() === "owner";
   const isAdminOrOwner = isElevated;
@@ -1017,15 +1017,22 @@ export default function CrmDashboard({
   };
 
   if ((!initialLoadComplete || loading) && crmParties.length === 0) {
+    const crmProgress = Math.max(1, progress || 10);
     return (
       <div style={{ display: "flex", flex: 1, justifyContent: "center", alignItems: "center", minHeight: "75vh", padding: "20px" }}>
         <div className="glass-panel card-fade-in" style={{ padding: "44px 36px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "20px", maxWidth: "480px", width: "100%", background: "linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.9) 100%)", borderRadius: "20px", border: "1px solid var(--border-glass)" }}>
           <div style={{ width: "54px", height: "54px", borderRadius: "50%", border: "4px solid rgba(56, 189, 248, 0.2)", borderTopColor: "#38bdf8", animation: "spin 0.8s linear infinite" }}></div>
           <div>
-            <h2 style={{ fontSize: "1.45rem", fontWeight: 800, color: "var(--text-main)", margin: "0 0 8px 0" }}>Loading data please wait!</h2>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", marginBottom: "8px" }}>
+              <h2 style={{ fontSize: "1.45rem", fontWeight: 800, color: "var(--text-main)", margin: 0 }}>Loading data please wait!</h2>
+              <span style={{ fontSize: "1.1rem", fontWeight: 900, color: "#38bdf8", fontFamily: "monospace", background: "rgba(56, 189, 248, 0.15)", padding: "2px 8px", borderRadius: "6px" }}>{crmProgress}%</span>
+            </div>
             <p style={{ color: "var(--text-muted)", fontSize: "0.88rem", margin: 0, lineHeight: 1.5 }}>
               Connecting to database and synchronizing party portfolios, order bookings, and dispatches...
             </p>
+          </div>
+          <div style={{ width: "100%", height: "8px", background: "rgba(255, 255, 255, 0.08)", borderRadius: "999px", overflow: "hidden" }}>
+            <div style={{ width: `${crmProgress}%`, height: "100%", background: "linear-gradient(90deg, #0284c7 0%, #38bdf8 100%)", transition: "width 0.2s ease-out" }} />
           </div>
           <div style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "0.8rem", color: "#38bdf8", background: "rgba(56, 189, 248, 0.1)", padding: "8px 16px", borderRadius: "20px" }}>
             <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#38bdf8", display: "inline-block" }}></span>

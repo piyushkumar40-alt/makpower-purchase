@@ -24,6 +24,7 @@ import {
 } from "./utils/userIntentionTracker";
 import { isDateInBetween } from "./components/DateRangeFilter";
 import { cleanCategoryName } from "./utils/formatters";
+import { useLoading } from "./context/LoadingContext";
 import "./utils/useModalEscape";
 
 // Helper to ensure party name acts as primary key and duplicates above the last party are deleted
@@ -50,6 +51,8 @@ export function deduplicatePartiesKeepLast(parties) {
 }
 
 export default function App() {
+  const { startLoading, updateProgress, finishLoading } = useLoading();
+
   // Mobile drawer state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -242,8 +245,9 @@ export default function App() {
   const activePullPromisesRef = React.useRef({});
   const loadedModulesRef = React.useRef(new Set());
 
-  const pullModuleData = React.useCallback(async (moduleKey, force = false) => {
+  const pullModuleData = React.useCallback(async (moduleKey, force = false, options = {}) => {
     if (!moduleKey) return;
+    const isSilent = Boolean(options?.silent || (typeof force === "object" && force?.silent));
     const pullKey = typeof force === "object" && force !== null ? `${moduleKey}_${force.startDate || ""}_${force.endDate || ""}` : moduleKey;
     if (!force && loadedModulesRef.current.has(moduleKey) && !activePullPromisesRef.current[pullKey]) {
       return; // Already loaded and cached in memory
@@ -253,6 +257,10 @@ export default function App() {
     }
 
     setLoadingModules(prev => ({ ...prev, [moduleKey]: true }));
+    const isIms = moduleKey === TRACKABLE_MODULES.IMS_TRANSACTIONS || moduleKey === "imsTransactions";
+    if (!isSilent && isIms) {
+      startLoading("Loading Stock Movement Ledger...", "Syncing real-time stock movements and warehouse balances from PostgreSQL database...", 12);
+    }
 
     const pullPromise = (async () => {
       try {
@@ -359,7 +367,9 @@ export default function App() {
             const todayStr = (new Date()).toISOString().split("T")[0];
             query = `?startDate=${start3Days}&endDate=${todayStr}`;
           }
+          if (!isSilent) updateProgress(40, "Querying PostgreSQL stock movements...");
           const res = await fetch(`/api/ims/transactions${query}`);
+          if (!isSilent) updateProgress(70, "Processing stock records and warehouse balances...");
           const data = await res.json();
           const list = Array.isArray(data) ? data : (data.transactions || []);
           setImsTransactions(prev => {
@@ -378,6 +388,7 @@ export default function App() {
             setImsItemStocks(data.itemStocks);
           }
           setImsRange(data?.range || (force === "all" ? "all" : (typeof force === "object" && force?.range) ? force.range : "custom"));
+          if (!isSilent) updateProgress(95, "Syncing ledger view...");
         } else if (moduleKey === TRACKABLE_MODULES.AUDIT_LOGS) {
           const res = await fetch("/api/audit-logs");
           const data = await res.json();
@@ -391,6 +402,9 @@ export default function App() {
       } catch (err) {
         console.error(`Error pulling module data [${moduleKey}]:`, err);
       } finally {
+        if (!isSilent && isIms) {
+          finishLoading("Stock movement ledger synchronized!");
+        }
         setLoadingModules(prev => ({ ...prev, [moduleKey]: false }));
         delete activePullPromisesRef.current[pullKey];
         delete activePullPromisesRef.current[moduleKey];
@@ -400,7 +414,7 @@ export default function App() {
     activePullPromisesRef.current[pullKey] = pullPromise;
     activePullPromisesRef.current[moduleKey] = pullPromise;
     return pullPromise;
-  }, []);
+  }, [startLoading, updateProgress, finishLoading]);
 
   // Adaptive Predictive Preload Trigger on Login / Session Start
   useEffect(() => {
@@ -409,7 +423,7 @@ export default function App() {
       const predictivePreloads = getPredictivePreloadSections(currentUser.id);
       if (predictivePreloads.length > 0) {
         predictivePreloads.forEach(modKey => {
-          pullModuleData(modKey, false);
+          pullModuleData(modKey, false, { silent: true });
         });
       }
     }
@@ -562,8 +576,14 @@ export default function App() {
 
     async function loadData(isInterval = false) {
       try {
+        if (!isInterval) {
+          startLoading("Loading Application Data...", "Connecting to cloud PostgreSQL database...", 10);
+        }
         const q = currentUser ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(currentUser.role)}&userName=${encodeURIComponent(currentUser.name || '')}` : "";
         const res = await fetch(`/api/state${q}`);
+        if (!isInterval) {
+          updateProgress(65, "Synchronizing stock ledger, parties, and master records...");
+        }
         const data = await res.json();
         if (!isMounted) return;
 
@@ -653,8 +673,10 @@ export default function App() {
         console.error("Failed to load state from database API:", err);
       } finally {
         if (isMounted && !isInterval) {
+          clearTimeout(safetyTimer);
           setLoading(false);
           setInitialLoadComplete(true);
+          finishLoading("Application data synchronized successfully!");
         }
       }
     }
