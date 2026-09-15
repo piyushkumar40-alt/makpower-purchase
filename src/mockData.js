@@ -22,8 +22,8 @@ export const initialUsers = [
     name: "Anees",
     email: "anees@demo.com",
     password: "Demo#Anees2026!",
-    role: "purchaser",
-    designation: "Purchaser",
+    role: "purchase_manager",
+    designation: "Purchase Manager",
     status: "active"
   },
   {
@@ -118,6 +118,7 @@ export const initialDesignations = [
   { id: "d-tsm", title: "Territory Sales Manager (TSM)", role: "tsm", description: "Territory Sales & Direct Dealer Relations" },
   { id: "d-rsm", title: "Regional Sales Manager (RSM)", role: "rsm", description: "Regional Sales & Territory Oversight" },
   { id: "d-accounts-updates", title: "Accounts and Updates", role: "purchaser", description: "Accounts & Financial Order Updates" },
+  { id: "d-purchase-manager", title: "Purchase Manager", role: "purchase_manager", description: "Purchase Requisitions & Cross-Purchaser Cargo Logistics Management" },
   { id: "d-purchaser", title: "Purchaser", role: "purchaser", description: "Purchase Requisitions & Vendor Management" },
   { id: "d-packing", title: "Packing", role: "purchaser", description: "Packing & Production Purchasing" },
   { id: "d-accounts", title: "Accounts", role: "purchaser", description: "Payment & Accounts Reconciliation" },

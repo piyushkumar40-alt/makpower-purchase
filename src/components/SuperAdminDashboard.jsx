@@ -1420,7 +1420,7 @@ export default function SuperAdminDashboard({
                     className={`btn btn-sm ${staffFilterTab === "purchaser" ? "btn-primary" : "btn-secondary"}`}
                     style={{ fontSize: "0.78rem" }}
                   >
-                    🛒 Purchasers ({effectiveUsers.filter(u => u.role === "purchaser" && u.status !== "inactive" && u.status !== "disabled").length})
+                    🛒 Purchasers ({effectiveUsers.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status !== "inactive" && u.status !== "disabled").length})
                   </button>
                 </div>
 
@@ -1429,10 +1429,11 @@ export default function SuperAdminDashboard({
                     if (u.role === "superadmin" || u.status === "inactive" || u.status === "disabled") return false;
                     if (staffFilterTab === "crm") return u.role === "crm";
                     if (staffFilterTab === "sales") return u.role === "asm" || u.role === "tsm" || u.role === "rsm";
-                    if (staffFilterTab === "purchaser") return u.role === "purchaser";
+                    if (staffFilterTab === "purchaser") return u.role === "purchaser" || u.role === "purchase_manager";
                     return true;
                   }).map(staff => {
                     const getRoleLabel = (role) => {
+                      if (role === "purchase_manager") return "Purchase Manager";
                       if (role === "nitin") return "Packing";
                       if (role === "rahul") return "Updates";
                       if (role === "coordinator") return "Coordinator";
@@ -1442,7 +1443,7 @@ export default function SuperAdminDashboard({
                       if (role === "rsm") return "Regional Sales Manager";
                       return "Purchaser";
                     };
-                    const isPurchaser = staff.role === "purchaser";
+                    const isPurchaser = staff.role === "purchaser" || staff.role === "purchase_manager";
                     const isCrmStaff = staff.role === "crm" || staff.role === "asm" || staff.role === "tsm" || staff.role === "rsm";
                     const activeRequests = isPurchaser ? requests.filter(r => r.purchaserId === staff.id && r.isMaterialRec !== "Yes").length : 0;
                     return (
@@ -1677,6 +1678,7 @@ export default function SuperAdminDashboard({
                                   const r = e.target.value;
                                   setEditRoleVal(r);
                                   if (r === "owner") setEditDesignationVal("Owner");
+                                  else if (r === "purchase_manager") setEditDesignationVal("Purchase Manager");
                                   else if (r === "purchaser") setEditDesignationVal("Purchaser");
                                   else if (r === "nitin") setEditDesignationVal("Packing");
                                   else if (r === "rahul") setEditDesignationVal("Accounts and Updates");
@@ -1692,6 +1694,7 @@ export default function SuperAdminDashboard({
                                 <option value="asm">🟢 ASM (Area Sales Manager)</option>
                                 <option value="tsm">🟡 TSM (Territory Sales Manager)</option>
                                 <option value="owner">👑 Owner (Executive Dashboard)</option>
+                                <option value="purchase_manager">🎖️ Purchase Manager (Cross-Cargo Logistics)</option>
                                 <option value="purchaser">🛒 Purchaser (Order Processing)</option>
                                 <option value="nitin">📦 Packing</option>
                                 <option value="rahul">💰 Accounts & Updates</option>
@@ -1708,6 +1711,7 @@ export default function SuperAdminDashboard({
                                 value={editDesignationVal}
                                 onChange={e => setEditDesignationVal(e.target.value)}
                               >
+                                <option value="Purchase Manager">Purchase Manager</option>
                                 <option value="CRM Executive">CRM Executive</option>
                                 <option value="Regional Sales Manager (RSM)">Regional Sales Manager (RSM)</option>
                                 <option value="Area Sales Manager (ASM)">Area Sales Manager (ASM)</option>
@@ -1880,6 +1884,7 @@ export default function SuperAdminDashboard({
                         const r = e.target.value;
                         setPRole(r);
                         if (r === "crm") setPDesignation("CRM Executive");
+                        else if (r === "purchase_manager") setPDesignation("Purchase Manager");
                         else if (r === "rsm") setPDesignation("Regional Sales Manager (RSM)");
                         else if (r === "asm") setPDesignation("Area Sales Manager (ASM)");
                         else if (r === "tsm") setPDesignation("Territory Sales Manager (TSM)");
@@ -1895,6 +1900,7 @@ export default function SuperAdminDashboard({
                       <option value="rsm">🟣 Regional Sales Manager (RSM)</option>
                       <option value="asm">🟢 Area Sales Manager (ASM)</option>
                       <option value="tsm">🟡 Territory Sales Manager (TSM)</option>
+                      <option value="purchase_manager">🎖️ Purchase Manager (Cross-Cargo Logistics)</option>
                       <option value="purchaser">🛒 Purchaser</option>
                       <option value="nitin">📦 Packing (Nitin)</option>
                       <option value="rahul">💰 Accounts & Updates (Rahul)</option>
@@ -1907,7 +1913,7 @@ export default function SuperAdminDashboard({
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label" style={{ fontWeight: 700 }}>Assigned CRM Executive *</label>
                       <select 
-                        className="form-control"
+                        className="form-control" 
                         style={{ fontWeight: 600 }}
                         value={pParentCrmId}
                         onChange={e => setPParentCrmId(e.target.value)}
@@ -1950,6 +1956,7 @@ export default function SuperAdminDashboard({
                       value={pDesignation}
                       onChange={e => setPDesignation(e.target.value)}
                     >
+                      <option value="Purchase Manager">🎖️ Purchase Manager (Requisitions & Cross-Cargo)</option>
                       <option value="CRM Executive">💼 CRM Executive (Customer Relationship)</option>
                       <option value="Regional Sales Manager (RSM)">🟣 Regional Sales Manager (RSM)</option>
                       <option value="Area Sales Manager (ASM)">🟢 Area Sales Manager (ASM)</option>

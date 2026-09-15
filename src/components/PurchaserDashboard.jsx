@@ -315,6 +315,9 @@ export default function PurchaserDashboard({
     return localStorage.getItem("makpower_purchaser_tab") || "alerts";
   });
 
+  // Purchase Manager role flag
+  const isPurchaseManager = currentUser?.role === "purchase_manager" || (currentUser?.designation && currentUser.designation.toLowerCase().trim() === "purchase manager");
+
   // Filter vendors by current user to enforce vendor isolation (e.g. Himanshi's vendors shouldn't be in Anees's dashboard)
   const accessibleVendors = useMemo(() => {
     if (!currentUser || currentUser.role === "superadmin" || currentUser.role === "owner") {
@@ -368,12 +371,24 @@ export default function PurchaserDashboard({
 
   // Form states for cargo planner
   const [plannerVendorId, setPlannerVendorId] = useState("");
+  const [plannerPurchaserFilter, setPlannerPurchaserFilter] = useState("all");
   const [checkedRequestIds, setCheckedRequestIds] = useState([]);
   const [plannerNewQtyMap, setPlannerNewQtyMap] = useState({}); // { [reqId]: number }
   const [plannerNewPriceMap, setPlannerNewPriceMap] = useState({}); // { [reqId]: number }
   const [plannerSortDiffTop, setPlannerSortDiffTop] = useState(false);
   const [showExcelUpdateModal, setShowExcelUpdateModal] = useState(false);
   const [excelNotification, setExcelNotification] = useState(null); // { matchedCount, unmatchedCount, unmatchedList, timestamp }
+
+  // Step 3 Planner candidate requests (Cross-purchaser for Purchase Manager and Admin)
+  const plannerCandidateRequests = useMemo(() => {
+    if (isPurchaseManager || currentUser?.role === "superadmin") {
+      return (requests || []).filter(r => 
+        r.priceRmb && !r.cargoId && r.status !== "Cancelled" &&
+        (plannerPurchaserFilter === "all" || r.purchaserId === plannerPurchaserFilter)
+      );
+    }
+    return (myRequests || []).filter(r => r.priceRmb && !r.cargoId && r.status !== "Cancelled");
+  }, [requests, myRequests, isPurchaseManager, currentUser, plannerPurchaserFilter]);
 
   const handleDownloadShippingSampleFile = (availableItems = []) => {
     const headers = ["Order Date", "Item Name", "Qty", "Price"];
@@ -617,8 +632,13 @@ export default function PurchaserDashboard({
 
   // Received History sorting
   const rawReceivedRequests = useMemo(() => {
-    return myRequests.filter(r => r.isMaterialRec === "Yes");
-  }, [myRequests]);
+    const base = isSearchAdmin
+      ? requests
+      : isPurchaseManager
+        ? (requests || []).filter(r => r.purchaserId === currentUser?.id || r.cargoReceivedBy === currentUser?.id)
+        : myRequests;
+    return (base || []).filter(r => r.isMaterialRec === "Yes");
+  }, [requests, myRequests, isSearchAdmin, isPurchaseManager, currentUser]);
   const { items: sortedReceivedRequests, copyToastMessage: receivedToast, RenderSortHeader: RenderReceivedSortHeader } = useSortableData(rawReceivedRequests);
 
   // Cancelled Orders sorting
@@ -1380,39 +1400,63 @@ export default function PurchaserDashboard({
             <h3 style={{ fontSize: "1.4rem", marginBottom: "16px" }}>Step 3: Cargo Consolidation</h3>
             
             <div className="glass-panel" style={{ padding: "24px", marginBottom: "20px" }}>
-              <div className="form-group" style={{ maxWidth: "400px" }}>
-                <label className="form-label">Select Vendor to Plan Shipment</label>
-                <select 
-                  className="form-control"
-                  value={plannerVendorId}
-                  onChange={e => {
-                    setPlannerVendorId(e.target.value);
-                    setCheckedRequestIds([]);
-                    setPlannerNewQtyMap({});
-                    setExcelNotification(null);
-                  }}
-                >
-                  <option value="">Select Vendor...</option>
-                  {vendors
-                    .filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive")
-                    .filter(v => currentUser?.role === "superadmin" || v.purchaserIds?.includes(currentUser?.id))
-                    .map(v => {
-                      const metrics = calculateVendorMetrics(v, requests);
-                      const scoreText = metrics.scorePending
-                        ? `Rating: Pending — Insufficient History [${metrics.completedCount}/5 completed]`
-                        : `Rating: ${metrics.score}/100`;
-                      return (
-                        <option key={v.id} value={v.id}>
-                          {v.name} ({scoreText})
-                        </option>
-                      );
-                    })}
-                </select>
+              <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div className="form-group" style={{ maxWidth: "400px", marginBottom: 0, flex: 1 }}>
+                  <label className="form-label">Select Vendor to Plan Shipment</label>
+                  <select 
+                    className="form-control"
+                    value={plannerVendorId}
+                    onChange={e => {
+                      setPlannerVendorId(e.target.value);
+                      setCheckedRequestIds([]);
+                      setPlannerNewQtyMap({});
+                      setExcelNotification(null);
+                    }}
+                  >
+                    <option value="">Select Vendor...</option>
+                    {vendors
+                      .filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive")
+                      .filter(v => (currentUser?.role === "superadmin" || isPurchaseManager) || v.purchaserIds?.includes(currentUser?.id))
+                      .map(v => {
+                        const metrics = calculateVendorMetrics(v, requests);
+                        const scoreText = metrics.scorePending
+                          ? `Rating: Pending — Insufficient History [${metrics.completedCount}/5 completed]`
+                          : `Rating: ${metrics.score}/100`;
+                        return (
+                          <option key={v.id} value={v.id}>
+                            {v.name} ({scoreText})
+                          </option>
+                        );
+                      })}
+                  </select>
+                </div>
+
+                {(isPurchaseManager || currentUser?.role === "superadmin") && (
+                  <div className="form-group" style={{ minWidth: "260px", marginBottom: 0 }}>
+                    <label className="form-label">Filter Orders by Purchaser</label>
+                    <select
+                      className="form-control"
+                      value={plannerPurchaserFilter}
+                      onChange={e => {
+                        setPlannerPurchaserFilter(e.target.value);
+                        setCheckedRequestIds([]);
+                        setPlannerNewQtyMap({});
+                      }}
+                      style={{ fontWeight: 600, borderColor: plannerPurchaserFilter !== "all" ? "var(--primary)" : undefined }}
+                    >
+                      <option value="all">📦 All Purchasers (Cross-Consolidated)</option>
+                      <option value={currentUser?.id}>👤 My Orders Only ({currentUser?.name})</option>
+                      {purchasers.filter(p => p.id !== currentUser?.id).map(p => (
+                        <option key={p.id} value={p.id}>👤 {p.name} ({p.designation || "Purchaser"})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
 
             {plannerVendorId && (() => {
-              const readyRequests = myRequests.filter(r => r.vendorId === plannerVendorId && r.priceRmb && !r.cargoId);
+              const readyRequests = plannerCandidateRequests.filter(r => r.vendorId === plannerVendorId);
               const selectedReadyRequests = readyRequests.filter(r => checkedRequestIds.includes(r.id));
               const selectedCount = selectedReadyRequests.length;
               const selectedOrigQty = selectedReadyRequests.reduce((acc, r) => acc + parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10), 0);
@@ -1655,6 +1699,7 @@ export default function PurchaserDashboard({
                         </th>
                         <th>Order Date</th>
                         <th>Model</th>
+                        <th style={{ minWidth: "110px" }}>Purchaser</th>
                         <th>Quantity</th>
                         <th style={{ color: "#38bdf8", minWidth: "125px" }}>New Qty</th>
                         <th>Unit Price</th>
@@ -1696,7 +1741,7 @@ export default function PurchaserDashboard({
 
                         return itemsToRender.length === 0 ? (
                           <tr>
-                            <td colSpan="12" style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                            <td colSpan="13" style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
                               No items priced for this vendor. Go to <strong>Step 1: Commercial & Timeline Specification</strong> to assign vendor and price.
                             </td>
                           </tr>
@@ -1756,6 +1801,11 @@ export default function PurchaserDashboard({
                                 >
                                   {r.model}
                                 </button>
+                              </td>
+                              <td>
+                                <span className="badge" style={{ fontSize: "0.72rem", background: r.purchaserId === currentUser?.id ? "rgba(34, 197, 94, 0.12)" : "rgba(56, 189, 248, 0.12)", color: r.purchaserId === currentUser?.id ? "var(--success)" : "var(--primary)", border: r.purchaserId === currentUser?.id ? "1px solid rgba(34, 197, 94, 0.3)" : "1px solid rgba(56, 189, 248, 0.3)", fontWeight: 600 }}>
+                                  {purchasers.find(p => p.id === r.purchaserId)?.name || r.purchaserName || "Purchaser"}
+                                </span>
                               </td>
                               <td>
                                 <div><strong>{r.vendorOrderQuantity || r.orderQuantity}</strong> Pcs</div>
@@ -2777,7 +2827,16 @@ export default function PurchaserDashboard({
                               <td>{vName}</td>
                               <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{r.cargoId}</td>
                               <td style={{ color: "var(--success)", fontSize: "0.8rem" }}>{r.vendorReadyDate || "—"}</td>
-                              <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{r.cargoAssignedAt ? r.cargoAssignedAt.split("T")[0] : "—"}</td>
+                              <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                                {r.cargoAssignedAt ? r.cargoAssignedAt.split("T")[0] : "—"}
+                                {r.cargoAssignedByName && r.cargoAssignedBy !== r.purchaserId && (
+                                  <div style={{ marginTop: "4px" }}>
+                                    <span className="badge" style={{ fontSize: "0.68rem", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)", padding: "1px 6px" }}>
+                                      📦 Assigned by {r.cargoAssignedByName}
+                                    </span>
+                                  </div>
+                                )}
+                              </td>
                             </tr>
                           );
                         })}
@@ -2844,6 +2903,16 @@ export default function PurchaserDashboard({
                             {cargo.cargoCompanyId && (
                               <>
                                 {" "}| Cargo Company: <strong>{cargoCompanies.find(cc => cc.id === cargo.cargoCompanyId)?.name || "—"}</strong>
+                              </>
+                            )}
+                            {cargo.createdByName && (
+                              <>
+                                {" "}| Assigned By: <strong style={{ color: "var(--text-main)" }}>{cargo.createdByName}</strong>
+                              </>
+                            )}
+                            {cargo.receivedByName && (
+                              <>
+                                {" "}| Received By: <strong style={{ color: "var(--success)" }}>{cargo.receivedByName}</strong>
                               </>
                             )}
                           </div>
@@ -2940,6 +3009,19 @@ export default function PurchaserDashboard({
                                     >
                                       {item.model}
                                     </button> — Quantity: {item.orderQuantity} units
+                                    <span className="badge" style={{ marginLeft: "8px", fontSize: "0.7rem", background: item.purchaserId === currentUser?.id ? "rgba(34, 197, 94, 0.12)" : "rgba(56, 189, 248, 0.12)", color: item.purchaserId === currentUser?.id ? "var(--success)" : "var(--primary)" }}>
+                                      Purchaser: {purchasers.find(p => p.id === item.purchaserId)?.name || item.purchaserName || "Purchaser"}
+                                    </span>
+                                    {item.cargoAssignedByName && item.cargoAssignedBy !== item.purchaserId && (
+                                      <span className="badge" style={{ marginLeft: "6px", fontSize: "0.68rem", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)" }}>
+                                        📦 Assigned by {item.cargoAssignedByName}
+                                      </span>
+                                    )}
+                                    {item.cargoReceivedByName && item.cargoReceivedBy !== item.purchaserId && (
+                                      <span className="badge" style={{ marginLeft: "6px", fontSize: "0.68rem", background: "rgba(34, 197, 94, 0.15)", color: "var(--success)", border: "1px solid rgba(34, 197, 94, 0.3)" }}>
+                                        ✅ Received by {item.cargoReceivedByName}
+                                      </span>
+                                    )}
                                     {item.status === "Cancelled" && (
                                       <span className="badge badge-rejected" style={{ marginLeft: "8px", fontSize: "0.7rem" }}>Cancelled</span>
                                     )}
@@ -3029,7 +3111,14 @@ export default function PurchaserDashboard({
                           })();
                           return (
                             <tr key={r.id}>
-                              <td style={{ color: "var(--success)", fontWeight: 600 }}>{r.actualReceivedDate || "—"}</td>
+                              <td style={{ color: "var(--success)", fontWeight: 600 }}>
+                                <div>{r.actualReceivedDate || "—"}</div>
+                                {r.cargoReceivedByName && r.cargoReceivedBy !== r.purchaserId && (
+                                  <span style={{ fontSize: "0.68rem", display: "inline-flex", alignItems: "center", gap: "3px", color: "#38bdf8", background: "rgba(56,189,248,0.12)", padding: "1px 5px", borderRadius: "4px", marginTop: "3px", border: "1px solid rgba(56,189,248,0.25)" }} title={`Cargo received on behalf of purchaser by ${r.cargoReceivedByName}`}>
+                                    ✅ Rec by {r.cargoReceivedByName}
+                                  </span>
+                                )}
+                              </td>
                               <td>{r.orderDate}</td>
                               <td style={{ fontWeight: 600 }}>
                                 <button 
@@ -3050,6 +3139,11 @@ export default function PurchaserDashboard({
                                 >
                                   {r.model}
                                 </button>
+                                {(isSearchAdmin || isPurchaseManager) && r.purchaserId && (
+                                  <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                                    Purchaser: <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{purchasers.find(p => p.id === r.purchaserId)?.name || r.purchaserId}</span>
+                                  </div>
+                                )}
                               </td>
                               <td>
                                 <div><strong>{r.receivedQuantity || r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity}</strong> Pcs</div>
@@ -3308,6 +3402,7 @@ export default function PurchaserDashboard({
         <ReceiveCargoModal
           cargo={receivingCargo}
           requests={requests.filter(r => r.cargoId === receivingCargo.id)}
+          purchasers={purchasers}
           onClose={() => setReceivingCargo(null)}
           onConfirm={(receiveDate, itemReceiptMap) => {
             onUpdateCargo({ ...receivingCargo, isMaterialRec: "Yes", receivedDate: receiveDate }, itemReceiptMap);
@@ -3322,7 +3417,7 @@ export default function PurchaserDashboard({
           vendorId={plannerVendorId}
           vendorName={vendors.find(v => v.id === plannerVendorId)?.name}
           selectedIds={checkedRequestIds}
-          requests={myRequests}
+          requests={requests}
           initialPickedQtyMap={plannerNewQtyMap}
           cargos={cargos}
           cargoCompanies={cargoCompanies}
@@ -3342,7 +3437,7 @@ export default function PurchaserDashboard({
       {/* ==================== EXCEL SHIPPING QUANTITY UPDATE MODAL ==================== */}
       {showExcelUpdateModal && (
         <ExcelShippingUpdateModal 
-          availableItems={myRequests.filter(r => r.vendorId === plannerVendorId && r.priceRmb && !r.cargoId)}
+          availableItems={plannerCandidateRequests.filter(r => r.vendorId === plannerVendorId)}
           vendorName={vendors.find(v => v.id === plannerVendorId)?.name || "Selected Vendor"}
           onClose={() => setShowExcelUpdateModal(false)}
           onApplyMatches={(analysis) => {
@@ -3368,9 +3463,7 @@ export default function PurchaserDashboard({
 
               if (dateUpdates.length > 0) {
                 if (batchUpdateRequests) {
-                  batchUpdateRequests(dateUpdates, "SYNC_EXCEL_ORDER_DATE", `Corrected order dates for ${dateUpdates.length} item(s) from Excel`);
-                } else if (onUpdateRequest) {
-                  dateUpdates.forEach(u => onUpdateRequest(u));
+                  batchUpdateRequests(dateUpdates);
                 }
               }
             }
@@ -3394,7 +3487,7 @@ export default function PurchaserDashboard({
             setShowExcelUpdateModal(false);
           }}
           onDownloadSample={() => {
-            const readyRequests = myRequests.filter(r => r.vendorId === plannerVendorId && r.priceRmb && !r.cargoId);
+            const readyRequests = plannerCandidateRequests.filter(r => r.vendorId === plannerVendorId);
             handleDownloadShippingSampleFile(readyRequests);
           }}
         />
@@ -4061,6 +4154,21 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
               <div className="details-term">Balance Payment:</div><div className="details-def">{request.balancePayment ? `${getCurrencySymbol(request.currency)}${Number(request.balancePayment).toLocaleString()}` : "—"}</div>
               <div className="details-term">Vendor EDD:</div><div className="details-def">{request.vendorEdd || "—"}</div>
               <div className="details-term">Received?</div><div className="details-def" style={{ fontWeight: 600, color: request.isMaterialRec === "Yes" ? "var(--success)" : "var(--danger)" }}>{request.isMaterialRec}</div>
+              {request.actualReceivedDate && (
+                <>
+                  <div className="details-term">Received Date:</div>
+                  <div className="details-def">{request.actualReceivedDate}</div>
+                </>
+              )}
+              {request.cargoReceivedByName && (
+                <>
+                  <div className="details-term">Received By:</div>
+                  <div className="details-def" style={{ color: "var(--success)", fontWeight: 600 }}>
+                    {request.cargoReceivedByName}
+                    {request.cargoReceivedBy && request.cargoReceivedBy !== request.purchaserId ? " (Manager / Proxy)" : ""}
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -4081,6 +4189,24 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
                 <div className="details-term">Cargo Company:</div><div className="details-def">{cargoCompanies.find(cc => cc.id === cargo.cargoCompanyId)?.name || "—"}</div>
                 <div className="details-term">Shipping Date:</div><div className="details-def">{cargo.cargoShippingDate || "—"}</div>
                 <div className="details-term">Cargo ETA:</div><div className="details-def">{cargo.cargoEta || "—"}</div>
+                {request.cargoAssignedByName && (
+                  <>
+                    <div className="details-term">Cargo Assigned By:</div>
+                    <div className="details-def" style={{ fontWeight: 600, color: "#38bdf8" }}>
+                      {request.cargoAssignedByName}
+                      {request.cargoAssignedBy && request.cargoAssignedBy !== request.purchaserId ? " (Manager / Proxy)" : ""}
+                    </div>
+                  </>
+                )}
+                {request.cargoReceivedByName && (
+                  <>
+                    <div className="details-term">Material Received By:</div>
+                    <div className="details-def" style={{ fontWeight: 600, color: "var(--success)" }}>
+                      {request.cargoReceivedByName}
+                      {request.cargoReceivedBy && request.cargoReceivedBy !== request.purchaserId ? " (Manager / Proxy)" : ""}
+                    </div>
+                  </>
+                )}
                 <div className="details-term">Packing List:</div><div className="details-def">{cargo.packingListFile ? <span className="doc-link">📄 {cargo.packingListFile}</span> : "—"}</div>
                 <div className="details-term">Invoice:</div><div className="details-def">{cargo.invoiceFile ? <span className="doc-link">📄 {cargo.invoiceFile}</span> : "—"}</div>
               </div>
@@ -4168,7 +4294,7 @@ function CancelOrderModal({ request, vendors, onClose, onConfirm }) {
 }
 
 // 2c. RECEIVE CARGO DATE MODAL
-function ReceiveCargoModal({ cargo, requests, onClose, onConfirm }) {
+function ReceiveCargoModal({ cargo, requests, purchasers = [], onClose, onConfirm }) {
   useModalEscape(onClose);
   const [receiveDate, setReceiveDate] = useState(new Date().toISOString().split("T")[0]);
   const activeItems = requests.filter(r => r.status !== "Cancelled");
@@ -4209,9 +4335,16 @@ function ReceiveCargoModal({ cargo, requests, onClose, onConfirm }) {
 
               return (
                 <div key={r.id} style={{ background: "var(--bg-input, #ffffff)", padding: "12px 14px", borderRadius: "8px", border: "1px solid var(--border-glass, #e2e8f0)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                  <div style={{ display: "flex", school: "relative", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
                     <div>
-                      <strong style={{ color: "var(--text-main)", fontSize: "0.92rem" }}>{r.model}</strong>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                        <strong style={{ color: "var(--text-main)", fontSize: "0.92rem" }}>{r.model}</strong>
+                        {r.purchaserId && (
+                          <span style={{ fontSize: "0.72rem", background: "rgba(56,189,248,0.12)", color: "#38bdf8", padding: "1px 6px", borderRadius: "4px", border: "1px solid rgba(56,189,248,0.25)" }}>
+                            👤 {purchasers.find(p => p.id === r.purchaserId)?.name || r.purchaserId}
+                          </span>
+                        )}
+                      </div>
                       <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>Cargo Picked Qty: <strong>{expected} Pcs</strong></div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>

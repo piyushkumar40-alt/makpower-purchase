@@ -207,8 +207,13 @@ function readLocalJson() {
         data.users.push({ ...initU, status: "active" });
       } else {
         data.users[idx].status = "active";
-        data.users[idx].designation = data.users[idx].designation || initU.designation;
-        data.users[idx].role = data.users[idx].role || initU.role;
+        if (initU.id === "u-anees") {
+          data.users[idx].role = "purchase_manager";
+          data.users[idx].designation = "Purchase Manager";
+        } else {
+          data.users[idx].designation = data.users[idx].designation || initU.designation;
+          data.users[idx].role = data.users[idx].role || initU.role;
+        }
       }
     });
     data.users = data.users.map(u => ({ ...u, status: u.status || "active" }));
@@ -443,14 +448,22 @@ async function setupPgDatabase() {
       await pool.query(`DELETE FROM crm_dispatches WHERE "id" LIKE 'dsp-50%' OR "itemModel" LIKE 'MP-%'`);
       await pool.query(`DELETE FROM ims_transactions WHERE "id" LIKE 'ims-10%' OR "itemName" LIKE 'MP-%'`);
 
-      // Upsert CRM users in PG
+      // Upsert CRM & Purchase users in PG
       for (const u of initialUsers) {
         await pool.query(
           `INSERT INTO users ("id", "name", "email", "password", "role", "designation", "status", "phone", "territory", "parentCrmId")
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-           ON CONFLICT ("id") DO NOTHING`,
+           ON CONFLICT ("id") DO UPDATE SET
+             "role" = EXCLUDED."role",
+             "designation" = EXCLUDED."designation"
+           WHERE users.id = 'u-anees' OR users.role IS NULL`,
           [u.id, u.name, u.email, u.password, u.role, u.designation || "Staff", u.status, u.phone || "", u.territory || "", u.parentCrmId || ""]
         );
+      }
+      try {
+        await pool.query(`UPDATE users SET "role" = 'purchase_manager', "designation" = 'Purchase Manager' WHERE "id" = 'u-anees' OR LOWER("email") = 'anees@demo.com'`);
+      } catch (e) {
+        console.warn("Could not run Anees role update query in PG:", e.message);
       }
 
       // Seed IMS Transactions

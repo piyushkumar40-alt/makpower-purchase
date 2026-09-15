@@ -71,7 +71,7 @@ export default function HomePage({
   }).length;
 
   // Person-wise delayed task breakdown for PC / Coordinator
-  const activePurchasers = users.filter(u => u.role === "purchaser" && u.status === "active");
+  const activePurchasers = users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active");
   const personWiseTaskStats = activePurchasers.map(p => {
     const pReqs = activeRequests.filter(r => r.purchaserId === p.id);
     const total = pReqs.length;
@@ -119,7 +119,7 @@ export default function HomePage({
           <p style={{ color: "var(--text-muted)", fontSize: "0.92rem", margin: 0 }}>
             {["crm", "asm", "tsm", "rsm"].includes(currentUser?.role)
               ? "CRM & Field Sales Command Center"
-              : "Purchase Ledger & Operations Command Center"} • Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{currentUser?.role || "Staff"}</strong>
+              : "Purchase Ledger & Operations Command Center"} • Role: <strong style={{ color: "var(--text-main)", textTransform: "capitalize" }}>{currentUser?.role === "purchase_manager" ? "Purchase Manager" : (currentUser?.role || "Staff")}</strong>
           </p>
         </div>
 
@@ -142,8 +142,8 @@ export default function HomePage({
               <Layers size={14} /> IMS Stock Ledger
             </button>
           )}
-          {["purchaser", "nitin", "rahul", "coordinator"].includes(currentUser?.role) && (
-            <button onClick={() => onNavigateView(currentUser?.role === "purchaser" ? "dashboard" : currentUser?.role)} className="btn btn-primary btn-sm">
+          {["purchaser", "purchase_manager", "nitin", "rahul", "coordinator"].includes(currentUser?.role) && (
+            <button onClick={() => onNavigateView(["purchaser", "purchase_manager"].includes(currentUser?.role) ? "dashboard" : currentUser?.role)} className="btn btn-primary btn-sm">
               <BarChart2 size={14} /> View Workboard
             </button>
           )}
@@ -169,7 +169,7 @@ export default function HomePage({
       )}
 
       {/* ==================== ROLE VIEW 1: PURCHASER HOME DASHBOARD ==================== */}
-      {currentUser?.role === "purchaser" && (
+      {(currentUser?.role === "purchaser" || currentUser?.role === "purchase_manager") && (
         <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           
           {/* Quick Metrics Bar */}

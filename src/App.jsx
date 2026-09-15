@@ -557,8 +557,42 @@ export default function App() {
       });
     }
 
-    return list.sort((a, b) => (b.data?.createdAt || "").localeCompare(a.data?.createdAt || ""));
-  }, [currentUser, crmPartyRemarks, crmParties, readNotificationIds]);
+    // Cross-purchaser cargo assignment & warehouse receipt notifications
+    if (currentUser?.id) {
+      (requests || []).forEach(r => {
+        if (r.purchaserId === currentUser.id && r.cargoAssignedBy && r.cargoAssignedBy !== currentUser.id) {
+          const notifId = `notif_cargo_assigned_${r.id}_${r.cargoId || "assigned"}`;
+          if (!list.some(n => n.id === notifId)) {
+            list.push({
+              id: notifId,
+              title: `Cargo Assigned by ${r.cargoAssignedByName || "Purchase Manager"}`,
+              description: `${r.cargoAssignedByName || "Purchase Manager"} assigned your order "${r.model}" (#${r.id}) to Cargo #${r.cargoId || "Shipment"}`,
+              time: r.cargoAssignedAt ? new Date(r.cargoAssignedAt).toLocaleDateString("en-IN") : "Recent",
+              read: readSet.has(notifId),
+              type: "cargo_assigned",
+              data: r
+            });
+          }
+        }
+        if (r.purchaserId === currentUser.id && r.isMaterialRec === "Yes" && r.cargoReceivedBy && r.cargoReceivedBy !== currentUser.id) {
+          const notifId = `notif_cargo_received_${r.id}_${r.cargoId || "received"}`;
+          if (!list.some(n => n.id === notifId)) {
+            list.push({
+              id: notifId,
+              title: `Cargo Received by ${r.cargoReceivedByName || "Purchase Manager"}`,
+              description: `${r.cargoReceivedByName || "Purchase Manager"} confirmed warehouse receipt for your order "${r.model}" (${r.receivedQuantity || r.vendorOrderQuantity || r.orderQuantity} Pcs)`,
+              time: r.actualReceivedDate || "Recent",
+              read: readSet.has(notifId),
+              type: "cargo_received",
+              data: r
+            });
+          }
+        }
+      });
+    }
+
+    return list.sort((a, b) => (b.time || "").localeCompare(a.time || ""));
+  }, [currentUser, crmPartyRemarks, crmParties, requests, readNotificationIds]);
 
   const unreadNotificationsCount = userNotifications.filter(n => !n.read).length;
 
@@ -1073,6 +1107,8 @@ export default function App() {
     const newCargo = {
       id: newCargoId,
       ...cargoDetails,
+      createdBy: currentUser?.id || "",
+      createdByName: currentUser?.name || "",
       isMaterialRec: cargoDetails.isMaterialRec || "No",
       receivedDate: cargoDetails.isMaterialRec === "Yes" ? (cargoDetails.receivedDate || new Date().toISOString().split("T")[0]) : ""
     };
@@ -1097,6 +1133,8 @@ export default function App() {
         vendorOrderQuantity: pickedQty,
         priceRmb: effectivePrice > 0 ? effectivePrice : r.priceRmb,
         cargoAssignedAt: new Date().toISOString(),
+        cargoAssignedBy: currentUser?.id || "",
+        cargoAssignedByName: currentUser?.name || "",
         isMaterialRec: newCargo.isMaterialRec,
         actualReceivedDate: newCargo.isMaterialRec === "Yes" ? (cargoDetails.receivedDate || new Date().toISOString().split("T")[0]) : "",
         totalRmb: effectivePrice > 0 ? effectivePrice * pickedQty : (r.priceRmb ? parseFloat(r.priceRmb) * pickedQty : r.totalRmb)
@@ -1114,6 +1152,8 @@ export default function App() {
           cargoId: "",
           cargoPickedQty: 0,
           cargoAssignedAt: "",
+          cargoAssignedBy: "",
+          cargoAssignedByName: "",
           isMaterialRec: "No",
           actualReceivedDate: "",
           parentRequestId: r.id,
@@ -1133,14 +1173,22 @@ export default function App() {
       return [...newRemainingItems, ...updatedList];
     });
 
-    logSystemActivity("CREATE_CARGO", `Created Cargo Shipment #${newCargoId} (${newCargo.cargoDetail || "Cargo"}) bundling ${selectedRequestIds.length} items`, "Cargo", newCargoId, null, newCargo);
+    const otherPurchaserNames = Array.from(new Set(
+      updatedItems.filter(r => r.purchaserId && r.purchaserId !== currentUser?.id).map(r => r.purchaserName || users.find(u => u.id === r.purchaserId)?.name || "Other Purchaser")
+    ));
+    const behalfText = otherPurchaserNames.length > 0 ? ` on behalf of ${otherPurchaserNames.join(", ")}` : "";
+
+    logSystemActivity("CREATE_CARGO", `Created Cargo Shipment #${newCargoId} (${newCargo.cargoDetail || "Cargo"}) bundling ${selectedRequestIds.length} items${behalfText}`, "Cargo", newCargoId, null, newCargo);
   };
 
   const updateCargo = async (updatedCargo, itemReceiptMap = {}) => {
     const oldCargo = cargos.find(c => c.id === updatedCargo.id);
+    const isNowReceived = updatedCargo.isMaterialRec === "Yes";
     const cargoWithDate = {
       ...updatedCargo,
-      receivedDate: updatedCargo.isMaterialRec === "Yes" ? (updatedCargo.receivedDate || new Date().toISOString().split("T")[0]) : ""
+      receivedDate: isNowReceived ? (updatedCargo.receivedDate || new Date().toISOString().split("T")[0]) : (updatedCargo.receivedDate || ""),
+      receivedBy: isNowReceived ? (updatedCargo.receivedBy || currentUser?.id || "") : (updatedCargo.receivedBy || ""),
+      receivedByName: isNowReceived ? (updatedCargo.receivedByName || currentUser?.name || "") : (updatedCargo.receivedByName || "")
     };
     await postData("/api/cargos", cargoWithDate);
     setCargos(prev => prev.map(c => c.id === cargoWithDate.id ? cargoWithDate : c));
@@ -1151,20 +1199,22 @@ export default function App() {
     requests.filter(r => r.cargoId === cargoWithDate.id).forEach(r => {
       const expectedQty = parseInt(r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity || 0);
       const recInfo = itemReceiptMap[r.id];
-      const receivedQty = (recInfo && recInfo.receivedQty != null) ? parseInt(recInfo.receivedQty) : (cargoWithDate.isMaterialRec === "Yes" ? expectedQty : (r.receivedQuantity || expectedQty));
+      const receivedQty = (recInfo && recInfo.receivedQty != null) ? parseInt(recInfo.receivedQty) : (isNowReceived ? expectedQty : (r.receivedQuantity || expectedQty));
       const shortageAction = recInfo?.shortageAction || "cancel";
       const shortageQty = expectedQty > receivedQty ? expectedQty - receivedQty : 0;
 
       const updatedReq = {
         ...r,
         isMaterialRec: cargoWithDate.isMaterialRec,
-        actualReceivedDate: cargoWithDate.isMaterialRec === "Yes" ? (r.actualReceivedDate || cargoWithDate.receivedDate || new Date().toISOString().split("T")[0]) : "",
+        actualReceivedDate: isNowReceived ? (r.actualReceivedDate || cargoWithDate.receivedDate || new Date().toISOString().split("T")[0]) : "",
+        cargoReceivedBy: isNowReceived ? (r.cargoReceivedBy || currentUser?.id || "") : (r.cargoReceivedBy || ""),
+        cargoReceivedByName: isNowReceived ? (r.cargoReceivedByName || currentUser?.name || "") : (r.cargoReceivedByName || ""),
         receivedQuantity: receivedQty,
         shortageQty: shortageQty
       };
       updatedItems.push(updatedReq);
 
-      if (cargoWithDate.isMaterialRec === "Yes" && shortageQty > 0 && shortageAction === "reorder") {
+      if (isNowReceived && shortageQty > 0 && shortageAction === "reorder") {
         const shortageReq = {
           ...r,
           id: `req-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -1173,6 +1223,10 @@ export default function App() {
           cargoId: "",
           cargoPickedQty: 0,
           cargoAssignedAt: "",
+          cargoAssignedBy: "",
+          cargoAssignedByName: "",
+          cargoReceivedBy: "",
+          cargoReceivedByName: "",
           isMaterialRec: "No",
           actualReceivedDate: "",
           parentRequestId: r.id,
@@ -1192,7 +1246,13 @@ export default function App() {
         return [...newShortageItems, ...updatedList];
       });
     }
-    logSystemActivity("UPDATE_CARGO", `Updated Cargo Shipment #${updatedCargo.id} (${updatedCargo.cargoDetail || "Cargo"})`, "Cargo", updatedCargo.id, oldCargo, cargoWithDate);
+
+    const otherPurchaserNames = Array.from(new Set(
+      updatedItems.filter(r => r.purchaserId && r.purchaserId !== currentUser?.id).map(r => r.purchaserName || users.find(u => u.id === r.purchaserId)?.name || "Other Purchaser")
+    ));
+    const behalfText = (isNowReceived && otherPurchaserNames.length > 0) ? ` on behalf of ${otherPurchaserNames.join(", ")}` : "";
+
+    logSystemActivity("UPDATE_CARGO", `Updated Cargo Shipment #${updatedCargo.id} (${updatedCargo.cargoDetail || "Cargo"})${behalfText}`, "Cargo", updatedCargo.id, oldCargo, cargoWithDate);
   };
 
   const addPurchaser = async (name, email, password, designation = "Purchaser", explicitRole = null, phone = "", territory = "", parentCrmId = "") => {
@@ -1209,6 +1269,7 @@ export default function App() {
       else if (dLower.includes("rsm") || dLower.includes("regional sales")) role = "rsm";
       else if (dLower.includes("owner")) role = "owner";
       else if (dLower.includes("admin") || dLower.includes("superadmin")) role = "superadmin";
+      else if (dLower.includes("purchase manager") || dLower === "purchase_manager") role = "purchase_manager";
       else if (dLower.includes("logistics") || dLower.includes("coordinator")) role = "coordinator";
       else if (dLower === "nitin" || dLower.includes("packing manager")) role = "nitin";
       else if (dLower === "rahul" || dLower.includes("accounts update") || dLower.includes("purchase updater")) role = "rahul";
@@ -1822,10 +1883,10 @@ export default function App() {
       return { success: true, vendor: existing, message: `✅ Vendor "${existing.name}" is active and ready in database.` };
     }
 
-    const allPurchaserIds = users.filter(u => u.role === "purchaser").map(u => u.id);
+    const allPurchaserIds = users.filter(u => u.role === "purchaser" || u.role === "purchase_manager").map(u => u.id);
     const validPurchaserIds = Array.isArray(purchaserIds) && purchaserIds.length > 0 
       ? purchaserIds 
-      : (currentUser?.role === "purchaser" && currentUser?.id ? [currentUser.id] : allPurchaserIds);
+      : ((currentUser?.role === "purchaser" || currentUser?.role === "purchase_manager") && currentUser?.id ? [currentUser.id] : allPurchaserIds);
 
     const newVendor = {
       id: `v-${Date.now()}`,
@@ -2591,7 +2652,7 @@ export default function App() {
           <div style={{ flex: 1, width: "100%", padding: "16px 24px" }}>
             <RequesterForm 
               onAddRequests={addRequests} 
-              purchasers={users.filter(u => u.role === "purchaser" && u.status === "active")} 
+              purchasers={users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active")} 
               vendors={vendors} 
               requests={requests}
               cargos={cargos}
@@ -2612,7 +2673,7 @@ export default function App() {
             vendors={vendors}
             cargos={cargos}
             items={items}
-            purchasers={users.filter(u => u.role === "purchaser" && u.status === "active")}
+            purchasers={users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active")}
             onBatchUpdateRequests={batchUpdateRequests}
             onLogout={handleLogout}
           />
@@ -2624,7 +2685,7 @@ export default function App() {
             requests={requests}
             vendors={vendors}
             cargos={cargos}
-            purchasers={users.filter(u => u.role === "purchaser" && u.status === "active")}
+            purchasers={users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active")}
             onBatchUpdateRequests={batchUpdateRequests}
             onLogout={handleLogout}
           />
@@ -2802,7 +2863,7 @@ export default function App() {
             vendors={vendors}
             cargos={cargos}
             cargoCompanies={cargoCompanies}
-            purchasers={users.filter(u => u.role === "purchaser" && u.status === "active")}
+            purchasers={users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active")}
             onUpdateRequest={updateRequest}
             batchUpdateRequests={batchUpdateRequests}
             onCancelOrder={cancelRequest}
