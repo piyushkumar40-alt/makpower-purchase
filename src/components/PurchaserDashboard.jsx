@@ -379,17 +379,6 @@ export default function PurchaserDashboard({
   const [showExcelUpdateModal, setShowExcelUpdateModal] = useState(false);
   const [excelNotification, setExcelNotification] = useState(null); // { matchedCount, unmatchedCount, unmatchedList, timestamp }
 
-  // Step 3 Planner candidate requests (Cross-purchaser for Purchase Manager and Admin)
-  const plannerCandidateRequests = useMemo(() => {
-    if (isPurchaseManager || currentUser?.role === "superadmin") {
-      return (requests || []).filter(r => 
-        r.priceRmb && !r.cargoId && r.status !== "Cancelled" &&
-        (plannerPurchaserFilter === "all" || r.purchaserId === plannerPurchaserFilter)
-      );
-    }
-    return (myRequests || []).filter(r => r.priceRmb && !r.cargoId && r.status !== "Cancelled");
-  }, [requests, myRequests, isPurchaseManager, currentUser, plannerPurchaserFilter]);
-
   const handleDownloadShippingSampleFile = (availableItems = []) => {
     const headers = ["Order Date", "Item Name", "Qty", "Price"];
     let rows = [];
@@ -620,6 +609,17 @@ export default function PurchaserDashboard({
     );
   }, [myRequests, vrFilter]);
   const { items: vrItems, copyToastMessage: vrToast, RenderSortHeader: RenderStep2SortHeader } = useSortableData(rawVrItems);
+
+  // Step 3 Planner candidate requests (Cross-purchaser for Purchase Manager and Admin)
+  const plannerCandidateRequests = useMemo(() => {
+    if (isPurchaseManager || currentUser?.role === "superadmin") {
+      return (requests || []).filter(r => 
+        r.priceRmb && !r.cargoId && r.status !== "Cancelled" &&
+        (plannerPurchaserFilter === "all" || r.purchaserId === plannerPurchaserFilter)
+      );
+    }
+    return (myRequests || []).filter(r => r.priceRmb && !r.cargoId && r.status !== "Cancelled");
+  }, [requests, myRequests, isPurchaseManager, currentUser, plannerPurchaserFilter]);
 
   // Step 4: Cargo Pickup sorting
   const rawCpItems = useMemo(() => {
