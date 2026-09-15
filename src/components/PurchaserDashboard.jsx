@@ -621,6 +621,29 @@ export default function PurchaserDashboard({
     return (myRequests || []).filter(r => r.priceRmb && !r.cargoId && r.status !== "Cancelled");
   }, [requests, myRequests, isPurchaseManager, currentUser, plannerPurchaserFilter]);
 
+  // Step 3 Vendors available in dropdown (filtered to selected purchaser, sorted by ready order count)
+  const plannerAvailableVendors = useMemo(() => {
+    const effectivePurchaserId = (isPurchaseManager || currentUser?.role === "superadmin")
+      ? plannerPurchaserFilter
+      : currentUser?.id;
+
+    return (vendors || [])
+      .filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive")
+      .filter(v => {
+        if (!effectivePurchaserId || effectivePurchaserId === "all") return true;
+        const isAssigned = Array.isArray(v.purchaserIds) && v.purchaserIds.includes(effectivePurchaserId);
+        const hasCandidateOrders = plannerCandidateRequests.some(r => r.vendorId === v.id);
+        const hasAnyOrders = (requests || []).some(r => r.purchaserId === effectivePurchaserId && r.vendorId === v.id);
+        return isAssigned || hasCandidateOrders || hasAnyOrders;
+      })
+      .sort((a, b) => {
+        const countA = plannerCandidateRequests.filter(r => r.vendorId === a.id).length;
+        const countB = plannerCandidateRequests.filter(r => r.vendorId === b.id).length;
+        if (countB !== countA) return countB - countA;
+        return (a.name || "").localeCompare(b.name || "");
+      });
+  }, [vendors, isPurchaseManager, currentUser, plannerPurchaserFilter, plannerCandidateRequests, requests]);
+
   // Step 4: Cargo Pickup sorting
   const rawCpItems = useMemo(() => {
     return myRequests.filter(r =>
@@ -1401,46 +1424,19 @@ export default function PurchaserDashboard({
             
             <div className="glass-panel" style={{ padding: "24px", marginBottom: "20px" }}>
               <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
-                <div className="form-group" style={{ maxWidth: "400px", marginBottom: 0, flex: 1 }}>
-                  <label className="form-label">Select Vendor to Plan Shipment</label>
-                  <select 
-                    className="form-control"
-                    value={plannerVendorId}
-                    onChange={e => {
-                      setPlannerVendorId(e.target.value);
-                      setCheckedRequestIds([]);
-                      setPlannerNewQtyMap({});
-                      setExcelNotification(null);
-                    }}
-                  >
-                    <option value="">Select Vendor...</option>
-                    {vendors
-                      .filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive")
-                      .filter(v => (currentUser?.role === "superadmin" || isPurchaseManager) || v.purchaserIds?.includes(currentUser?.id))
-                      .map(v => {
-                        const metrics = calculateVendorMetrics(v, requests);
-                        const scoreText = metrics.scorePending
-                          ? `Rating: Pending — Insufficient History [${metrics.completedCount}/5 completed]`
-                          : `Rating: ${metrics.score}/100`;
-                        return (
-                          <option key={v.id} value={v.id}>
-                            {v.name} ({scoreText})
-                          </option>
-                        );
-                      })}
-                  </select>
-                </div>
-
                 {(isPurchaseManager || currentUser?.role === "superadmin") && (
-                  <div className="form-group" style={{ minWidth: "260px", marginBottom: 0 }}>
-                    <label className="form-label">Filter Orders by Purchaser</label>
+                  <div className="form-group" style={{ minWidth: "280px", marginBottom: 0, flex: "0 1 320px" }}>
+                    <label className="form-label" style={{ fontWeight: 600 }}>Filter Orders by Purchaser</label>
                     <select
                       className="form-control"
                       value={plannerPurchaserFilter}
                       onChange={e => {
                         setPlannerPurchaserFilter(e.target.value);
+                        setPlannerVendorId(""); // Vendor selection is immediately reset to empty
                         setCheckedRequestIds([]);
                         setPlannerNewQtyMap({});
+                        setPlannerNewPriceMap({});
+                        setExcelNotification(null);
                       }}
                       style={{ fontWeight: 600, borderColor: plannerPurchaserFilter !== "all" ? "var(--primary)" : undefined }}
                     >
@@ -1452,6 +1448,33 @@ export default function PurchaserDashboard({
                     </select>
                   </div>
                 )}
+
+                <div className="form-group" style={{ maxWidth: "450px", marginBottom: 0, flex: 1 }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Select Vendor to Plan Shipment</label>
+                  <select 
+                    className="form-control"
+                    value={plannerVendorId}
+                    onChange={e => {
+                      setPlannerVendorId(e.target.value);
+                      setCheckedRequestIds([]);
+                      setPlannerNewQtyMap({});
+                      setPlannerNewPriceMap({});
+                      setExcelNotification(null);
+                    }}
+                  >
+                    <option value="">Select Vendor...</option>
+                    {plannerAvailableVendors.map(v => {
+                      const readyOrders = plannerCandidateRequests.filter(r => r.vendorId === v.id);
+                      const orderCount = readyOrders.length;
+                      const orderQty = readyOrders.reduce((sum, r) => sum + parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10), 0);
+                      return (
+                        <option key={v.id} value={v.id}>
+                          {v.name} ({orderCount} {orderCount === 1 ? "order" : "orders"}, {orderQty.toLocaleString()} Pcs)
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
               </div>
             </div>
 
