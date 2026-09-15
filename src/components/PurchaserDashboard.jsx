@@ -12,6 +12,7 @@ import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
 import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName } from "../utils/formatters";
 import { useModalEscape } from "../utils/useModalEscape";
+import MasterOrderTracker from "./MasterOrderTracker";
 
 // ==================== TOP-LEVEL UTILITIES & METRIC CALCULATION HELPERS ====================
 export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange, placeholder, accentColor = "var(--primary)" }) {
@@ -647,7 +648,7 @@ export default function PurchaserDashboard({
   // Step 4: Cargo Pickup sorting
   const rawCpItems = useMemo(() => {
     return myRequests.filter(r =>
-      r.priceRmb && r.vendorReadyDate && !r.cargoId && r.status !== "Cancelled" &&
+      r.priceRmb && r.vendorReadyDate && !r.cargoPickupDate && r.status !== "Cancelled" &&
       (cpFilter === "" || r.vendorId === cpFilter)
     );
   }, [myRequests, cpFilter]);
@@ -711,11 +712,32 @@ export default function PurchaserDashboard({
       <div style={{ background: "var(--bg-card)", borderBottom: "1px solid var(--border-glass)", padding: "12px 24px" }}>
         <div style={{ maxWidth: "1400px", margin: "0 auto", width: "100%", display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
           
+          {/* Quick Tab: Master Order Tracker Button */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("masterorder")}
+            className={`btn btn-sm ${activeTab === "masterorder" ? "btn-primary" : "btn-secondary"}`}
+            style={{ 
+              display: "flex", 
+              alignItems: "center", 
+              gap: "6px", 
+              fontWeight: 700, 
+              padding: "8px 14px",
+              background: activeTab === "masterorder" ? "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)" : undefined,
+              borderColor: activeTab === "masterorder" ? "#38bdf8" : "rgba(56, 189, 248, 0.4)",
+              color: activeTab === "masterorder" ? "#fff" : "#38bdf8"
+            }}
+            title="Open Master Order Tracker to see all orders item-wise across every stage"
+          >
+            <Layers size={15} /> 📋 Master Orders
+          </button>
+
           {/* Dropdown 1: Workflow Steps & Order Stages */}
           <MdbCustomDropdown
             label="Workflow Steps"
             icon={Layers}
             options={[
+              { value: "masterorder", label: "📋 Master Order Tracker (All Stages)" },
               { value: "pending", label: "Step 1: Commercial & Timeline Specification" },
               { value: "vendorready", label: "Step 2: Vendor Ready" },
               { value: "planner", label: "Step 3: Cargo Consolidation" },
@@ -724,7 +746,7 @@ export default function PurchaserDashboard({
               { value: "all", label: "Received History" },
               { value: "cancelled", label: "Cancelled Orders" }
             ]}
-            value={["pending", "vendorready", "planner", "cargopickup", "shipments", "all", "cancelled"].includes(activeTab) ? activeTab : ""}
+            value={["masterorder", "pending", "vendorready", "planner", "cargopickup", "shipments", "all", "cancelled"].includes(activeTab) ? activeTab : ""}
             onChange={(val) => setActiveTab(val)}
             placeholder="-- Select Workflow Step --"
             accentColor="#0284c7"
@@ -735,6 +757,7 @@ export default function PurchaserDashboard({
             label="Directories & Modules"
             icon={Folder}
             options={[
+              { value: "masterorder", label: "📋 Master Order Tracker" },
               { value: "alerts", label: `Operations Alerts ${totalAlertsCount > 0 ? `(${totalAlertsCount} Alerts)` : ""}` },
               { value: "docs", label: `Pending Documents ${myCargos.filter(c => !c.packingListFile || !c.invoiceFile || !c.cargoReceiptFile).length > 0 ? `(${myCargos.filter(c => !c.packingListFile || !c.invoiceFile || !c.cargoReceiptFile).length} Missing)` : ""}` },
               { value: "vendors", label: "Vendor Registry" },
@@ -854,6 +877,22 @@ export default function PurchaserDashboard({
               </div>
             )}
           </div>
+        )}
+
+        {/* ==================== MASTER ORDER TRACKER TAB ==================== */}
+        {activeTab === "masterorder" && (
+          <MasterOrderTracker
+            requests={requests}
+            vendors={vendors}
+            cargos={cargos}
+            cargoCompanies={cargoCompanies}
+            purchasers={purchasers}
+            currentUser={currentUser}
+            isPurchaseManager={isPurchaseManager}
+            isSearchAdmin={isSearchAdmin}
+            onEditRequest={(r) => setEditingRequest(r)}
+            onNavigateStep={(stepKey) => setActiveTab(stepKey)}
+          />
         )}
 
         {/* ==================== AWAITING DETAILS (STEP 1) TAB ==================== */}
@@ -2684,21 +2723,30 @@ export default function PurchaserDashboard({
 
             {/* Already-ready items */}
             {(() => {
-              const readyDone = myRequests.filter(r => r.priceRmb && r.vendorReadyDate && !r.cargoId && r.status !== "Cancelled" &&
+              const readyDone = myRequests.filter(r => r.priceRmb && r.vendorReadyDate && r.status !== "Cancelled" &&
                 (vrFilter === "" || r.vendorId === vrFilter));
               return readyDone.length > 0 ? (
                 <div style={{ marginTop: "24px" }}>
-                  <h4 style={{ fontSize: "0.95rem", color: "var(--text-muted)", marginBottom: "10px" }}>✓ Already Marked Ready — Awaiting Cargo Assignment ({readyDone.length})</h4>
+                  <h4 style={{ fontSize: "0.95rem", color: "var(--text-muted)", marginBottom: "10px" }}>✓ Already Marked Ready ({readyDone.length})</h4>
                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                     {readyDone.map(r => {
                       const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
                       const isLate = r.vendorEdd && r.vendorReadyDate > r.vendorEdd;
                       return (
-                        <div key={r.id} className="glass-panel" style={{ padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", opacity: 0.75 }}>
+                        <div key={r.id} className="glass-panel" style={{ padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", opacity: 0.85 }}>
                           <div style={{ fontSize: "0.87rem" }}>
                             <strong>{r.model}</strong> — {vName} — Qty: <strong>{r.vendorOrderQuantity || r.orderQuantity}</strong> Pcs
                             {r.vendorOrderQuantity && r.vendorOrderQuantity !== r.orderQuantity && (
                               <span style={{ fontSize: "0.74rem", color: "#38bdf8", marginLeft: "6px" }}>(Req: {r.orderQuantity} Pcs)</span>
+                            )}
+                            {r.cargoId ? (
+                              <span className="badge" style={{ marginLeft: "8px", fontSize: "0.72rem", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)" }}>
+                                📦 Cargo: {r.cargoId}
+                              </span>
+                            ) : (
+                              <span className="badge" style={{ marginLeft: "8px", fontSize: "0.72rem", background: "rgba(251, 191, 36, 0.15)", color: "#fbbf24", border: "1px solid rgba(251, 191, 36, 0.3)" }}>
+                                ⏳ Awaiting Cargo
+                              </span>
                             )}
                           </div>
                           <div style={{ display: "flex", gap: "12px", alignItems: "center", fontSize: "0.82rem" }}>
