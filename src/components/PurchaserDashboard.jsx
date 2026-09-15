@@ -602,10 +602,10 @@ export default function PurchaserDashboard({
   const { items: sortedPendingReqs, copyToastMessage: step1Toast, RenderSortHeader: RenderStep1SortHeader } = useSortableData(step1PendingReqs);
   const allStep1Checked = step1PendingReqs.length > 0 && step1CheckedIds.length === step1PendingReqs.length;
 
-  // Step 2: Vendor Ready sorting
+  // Step 2: Vendor Ready sorting (only orders not yet assigned to cargo)
   const rawVrItems = useMemo(() => {
     return myRequests.filter(r =>
-      r.priceRmb && !r.vendorReadyDate && r.status !== "Cancelled" &&
+      r.priceRmb && !r.vendorReadyDate && !r.cargoId && r.status !== "Cancelled" &&
       (vrFilter === "" || r.vendorId === vrFilter)
     );
   }, [myRequests, vrFilter]);
@@ -2721,13 +2721,13 @@ export default function PurchaserDashboard({
               );
             })()}
 
-            {/* Already-ready items */}
+            {/* Already-ready items awaiting cargo */}
             {(() => {
-              const readyDone = myRequests.filter(r => r.priceRmb && r.vendorReadyDate && r.status !== "Cancelled" &&
+              const readyDone = myRequests.filter(r => r.priceRmb && r.vendorReadyDate && !r.cargoId && r.status !== "Cancelled" &&
                 (vrFilter === "" || r.vendorId === vrFilter));
               return readyDone.length > 0 ? (
                 <div style={{ marginTop: "24px" }}>
-                  <h4 style={{ fontSize: "0.95rem", color: "var(--text-muted)", marginBottom: "10px" }}>✓ Already Marked Ready ({readyDone.length})</h4>
+                  <h4 style={{ fontSize: "0.95rem", color: "var(--text-muted)", marginBottom: "10px" }}>✓ Already Marked Ready — Awaiting Cargo Assignment ({readyDone.length})</h4>
                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                     {readyDone.map(r => {
                       const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
@@ -2738,15 +2738,6 @@ export default function PurchaserDashboard({
                             <strong>{r.model}</strong> — {vName} — Qty: <strong>{r.vendorOrderQuantity || r.orderQuantity}</strong> Pcs
                             {r.vendorOrderQuantity && r.vendorOrderQuantity !== r.orderQuantity && (
                               <span style={{ fontSize: "0.74rem", color: "#38bdf8", marginLeft: "6px" }}>(Req: {r.orderQuantity} Pcs)</span>
-                            )}
-                            {r.cargoId ? (
-                              <span className="badge" style={{ marginLeft: "8px", fontSize: "0.72rem", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)" }}>
-                                📦 Cargo: {r.cargoId}
-                              </span>
-                            ) : (
-                              <span className="badge" style={{ marginLeft: "8px", fontSize: "0.72rem", background: "rgba(251, 191, 36, 0.15)", color: "#fbbf24", border: "1px solid rgba(251, 191, 36, 0.3)" }}>
-                                ⏳ Awaiting Cargo
-                              </span>
                             )}
                           </div>
                           <div style={{ display: "flex", gap: "12px", alignItems: "center", fontSize: "0.82rem" }}>
@@ -3856,7 +3847,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
       advancePayment: advanceNum,
       balancePayment: totalCalc - advanceNum,
       vendorEdd: edd,
-      vendorReadyDate: vendorReadyDate,
+      vendorReadyDate: vendorReadyDate || (cargoId ? (cargos.find(c => c.id === cargoId)?.cargoShippingDate || new Date().toISOString().split("T")[0]) : ""),
       isMaterialRec: isMaterialRec,
       actualReceivedDate: isMaterialRec === "Yes" ? (actualReceivedDate || new Date().toISOString().split("T")[0]) : "",
       cargoId: cargoId,

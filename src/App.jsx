@@ -1111,10 +1111,12 @@ export default function App() {
       const remainingQty = totalVendorQty > pickedQty ? totalVendorQty - pickedQty : 0;
       const customPrice = itemPickedPriceMap[r.id] != null ? parseFloat(itemPickedPriceMap[r.id]) : null;
       const effectivePrice = (customPrice !== null && !isNaN(customPrice) && customPrice >= 0) ? customPrice : (r.priceRmb ? parseFloat(r.priceRmb) : 0);
+      const autoReadyDate = r.vendorReadyDate || cargoDetails.cargoShippingDate || cargoDetails.cargoOrderDate || new Date().toISOString().split("T")[0];
 
       const updatedReq = {
         ...r,
         cargoId: newCargoId,
+        vendorReadyDate: autoReadyDate,
         cargoPickedQty: pickedQty,
         vendorOrderQuantity: pickedQty,
         priceRmb: effectivePrice > 0 ? effectivePrice : r.priceRmb,

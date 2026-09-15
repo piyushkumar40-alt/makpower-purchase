@@ -659,6 +659,23 @@ async function setupPgDatabase() {
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "currency" TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "timestamp" TEXT;
       UPDATE requests SET "timestamp" = "orderDate" WHERE ("timestamp" IS NULL OR "timestamp" = '') AND "orderDate" IS NOT NULL;
+      // Auto-populate vendorReadyDate for orders assigned to cargo if vendorReadyDate is missing
+      try {
+        await pool.query(`
+          UPDATE requests r
+          SET "vendorReadyDate" = COALESCE(
+            NULLIF(c."cargoShippingDate", ''),
+            NULLIF(c."cargoOrderDate", ''),
+            NULLIF(SUBSTRING(r."cargoAssignedAt" FROM 1 FOR 10), ''),
+            TO_CHAR(NOW(), 'YYYY-MM-DD')
+          )
+          FROM cargos c
+          WHERE r."cargoId" = c."id"
+            AND (r."vendorReadyDate" IS NULL OR TRIM(r."vendorReadyDate") = '');
+        `);
+      } catch (vrErr) {
+        console.warn("Notice: vendorReadyDate backfill check:", vrErr.message);
+      }
     `);
 
     await pool.query(`
@@ -2949,6 +2966,9 @@ app.get("/api/crm/dispatches", async (req, res) => {
 // 2. POST /api/requests - Adds or Updates requests
 app.post("/api/requests", async (req, res) => {
   const r = req.body;
+  if (r.cargoId && (!r.vendorReadyDate || !r.vendorReadyDate.trim())) {
+    r.vendorReadyDate = r.cargoShippingDate || (r.cargoAssignedAt ? r.cargoAssignedAt.split("T")[0] : new Date().toISOString().split("T")[0]);
+  }
   isOrderDataDirty = true;
   if (isPg) {
     try {
@@ -3042,6 +3062,12 @@ app.post("/api/requests/batch", async (req, res) => {
   if (!Array.isArray(reqs)) {
     return res.status(400).json({ error: "Body must be an array." });
   }
+
+  reqs.forEach(r => {
+    if (r.cargoId && (!r.vendorReadyDate || !r.vendorReadyDate.trim())) {
+      r.vendorReadyDate = r.cargoShippingDate || (r.cargoAssignedAt ? r.cargoAssignedAt.split("T")[0] : new Date().toISOString().split("T")[0]);
+    }
+  });
 
   if (isPg) {
     try {
