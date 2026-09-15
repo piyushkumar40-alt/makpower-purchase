@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Plus, X, Sparkles, Building2, Truck, Package, UserPlus, Tag, CheckCircle2, Loader2 } from "lucide-react";
 import { useModalEscape } from "../utils/useModalEscape";
 
