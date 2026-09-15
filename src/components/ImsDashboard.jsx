@@ -3,7 +3,7 @@ import {
   Package, TrendingUp, TrendingDown, Layers, Search, Filter, Download, 
   Plus, UploadCloud, AlertTriangle, CheckCircle2, RefreshCw, X, Edit2, 
   Trash2, FileText, ArrowUpDown, Calendar, Building2, Tag, ShieldAlert,
-  ChevronRight, Database, Check, Eye, History
+  ChevronRight, Database, Check, Eye, History, User, Hash, Globe
 } from "lucide-react";
 import Pagination, { SmartSelectionBar } from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
@@ -181,7 +181,7 @@ export default function ImsDashboard({
 
   // Filter States for Ledger - Multi-Search with Field Target Scope (Party, Category, Item, Location, ID, All)
   const [searchFilters, setSearchFilters] = useState([{ query: "", scope: "all", isExact: false }]);
-  const [activeItemDropdownIdx, setActiveItemDropdownIdx] = useState(null);
+  const [activeSearchDropdownIdx, setActiveSearchDropdownIdx] = useState(null);
   const searchContainerRef = useRef(null);
 
   // Helper to detect Raw Material (RM) so we strictly show ONLY Finished Goods (FG) in this IMS ledger dropdown
@@ -226,11 +226,126 @@ export default function ImsDashboard({
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [items, effectiveTransactions, imsItemStocks]);
 
-  // Close item dropdown when clicking outside
+  // Distinct Orders for order autocomplete dropdown and exact matching
+  const distinctOrderOptions = useMemo(() => {
+    const set = new Set();
+    (effectiveTransactions || []).forEach(tx => {
+      const ord = extractOrderNo(tx) || (tx.orderNo || "").trim();
+      if (ord && ord !== "—" && ord.toLowerCase() !== "unknown" && ord.length > 1) {
+        set.add(ord);
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b)).map(ord => ({
+      value: ord,
+      cleanValue: ord.toLowerCase().replace(/\s+/g, ' ')
+    }));
+  }, [effectiveTransactions]);
+
+  // Distinct Parties found across all transactions for quick dropdown filter (excluding Opening Stock)
+  const distinctParties = useMemo(() => {
+    const set = new Set();
+    effectiveTransactions.forEach(tx => {
+      if (isOpeningStockTransaction(tx)) return;
+      const p = (tx.partyName || tx.party || "").trim();
+      if (p && p !== "—" && !p.toLowerCase().includes("opening stock")) set.add(p);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [effectiveTransactions]);
+
+  // Distinct Parties for party autocomplete dropdown (includes Ledger parties, CRM parties, and vendors)
+  const distinctPartyOptions = useMemo(() => {
+    const map = new Map();
+    const add = (partyName, type = "") => {
+      const p = (partyName || "").trim();
+      if (!p || p === "—" || p.toLowerCase().includes("opening stock") || p.toLowerCase() === "unknown") return;
+      const key = p.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, {
+          value: p,
+          cleanValue: key.replace(/\s+/g, ' '),
+          type: type || "Party"
+        });
+      }
+    };
+
+    distinctParties.forEach(p => add(p, "Ledger"));
+    (crmParties || []).forEach(cp => add(cp.name || cp.partyName, cp.type || "CRM"));
+    (vendors || []).forEach(v => add(v.name || v.vendorName, "Vendor"));
+
+    return Array.from(map.values()).sort((a, b) => a.value.localeCompare(b.value));
+  }, [distinctParties, crmParties, vendors]);
+
+  // Distinct Categories found in item catalog for dropdown filter
+  const distinctCategories = useMemo(() => {
+    const set = new Set();
+    (items || []).forEach(it => {
+      const c = (it.category || "").trim();
+      if (c && c !== "General" && c !== "Unspecified" && c.toLowerCase() !== "other") set.add(c);
+    });
+    const list = Array.from(set).sort((a, b) => a.localeCompare(b));
+    list.push("Other");
+    return list;
+  }, [items]);
+
+  // Distinct Categories for category autocomplete dropdown
+  const distinctCategoryOptions = useMemo(() => {
+    const set = new Set(distinctCategories);
+    (effectiveTransactions || []).forEach(tx => {
+      const c = (tx.category || "").trim();
+      if (c && c !== "—" && c !== "General" && c !== "Unspecified") set.add(c);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b)).map(cat => ({
+      value: cat,
+      cleanValue: cat.toLowerCase().replace(/\s+/g, ' ')
+    }));
+  }, [distinctCategories, effectiveTransactions]);
+
+  // Distinct Locations for location autocomplete dropdown
+  const distinctLocationOptions = useMemo(() => {
+    const set = new Set(["Delhi", "Mumbai"]);
+    (effectiveTransactions || []).forEach(tx => {
+      const loc = (tx.location || tx.godown || tx.warehouse || "").trim();
+      if (loc && loc !== "—") {
+        const formatted = loc.charAt(0).toUpperCase() + loc.slice(1);
+        set.add(formatted);
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b)).map(loc => ({
+      value: loc,
+      cleanValue: loc.toLowerCase().replace(/\s+/g, ' ')
+    }));
+  }, [effectiveTransactions]);
+
+  // Distinct Item SKU IDs for ID autocomplete dropdown (strictly FG items)
+  const distinctIdOptions = useMemo(() => {
+    const map = new Map();
+    const add = (id, itemName, category, itemType) => {
+      if (id === undefined || id === null) return;
+      const rawId = String(id).trim();
+      if (!rawId || rawId === "—" || rawId === "0" || rawId.toLowerCase() === "undefined" || rawId.toLowerCase() === "null") return;
+      if (isRawMaterialItem(itemName, rawId, itemType, category)) return;
+      const key = rawId.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, {
+          value: rawId,
+          cleanValue: key.replace(/\s+/g, ' '),
+          itemName: (itemName || "").trim()
+        });
+      }
+    };
+
+    (items || []).forEach(it => add(it.id, it.name, it.category, it.itemType));
+    (effectiveTransactions || []).forEach(tx => add(tx.itemId, tx.itemName, tx.category, tx.itemType));
+    (imsItemStocks || []).forEach(s => add(s.itemId || s.id, s.itemName || s.name, s.category, s.itemType));
+
+    return Array.from(map.values()).sort((a, b) => a.value.localeCompare(b.value, undefined, { numeric: true }));
+  }, [items, effectiveTransactions, imsItemStocks]);
+
+  // Close search dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(e.target)) {
-        setActiveItemDropdownIdx(null);
+        setActiveSearchDropdownIdx(null);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -241,44 +356,59 @@ export default function ImsDashboard({
     setSearchFilters(prev => [...prev, { query: "", scope: "all", isExact: false }]);
   };
 
+  const checkIsKnownExact = (scope, cleanVal) => {
+    if (!cleanVal) return false;
+    if (scope === "item") return distinctItemOptions.some(it => it.cleanName === cleanVal);
+    if (scope === "order") return distinctOrderOptions.some(o => o.cleanValue === cleanVal);
+    if (scope === "category") return distinctCategoryOptions.some(c => c.cleanValue === cleanVal);
+    if (scope === "party") return distinctPartyOptions.some(p => p.cleanValue === cleanVal);
+    if (scope === "location") return distinctLocationOptions.some(l => l.cleanValue === cleanVal);
+    if (scope === "id") return distinctIdOptions.some(i => i.cleanValue === cleanVal);
+    // scope === "all"
+    return distinctItemOptions.some(it => it.cleanName === cleanVal) ||
+      distinctPartyOptions.some(p => p.cleanValue === cleanVal) ||
+      distinctOrderOptions.some(o => o.cleanValue === cleanVal) ||
+      distinctCategoryOptions.some(c => c.cleanValue === cleanVal) ||
+      distinctIdOptions.some(i => i.cleanValue === cleanVal) ||
+      distinctLocationOptions.some(l => l.cleanValue === cleanVal);
+  };
+
   const handleUpdateSearchQuery = (index, val) => {
     const cleanVal = val.trim().toLowerCase().replace(/\s+/g, ' ');
     setSearchFilters(prev => {
       const next = [...prev];
-      const isKnownExact = next[index].scope === "item" && distinctItemOptions.some(it => it.cleanName === cleanVal);
+      const scope = next[index]?.scope || "all";
+      const isKnownExact = checkIsKnownExact(scope, cleanVal);
       next[index] = { ...next[index], query: val, isExact: isKnownExact };
       return next;
     });
-    if (searchFilters[index]?.scope === "item") {
-      setActiveItemDropdownIdx(index);
-    }
+    setActiveSearchDropdownIdx(index);
   };
 
-  const handleSelectDropdownItem = (index, item) => {
+  const handleSelectDropdownItem = (index, value, targetScope = null) => {
     setSearchFilters(prev => {
       const next = [...prev];
+      const newScope = targetScope || next[index].scope;
       next[index] = {
         ...next[index],
-        query: item.name,
+        query: value,
+        scope: newScope,
         isExact: true
       };
       return next;
     });
-    setActiveItemDropdownIdx(null);
+    setActiveSearchDropdownIdx(null);
   };
 
   const handleSetSearchScope = (index, scope) => {
     setSearchFilters(prev => {
       const next = [...prev];
-      const isKnownExact = scope === "item" && distinctItemOptions.some(it => it.cleanName === (next[index].query || "").trim().toLowerCase().replace(/\s+/g, ' '));
+      const cleanVal = (next[index].query || "").trim().toLowerCase().replace(/\s+/g, ' ');
+      const isKnownExact = checkIsKnownExact(scope, cleanVal);
       next[index] = { ...next[index], scope, isExact: isKnownExact };
       return next;
     });
-    if (scope === "item") {
-      setActiveItemDropdownIdx(index);
-    } else {
-      setActiveItemDropdownIdx(null);
-    }
+    setActiveSearchDropdownIdx(index);
   };
 
   const handleRemoveSearchQuery = (index) => {
@@ -286,8 +416,8 @@ export default function ImsDashboard({
       if (prev.length <= 1) return [{ query: "", scope: "all", isExact: false }];
       return prev.filter((_, i) => i !== index);
     });
-    if (activeItemDropdownIdx === index) {
-      setActiveItemDropdownIdx(null);
+    if (activeSearchDropdownIdx === index) {
+      setActiveSearchDropdownIdx(null);
     }
   };
 
@@ -305,45 +435,29 @@ export default function ImsDashboard({
       const q = rawQ.toLowerCase().replace(/\s+/g, ' ');
       if (!q) return;
 
-      // In Item scope: exact match if explicitly chosen from dropdown, quoted, or equals an exact item model
-      const isItemScope = (sf.scope === "item");
-      const matchesKnownItemExact = isItemScope && distinctItemOptions.some(it => it.cleanName === q);
-      const exact = Boolean(sf.isExact) || hasQuotes || matchesKnownItemExact;
+      const scope = sf.scope || "all";
+      const matchesKnownExact = checkIsKnownExact(scope, q);
+      const exact = Boolean(sf.isExact) || hasQuotes || matchesKnownExact;
 
       if (!exact && q.includes(",")) {
         q.split(",").forEach(part => {
           const trimmed = part.trim().replace(/\s+/g, ' ');
-          if (trimmed) list.push({ query: trimmed, scope: sf.scope || "all", isExact: false });
+          if (trimmed) list.push({ query: trimmed, scope, isExact: false });
         });
       } else {
-        list.push({ query: q, scope: sf.scope || "all", isExact: exact });
+        list.push({ query: q, scope, isExact: exact });
       }
     });
     return list;
-  }, [searchFilters, distinctItemOptions]);
-
-  // Distinct Parties found across all transactions for quick dropdown filter (excluding Opening Stock)
-  const distinctParties = useMemo(() => {
-    const set = new Set();
-    effectiveTransactions.forEach(tx => {
-      if (isOpeningStockTransaction(tx)) return;
-      const p = (tx.partyName || tx.party || "").trim();
-      if (p && p !== "—" && !p.toLowerCase().includes("opening stock")) set.add(p);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [effectiveTransactions]);
-
-  // Distinct Categories found in item catalog for dropdown filter
-  const distinctCategories = useMemo(() => {
-    const set = new Set();
-    (items || []).forEach(it => {
-      const c = (it.category || "").trim();
-      if (c && c !== "General" && c !== "Unspecified" && c.toLowerCase() !== "other") set.add(c);
-    });
-    const list = Array.from(set).sort((a, b) => a.localeCompare(b));
-    list.push("Other");
-    return list;
-  }, [items]);
+  }, [
+    searchFilters, 
+    distinctItemOptions, 
+    distinctOrderOptions, 
+    distinctCategoryOptions, 
+    distinctPartyOptions, 
+    distinctLocationOptions, 
+    distinctIdOptions
+  ]);
 
   // Fast Item Catalog Map for category & item metadata lookups
   const itemCatalogMap = useMemo(() => {
@@ -1858,14 +1972,10 @@ export default function ImsDashboard({
                         }
                         value={sf.query}
                         onChange={e => handleUpdateSearchQuery(idx, e.target.value)}
-                        onFocus={() => {
-                          if (sf.scope === "item") {
-                            setActiveItemDropdownIdx(idx);
-                          }
-                        }}
+                        onFocus={() => setActiveSearchDropdownIdx(idx)}
                         onKeyDown={e => {
                           if (e.key === "Escape") {
-                            setActiveItemDropdownIdx(null);
+                            setActiveSearchDropdownIdx(null);
                           }
                         }}
                         style={{ 
@@ -1876,7 +1986,7 @@ export default function ImsDashboard({
                           fontSize: "0.85rem",
                           background: "var(--bg-input, var(--bg-card, rgba(255, 255, 255, 0.08)))",
                           color: "var(--text-main, inherit)",
-                          border: (sf.isExact && sf.scope === "item") ? "1px solid #38bdf8" : undefined
+                          border: sf.isExact ? "1.5px solid #38bdf8" : undefined
                         }}
                       />
                       {(sf.query || searchFilters.length > 1) && (
@@ -1900,10 +2010,149 @@ export default function ImsDashboard({
                         </button>
                       )}
 
-                      {/* Item Autocomplete Dropdown when Item scope is selected */}
-                      {activeItemDropdownIdx === idx && sf.scope === "item" && (() => {
+                      {/* Universal Autocomplete Dropdown applicable for all scopes (All, Order, Category, Party, Item, Location, ID) */}
+                      {activeSearchDropdownIdx === idx && (() => {
                         const q = (sf.query || "").trim().toLowerCase().replace(/\s+/g, ' ');
-                        const matchingOptions = distinctItemOptions.filter(it => !q || it.cleanName.includes(q)).slice(0, 40);
+                        const scope = sf.scope || "all";
+
+                        let title = "";
+                        let defaultIcon = Package;
+                        let list = [];
+                        let emptyMsg = "";
+
+                        if (scope === "item") {
+                          title = "Finished Goods (FG) Items";
+                          defaultIcon = Package;
+                          const matching = distinctItemOptions.filter(it => !q || it.cleanName.includes(q)).slice(0, 40);
+                          list = matching.map(it => ({
+                            key: "it_" + it.name,
+                            value: it.name,
+                            label: it.name,
+                            secondary: it.category,
+                            scope: "item",
+                            icon: Package
+                          }));
+                          emptyMsg = `No FG items found matching "${sf.query}"`;
+                        } else if (scope === "order") {
+                          title = "Order Numbers";
+                          defaultIcon = FileText;
+                          const matching = distinctOrderOptions.filter(o => !q || o.cleanValue.includes(q)).slice(0, 40);
+                          list = matching.map(o => ({
+                            key: "or_" + o.value,
+                            value: o.value,
+                            label: o.value,
+                            secondary: "Order",
+                            scope: "order",
+                            icon: FileText
+                          }));
+                          emptyMsg = `No order numbers found matching "${sf.query}"`;
+                        } else if (scope === "category") {
+                          title = "Item Categories";
+                          defaultIcon = Tag;
+                          const matching = distinctCategoryOptions.filter(c => !q || c.cleanValue.includes(q)).slice(0, 30);
+                          list = matching.map(c => ({
+                            key: "cat_" + c.value,
+                            value: c.value,
+                            label: c.value,
+                            secondary: "Category",
+                            scope: "category",
+                            icon: Tag
+                          }));
+                          emptyMsg = `No categories found matching "${sf.query}"`;
+                        } else if (scope === "party") {
+                          title = "Parties & Customers";
+                          defaultIcon = User;
+                          const matching = distinctPartyOptions.filter(p => !q || p.cleanValue.includes(q)).slice(0, 40);
+                          list = matching.map(p => ({
+                            key: "pa_" + p.value,
+                            value: p.value,
+                            label: p.value,
+                            secondary: p.type || "Party",
+                            scope: "party",
+                            icon: User
+                          }));
+                          emptyMsg = `No parties found matching "${sf.query}"`;
+                        } else if (scope === "location") {
+                          title = "Warehouse Locations";
+                          defaultIcon = Building2;
+                          const matching = distinctLocationOptions.filter(l => !q || l.cleanValue.includes(q));
+                          list = matching.map(l => ({
+                            key: "loc_" + l.value,
+                            value: l.value,
+                            label: l.value,
+                            secondary: "Warehouse",
+                            scope: "location",
+                            icon: Building2
+                          }));
+                          emptyMsg = `No warehouse locations found matching "${sf.query}"`;
+                        } else if (scope === "id") {
+                          title = "Item SKU IDs (FG)";
+                          defaultIcon = Hash;
+                          const matching = distinctIdOptions.filter(i => !q || i.cleanValue.includes(q) || (i.itemName && i.itemName.toLowerCase().includes(q))).slice(0, 40);
+                          list = matching.map(i => ({
+                            key: "id_" + i.value,
+                            value: i.value,
+                            label: i.value,
+                            secondary: i.itemName,
+                            scope: "id",
+                            icon: Hash
+                          }));
+                          emptyMsg = `No item IDs found matching "${sf.query}"`;
+                        } else {
+                          // scope === "all"
+                          title = "Search Suggestions";
+                          defaultIcon = Globe;
+                          const itemMatches = distinctItemOptions.filter(it => !q || it.cleanName.includes(q)).slice(0, 8).map(it => ({
+                            key: "it_" + it.name,
+                            value: it.name,
+                            label: it.name,
+                            secondary: it.category || "Item",
+                            badge: "Item",
+                            scope: "item",
+                            icon: Package
+                          }));
+                          const partyMatches = distinctPartyOptions.filter(p => !q || p.cleanValue.includes(q)).slice(0, 6).map(p => ({
+                            key: "pa_" + p.value,
+                            value: p.value,
+                            label: p.value,
+                            secondary: p.type || "Party",
+                            badge: "Party",
+                            scope: "party",
+                            icon: User
+                          }));
+                          const orderMatches = distinctOrderOptions.filter(o => !q || o.cleanValue.includes(q)).slice(0, 5).map(o => ({
+                            key: "or_" + o.value,
+                            value: o.value,
+                            label: o.value,
+                            secondary: "Order",
+                            badge: "Order",
+                            scope: "order",
+                            icon: FileText
+                          }));
+                          const catMatches = distinctCategoryOptions.filter(c => !q || c.cleanValue.includes(q)).slice(0, 4).map(c => ({
+                            key: "cat_" + c.value,
+                            value: c.value,
+                            label: c.value,
+                            secondary: "Category",
+                            badge: "Category",
+                            scope: "category",
+                            icon: Tag
+                          }));
+                          const idMatches = distinctIdOptions.filter(i => !q || i.cleanValue.includes(q)).slice(0, 4).map(i => ({
+                            key: "id_" + i.value,
+                            value: i.value,
+                            label: i.value,
+                            secondary: i.itemName,
+                            badge: "ID",
+                            scope: "id",
+                            icon: Hash
+                          }));
+
+                          list = [...itemMatches, ...partyMatches, ...orderMatches, ...catMatches, ...idMatches];
+                          emptyMsg = `No suggestions found matching "${sf.query}"`;
+                        }
+
+                        const HeaderIcon = defaultIcon;
 
                         return (
                           <div
@@ -1913,13 +2162,13 @@ export default function ImsDashboard({
                               left: 0,
                               right: 0,
                               minWidth: "320px",
-                              maxWidth: "520px",
+                              maxWidth: "540px",
                               zIndex: 99999,
                               background: "var(--bg-card, #ffffff)",
                               border: "1px solid var(--border-glass, #cbd5e1)",
                               borderRadius: "12px",
-                              boxShadow: "0 18px 40px -6px rgba(15, 23, 42, 0.2), 0 4px 14px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(2, 132, 199, 0.15)",
-                              maxHeight: "320px",
+                              boxShadow: "0 18px 40px -6px rgba(15, 23, 42, 0.25), 0 4px 14px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(2, 132, 199, 0.15)",
+                              maxHeight: "340px",
                               overflowY: "auto",
                               padding: "8px",
                               backdropFilter: "blur(20px)",
@@ -1927,15 +2176,15 @@ export default function ImsDashboard({
                             }}
                           >
                             <div style={{
-                              padding: "8px 10px 8px 10px",
+                              padding: "8px 10px",
                               marginBottom: "4px",
                               borderBottom: "1px solid var(--border-glass, rgba(0, 0, 0, 0.08))",
                               display: "flex",
                               justifyContent: "space-between",
                               alignItems: "center"
                             }}>
-                              <span style={{ fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--primary, #0284c7)" }}>
-                                Finished Goods (FG) Items
+                              <span style={{ fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--primary, #0284c7)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                <HeaderIcon size={13} /> {title}
                               </span>
                               <span style={{
                                 fontSize: "0.68rem",
@@ -1945,23 +2194,24 @@ export default function ImsDashboard({
                                 background: "rgba(2, 132, 199, 0.1)",
                                 color: "var(--primary, #0284c7)"
                               }}>
-                                {matchingOptions.length} item{matchingOptions.length === 1 ? "" : "s"}
+                                {list.length} suggestion{list.length === 1 ? "" : "s"}
                               </span>
                             </div>
 
-                            {matchingOptions.length === 0 ? (
+                            {list.length === 0 ? (
                               <div style={{ padding: "18px 12px", textAlign: "center", color: "var(--text-muted, #64748b)", fontSize: "0.84rem" }}>
-                                No FG items found matching "{sf.query}"
+                                {emptyMsg}
                               </div>
                             ) : (
-                              matchingOptions.map(it => {
-                                const isSelected = sf.query.trim().toLowerCase() === it.cleanName;
+                              list.map(opt => {
+                                const ItemIcon = opt.icon || HeaderIcon;
+                                const isSelected = (sf.query || "").trim().toLowerCase() === (opt.value || "").trim().toLowerCase();
                                 return (
                                   <div
-                                    key={it.name}
+                                    key={opt.key || opt.value}
                                     onMouseDown={(e) => {
                                       e.preventDefault();
-                                      handleSelectDropdownItem(idx, it);
+                                      handleSelectDropdownItem(idx, opt.value, opt.scope);
                                     }}
                                     style={{
                                       padding: "9px 12px",
@@ -1988,7 +2238,7 @@ export default function ImsDashboard({
                                     }}
                                   >
                                     <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0, flex: 1 }}>
-                                      <Package size={16} style={{ color: isSelected ? "var(--primary, #0284c7)" : "var(--text-muted, #64748b)", flexShrink: 0 }} />
+                                      <ItemIcon size={16} style={{ color: isSelected ? "var(--primary, #0284c7)" : "var(--text-muted, #64748b)", flexShrink: 0 }} />
                                       <span style={{
                                         fontWeight: isSelected ? 700 : 600,
                                         fontSize: "0.88rem",
@@ -1997,12 +2247,25 @@ export default function ImsDashboard({
                                         textOverflow: "ellipsis",
                                         whiteSpace: "nowrap"
                                       }}>
-                                        {it.name}
+                                        {opt.label}
                                       </span>
                                     </div>
 
                                     <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
-                                      {it.category && (
+                                      {opt.badge && (
+                                        <span style={{
+                                          fontSize: "0.68rem",
+                                          fontWeight: 700,
+                                          padding: "1px 6px",
+                                          borderRadius: "4px",
+                                          background: "rgba(99, 102, 241, 0.1)",
+                                          color: "#6366f1",
+                                          border: "1px solid rgba(99, 102, 241, 0.2)"
+                                        }}>
+                                          {opt.badge}
+                                        </span>
+                                      )}
+                                      {opt.secondary && (
                                         <span style={{
                                           fontSize: "0.7rem",
                                           fontWeight: 600,
@@ -2010,9 +2273,13 @@ export default function ImsDashboard({
                                           borderRadius: "6px",
                                           background: "rgba(2, 132, 199, 0.08)",
                                           color: "var(--text-muted, #475569)",
-                                          border: "1px solid rgba(2, 132, 199, 0.14)"
+                                          border: "1px solid rgba(2, 132, 199, 0.14)",
+                                          maxWidth: "160px",
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          whiteSpace: "nowrap"
                                         }}>
-                                          {it.category}
+                                          {opt.secondary}
                                         </span>
                                       )}
                                       {isSelected && (
@@ -2272,7 +2539,7 @@ export default function ImsDashboard({
                 <button
                   onClick={() => {
                     setSearchFilters([{ query: "", scope: "all", isExact: false }]);
-                    setActiveItemDropdownIdx(null);
+                    setActiveSearchDropdownIdx(null);
                     setSelectedPartyFilter("all");
                     setStartDate("");
                     setEndDate("");
