@@ -36,14 +36,16 @@ export function LoadingProvider({ children }) {
   const [toasts, setToasts] = useState([]); // [{ id, message, type: 'success'|'error'|'info', title }]
 
   const delayTimerRef = useRef(null);
-  const tickerIntervalRef = useRef(null);
+  const tickerTimeoutRef = useRef(null);
+  const watchdogTimerRef = useRef(null);
   const activeRef = useRef(false);
 
   // Clear timers on unmount
   useEffect(() => {
     return () => {
       if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
-      if (tickerIntervalRef.current) clearInterval(tickerIntervalRef.current);
+      if (tickerTimeoutRef.current) clearTimeout(tickerTimeoutRef.current);
+      if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
     };
   }, []);
 
@@ -84,35 +86,11 @@ export function LoadingProvider({ children }) {
     }
   }, []);
 
-  const startLoading = useCallback((taskTitle = "Processing...", initialDetail = "", initialPercent = 1) => {
-    if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
-    if (tickerIntervalRef.current) clearInterval(tickerIntervalRef.current);
-
-    activeRef.current = true;
-    setActive(true);
-    setVisible(true);
-    setIsCompleted(false);
-    setProgress(Math.max(1, initialPercent));
-    setTitle(taskTitle);
-    setDetail(initialDetail || "Please wait while operation completes...");
-
-    // Smooth, realistic progression from initialPercent up to 96%
-    tickerIntervalRef.current = setInterval(() => {
-      setProgress(prev => {
-        if (!activeRef.current) return prev;
-        if (prev < 30) return prev + 2;
-        if (prev < 65) return prev + 1;
-        if (prev < 88) return prev + 1;
-        if (prev < 96) return Math.min(96, prev + 1);
-        return prev;
-      });
-    }, 85);
-  }, []);
-
   const finishLoading = useCallback((completedMessage = null, showPopup = false) => {
     activeRef.current = false;
     if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
-    if (tickerIntervalRef.current) clearInterval(tickerIntervalRef.current);
+    if (tickerTimeoutRef.current) clearTimeout(tickerTimeoutRef.current);
+    if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
 
     setProgress(100);
     setIsCompleted(true);
@@ -127,6 +105,63 @@ export function LoadingProvider({ children }) {
       }
     }, 450);
   }, [showSuccessToast]);
+
+  const startLoading = useCallback((taskTitle = "Loading Data", initialDetail = "", initialPercent = 1) => {
+    if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
+    if (tickerTimeoutRef.current) clearTimeout(tickerTimeoutRef.current);
+    if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
+
+    activeRef.current = true;
+    setActive(true);
+    setVisible(true);
+    setIsCompleted(false);
+    const startVal = Math.max(1, initialPercent);
+    setProgress(startVal);
+    setTitle("Loading Data");
+    setDetail("");
+
+    // Realistic progressive pacing: starts quick, then gracefully paces itself
+    // so it never rushes to 96% and freezes
+    let current = startVal;
+    const scheduleNext = () => {
+      if (!activeRef.current) return;
+      let delay = 120;
+      let step = 1;
+
+      if (current < 35) {
+        step = 2;
+        delay = 100;
+      } else if (current < 60) {
+        step = 1;
+        delay = 160;
+      } else if (current < 78) {
+        step = 1;
+        delay = 320;
+      } else if (current < 88) {
+        step = 1;
+        delay = 600;
+      } else if (current < 94) {
+        step = 1;
+        delay = 1400;
+      } else {
+        // Capped at 94% until real finishLoading or updateProgress is called
+        return;
+      }
+
+      current = Math.min(94, current + step);
+      setProgress(current);
+      tickerTimeoutRef.current = setTimeout(scheduleNext, delay);
+    };
+
+    tickerTimeoutRef.current = setTimeout(scheduleNext, 120);
+
+    // Watchdog: If operation exceeds 12 seconds without resolution, auto-complete gracefully
+    watchdogTimerRef.current = setTimeout(() => {
+      if (activeRef.current) {
+        finishLoading();
+      }
+    }, 12000);
+  }, [finishLoading]);
 
   const withLoading = useCallback(async (asyncFn, { title = "Processing...", detail = "", total = null, successMsg = "Saved successfully!" } = {}) => {
     startLoading(title, detail, total ? 5 : 10);
@@ -356,29 +391,24 @@ export function LoadingProvider({ children }) {
               )}
             </div>
 
-            <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", marginBottom: "6px" }}>
-                <h3 style={{ fontSize: "1.25rem", fontWeight: 800, color: "#fff", margin: 0 }}>
-                  {isCompleted ? "Operation Complete" : title}
-                </h3>
-                <span 
-                  style={{
-                    fontSize: "1.1rem",
-                    fontWeight: 900,
-                    color: isCompleted ? "#34d399" : "#38bdf8",
-                    fontFamily: "monospace",
-                    background: isCompleted ? "rgba(16, 185, 129, 0.15)" : "rgba(56, 189, 248, 0.15)",
-                    padding: "2px 8px",
-                    borderRadius: "6px",
-                    border: `1px solid ${isCompleted ? "rgba(16, 185, 129, 0.3)" : "rgba(56, 189, 248, 0.3)"}`
-                  }}
-                >
-                  {progress}%
-                </span>
-              </div>
-              <p style={{ fontSize: "0.88rem", color: "var(--text-muted)", margin: 0, minHeight: "22px" }}>
-                {detail}
-              </p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
+              <h3 style={{ fontSize: "1.3rem", fontWeight: 800, color: "#fff", margin: 0 }}>
+                {isCompleted ? "Data Loaded" : "Loading Data"}
+              </h3>
+              <span 
+                style={{
+                  fontSize: "1.1rem",
+                  fontWeight: 900,
+                  color: isCompleted ? "#34d399" : "#38bdf8",
+                  fontFamily: "monospace",
+                  background: isCompleted ? "rgba(16, 185, 129, 0.15)" : "rgba(56, 189, 248, 0.15)",
+                  padding: "2px 10px",
+                  borderRadius: "6px",
+                  border: `1px solid ${isCompleted ? "rgba(16, 185, 129, 0.3)" : "rgba(56, 189, 248, 0.3)"}`
+                }}
+              >
+                {progress}%
+              </span>
             </div>
 
             <div 
@@ -407,11 +437,6 @@ export function LoadingProvider({ children }) {
                   transition: "width 0.25s ease-out, background 0.3s ease"
                 }}
               />
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.75rem", color: "rgba(255, 255, 255, 0.45)" }}>
-              <Sparkles size={12} style={{ color: "#38bdf8" }} />
-              <span>Processing your request securely in real-time</span>
             </div>
 
           </div>

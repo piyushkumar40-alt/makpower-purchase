@@ -259,7 +259,7 @@ export default function App() {
     setLoadingModules(prev => ({ ...prev, [moduleKey]: true }));
     const isIms = moduleKey === TRACKABLE_MODULES.IMS_TRANSACTIONS || moduleKey === "imsTransactions";
     if (!isSilent && isIms) {
-      startLoading("Loading Stock Movement Ledger...", "Syncing real-time stock movements and warehouse balances from PostgreSQL database...", 12);
+      startLoading("Loading Data", "", 12);
     }
 
     const pullPromise = (async () => {
@@ -566,25 +566,27 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
 
-    // Safety timeout: only fallback after 8 seconds if backend is unresponsive
+    // Safety timeout: auto-resolve and dismiss loading modal after 10 seconds if backend is slow
     const safetyTimer = setTimeout(() => {
-      if (isMounted) {
-        setLoading(false);
-        setInitialLoadComplete(true);
-      }
-    }, 8000);
+      setLoading(false);
+      setInitialLoadComplete(true);
+      finishLoading();
+    }, 10000);
 
     async function loadData(isInterval = false) {
       try {
         if (!isInterval) {
-          startLoading("Loading Application Data...", "Connecting to cloud PostgreSQL database...", 10);
+          startLoading("Loading Data", "", 10);
         }
         const q = currentUser ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(currentUser.role)}&userName=${encodeURIComponent(currentUser.name || '')}` : "";
         const res = await fetch(`/api/state${q}`);
         if (!isInterval) {
-          updateProgress(65, "Synchronizing stock ledger, parties, and master records...");
+          updateProgress(75);
         }
         const data = await res.json();
+        if (!isInterval) {
+          updateProgress(90);
+        }
         if (!isMounted) return;
 
         if (Array.isArray(data.users) && data.users.length > 0) setUsers(data.users.map(normalizeUserData));
@@ -672,11 +674,11 @@ export default function App() {
       } catch (err) {
         console.error("Failed to load state from database API:", err);
       } finally {
-        if (isMounted && !isInterval) {
-          clearTimeout(safetyTimer);
-          setLoading(false);
-          setInitialLoadComplete(true);
-          finishLoading("Application data synchronized successfully!");
+        clearTimeout(safetyTimer);
+        setLoading(false);
+        setInitialLoadComplete(true);
+        if (!isInterval) {
+          finishLoading();
         }
       }
     }

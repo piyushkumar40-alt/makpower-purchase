@@ -104,7 +104,7 @@ export default function ImsDashboard({
   const handleLoadHistory = async () => {
     setIsFetchingHistory(true);
     setHistoryLoadedSuccess(false);
-    startLoading("Loading Complete Stock History...", "Querying all historical inventory transactions from PostgreSQL...", 10);
+    startLoading("Loading Data", "", 10);
     try {
       if (onFetchFullHistory) {
         await onFetchFullHistory();
