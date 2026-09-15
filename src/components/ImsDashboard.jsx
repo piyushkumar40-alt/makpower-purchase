@@ -167,34 +167,97 @@ export default function ImsDashboard({
   const [activeTab, setActiveTab] = useState("ledger");
 
   // Filter States for Ledger - Multi-Search with Field Target Scope (Party, Category, Item, Location, ID, All)
-  const [searchFilters, setSearchFilters] = useState([{ query: "", scope: "all" }]);
-  const [isExactMatch, setIsExactMatch] = useState(false);
+  const [searchFilters, setSearchFilters] = useState([{ query: "", scope: "all", isExact: false }]);
+  const [activeItemDropdownIdx, setActiveItemDropdownIdx] = useState(null);
+  const searchContainerRef = useRef(null);
+
+  // Distinct Items list for item-scope autocomplete dropdown and exact matching
+  const distinctItemOptions = useMemo(() => {
+    const map = new Map();
+    const add = (name, id, cat) => {
+      const trimmed = (name || "").trim();
+      if (!trimmed || trimmed === "—" || trimmed.toLowerCase() === "unknown") return;
+      const key = trimmed.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, {
+          name: trimmed,
+          cleanName: trimmed.toLowerCase().replace(/\s+/g, ' '),
+          id: id ? String(id).trim() : "",
+          category: cat ? String(cat).trim() : ""
+        });
+      }
+    };
+
+    (items || []).forEach(it => add(it.name, it.id, it.category));
+    (effectiveTransactions || []).forEach(tx => add(tx.itemName, tx.itemId, tx.category));
+    (imsItemStocks || []).forEach(s => add(s.itemName || s.name, s.itemId || s.id, s.category));
+
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [items, effectiveTransactions, imsItemStocks]);
+
+  // Close item dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target)) {
+        setActiveItemDropdownIdx(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handleAddSearchQuery = () => {
-    setSearchFilters(prev => [...prev, { query: "", scope: "all" }]);
+    setSearchFilters(prev => [...prev, { query: "", scope: "all", isExact: false }]);
   };
 
   const handleUpdateSearchQuery = (index, val) => {
+    const cleanVal = val.trim().toLowerCase().replace(/\s+/g, ' ');
     setSearchFilters(prev => {
       const next = [...prev];
-      next[index] = { ...next[index], query: val };
+      const isKnownExact = next[index].scope === "item" && distinctItemOptions.some(it => it.cleanName === cleanVal);
+      next[index] = { ...next[index], query: val, isExact: isKnownExact };
       return next;
     });
+    if (searchFilters[index]?.scope === "item") {
+      setActiveItemDropdownIdx(index);
+    }
+  };
+
+  const handleSelectDropdownItem = (index, item) => {
+    setSearchFilters(prev => {
+      const next = [...prev];
+      next[index] = {
+        ...next[index],
+        query: item.name,
+        isExact: true
+      };
+      return next;
+    });
+    setActiveItemDropdownIdx(null);
   };
 
   const handleSetSearchScope = (index, scope) => {
     setSearchFilters(prev => {
       const next = [...prev];
-      next[index] = { ...next[index], scope };
+      const isKnownExact = scope === "item" && distinctItemOptions.some(it => it.cleanName === (next[index].query || "").trim().toLowerCase().replace(/\s+/g, ' '));
+      next[index] = { ...next[index], scope, isExact: isKnownExact };
       return next;
     });
+    if (scope === "item") {
+      setActiveItemDropdownIdx(index);
+    } else {
+      setActiveItemDropdownIdx(null);
+    }
   };
 
   const handleRemoveSearchQuery = (index) => {
     setSearchFilters(prev => {
-      if (prev.length <= 1) return [{ query: "", scope: "all" }];
+      if (prev.length <= 1) return [{ query: "", scope: "all", isExact: false }];
       return prev.filter((_, i) => i !== index);
     });
+    if (activeItemDropdownIdx === index) {
+      setActiveItemDropdownIdx(null);
+    }
   };
 
   const activeSearchItems = useMemo(() => {
@@ -211,7 +274,10 @@ export default function ImsDashboard({
       const q = rawQ.toLowerCase().replace(/\s+/g, ' ');
       if (!q) return;
 
-      const exact = isExactMatch || hasQuotes;
+      // In Item scope: exact match if explicitly chosen from dropdown, quoted, or equals an exact item model
+      const isItemScope = (sf.scope === "item");
+      const matchesKnownItemExact = isItemScope && distinctItemOptions.some(it => it.cleanName === q);
+      const exact = Boolean(sf.isExact) || hasQuotes || matchesKnownItemExact;
 
       if (!exact && q.includes(",")) {
         q.split(",").forEach(part => {
@@ -223,7 +289,7 @@ export default function ImsDashboard({
       }
     });
     return list;
-  }, [searchFilters, isExactMatch]);
+  }, [searchFilters, distinctItemOptions]);
 
   // Distinct Parties found across all transactions for quick dropdown filter (excluding Opening Stock)
   const distinctParties = useMemo(() => {
@@ -334,7 +400,7 @@ export default function ImsDashboard({
   // Reset current page whenever filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchFilters, isExactMatch, selectedPartyFilter, selectedCategoryFilter, startDate, endDate, movementFilter, missingIdFilter, locationFilter, selectedItemFilter]);
+  }, [searchFilters, selectedPartyFilter, selectedCategoryFilter, startDate, endDate, movementFilter, missingIdFilter, locationFilter, selectedItemFilter]);
 
   // Multi-row Checkbox Selection
   const [selectedTxIds, setSelectedTxIds] = useState([]);
@@ -1711,7 +1777,7 @@ export default function ImsDashboard({
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
               
               {/* Multi-Search Inputs Group with Scope Target Selector & Popup */}
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: "1 1 400px", minWidth: "300px", flexWrap: "wrap" }}>
+              <div ref={searchContainerRef} style={{ display: "flex", alignItems: "center", gap: "8px", flex: "1 1 400px", minWidth: "300px", flexWrap: "wrap" }}>
                 {searchFilters.map((sf, idx) => (
                   <div key={idx} style={{ position: "relative", display: "flex", alignItems: "center", minWidth: "260px", flex: 1 }}>
                     
@@ -1751,13 +1817,23 @@ export default function ImsDashboard({
                           sf.scope === "order" ? "Search Order No (e.g. HS-AP7684)..." :
                           sf.scope === "category" ? "Search Category (e.g. Neckband, Charger)..." :
                           sf.scope === "party" ? "Search Party Name (e.g. Azam)..." :
-                          sf.scope === "item" ? "Search Item Name / Model..." :
+                          sf.scope === "item" ? "Type to search & select item model..." :
                           sf.scope === "location" ? "Search Warehouse Location..." :
                           sf.scope === "id" ? "Search Item ID..." :
                           "Search anywhere (item, party, order no, category, ID)..."
                         }
                         value={sf.query}
                         onChange={e => handleUpdateSearchQuery(idx, e.target.value)}
+                        onFocus={() => {
+                          if (sf.scope === "item") {
+                            setActiveItemDropdownIdx(idx);
+                          }
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === "Escape") {
+                            setActiveItemDropdownIdx(null);
+                          }
+                        }}
                         style={{ 
                           borderRadius: "0 8px 8px 0",
                           paddingLeft: "12px", 
@@ -1765,7 +1841,8 @@ export default function ImsDashboard({
                           height: "38px", 
                           fontSize: "0.85rem",
                           background: "var(--bg-input, var(--bg-card, rgba(255, 255, 255, 0.08)))",
-                          color: "var(--text-main, inherit)"
+                          color: "var(--text-main, inherit)",
+                          border: (sf.isExact && sf.scope === "item") ? "1px solid #38bdf8" : undefined
                         }}
                       />
                       {(sf.query || searchFilters.length > 1) && (
@@ -1788,6 +1865,109 @@ export default function ImsDashboard({
                           <X size={14} />
                         </button>
                       )}
+
+                      {/* Item Autocomplete Dropdown when Item scope is selected */}
+                      {activeItemDropdownIdx === idx && sf.scope === "item" && (() => {
+                        const q = (sf.query || "").trim().toLowerCase().replace(/\s+/g, ' ');
+                        const matchingOptions = distinctItemOptions.filter(it => !q || it.cleanName.includes(q)).slice(0, 35);
+
+                        return (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: "calc(100% + 4px)",
+                              left: 0,
+                              right: 0,
+                              zIndex: 99999,
+                              background: "linear-gradient(145deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%)",
+                              border: "1px solid rgba(56, 189, 248, 0.4)",
+                              borderRadius: "10px",
+                              boxShadow: "0 14px 40px -5px rgba(0, 0, 0, 0.75), 0 0 16px rgba(56, 189, 248, 0.25)",
+                              maxHeight: "280px",
+                              overflowY: "auto",
+                              padding: "6px",
+                              backdropFilter: "blur(12px)",
+                              WebkitBackdropFilter: "blur(12px)"
+                            }}
+                          >
+                            <div style={{
+                              padding: "6px 10px",
+                              fontSize: "0.72rem",
+                              fontWeight: 800,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.05em",
+                              color: "#38bdf8",
+                              borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center"
+                            }}>
+                              <span>Select Item Model</span>
+                              <span style={{ fontSize: "0.68rem", opacity: 0.8 }}>
+                                {matchingOptions.length} match{matchingOptions.length === 1 ? "" : "es"}
+                              </span>
+                            </div>
+
+                            {matchingOptions.length === 0 ? (
+                              <div style={{ padding: "14px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
+                                No items found matching "{sf.query}"
+                              </div>
+                            ) : (
+                              matchingOptions.map(it => {
+                                const isSelected = sf.query.trim().toLowerCase() === it.cleanName;
+                                return (
+                                  <div
+                                    key={it.name}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      handleSelectDropdownItem(idx, it);
+                                    }}
+                                    style={{
+                                      padding: "8px 10px",
+                                      borderRadius: "6px",
+                                      cursor: "pointer",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "space-between",
+                                      gap: "10px",
+                                      fontSize: "0.84rem",
+                                      color: isSelected ? "#38bdf8" : "#fff",
+                                      background: isSelected ? "rgba(56, 189, 248, 0.15)" : "transparent",
+                                      transition: "background 0.15s ease",
+                                    }}
+                                    onMouseEnter={e => e.currentTarget.style.background = "rgba(56, 189, 248, 0.12)"}
+                                    onMouseLeave={e => e.currentTarget.style.background = isSelected ? "rgba(56, 189, 248, 0.15)" : "transparent"}
+                                  >
+                                    <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                                      <Package size={14} style={{ color: isSelected ? "#38bdf8" : "var(--text-muted)", flexShrink: 0 }} />
+                                      <span style={{ fontWeight: isSelected ? 700 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                        {it.name}
+                                      </span>
+                                      {it.id && (
+                                        <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontFamily: "monospace" }}>
+                                          #{it.id}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {it.category && (
+                                      <span style={{
+                                        fontSize: "0.68rem",
+                                        padding: "2px 7px",
+                                        borderRadius: "4px",
+                                        background: "rgba(255, 255, 255, 0.08)",
+                                        color: "var(--text-muted)",
+                                        flexShrink: 0
+                                      }}>
+                                        {it.category}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 ))}
@@ -1811,47 +1991,6 @@ export default function ImsDashboard({
                   title="Add another search condition (search 2 or more items simultaneously)"
                 >
                   <Plus size={15} /> Add
-                </button>
-
-                {/* Search Exact Item or Keyword Toggle Button */}
-                <button
-                  type="button"
-                  onClick={() => setIsExactMatch(prev => !prev)}
-                  className={`btn btn-sm ${isExactMatch ? "btn-primary" : "btn-secondary"}`}
-                  style={{
-                    height: "38px",
-                    padding: "0 13px",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "7px",
-                    fontSize: "0.82rem",
-                    fontWeight: 700,
-                    borderRadius: "8px",
-                    cursor: "pointer",
-                    transition: "all 0.2s ease",
-                    background: isExactMatch 
-                      ? "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)" 
-                      : "var(--bg-input, var(--bg-card, rgba(255, 255, 255, 0.08)))",
-                    color: isExactMatch ? "#ffffff" : "var(--text-muted)",
-                    borderColor: isExactMatch ? "#38bdf8" : "var(--border-glass, rgba(255,255,255,0.15))",
-                    boxShadow: isExactMatch ? "0 0 14px rgba(56, 189, 248, 0.4)" : "none"
-                  }}
-                  title="Search exact item or keyword (e.g. 'Event Card' will not match 'Event Card Pouch')"
-                >
-                  <span style={{ fontSize: "0.95rem" }}>🎯</span>
-                  <span>Search exact item or keyword</span>
-                  {isExactMatch && (
-                    <span style={{ 
-                      fontSize: "0.68rem", 
-                      padding: "1px 6px", 
-                      borderRadius: "10px", 
-                      background: "rgba(255,255,255,0.28)", 
-                      fontWeight: 800,
-                      marginLeft: "2px"
-                    }}>
-                      ON
-                    </span>
-                  )}
                 </button>
               </div>
 
@@ -2074,8 +2213,8 @@ export default function ImsDashboard({
               {hasActiveFilters && (
                 <button
                   onClick={() => {
-                    setSearchFilters([{ query: "", scope: "all" }]);
-                    setIsExactMatch(false);
+                    setSearchFilters([{ query: "", scope: "all", isExact: false }]);
+                    setActiveItemDropdownIdx(null);
                     setSelectedPartyFilter("all");
                     setStartDate("");
                     setEndDate("");
