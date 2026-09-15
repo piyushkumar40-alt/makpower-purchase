@@ -171,26 +171,44 @@ export default function ImsDashboard({
   const [activeItemDropdownIdx, setActiveItemDropdownIdx] = useState(null);
   const searchContainerRef = useRef(null);
 
-  // Distinct Items list for item-scope autocomplete dropdown and exact matching
+  // Helper to detect Raw Material (RM) so we strictly show ONLY Finished Goods (FG) in this IMS ledger dropdown
+  const isRawMaterialItem = (name = "", id = "", itemType = "", category = "") => {
+    const typeUpper = String(itemType || "").trim().toUpperCase();
+    if (typeUpper === "RM" || typeUpper === "RAW" || typeUpper === "RAW MATERIAL" || typeUpper === "NON CONSUMABLES") return true;
+    if (typeUpper === "FG" || typeUpper === "FINISHED" || typeUpper === "FINISHED GOODS") return false;
+
+    const idUpper = String(id || "").trim().toUpperCase().replace(/^#+/, "");
+    if (idUpper.startsWith("RM")) return true;
+
+    const nameUpper = String(name || "").trim().toUpperCase();
+    if (/\bRM\b/.test(nameUpper) || nameUpper.includes("RAW MATERIAL") || nameUpper.endsWith(" RM") || nameUpper.includes("(RM)") || nameUpper.startsWith("RM ")) return true;
+
+    const catUpper = String(category || "").trim().toUpperCase();
+    if (catUpper === "RM" || catUpper.includes("RAW MATERIAL")) return true;
+
+    return false;
+  };
+
+  // Distinct Finished Goods (FG) items for item autocomplete dropdown and exact matching
   const distinctItemOptions = useMemo(() => {
     const map = new Map();
-    const add = (name, id, cat) => {
+    const add = (name, id, cat, itemType) => {
       const trimmed = (name || "").trim();
       if (!trimmed || trimmed === "—" || trimmed.toLowerCase() === "unknown") return;
+      if (isRawMaterialItem(trimmed, id, itemType, cat)) return; // Strictly ignore RM items!
       const key = trimmed.toLowerCase();
       if (!map.has(key)) {
         map.set(key, {
           name: trimmed,
           cleanName: trimmed.toLowerCase().replace(/\s+/g, ' '),
-          id: id ? String(id).trim() : "",
           category: cat ? String(cat).trim() : ""
         });
       }
     };
 
-    (items || []).forEach(it => add(it.name, it.id, it.category));
-    (effectiveTransactions || []).forEach(tx => add(tx.itemName, tx.itemId, tx.category));
-    (imsItemStocks || []).forEach(s => add(s.itemName || s.name, s.itemId || s.id, s.category));
+    (effectiveTransactions || []).forEach(tx => add(tx.itemName, tx.itemId, tx.category, tx.itemType));
+    (imsItemStocks || []).forEach(s => add(s.itemName || s.name, s.itemId || s.id, s.category, s.itemType));
+    (items || []).forEach(it => add(it.name, it.id, it.category, it.itemType));
 
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [items, effectiveTransactions, imsItemStocks]);
@@ -1869,48 +1887,55 @@ export default function ImsDashboard({
                       {/* Item Autocomplete Dropdown when Item scope is selected */}
                       {activeItemDropdownIdx === idx && sf.scope === "item" && (() => {
                         const q = (sf.query || "").trim().toLowerCase().replace(/\s+/g, ' ');
-                        const matchingOptions = distinctItemOptions.filter(it => !q || it.cleanName.includes(q)).slice(0, 35);
+                        const matchingOptions = distinctItemOptions.filter(it => !q || it.cleanName.includes(q)).slice(0, 40);
 
                         return (
                           <div
                             style={{
                               position: "absolute",
-                              top: "calc(100% + 4px)",
+                              top: "calc(100% + 6px)",
                               left: 0,
                               right: 0,
+                              minWidth: "320px",
+                              maxWidth: "520px",
                               zIndex: 99999,
-                              background: "linear-gradient(145deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%)",
-                              border: "1px solid rgba(56, 189, 248, 0.4)",
-                              borderRadius: "10px",
-                              boxShadow: "0 14px 40px -5px rgba(0, 0, 0, 0.75), 0 0 16px rgba(56, 189, 248, 0.25)",
-                              maxHeight: "280px",
+                              background: "var(--bg-card, #ffffff)",
+                              border: "1px solid var(--border-glass, #cbd5e1)",
+                              borderRadius: "12px",
+                              boxShadow: "0 18px 40px -6px rgba(15, 23, 42, 0.2), 0 4px 14px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(2, 132, 199, 0.15)",
+                              maxHeight: "320px",
                               overflowY: "auto",
-                              padding: "6px",
-                              backdropFilter: "blur(12px)",
-                              WebkitBackdropFilter: "blur(12px)"
+                              padding: "8px",
+                              backdropFilter: "blur(20px)",
+                              WebkitBackdropFilter: "blur(20px)"
                             }}
                           >
                             <div style={{
-                              padding: "6px 10px",
-                              fontSize: "0.72rem",
-                              fontWeight: 800,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.05em",
-                              color: "#38bdf8",
-                              borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                              padding: "8px 10px 8px 10px",
+                              marginBottom: "4px",
+                              borderBottom: "1px solid var(--border-glass, rgba(0, 0, 0, 0.08))",
                               display: "flex",
                               justifyContent: "space-between",
                               alignItems: "center"
                             }}>
-                              <span>Select Item Model</span>
-                              <span style={{ fontSize: "0.68rem", opacity: 0.8 }}>
-                                {matchingOptions.length} match{matchingOptions.length === 1 ? "" : "es"}
+                              <span style={{ fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--primary, #0284c7)" }}>
+                                Finished Goods (FG) Items
+                              </span>
+                              <span style={{
+                                fontSize: "0.68rem",
+                                fontWeight: 700,
+                                padding: "2px 8px",
+                                borderRadius: "999px",
+                                background: "rgba(2, 132, 199, 0.1)",
+                                color: "var(--primary, #0284c7)"
+                              }}>
+                                {matchingOptions.length} item{matchingOptions.length === 1 ? "" : "s"}
                               </span>
                             </div>
 
                             {matchingOptions.length === 0 ? (
-                              <div style={{ padding: "14px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
-                                No items found matching "{sf.query}"
+                              <div style={{ padding: "18px 12px", textAlign: "center", color: "var(--text-muted, #64748b)", fontSize: "0.84rem" }}>
+                                No FG items found matching "{sf.query}"
                               </div>
                             ) : (
                               matchingOptions.map(it => {
@@ -1923,44 +1948,61 @@ export default function ImsDashboard({
                                       handleSelectDropdownItem(idx, it);
                                     }}
                                     style={{
-                                      padding: "8px 10px",
-                                      borderRadius: "6px",
+                                      padding: "9px 12px",
+                                      borderRadius: "8px",
                                       cursor: "pointer",
                                       display: "flex",
                                       alignItems: "center",
                                       justifyContent: "space-between",
-                                      gap: "10px",
-                                      fontSize: "0.84rem",
-                                      color: isSelected ? "#38bdf8" : "#fff",
-                                      background: isSelected ? "rgba(56, 189, 248, 0.15)" : "transparent",
-                                      transition: "background 0.15s ease",
+                                      gap: "12px",
+                                      background: isSelected ? "rgba(2, 132, 199, 0.12)" : "transparent",
+                                      border: isSelected ? "1px solid rgba(2, 132, 199, 0.25)" : "1px solid transparent",
+                                      transition: "all 0.15s ease",
+                                      marginBottom: "2px"
                                     }}
-                                    onMouseEnter={e => e.currentTarget.style.background = "rgba(56, 189, 248, 0.12)"}
-                                    onMouseLeave={e => e.currentTarget.style.background = isSelected ? "rgba(56, 189, 248, 0.15)" : "transparent"}
+                                    onMouseEnter={e => {
+                                      if (!isSelected) {
+                                        e.currentTarget.style.background = "var(--bg-card-hover, rgba(2, 132, 199, 0.07))";
+                                      }
+                                    }}
+                                    onMouseLeave={e => {
+                                      if (!isSelected) {
+                                        e.currentTarget.style.background = "transparent";
+                                      }
+                                    }}
                                   >
-                                    <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
-                                      <Package size={14} style={{ color: isSelected ? "#38bdf8" : "var(--text-muted)", flexShrink: 0 }} />
-                                      <span style={{ fontWeight: isSelected ? 700 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0, flex: 1 }}>
+                                      <Package size={16} style={{ color: isSelected ? "var(--primary, #0284c7)" : "var(--text-muted, #64748b)", flexShrink: 0 }} />
+                                      <span style={{
+                                        fontWeight: isSelected ? 700 : 600,
+                                        fontSize: "0.88rem",
+                                        color: isSelected ? "var(--primary, #0284c7)" : "var(--text-main, #0f172a)",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap"
+                                      }}>
                                         {it.name}
                                       </span>
-                                      {it.id && (
-                                        <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontFamily: "monospace" }}>
-                                          #{it.id}
+                                    </div>
+
+                                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                                      {it.category && (
+                                        <span style={{
+                                          fontSize: "0.7rem",
+                                          fontWeight: 600,
+                                          padding: "2px 8px",
+                                          borderRadius: "6px",
+                                          background: "rgba(2, 132, 199, 0.08)",
+                                          color: "var(--text-muted, #475569)",
+                                          border: "1px solid rgba(2, 132, 199, 0.14)"
+                                        }}>
+                                          {it.category}
                                         </span>
                                       )}
+                                      {isSelected && (
+                                        <Check size={14} style={{ color: "var(--primary, #0284c7)", flexShrink: 0 }} />
+                                      )}
                                     </div>
-                                    {it.category && (
-                                      <span style={{
-                                        fontSize: "0.68rem",
-                                        padding: "2px 7px",
-                                        borderRadius: "4px",
-                                        background: "rgba(255, 255, 255, 0.08)",
-                                        color: "var(--text-muted)",
-                                        flexShrink: 0
-                                      }}>
-                                        {it.category}
-                                      </span>
-                                    )}
                                   </div>
                                 );
                               })
