@@ -257,10 +257,6 @@ export default function App() {
     }
 
     setLoadingModules(prev => ({ ...prev, [moduleKey]: true }));
-    const isIms = moduleKey === TRACKABLE_MODULES.IMS_TRANSACTIONS || moduleKey === "imsTransactions";
-    if (!isSilent && isIms) {
-      startLoading("Loading Data", "", 12);
-    }
 
     const pullPromise = (async () => {
       try {
@@ -402,9 +398,6 @@ export default function App() {
       } catch (err) {
         console.error(`Error pulling module data [${moduleKey}]:`, err);
       } finally {
-        if (!isSilent && isIms) {
-          finishLoading("Stock movement ledger synchronized!");
-        }
         setLoadingModules(prev => ({ ...prev, [moduleKey]: false }));
         delete activePullPromisesRef.current[pullKey];
         delete activePullPromisesRef.current[moduleKey];
@@ -609,18 +602,9 @@ export default function App() {
 
     async function loadData(isInterval = false) {
       try {
-        if (!isInterval) {
-          startLoading("Loading Data", "", 10);
-        }
         const q = currentUser ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(currentUser.role)}&userName=${encodeURIComponent(currentUser.name || '')}` : "";
         const res = await fetch(`/api/state${q}`);
-        if (!isInterval) {
-          updateProgress(75);
-        }
         const data = await res.json();
-        if (!isInterval) {
-          updateProgress(90);
-        }
         if (!isMounted) return;
 
         if (Array.isArray(data.users) && data.users.length > 0) setUsers(data.users.map(normalizeUserData));
@@ -944,6 +928,8 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    finishLoading();
+    setLoading(false);
     const sessionId = localStorage.getItem("makpower_session_id");
     if (currentUser) {
       sessionStorage.removeItem(`skipped_weak_pwd_${currentUser.id}`);
@@ -2605,7 +2591,7 @@ export default function App() {
       )}
 
       {/* Loading Screen Overlay */}
-      {loading ? (
+      {loading && currentUser && activeView !== "login" ? (
         <div style={{ display: "flex", flex: 1, justifyContent: "center", alignItems: "center", minHeight: "80vh", padding: "20px" }}>
           <div className="glass-panel card-fade-in" style={{ padding: "40px 32px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "20px", maxWidth: "480px", width: "100%", background: "linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.9) 100%)", borderRadius: "18px", border: "1px solid var(--border-glass)" }}>
             <div style={{ width: "52px", height: "52px", borderRadius: "50%", border: "4px solid rgba(56, 189, 248, 0.2)", borderTopColor: "#38bdf8", animation: "spin 0.8s linear infinite" }}></div>

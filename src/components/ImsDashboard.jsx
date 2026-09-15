@@ -74,6 +74,8 @@ export default function ImsDashboard({
     startLoading, 
     updateProgress, 
     finishLoading, 
+    showSuccessToast,
+    showErrorToast,
     progress: rawProgress, 
     active: loadingActive, 
     visible: loadingVisible, 
@@ -108,8 +110,8 @@ export default function ImsDashboard({
     hasReceivedData
   );
 
-  // Only show full-screen table loader if we don't have any transaction data yet AND progress hasn't reached 100%
-  const isTableLoading = (!hasReceivedData && effectiveTransactions.length === 0) && (isDataLoading || loadingActive || loadingVisible) && displayProgress < 100;
+  // Show table loader if fetching history or waiting for initial transactions
+  const isTableLoading = isFetchingHistory || ((!hasReceivedData && effectiveTransactions.length === 0) && isDataLoading);
 
   // Only show KPI card spinners if we don't have KPI data yet AND progress hasn't reached 100%
   const isKpiLoading = !hasKpiData && (isDataLoading || loadingActive || loadingVisible) && displayProgress < 100;
@@ -117,7 +119,6 @@ export default function ImsDashboard({
   const handleLoadHistory = async () => {
     setIsFetchingHistory(true);
     setHistoryLoadedSuccess(false);
-    startLoading("Loading Data", "", 10);
     try {
       if (onFetchFullHistory) {
         await onFetchFullHistory();
@@ -128,11 +129,11 @@ export default function ImsDashboard({
       setStartDate("");
       setEndDate("");
       setHistoryLoadedSuccess(true);
-      finishLoading("All historical stock records loaded successfully!");
+      showSuccessToast("All historical stock records loaded successfully!");
       setTimeout(() => setHistoryLoadedSuccess(false), 6000);
     } catch (err) {
       console.error("Failed to load full history:", err);
-      finishLoading();
+      showErrorToast("Failed to load full history.");
     } finally {
       setIsFetchingHistory(false);
     }
