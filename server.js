@@ -1694,45 +1694,45 @@ async function calculateImsFullSummary(forceFresh = false) {
 
   if (isPg) {
     try {
-      const summaryRes = await pool.query(`
-        SELECT
-          COALESCE(SUM("stockQty"), 0)::bigint AS "totalNetStock",
-          COALESCE(SUM(CASE WHEN "stockQty" > 0 THEN "stockQty" ELSE 0 END), 0)::bigint AS "totalInwardUnits",
-          COALESCE(SUM(CASE WHEN "stockQty" < 0 THEN ABS("stockQty") ELSE 0 END), 0)::bigint AS "totalOutwardUnits",
-          COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE("location", 'Delhi'))) = 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "mumbaiStock",
-          COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE("location", 'Delhi'))) <> 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "delhiStock",
-          COALESCE(COUNT(CASE WHEN "isMissingId" = true OR "itemId" IS NULL OR "itemId" = '' THEN 1 END), 0)::int AS "missingIdsCount",
-          COUNT(*)::int AS "totalTransactionsCount",
-          MIN("date") AS "firstStockDate",
-          MAX("date") AS "lastStockDate"
-        FROM ims_transactions;
-      `);
+      const [summaryRes, missingRes, itemStocksRes] = await Promise.all([
+        pool.query(`
+          SELECT
+            COALESCE(SUM("stockQty"), 0)::bigint AS "totalNetStock",
+            COALESCE(SUM(CASE WHEN "stockQty" > 0 THEN "stockQty" ELSE 0 END), 0)::bigint AS "totalInwardUnits",
+            COALESCE(SUM(CASE WHEN "stockQty" < 0 THEN ABS("stockQty") ELSE 0 END), 0)::bigint AS "totalOutwardUnits",
+            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE("location", 'Delhi'))) = 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "mumbaiStock",
+            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE("location", 'Delhi'))) <> 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "delhiStock",
+            COALESCE(COUNT(CASE WHEN "isMissingId" = true OR "itemId" IS NULL OR "itemId" = '' THEN 1 END), 0)::int AS "missingIdsCount",
+            COUNT(*)::int AS "totalTransactionsCount",
+            MIN("date") AS "firstStockDate",
+            MAX("date") AS "lastStockDate"
+          FROM ims_transactions;
+        `),
+        pool.query(`
+          SELECT "itemName" as name, COUNT(*)::int as count, COALESCE(SUM("stockQty"), 0)::bigint as "totalQty"
+          FROM ims_transactions
+          WHERE "isMissingId" = true OR "itemId" IS NULL OR "itemId" = ''
+          GROUP BY "itemName"
+          ORDER BY count DESC
+          LIMIT 500
+        `),
+        pool.query(`
+          SELECT
+            "itemId",
+            "itemName",
+            COALESCE(SUM("stockQty"), 0)::bigint AS "currentStock",
+            COALESCE(SUM(CASE WHEN "stockQty" > 0 THEN "stockQty" ELSE 0 END), 0)::bigint AS "inward",
+            COALESCE(SUM(CASE WHEN "stockQty" < 0 THEN ABS("stockQty") ELSE 0 END), 0)::bigint AS "outward",
+            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE("location", 'Delhi'))) <> 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "delhiStock",
+            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE("location", 'Delhi'))) = 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "mumbaiStock",
+            COUNT(*)::int AS "txCount",
+            MIN("date") AS "firstDate",
+            MAX(CASE WHEN "date" <= CURRENT_DATE::text THEN "date" END) AS "lastDate"
+          FROM ims_transactions
+          GROUP BY "itemId", "itemName"
+        `)
+      ]);
       const row = summaryRes.rows[0] || {};
-
-      const missingRes = await pool.query(`
-        SELECT "itemName" as name, COUNT(*)::int as count, COALESCE(SUM("stockQty"), 0)::bigint as "totalQty"
-        FROM ims_transactions
-        WHERE "isMissingId" = true OR "itemId" IS NULL OR "itemId" = ''
-        GROUP BY "itemName"
-        ORDER BY count DESC
-        LIMIT 500
-      `);
-
-      const itemStocksRes = await pool.query(`
-        SELECT
-          "itemId",
-          "itemName",
-          COALESCE(SUM("stockQty"), 0)::bigint AS "currentStock",
-          COALESCE(SUM(CASE WHEN "stockQty" > 0 THEN "stockQty" ELSE 0 END), 0)::bigint AS "inward",
-          COALESCE(SUM(CASE WHEN "stockQty" < 0 THEN ABS("stockQty") ELSE 0 END), 0)::bigint AS "outward",
-          COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE("location", 'Delhi'))) <> 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "delhiStock",
-          COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE("location", 'Delhi'))) = 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "mumbaiStock",
-          COUNT(*)::int AS "txCount",
-          MIN("date") AS "firstDate",
-          MAX("date") AS "lastDate"
-        FROM ims_transactions
-        GROUP BY "itemId", "itemName"
-      `);
 
       const result = {
         totalNetStock: Number(row.totalNetStock || 0),
@@ -4502,7 +4502,50 @@ app.get("/api/ims/transactions", async (req, res) => {
         }
       }
 
-      const result = await pool.query(query, values);
+      const todayStr = (new Date()).toISOString().split("T")[0];
+      const isHistoricalEndDate = Boolean(
+        effectiveEndDate &&
+        effectiveEndDate < todayStr &&
+        (!imsSummary.lastStockDate || effectiveEndDate < imsSummary.lastStockDate)
+      );
+
+      const periodPromise = (effectiveStartDate || effectiveEndDate)
+        ? pool.query(`
+          SELECT
+            COALESCE(SUM(CASE WHEN $1::text IS NOT NULL AND "date" < $1 THEN "stockQty" ELSE 0 END), 0)::bigint AS "openingStock",
+            COALESCE(SUM(CASE WHEN ($1::text IS NULL OR "date" >= $1) AND ($2::text IS NULL OR "date" <= $2) AND "stockQty" > 0 THEN "stockQty" ELSE 0 END), 0)::bigint AS "periodInward",
+            COALESCE(SUM(CASE WHEN ($1::text IS NULL OR "date" >= $1) AND ($2::text IS NULL OR "date" <= $2) AND "stockQty" < 0 THEN ABS("stockQty") ELSE 0 END), 0)::bigint AS "periodOutward",
+            COALESCE(SUM(CASE WHEN ($2::text IS NULL OR "date" <= $2) THEN "stockQty" ELSE 0 END), 0)::bigint AS "closingStock",
+            COALESCE(SUM(CASE WHEN ($2::text IS NULL OR "date" <= $2) AND LOWER(TRIM(COALESCE("location", 'Delhi'))) <> 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "closingDelhiStock",
+            COALESCE(SUM(CASE WHEN ($2::text IS NULL OR "date" <= $2) AND LOWER(TRIM(COALESCE("location", 'Delhi'))) = 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "closingMumbaiStock"
+          FROM ims_transactions;
+        `, [effectiveStartDate || null, effectiveEndDate || null])
+        : Promise.resolve(null);
+
+      const itemStocksPromise = isHistoricalEndDate
+        ? pool.query(`
+          SELECT
+            "itemId",
+            "itemName",
+            COALESCE(SUM(CASE WHEN "date" <= $1 THEN "stockQty" ELSE 0 END), 0)::bigint AS "currentStock",
+            COALESCE(SUM(CASE WHEN "date" <= $1 AND "stockQty" > 0 THEN "stockQty" ELSE 0 END), 0)::bigint AS "inward",
+            COALESCE(SUM(CASE WHEN "date" <= $1 AND "stockQty" < 0 THEN ABS("stockQty") ELSE 0 END), 0)::bigint AS "outward",
+            COALESCE(SUM(CASE WHEN "date" <= $1 AND LOWER(TRIM(COALESCE("location", 'Delhi'))) <> 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "delhiStock",
+            COALESCE(SUM(CASE WHEN "date" <= $1 AND LOWER(TRIM(COALESCE("location", 'Delhi'))) = 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "mumbaiStock",
+            COUNT(CASE WHEN "date" <= $1 THEN 1 END)::int AS "txCount",
+            MIN("date") AS "firstDate",
+            MAX(CASE WHEN "date" <= $1 THEN "date" END) AS "lastDate"
+          FROM ims_transactions
+          GROUP BY "itemId", "itemName"
+        `, [effectiveEndDate])
+        : Promise.resolve(null);
+
+      const [result, periodRes, itemStocksRes] = await Promise.all([
+        pool.query(query, values),
+        periodPromise,
+        itemStocksPromise
+      ]);
+
       const rows = result.rows.map(r => ({
         ...r,
         orderNo: r.orderNo || (r.remarks && r.remarks.includes('@') ? r.remarks.split('@')[0].trim() : (r.id && String(r.id).includes('@') ? String(r.id).split('@')[0].trim() : '')),
@@ -4522,18 +4565,8 @@ app.get("/api/ims/transactions", async (req, res) => {
         asOfDate: effectiveEndDate || ""
       };
 
-      if (effectiveStartDate || effectiveEndDate) {
-        const periodRes = await pool.query(`
-          SELECT
-            COALESCE(SUM(CASE WHEN $1::text IS NOT NULL AND "date" < $1 THEN "stockQty" ELSE 0 END), 0)::bigint AS "openingStock",
-            COALESCE(SUM(CASE WHEN ($1::text IS NULL OR "date" >= $1) AND ($2::text IS NULL OR "date" <= $2) AND "stockQty" > 0 THEN "stockQty" ELSE 0 END), 0)::bigint AS "periodInward",
-            COALESCE(SUM(CASE WHEN ($1::text IS NULL OR "date" >= $1) AND ($2::text IS NULL OR "date" <= $2) AND "stockQty" < 0 THEN ABS("stockQty") ELSE 0 END), 0)::bigint AS "periodOutward",
-            COALESCE(SUM(CASE WHEN ($2::text IS NULL OR "date" <= $2) THEN "stockQty" ELSE 0 END), 0)::bigint AS "closingStock",
-            COALESCE(SUM(CASE WHEN ($2::text IS NULL OR "date" <= $2) AND LOWER(TRIM(COALESCE("location", 'Delhi'))) <> 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "closingDelhiStock",
-            COALESCE(SUM(CASE WHEN ($2::text IS NULL OR "date" <= $2) AND LOWER(TRIM(COALESCE("location", 'Delhi'))) = 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "closingMumbaiStock"
-          FROM ims_transactions;
-        `, [effectiveStartDate || null, effectiveEndDate || null]);
-        const pr = periodRes.rows[0] || {};
+      if (periodRes && periodRes.rows && periodRes.rows[0]) {
+        const pr = periodRes.rows[0];
         periodSummary = {
           openingStock: Number(pr.openingStock || 0),
           periodInward: Number(pr.periodInward || 0),
@@ -4547,23 +4580,8 @@ app.get("/api/ims/transactions", async (req, res) => {
       }
 
       let dynamicItemStocks = imsSummary.itemStocks || [];
-      if (effectiveEndDate) {
-        const itemStocksRes = await pool.query(`
-          SELECT
-            "itemId",
-            "itemName",
-            COALESCE(SUM(CASE WHEN "date" <= $1 THEN "stockQty" ELSE 0 END), 0)::bigint AS "currentStock",
-            COALESCE(SUM(CASE WHEN "date" <= $1 AND "stockQty" > 0 THEN "stockQty" ELSE 0 END), 0)::bigint AS "inward",
-            COALESCE(SUM(CASE WHEN "date" <= $1 AND "stockQty" < 0 THEN ABS("stockQty") ELSE 0 END), 0)::bigint AS "outward",
-            COALESCE(SUM(CASE WHEN "date" <= $1 AND LOWER(TRIM(COALESCE("location", 'Delhi'))) <> 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "delhiStock",
-            COALESCE(SUM(CASE WHEN "date" <= $1 AND LOWER(TRIM(COALESCE("location", 'Delhi'))) = 'mumbai' THEN "stockQty" ELSE 0 END), 0)::bigint AS "mumbaiStock",
-            COUNT(CASE WHEN "date" <= $1 THEN 1 END)::int AS "txCount",
-            MIN("date") AS "firstDate",
-            MAX(CASE WHEN "date" <= $1 THEN "date" END) AS "lastDate"
-          FROM ims_transactions
-          GROUP BY "itemId", "itemName"
-        `, [effectiveEndDate]);
-        dynamicItemStocks = (itemStocksRes.rows || []).map(r => ({
+      if (itemStocksRes && itemStocksRes.rows) {
+        dynamicItemStocks = itemStocksRes.rows.map(r => ({
           itemId: r.itemId || "",
           itemName: r.itemName || "",
           currentStock: Number(r.currentStock || 0),

@@ -101,6 +101,19 @@ export default function ImsDashboard({
     ? Math.max(1, rawProgress)
     : 100;
 
+  // Has any KPI metrics data been loaded
+  const hasKpiData = Boolean(
+    (imsSummary && (imsSummary.totalNetStock !== undefined || imsSummary.delhiStock !== undefined || imsSummary.mumbaiStock !== undefined)) ||
+    effectiveTransactions.length > 0 ||
+    hasReceivedData
+  );
+
+  // Only show full-screen table loader if we don't have any transaction data yet AND progress hasn't reached 100%
+  const isTableLoading = (!hasReceivedData && effectiveTransactions.length === 0) && (isDataLoading || loadingActive || loadingVisible) && displayProgress < 100;
+
+  // Only show KPI card spinners if we don't have KPI data yet AND progress hasn't reached 100%
+  const isKpiLoading = !hasKpiData && (isDataLoading || loadingActive || loadingVisible) && displayProgress < 100;
+
   const handleLoadHistory = async () => {
     setIsFetchingHistory(true);
     setHistoryLoadedSuccess(false);
@@ -966,6 +979,9 @@ export default function ImsDashboard({
 
     return Array.from(map.values());
   }, [items, imsItemStocks, effectiveTransactions, endDate]);
+
+  // Only show matrix loader if no items are computed yet AND progress hasn't reached 100%
+  const isMatrixLoading = (itemStockMatrix.length === 0) && (isDataLoading || loadingActive || loadingVisible) && displayProgress < 100;
 
   // Filtered Stock Matrix honoring active search and exact matching
   const filteredStockMatrix = useMemo(() => {
@@ -2340,7 +2356,7 @@ export default function ImsDashboard({
               <div>
                 <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>{kpiMetrics.onHandTitle || "Total All On-Hand"}</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: kpiMetrics.onHandStock >= 0 ? "var(--text-main)" : "var(--danger)" }}>
-                  {isDataLoading ? (
+                  {isKpiLoading ? (
                     <span style={{ fontSize: "0.95rem", color: "var(--primary)", display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}>
                       <RefreshCw size={14} className="spin" style={{ color: "var(--primary)" }} /> {displayProgress > 0 ? `${displayProgress}%` : "Syncing..."}
                     </span>
@@ -2362,7 +2378,7 @@ export default function ImsDashboard({
               <div>
                 <div style={{ fontSize: "0.74rem", color: "#38bdf8", fontWeight: 700 }}>{kpiMetrics.delhiTitle || "🏢 Delhi Warehouse"}</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: kpiMetrics.delhiStock >= 0 ? "#38bdf8" : "var(--danger)" }}>
-                  {isDataLoading ? (
+                  {isKpiLoading ? (
                     <span style={{ fontSize: "0.95rem", color: "#38bdf8", display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}>
                       <RefreshCw size={14} className="spin" style={{ color: "#38bdf8" }} /> {displayProgress > 0 ? `${displayProgress}%` : "Syncing..."}
                     </span>
@@ -2384,7 +2400,7 @@ export default function ImsDashboard({
               <div>
                 <div style={{ fontSize: "0.74rem", color: "#c084fc", fontWeight: 700 }}>{kpiMetrics.mumbaiTitle || "🏢 Mumbai Warehouse"}</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: kpiMetrics.mumbaiStock >= 0 ? "#c084fc" : "var(--danger)" }}>
-                  {isDataLoading ? (
+                  {isKpiLoading ? (
                     <span style={{ fontSize: "0.95rem", color: "#c084fc", display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}>
                       <RefreshCw size={14} className="spin" style={{ color: "#c084fc" }} /> {displayProgress > 0 ? `${displayProgress}%` : "Syncing..."}
                     </span>
@@ -2406,7 +2422,7 @@ export default function ImsDashboard({
               <div>
                 <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Inward (+)</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--success)" }}>
-                  {isDataLoading ? (
+                  {isKpiLoading ? (
                     <span style={{ fontSize: "0.95rem", color: "var(--success)", display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}>
                       <RefreshCw size={14} className="spin" style={{ color: "var(--success)" }} /> {displayProgress > 0 ? `${displayProgress}%` : "Syncing..."}
                     </span>
@@ -2428,7 +2444,7 @@ export default function ImsDashboard({
               <div>
                 <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 600 }}>Total Dispatched (-)</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--danger)" }}>
-                  {isDataLoading ? (
+                  {isKpiLoading ? (
                     <span style={{ fontSize: "0.95rem", color: "var(--danger)", display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}>
                       <RefreshCw size={14} className="spin" style={{ color: "var(--danger)" }} /> {displayProgress > 0 ? `${displayProgress}%` : "Syncing..."}
                     </span>
@@ -2477,7 +2493,7 @@ export default function ImsDashboard({
 
           {/* Ledger Table */}
           <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
-            {isDataLoading ? (
+            {isTableLoading ? (
               <div style={{ padding: "50px 24px", textAlign: "center", color: "var(--text-muted)", display: "flex", flexDirection: "column", alignItems: "center", gap: "18px", maxWidth: "560px", margin: "0 auto" }}>
                 
                 {/* Circular Spinning Icon with Pulse */}
@@ -2882,7 +2898,7 @@ export default function ImsDashboard({
           </div>
 
           <div className="glass-panel" style={{ padding: "20px", overflowX: "auto" }}>
-            {isDataLoading ? (
+            {isMatrixLoading ? (
               <div style={{ padding: "50px 24px", textAlign: "center", color: "var(--text-muted)", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", maxWidth: "520px", margin: "0 auto" }}>
                 <RefreshCw size={32} className="spin" style={{ color: "#38bdf8" }} />
                 <div>
