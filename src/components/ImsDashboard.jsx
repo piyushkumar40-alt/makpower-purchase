@@ -409,9 +409,6 @@ export default function ImsDashboard({
   // ==================== FILTERED TRANSACTIONS ====================
   const filteredTransactions = useMemo(() => {
     return effectiveTransactions.filter(tx => {
-      // Hide opening stock from movement table - kept strictly in backend stock calculations
-      if (isOpeningStockTransaction(tx)) return false;
-
       // Category resolution for search & filtering: Prioritize master items catalog
       const rawId = String(tx.itemId || "").trim().toLowerCase();
       const cleanId = rawId.replace(/^#+/, "");
@@ -2326,7 +2323,11 @@ export default function ImsDashboard({
 
                         {/* 5. Stock Movement Column (+2 for In, -2 for Out) */}
                         <td style={{ textAlign: "center" }}>
-                          {isPositive ? (
+                          {isOpeningStockTransaction(tx) ? (
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 10px", borderRadius: "8px", background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.3)", color: "#38bdf8", fontWeight: 800, fontSize: "0.92rem" }}>
+                              <Package size={14} /> +{tx.stockQty} <span style={{ fontSize: "0.7rem", opacity: 0.85 }}>(OPENING)</span>
+                            </div>
+                          ) : isPositive ? (
                             <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 10px", borderRadius: "8px", background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.3)", color: "var(--success)", fontWeight: 800, fontSize: "0.92rem" }}>
                               <TrendingUp size={14} /> +{tx.stockQty} <span style={{ fontSize: "0.7rem", opacity: 0.8 }}>(IN)</span>
                             </div>
@@ -2364,7 +2365,13 @@ export default function ImsDashboard({
 
                         {/* 6. Party Name */}
                         <td style={{ fontSize: "0.85rem", color: tx.partyName ? "var(--text-main)" : "var(--text-muted)" }}>
-                          {tx.partyName || "—"}
+                          {isOpeningStockTransaction(tx) ? (
+                            <span className="badge" style={{ background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)", fontWeight: 700, fontSize: "0.78rem" }}>
+                              📦 Opening Stock Baseline
+                            </span>
+                          ) : (
+                            tx.partyName || "—"
+                          )}
                         </td>
 
                         {/* 7. Remarks */}
