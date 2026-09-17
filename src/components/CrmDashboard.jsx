@@ -1315,7 +1315,7 @@ export default function CrmDashboard({
           className={`nav-tab-item ${activeTab === "schemes" ? "active" : ""}`}
           style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 18px", borderRadius: "10px", fontSize: "0.92rem", fontWeight: 700, color: activeTab === "schemes" ? "#f59e0b" : undefined }}
         >
-          <Award size={16} /> <span>Sales Schemes & Reports ({schemes.length})</span>
+          <Award size={16} /> <span>Sales Schemes & Reports ({(isAdminOrOwner ? schemes : schemes.filter(s => String(s.status || "active").toLowerCase().trim() === "active" || String(s.status || "active").toLowerCase().trim() === "live")).length})</span>
         </button>
 
         <button

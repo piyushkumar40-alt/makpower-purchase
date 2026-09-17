@@ -3,7 +3,8 @@ import {
   Award, Gift, Target, Calendar, Plus, Edit2, Trash2, Search, Filter, 
   Download, Upload, CheckCircle2, ChevronRight, X, Layers, AlertCircle, 
   ArrowUpDown, Check, Building2, User, Users, Sparkles, FileSpreadsheet,
-  Info, ExternalLink, RefreshCw, BarChart2, Shield, TrendingUp, Package
+  Info, ExternalLink, RefreshCw, BarChart2, Shield, TrendingUp, Package,
+  Play, Pause, Eye, EyeOff
 } from "lucide-react";
 import Pagination from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
@@ -128,23 +129,40 @@ export default function SchemeManagementStudio({
   const isTsmUser = currentUser?.role === "tsm";
   const isRsmUser = currentUser?.role === "rsm";
 
-  // Selected Active Scheme ID (default to Goa Scheme or first active scheme)
+  // Helper to test if a scheme is currently live/active
+  const isSchemeLive = useCallback((s) => {
+    if (!s) return false;
+    const st = String(s.status || "active").toLowerCase().trim();
+    return st === "active" || st === "live";
+  }, []);
+
+  // Visible schemes: Admin sees all schemes (Live & Paused); Non-admin portals only see Live schemes
+  const visibleSchemes = useMemo(() => {
+    if (isSuperAdmin) return schemes || [];
+    return (schemes || []).filter(isSchemeLive);
+  }, [schemes, isSuperAdmin, isSchemeLive]);
+
+  // Selected Active Scheme ID (default to Goa Scheme or first visible scheme)
   const [selectedSchemeId, setSelectedSchemeId] = useState(() => {
-    const goa = (schemes || []).find(s => s.id === "scheme-goa" || s.name.toLowerCase().includes("goa"));
+    const list = isSuperAdmin ? (schemes || []) : (schemes || []).filter(s => {
+      const st = String(s.status || "active").toLowerCase().trim();
+      return st === "active" || st === "live";
+    });
+    const goa = list.find(s => s.id === "scheme-goa" || (s.name && s.name.toLowerCase().includes("goa")));
     if (goa) return goa.id;
-    return schemes[0]?.id || "scheme-goa";
+    return list[0]?.id || "";
   });
 
-  // Ensure selectedSchemeId stays valid if schemes change
+  // Ensure selectedSchemeId stays valid if visible schemes change
   useEffect(() => {
-    if (schemes.length > 0 && !schemes.some(s => s.id === selectedSchemeId)) {
-      setSelectedSchemeId(schemes[0].id);
+    if (visibleSchemes.length > 0 && !visibleSchemes.some(s => s.id === selectedSchemeId)) {
+      setSelectedSchemeId(visibleSchemes[0].id);
     }
-  }, [schemes, selectedSchemeId]);
+  }, [visibleSchemes, selectedSchemeId]);
 
   const activeScheme = useMemo(() => {
-    return (schemes || []).find(s => s.id === selectedSchemeId) || schemes[0] || null;
-  }, [schemes, selectedSchemeId]);
+    return visibleSchemes.find(s => s.id === selectedSchemeId) || visibleSchemes[0] || null;
+  }, [visibleSchemes, selectedSchemeId]);
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState("");
@@ -679,15 +697,48 @@ export default function SchemeManagementStudio({
     }
   };
 
+  // Handle Toggle Scheme Status (Live / Pause)
+  const handleToggleSchemeStatus = async (scheme, targetStatus) => {
+    if (!scheme) return;
+    const currentIsLive = isSchemeLive(scheme);
+    const newStatus = targetStatus || (currentIsLive ? "paused" : "active");
+    const willBeLive = newStatus === "active" || newStatus === "live";
+
+    startLoading(willBeLive ? "Activating Scheme..." : "Pausing Scheme...", `Setting "${scheme.name}" to ${willBeLive ? "LIVE" : "PAUSED"}...`, 40);
+    try {
+      const updatedScheme = {
+        ...scheme,
+        status: willBeLive ? "active" : "paused"
+      };
+      if (onUpdateScheme) {
+        await onUpdateScheme(updatedScheme);
+      }
+      finishLoading(`Scheme is now ${willBeLive ? "LIVE" : "PAUSED"}!`);
+      showSuccessToast(
+        willBeLive
+          ? `🟢 Scheme "${scheme.name}" is now LIVE! Visible across all sales & CRM portals.`
+          : `⏸️ Scheme "${scheme.name}" is now PAUSED. Hidden from non-admin portals.`
+      );
+    } catch (err) {
+      finishLoading();
+      showErrorToast("Failed to change scheme status: " + err.message);
+    }
+  };
+
   // Handle Delete Scheme
   const handleDeleteSchemeClick = async (scheme) => {
-    if (!window.confirm(`Are you sure you want to delete scheme "${scheme.name}"?`)) return;
+    if (!scheme) return;
+    if (!window.confirm(`⚠️ Are you sure you want to permanently delete scheme "${scheme.name}"?\nThis action cannot be undone.`)) return;
+    
+    startLoading("Deleting Scheme...", `Removing "${scheme.name}"...`, 50);
     try {
       if (onDeleteScheme) {
         await onDeleteScheme(scheme.id);
-        showSuccessToast(`Scheme "${scheme.name}" deleted.`);
       }
+      finishLoading("Scheme deleted!");
+      showSuccessToast(`🗑️ Scheme "${scheme.name}" deleted successfully.`);
     } catch (err) {
+      finishLoading();
       showErrorToast("Failed to delete scheme: " + err.message);
     }
   };
@@ -905,44 +956,97 @@ export default function SchemeManagementStudio({
           </div>
 
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            {schemes.map(s => {
-              const isSelected = s.id === selectedSchemeId;
-              const isGoa = s.id === "scheme-goa" || s.name.toLowerCase().includes("goa");
-              const isNeckband = s.id === "scheme-neckband" || s.name.toLowerCase().includes("neckband");
-              const is2Percent = s.id === "scheme-2percent" || s.name.toLowerCase().includes("2%");
+            {visibleSchemes.length === 0 ? (
+              <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontStyle: "italic", padding: "6px 12px" }}>
+                {isSuperAdmin ? "No schemes configured." : "No active sales schemes at this moment."}
+              </span>
+            ) : (
+              visibleSchemes.map(s => {
+                const isSelected = s.id === selectedSchemeId;
+                const isLive = isSchemeLive(s);
+                const isGoa = s.id === "scheme-goa" || s.name.toLowerCase().includes("goa");
+                const isNeckband = s.id === "scheme-neckband" || s.name.toLowerCase().includes("neckband");
+                const is2Percent = s.id === "scheme-2percent" || s.name.toLowerCase().includes("2%");
 
-              return (
-                <button
-                  key={s.id}
-                  onClick={() => setSelectedSchemeId(s.id)}
-                  className={`btn btn-sm ${isSelected ? "btn-primary" : "btn-secondary"}`}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    padding: "8px 16px",
-                    borderRadius: "10px",
-                    fontWeight: 700,
-                    fontSize: "0.88rem",
-                    boxShadow: isSelected ? "0 4px 14px rgba(56, 189, 248, 0.25)" : "none",
-                    border: isSelected ? "1px solid rgba(56, 189, 248, 0.6)" : "1px solid var(--border-glass)"
-                  }}
-                >
-                  {isGoa ? "🏖️" : isNeckband ? "🎧" : is2Percent ? "📈" : "🎯"}
-                  <span>{s.name}</span>
-                  {s.status === "active" && (
-                    <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#10b981", display: "inline-block" }}></span>
-                  )}
-                </button>
-              );
-            })}
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => setSelectedSchemeId(s.id)}
+                    className={`btn btn-sm ${isSelected ? "btn-primary" : "btn-secondary"}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 16px",
+                      borderRadius: "10px",
+                      fontWeight: 700,
+                      fontSize: "0.88rem",
+                      boxShadow: isSelected ? "0 4px 14px rgba(56, 189, 248, 0.25)" : "none",
+                      border: isSelected ? "1px solid rgba(56, 189, 248, 0.6)" : "1px solid var(--border-glass)",
+                      opacity: !isLive ? 0.75 : 1
+                    }}
+                  >
+                    {isGoa ? "🏖️" : isNeckband ? "🎧" : is2Percent ? "📈" : "🎯"}
+                    <span>{s.name}</span>
+                    {isSuperAdmin && (
+                      <span 
+                        style={{
+                          fontSize: "0.68rem",
+                          fontWeight: 800,
+                          padding: "2px 6px",
+                          borderRadius: "6px",
+                          background: isLive ? "rgba(16, 185, 129, 0.25)" : "rgba(245, 158, 11, 0.25)",
+                          color: isLive ? "#10b981" : "#f59e0b",
+                          border: isLive ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid rgba(245, 158, 11, 0.4)",
+                          letterSpacing: "0.3px",
+                          marginLeft: "2px"
+                        }}
+                      >
+                        {isLive ? "LIVE" : "PAUSED"}
+                      </span>
+                    )}
+                  </button>
+                );
+              })
+            )}
           </div>
         </div>
 
-        {/* Admin Action Buttons */}
+        {/* Action Buttons */}
         <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-          {isSuperAdmin && (
+          {isSuperAdmin && activeScheme && (
             <>
+              {/* Quick Make Live / Pause Scheme Toggle */}
+              {isSchemeLive(activeScheme) ? (
+                <button
+                  onClick={() => handleToggleSchemeStatus(activeScheme, "paused")}
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700, color: "#f59e0b", borderColor: "rgba(245, 158, 11, 0.4)", background: "rgba(245, 158, 11, 0.08)" }}
+                  title="Pause this scheme (hidden from non-admin & CRM portals)"
+                >
+                  <Pause size={14} /> Pause Scheme
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleToggleSchemeStatus(activeScheme, "active")}
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700, color: "#10b981", borderColor: "rgba(16, 185, 129, 0.5)", background: "rgba(16, 185, 129, 0.12)" }}
+                  title="Make this scheme LIVE (visible everywhere)"
+                >
+                  <Play size={14} /> Make Live
+                </button>
+              )}
+
+              {/* Quick Delete Scheme */}
+              <button
+                onClick={() => handleDeleteSchemeClick(activeScheme)}
+                className="btn btn-secondary btn-sm"
+                style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 600, color: "#f87171", borderColor: "rgba(248, 113, 113, 0.35)", background: "rgba(239, 68, 68, 0.06)" }}
+                title="Permanently delete this scheme"
+              >
+                <Trash2 size={14} /> Delete
+              </button>
+
               <button
                 onClick={() => setShowBulkItemModal(true)}
                 className="btn btn-secondary btn-sm"
@@ -967,29 +1071,33 @@ export default function SchemeManagementStudio({
               >
                 <Edit2 size={14} /> Edit Scheme
               </button>
-
-              <button
-                onClick={handleOpenCreateScheme}
-                className="btn btn-primary btn-sm"
-                style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
-              >
-                <Plus size={15} /> New Scheme
-              </button>
             </>
           )}
 
-          <button
-            onClick={handleExportSchemeCsv}
-            className="btn btn-secondary btn-sm"
-            style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 600 }}
-          >
-            <Download size={14} /> Export CSV
-          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={handleOpenCreateScheme}
+              className="btn btn-primary btn-sm"
+              style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
+            >
+              <Plus size={15} /> New Scheme
+            </button>
+          )}
+
+          {activeScheme && (
+            <button
+              onClick={handleExportSchemeCsv}
+              className="btn btn-secondary btn-sm"
+              style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 600 }}
+            >
+              <Download size={14} /> Export CSV
+            </button>
+          )}
         </div>
       </div>
 
       {/* ==================== 2. ACTIVE SCHEME INFO CARD & TOP MONTHLY TOTALS BANNER (IMAGE 2 FORMAT) ==================== */}
-      {activeScheme && (
+      {activeScheme ? (
         <div className="glass-panel" style={{ padding: "20px 24px", borderRadius: "16px", background: "linear-gradient(135deg, rgba(15, 23, 42, 0.75) 0%, rgba(30, 41, 59, 0.75) 100%)", border: "1px solid rgba(245, 158, 11, 0.25)" }}>
           
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px", marginBottom: "18px" }}>
@@ -998,9 +1106,19 @@ export default function SchemeManagementStudio({
                 <h2 style={{ fontSize: "1.45rem", fontWeight: 800, margin: 0, color: "#f59e0b", display: "flex", alignItems: "center", gap: "8px" }}>
                   <Gift size={24} /> {activeScheme.title || activeScheme.name}
                 </h2>
-                <span className="badge badge-success" style={{ textTransform: "uppercase", fontSize: "0.75rem", padding: "4px 10px" }}>
-                  {activeScheme.status}
-                </span>
+                
+                {/* Live / Paused Badge */}
+                {isSchemeLive(activeScheme) ? (
+                  <span className="badge" style={{ background: "rgba(16, 185, 129, 0.18)", color: "#10b981", border: "1px solid rgba(16, 185, 129, 0.4)", textTransform: "uppercase", fontSize: "0.75rem", padding: "4px 10px", fontWeight: 800, display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                    <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10b981", display: "inline-block" }}></span>
+                    LIVE & ACTIVE
+                  </span>
+                ) : (
+                  <span className="badge" style={{ background: "rgba(245, 158, 11, 0.18)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.4)", textTransform: "uppercase", fontSize: "0.75rem", padding: "4px 10px", fontWeight: 800, display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                    <Pause size={12} /> PAUSED (Admin Only)
+                  </span>
+                )}
+
                 <span style={{ fontSize: "0.82rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
                   <Calendar size={13} /> {activeScheme.startDate} to {activeScheme.endDate}
                 </span>
@@ -1662,6 +1780,60 @@ export default function SchemeManagementStudio({
                     className="form-control"
                     style={{ fontSize: "0.85rem" }}
                   />
+                </div>
+
+                {/* Status / Visibility Selection */}
+                <div>
+                  <label style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "6px", display: "block" }}>
+                    Scheme Status & Visibility *
+                  </label>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                    <label style={{
+                      display: "flex", alignItems: "center", gap: "10px", padding: "10px 14px",
+                      borderRadius: "10px", border: (formStatus === "active" || formStatus === "live") ? "1.5px solid #10b981" : "1px solid var(--border-glass)",
+                      background: (formStatus === "active" || formStatus === "live") ? "rgba(16, 185, 129, 0.12)" : "rgba(255,255,255,0.02)",
+                      cursor: "pointer"
+                    }}>
+                      <input
+                        type="radio"
+                        name="modalSchemeStatus"
+                        value="active"
+                        checked={formStatus === "active" || formStatus === "live"}
+                        onChange={() => setFormStatus("active")}
+                      />
+                      <div>
+                        <div style={{ fontWeight: 700, color: "#10b981", fontSize: "0.86rem", display: "flex", alignItems: "center", gap: "5px" }}>
+                          🟢 LIVE (Active)
+                        </div>
+                        <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                          Visible everywhere in CRM & sales portals
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{
+                      display: "flex", alignItems: "center", gap: "10px", padding: "10px 14px",
+                      borderRadius: "10px", border: (formStatus === "paused" || formStatus === "inactive") ? "1.5px solid #f59e0b" : "1px solid var(--border-glass)",
+                      background: (formStatus === "paused" || formStatus === "inactive") ? "rgba(245, 158, 11, 0.12)" : "rgba(255,255,255,0.02)",
+                      cursor: "pointer"
+                    }}>
+                      <input
+                        type="radio"
+                        name="modalSchemeStatus"
+                        value="paused"
+                        checked={formStatus === "paused" || formStatus === "inactive"}
+                        onChange={() => setFormStatus("paused")}
+                      />
+                      <div>
+                        <div style={{ fontWeight: 700, color: "#f59e0b", fontSize: "0.86rem", display: "flex", alignItems: "center", gap: "5px" }}>
+                          ⏸️ PAUSED
+                        </div>
+                        <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                          Hidden from non-admin & CRM portals
+                        </div>
+                      </div>
+                    </label>
+                  </div>
                 </div>
 
                 {/* Milestone Gift Tiers */}
