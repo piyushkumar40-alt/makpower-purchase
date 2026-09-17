@@ -30,13 +30,18 @@ let stateCache = null;
 let stateCacheTimestamp = 0;
 let purchaserStateCache = null;
 let purchaserStateCacheTimestamp = 0;
+let livePartyCategorySalesCache = null;
+let livePartyCategorySalesTimestamp = 0;
 const STATE_CACHE_TTL_MS = 5000;
+const LIVE_PARTY_CAT_CACHE_TTL_MS = 30000;
 
 function invalidateStateCache() {
   stateCache = null;
   stateCacheTimestamp = 0;
   purchaserStateCache = null;
   purchaserStateCacheTimestamp = 0;
+  livePartyCategorySalesCache = null;
+  livePartyCategorySalesTimestamp = 0;
 }
 
 // Automatically invalidate full-state cache on any mutating request
@@ -535,6 +540,11 @@ async function setupPgDatabase() {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_parties_tsm ON crm_parties("assignedTsmId");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_parties_rsm ON crm_parties("assignedRsmId");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_parties_crm ON crm_parties("assignedCrmId");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_parties_crm_name ON crm_parties("assignedCrmName");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_parties_asm_name ON crm_parties("assignedAsmName");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_parties_tsm_name ON crm_parties("assignedTsmName");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_parties_rsm_name ON crm_parties("assignedRsmName");`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_ims_party_date ON ims_transactions("partyName", "date" DESC);`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_orders_party ON crm_sales_orders("partyId");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_orders_date ON crm_sales_orders("orderDate" DESC);`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_orders_asm ON crm_sales_orders("assignedAsmId");`);
@@ -1999,6 +2009,13 @@ function normalizeFgCategory(cat = "", itemDesc = "", itemType = "") {
 async function getLivePartyCategoryMonthlySales() {
   const targetMonths = get4TargetMonths();
   const targetMonthKeys = new Set(targetMonths.map(m => m.key));
+  const earliestMonthKey = targetMonths[0]?.key || "2026-01";
+  const earliestDateStr = `${earliestMonthKey}-01`;
+
+  const now = Date.now();
+  if (livePartyCategorySalesCache && (now - livePartyCategorySalesTimestamp < LIVE_PARTY_CAT_CACHE_TTL_MS)) {
+    return livePartyCategorySalesCache;
+  }
 
   if (isPg) {
     try {
@@ -2016,7 +2033,8 @@ async function getLivePartyCategoryMonthlySales() {
             AND TRIM("partyName") <> '' 
             AND TRIM("partyName") <> '—'
             AND "stockQty" < 0
-        `),
+            AND ("date" >= $1 OR "date" IS NULL)
+        `, [earliestDateStr]),
         pool.query(`
           SELECT 
             TRIM("partyName") AS "partyName",
@@ -2026,7 +2044,8 @@ async function getLivePartyCategoryMonthlySales() {
             "orderQty",
             "totalInr"
           FROM crm_sales_orders
-        `)
+          WHERE ("orderDate" >= $1 OR "orderDate" IS NULL)
+        `, [earliestDateStr])
       ]);
 
       const itemMap = new Map();
@@ -2096,7 +2115,7 @@ async function getLivePartyCategoryMonthlySales() {
         entry.revenue += parseFloat(o.totalInr) || 0;
       });
 
-      return Array.from(agg.values()).map(v => ({
+      const finalResult = Array.from(agg.values()).map(v => ({
         id: `pcs_${crypto.createHash('md5').update(`${v.partyName}___${v.category}___${v.month}`).digest('hex')}`,
         partyName: v.partyName,
         category: v.category,
@@ -2105,6 +2124,10 @@ async function getLivePartyCategoryMonthlySales() {
         salesRevenue: Number(v.revenue || 0),
         orderCount: Number(v.orderCount || 0)
       }));
+
+      livePartyCategorySalesCache = finalResult;
+      livePartyCategorySalesTimestamp = Date.now();
+      return finalResult;
     } catch (err) {
       console.error("Error in getLivePartyCategoryMonthlySales (PG):", err.message);
       return [];
@@ -2159,7 +2182,7 @@ async function getLivePartyCategoryMonthlySales() {
       }
     });
 
-    return Array.from(agg.values()).map(v => ({
+    const finalResult = Array.from(agg.values()).map(v => ({
       id: `pcs_${v.partyName}_${v.category}_${v.month}`,
       partyName: v.partyName,
       category: v.category,
@@ -2168,6 +2191,10 @@ async function getLivePartyCategoryMonthlySales() {
       salesRevenue: Number(v.salesRevenue || 0),
       orderCount: Number(v.orderCount || 0)
     }));
+
+    livePartyCategorySalesCache = finalResult;
+    livePartyCategorySalesTimestamp = Date.now();
+    return finalResult;
   }
 }
 
@@ -3411,7 +3438,8 @@ app.delete("/api/users/:id", async (req, res) => {
 // 1. GET /api/crm/parties - Retrieve CRM Parties
 app.get("/api/crm/parties", async (req, res) => {
   const { crmId, asmId, tsmId, rsmId, userId, userRole, userName } = req.query;
-  const isRestrictedRole = userRole === "asm" || userRole === "tsm" || userRole === "rsm" || !!asmId || !!tsmId || !!rsmId;
+  const isCrmRole = userRole === "crm" || !!crmId;
+  const isAsmTsmRole = userRole === "asm" || userRole === "tsm" || userRole === "rsm" || !!asmId || !!tsmId || !!rsmId;
 
   if (isPg) {
     try {
@@ -3420,11 +3448,19 @@ app.get("/api/crm/parties", async (req, res) => {
       const values = [];
       let idx = 1;
 
-      if (crmId) {
-        conditions.push(`"assignedCrmId" = $${idx++}`);
-        values.push(crmId);
-      }
-      if (isRestrictedRole) {
+      if (isCrmRole) {
+        const effectiveId = crmId || userId || "";
+        const cleanName = (userName || "").replace(/\s*\((ASM|TSM|RSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+        conditions.push(`(
+          ($${idx} <> '' AND "assignedCrmId" = $${idx})
+          OR ($${idx + 1} <> '' AND TRIM(COALESCE("assignedCrmName", '')) <> '' AND (
+                LOWER(TRIM("assignedCrmName")) LIKE '%' || $${idx + 1} || '%' 
+             OR $${idx + 1} LIKE '%' || LOWER(TRIM("assignedCrmName")) || '%'
+          ))
+        )`);
+        values.push(effectiveId, cleanName);
+        idx += 2;
+      } else if (isAsmTsmRole) {
         const effectiveId = asmId || tsmId || rsmId || userId || "";
         const cleanName = (userName || "").replace(/\s*\((ASM|TSM|RSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
         conditions.push(`(
@@ -3473,8 +3509,16 @@ app.get("/api/crm/parties", async (req, res) => {
   } else {
     const data = readLocalJson();
     let list = data.crmParties || [];
-    if (crmId) list = list.filter(p => p.assignedCrmId === crmId);
-    if (isRestrictedRole) {
+    if (isCrmRole) {
+      const effectiveId = crmId || userId || "";
+      const cleanName = (userName || "").replace(/\s*\((ASM|TSM|RSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
+      list = list.filter(p => {
+        const matchId = effectiveId && p.assignedCrmId === effectiveId;
+        const pCrm = (p.assignedCrmName || "").trim().toLowerCase();
+        const matchName = cleanName && (pCrm && (pCrm.includes(cleanName) || cleanName.includes(pCrm)));
+        return matchId || matchName;
+      });
+    } else if (isAsmTsmRole) {
       const effectiveId = asmId || tsmId || rsmId || userId || "";
       const cleanName = (userName || "").replace(/\s*\((ASM|TSM|RSM|CRM|OWNER|ADMIN)\)/gi, "").trim().toLowerCase();
       list = list.filter(p => {

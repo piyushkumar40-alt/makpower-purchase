@@ -290,22 +290,35 @@ export default function App() {
           if (Array.isArray(data)) setItems(data);
         } else if (moduleKey === TRACKABLE_MODULES.CRM_PARTIES || moduleKey === "crmParties") {
           const q = currentUser ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(currentUser.role)}&userName=${encodeURIComponent(currentUser.name || '')}` : "";
-          const [resParties, resCatSales] = await Promise.all([
-            fetch(`/api/crm/parties${q}`),
-            fetch(`/api/crm/party-category-sales`)
-          ]);
-          const data = await resParties.json();
-          const list = Array.isArray(data) ? data : (data.parties || []);
-          setCrmParties(deduplicatePartiesKeepLast(list));
-          try {
-            const catSalesData = await resCatSales.json();
-            if (Array.isArray(catSalesData?.sales)) {
-              setPartyCategoryMonthlySales(catSalesData.sales);
+          
+          // 1. Fetch parties FAST and update UI immediately without blocking
+          const partiesPromise = (async () => {
+            try {
+              const resParties = await fetch(`/api/crm/parties${q}`);
+              const data = await resParties.json();
+              const list = Array.isArray(data) ? data : (data.parties || []);
+              setCrmParties(deduplicatePartiesKeepLast(list));
+              return list;
+            } catch (err) {
+              console.error("Fast parties fetch error:", err);
+              return [];
             }
-            if (Array.isArray(catSalesData?.months)) {
-              setPartyCategoryMonths(catSalesData.months);
-            }
-          } catch (e) {}
+          })();
+
+          // 2. Fetch category sales matrix in background without delaying party rendering
+          fetch(`/api/crm/party-category-sales`)
+            .then(r => r.json())
+            .then(catSalesData => {
+              if (Array.isArray(catSalesData?.sales)) {
+                setPartyCategoryMonthlySales(catSalesData.sales);
+              }
+              if (Array.isArray(catSalesData?.months)) {
+                setPartyCategoryMonths(catSalesData.months);
+              }
+            })
+            .catch(e => console.warn("Background category sales fetch notice:", e));
+
+          await partiesPromise;
         } else if (moduleKey === TRACKABLE_MODULES.CRM_SALES_ORDERS) {
           const params = new URLSearchParams();
           if (currentUser) {
@@ -904,6 +917,7 @@ export default function App() {
         setActiveView("owner");
       } else if (roleLower === "crm" || roleLower === "asm" || roleLower === "tsm" || roleLower === "rsm" || desigLower.includes("crm") || desigLower.includes("sales manager")) {
         setActiveView("crm");
+        pullModuleData(TRACKABLE_MODULES.CRM_PARTIES, true);
       } else if (user.id === "u-nitin" || cleanEmail === "nitin@demo.com" || cleanEmail === "nitin@makpowerindia.com" || roleLower === "nitin") {
         setActiveView("nitin");
       } else if (user.id === "u-rahul" || cleanEmail === "rahul@demo.com" || cleanEmail === "rahul@makpowerindia.com") {
