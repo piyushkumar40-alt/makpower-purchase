@@ -1097,7 +1097,7 @@ export default function SchemeManagementStudio({
       </div>
 
       {/* ==================== 2. ACTIVE SCHEME INFO CARD & TOP MONTHLY TOTALS BANNER (IMAGE 2 FORMAT) ==================== */}
-      {activeScheme ? (
+      {activeScheme && (
         <div className="glass-panel" style={{ padding: "20px 24px", borderRadius: "16px", background: "linear-gradient(135deg, rgba(15, 23, 42, 0.75) 0%, rgba(30, 41, 59, 0.75) 100%)", border: "1px solid rgba(245, 158, 11, 0.25)" }}>
           
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px", marginBottom: "18px" }}>
