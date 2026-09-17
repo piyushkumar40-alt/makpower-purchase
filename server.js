@@ -573,6 +573,9 @@ async function setupPgDatabase() {
             [tx.id, tx.date, tx.itemName, tx.itemId || "", tx.stockQty, tx.movementType, tx.partyName || "", tx.remarks || "", tx.source || "initial", tx.isMissingId || false, tx.location || "Delhi", tx.createdAt || new Date().toISOString()]
           );
         }
+        await pool.query(`INSERT INTO sys_metadata ("key", "value") VALUES ('ims_seeded', 'true') ON CONFLICT ("key") DO NOTHING;`);
+      }
+
       // Seed initial Sales Schemes configured by Admin
       await pool.query(`
         CREATE TABLE IF NOT EXISTS schemes (
