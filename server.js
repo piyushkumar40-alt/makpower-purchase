@@ -1948,18 +1948,6 @@ async function calculateImsFullSummary(forceFresh = false) {
   }
 }
 
-// In-memory cache variables and cache invalidation
-let livePartyCategorySalesCache = null;
-let livePartyCategorySalesTimestamp = 0;
-const LIVE_PARTY_CAT_CACHE_TTL_MS = 60000;
-let imsFullSummaryCache = null;
-
-function invalidateStateCache() {
-  livePartyCategorySalesCache = null;
-  livePartyCategorySalesTimestamp = 0;
-  imsFullSummaryCache = null;
-}
-
 // 4-Month Party Category Sales Generator & Sync
 function get4TargetMonths() {
   const months = [];
