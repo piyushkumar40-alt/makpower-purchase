@@ -117,7 +117,8 @@ export default function SchemeManagementStudio({
   onUpdateScheme,
   onDeleteScheme,
   onBulkAddSchemeItems,
-  onDeleteSchemeItem
+  onDeleteSchemeItem,
+  onBulkDeleteSchemeItems
 }) {
   const { startLoading, finishLoading, showSuccessToast, showErrorToast } = useLoading();
 
@@ -164,6 +165,9 @@ export default function SchemeManagementStudio({
   const [showBulkItemModal, setShowBulkItemModal] = useState(false);
   const [showSchemeItemsDrawer, setShowSchemeItemsDrawer] = useState(false);
   const [selectedPartyDrilldown, setSelectedPartyDrilldown] = useState(null);
+
+  // Multi-select for deleting items from scheme
+  const [selectedItemsForDelete, setSelectedItemsForDelete] = useState(new Set());
 
   // Form State for Scheme Config Modal
   const [formName, setFormName] = useState("");
@@ -745,8 +749,8 @@ export default function SchemeManagementStudio({
     }
   }, [bulkRawText, bulkDefaultStartDate, bulkDefaultEndDate, bulkImportMode]);
 
-  // Commit Bulk Items to Active Scheme
-  const handleCommitBulkItems = async () => {
+  // Commit Bulk Items to Active Scheme (Supports Append or Replace)
+  const handleCommitBulkItems = async (replaceAll = false) => {
     if (!activeScheme) return;
     let itemsToCommit = [];
 
@@ -769,33 +773,82 @@ export default function SchemeManagementStudio({
       }));
     }
 
-    startLoading("Adding Scheme Items...", `Adding ${itemsToCommit.length} products to ${activeScheme.name}...`, 50);
+    startLoading("Saving Scheme Items...", `${replaceAll ? "Replacing with" : "Adding"} ${itemsToCommit.length} products in ${activeScheme.name}...`, 50);
     try {
       if (onBulkAddSchemeItems) {
-        await onBulkAddSchemeItems(activeScheme.id, itemsToCommit, false);
+        await onBulkAddSchemeItems(activeScheme.id, itemsToCommit, replaceAll);
+      } else if (onUpdateScheme) {
+        let finalItems = replaceAll ? itemsToCommit : [...(activeScheme.items || [])];
+        if (!replaceAll) {
+          itemsToCommit.forEach(it => {
+            const eIdx = finalItems.findIndex(x => (x.itemName || "").trim().toLowerCase() === it.itemName.toLowerCase());
+            if (eIdx >= 0) finalItems[eIdx] = it;
+            else finalItems.push(it);
+          });
+        }
+        await onUpdateScheme({ ...activeScheme, items: finalItems });
       }
-      finishLoading(`🎉 Added ${itemsToCommit.length} items to ${activeScheme.name}!`);
-      showSuccessToast(`🎉 ${itemsToCommit.length} items added to ${activeScheme.name}!`);
+      finishLoading(`🎉 ${replaceAll ? "Replaced list with" : "Added"} ${itemsToCommit.length} items in ${activeScheme.name}!`);
+      showSuccessToast(`🎉 ${itemsToCommit.length} items saved to ${activeScheme.name}!`);
       setShowBulkItemModal(false);
+      setShowSchemeItemsDrawer(true);
       setBulkRawText("");
       setBulkParsedItems([]);
       setSelectedCatalogItems([]);
     } catch (err) {
       finishLoading();
-      showErrorToast("Failed to add items: " + err.message);
+      showErrorToast("Failed to save items: " + err.message);
     }
   };
 
   // Remove single item from scheme
   const handleRemoveSchemeItem = async (itemName) => {
     if (!activeScheme) return;
+    const cleanName = String(itemName).trim();
+    if (!window.confirm(`Remove "${cleanName}" from scheme "${activeScheme.name}"?`)) return;
+
     try {
       if (onDeleteSchemeItem) {
-        await onDeleteSchemeItem(activeScheme.id, itemName);
-        showSuccessToast(`Removed ${itemName} from ${activeScheme.name}.`);
+        await onDeleteSchemeItem(activeScheme.id, cleanName);
+      } else if (onUpdateScheme) {
+        const remaining = (activeScheme.items || []).filter(i => (i.itemName || "").trim().toLowerCase() !== cleanName.toLowerCase());
+        await onUpdateScheme({ ...activeScheme, items: remaining });
       }
+      setSelectedItemsForDelete(prev => {
+        const next = new Set(prev);
+        next.delete(cleanName.toLowerCase());
+        return next;
+      });
+      showSuccessToast(`Removed "${cleanName}" from ${activeScheme.name}.`);
     } catch (err) {
       showErrorToast("Failed to remove item: " + err.message);
+    }
+  };
+
+  // Bulk remove multiple selected items from scheme
+  const handleBulkRemoveSelectedItems = async () => {
+    if (!activeScheme || selectedItemsForDelete.size === 0) return;
+    const count = selectedItemsForDelete.size;
+    if (!window.confirm(`Are you sure you want to remove ${count} selected product(s) from "${activeScheme.name}"?`)) return;
+
+    const namesToRemove = Array.from(selectedItemsForDelete);
+    const targetSet = new Set(namesToRemove.map(n => n.toLowerCase()));
+    const remaining = (activeScheme.items || []).filter(i => !targetSet.has((i.itemName || "").trim().toLowerCase()));
+
+    try {
+      if (onBulkDeleteSchemeItems) {
+        await onBulkDeleteSchemeItems(activeScheme.id, namesToRemove);
+      } else if (onUpdateScheme) {
+        await onUpdateScheme({ ...activeScheme, items: remaining });
+      } else if (onDeleteSchemeItem) {
+        for (const name of namesToRemove) {
+          await onDeleteSchemeItem(activeScheme.id, name);
+        }
+      }
+      setSelectedItemsForDelete(new Set());
+      showSuccessToast(`Removed ${count} products from ${activeScheme.name}.`);
+    } catch (err) {
+      showErrorToast("Failed to remove items: " + err.message);
     }
   };
 
@@ -974,11 +1027,11 @@ export default function SchemeManagementStudio({
           </div>
 
           {/* ==================== SPREADSHEET HEADER MONTH TOTALS BANNER (IMAGE 2 HEADER ROW) ==================== */}
-          <div style={{ background: "rgba(15, 23, 42, 0.85)", border: "1px solid var(--border-glass)", borderRadius: "12px", padding: "14px 20px", overflowX: "auto" }}>
+          <div style={{ background: "rgba(15, 23, 42, 0.92)", border: "1px solid rgba(56, 189, 248, 0.3)", borderRadius: "12px", padding: "14px 20px", overflowX: "auto" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "20px", minWidth: "750px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <span style={{ fontSize: "1.1rem", fontWeight: 800, color: "#38bdf8" }}>{activeScheme.name}</span>
-                <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>• Dispatched Volume (Pcs)</span>
+                <span style={{ fontSize: "1.15rem", fontWeight: 800, color: "#38bdf8", letterSpacing: "0.2px" }}>{activeScheme.name}</span>
+                <span style={{ fontSize: "0.85rem", color: "#cbd5e1", fontWeight: 600, letterSpacing: "0.2px" }}>• Dispatched Volume (Pcs)</span>
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
@@ -994,14 +1047,14 @@ export default function SchemeManagementStudio({
                 <div style={{ borderLeft: "2px solid rgba(255,255,255,0.15)", paddingLeft: "20px", textAlign: "center" }}>
                   <div style={{ fontSize: "0.75rem", fontWeight: 800, color: "#10b981", textTransform: "uppercase" }}>TOTAL DISPATCHED</div>
                   <div style={{ fontSize: "1.45rem", fontWeight: 900, color: "#10b981" }}>
-                    {totals.grandTotal.toLocaleString()} <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-muted)" }}>Pcs</span>
+                    {totals.grandTotal.toLocaleString()} <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#94a3b8" }}>Pcs</span>
                   </div>
                 </div>
 
                 <div style={{ borderLeft: "2px solid rgba(255,255,255,0.15)", paddingLeft: "20px", textAlign: "center" }}>
                   <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#f59e0b", textTransform: "uppercase" }}>Qualifying Parties</div>
                   <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#f59e0b" }}>
-                    {totals.qualifyingParties} <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>/ {totals.activePartyCount}</span>
+                    {totals.qualifyingParties} <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>/ {totals.activePartyCount}</span>
                   </div>
                 </div>
               </div>
@@ -1695,12 +1748,12 @@ export default function SchemeManagementStudio({
         </div>
       )}
 
-      {/* ==================== 7. DRAWER: SCHEME ITEMS LIST & MANAGEMENT ==================== */}
+      {/* ==================== 7. DRAWER / MODAL: SCHEME ITEMS LIST & MANAGEMENT ==================== */}
       {showSchemeItemsDrawer && activeScheme && (
         <div className="modal-backdrop" onClick={() => setShowSchemeItemsDrawer(false)}>
-          <div className="modal-dialog glass-panel card-fade-in" style={{ maxWidth: "650px", width: "100%", maxHeight: "90vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+          <div className="modal-dialog glass-panel card-fade-in" style={{ maxWidth: "720px", width: "100%", maxHeight: "90vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
             
-            <div className="modal-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 24px", borderBottom: "1px solid var(--border-glass)" }}>
+            <div className="modal-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "1px solid var(--border-glass)" }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 800, color: "#38bdf8", display: "flex", alignItems: "center", gap: "8px" }}>
                   <Package size={20} /> Eligible Products in {activeScheme.name} ({activeScheme.items?.length || 0})
@@ -1712,42 +1765,133 @@ export default function SchemeManagementStudio({
               <button className="btn btn-secondary btn-sm" onClick={() => setShowSchemeItemsDrawer(false)}><X size={18} /></button>
             </div>
 
-            <div className="modal-body" style={{ padding: "18px 24px", overflowY: "auto" }}>
+            {/* Quick Multi-select Action Bar */}
+            {activeScheme.items && activeScheme.items.length > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 24px", background: "rgba(255,255,255,0.03)", borderBottom: "1px solid var(--border-glass)", flexWrap: "wrap", gap: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontSize: "0.82rem", color: selectedItemsForDelete.size > 0 ? "#38bdf8" : "var(--text-muted)", fontWeight: selectedItemsForDelete.size > 0 ? 700 : 500 }}>
+                    {selectedItemsForDelete.size > 0 ? `Selected ${selectedItemsForDelete.size} of ${activeScheme.items.length} items` : `${activeScheme.items.length} Products Configured`}
+                  </span>
+                  {selectedItemsForDelete.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedItemsForDelete(new Set())}
+                      className="btn btn-ghost btn-sm"
+                      style={{ fontSize: "0.75rem", padding: "2px 8px" }}
+                    >
+                      Deselect All
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  {selectedItemsForDelete.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleBulkRemoveSelectedItems}
+                      className="btn btn-danger btn-sm"
+                      style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.78rem", fontWeight: 700, padding: "4px 12px" }}
+                    >
+                      <Trash2 size={13} /> Delete Selected ({selectedItemsForDelete.size})
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSchemeItemsDrawer(false);
+                      setShowBulkItemModal(true);
+                    }}
+                    className="btn btn-primary btn-sm"
+                    style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "0.78rem", fontWeight: 700, padding: "4px 12px" }}
+                  >
+                    <Plus size={13} /> Paste / Add Products
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="modal-body" style={{ padding: "16px 24px", overflowY: "auto" }}>
               {(!activeScheme.items || activeScheme.items.length === 0) ? (
-                <div style={{ padding: "30px", textAlign: "center", color: "var(--text-muted)" }}>
-                  <Package size={36} style={{ marginBottom: "10px", opacity: 0.5 }} />
-                  <h4>No items added to this scheme yet</h4>
-                  <p style={{ fontSize: "0.85rem" }}>Click "Add Products (Bulk)" to add items from Excel or Catalog.</p>
+                <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+                  <Package size={42} style={{ marginBottom: "12px", opacity: 0.4, color: "#38bdf8" }} />
+                  <h4 style={{ color: "var(--text-main)", marginBottom: "6px" }}>No items added to this scheme yet</h4>
+                  <p style={{ fontSize: "0.85rem", marginBottom: "16px" }}>Paste product names directly from Excel or pick from your Item Catalog.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSchemeItemsDrawer(false);
+                      setShowBulkItemModal(true);
+                    }}
+                    className="btn btn-primary btn-sm"
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
+                  >
+                    <Plus size={14} /> Paste Products from Excel
+                  </button>
                 </div>
               ) : (
                 <table className="table" style={{ width: "100%", fontSize: "0.85rem" }}>
                   <thead>
                     <tr style={{ background: "rgba(255,255,255,0.05)" }}>
-                      <th>SNO</th>
+                      <th style={{ width: "38px", textAlign: "center" }}>
+                        <input
+                          type="checkbox"
+                          checked={activeScheme.items.length > 0 && selectedItemsForDelete.size === activeScheme.items.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedItemsForDelete(new Set(activeScheme.items.map(i => (i.itemName || "").toLowerCase())));
+                            } else {
+                              setSelectedItemsForDelete(new Set());
+                            }
+                          }}
+                          style={{ cursor: "pointer", width: "15px", height: "15px" }}
+                          title="Select / Deselect All Items"
+                        />
+                      </th>
+                      <th style={{ width: "45px" }}>SNO</th>
                       <th>Item Name</th>
                       <th>Valid From</th>
                       <th>Valid Till</th>
-                      <th style={{ width: "40px", textAlign: "center" }}>Action</th>
+                      <th style={{ width: "50px", textAlign: "center" }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {activeScheme.items.map((it, idx) => (
-                      <tr key={idx}>
-                        <td style={{ color: "var(--text-muted)" }}>{idx + 1}</td>
-                        <td style={{ fontWeight: 700, color: "#38bdf8" }}>{it.itemName}</td>
-                        <td>{it.startDate || activeScheme.startDate}</td>
-                        <td>{it.endDate || activeScheme.endDate}</td>
-                        <td style={{ textAlign: "center" }}>
-                          <button
-                            onClick={() => handleRemoveSchemeItem(it.itemName)}
-                            style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", padding: "4px" }}
-                            title="Remove item from scheme"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {activeScheme.items.map((it, idx) => {
+                      const isSelected = selectedItemsForDelete.has((it.itemName || "").toLowerCase());
+                      return (
+                        <tr key={idx} style={{ background: isSelected ? "rgba(56, 189, 248, 0.08)" : undefined }}>
+                          <td style={{ textAlign: "center" }}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {
+                                const key = (it.itemName || "").toLowerCase();
+                                setSelectedItemsForDelete(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(key)) next.delete(key);
+                                  else next.add(key);
+                                  return next;
+                                });
+                              }}
+                              style={{ cursor: "pointer", width: "15px", height: "15px" }}
+                            />
+                          </td>
+                          <td style={{ color: "var(--text-muted)" }}>{idx + 1}</td>
+                          <td style={{ fontWeight: 700, color: "#38bdf8" }}>{it.itemName}</td>
+                          <td style={{ color: "var(--text-main)" }}>{it.startDate || activeScheme.startDate}</td>
+                          <td style={{ color: "var(--text-main)" }}>{it.endDate || activeScheme.endDate}</td>
+                          <td style={{ textAlign: "center" }}>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSchemeItem(it.itemName)}
+                              style={{ background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.3)", color: "#f87171", cursor: "pointer", padding: "4px 7px", borderRadius: "6px" }}
+                              title={`Remove "${it.itemName}" from scheme`}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
@@ -1755,6 +1899,7 @@ export default function SchemeManagementStudio({
 
             <div className="modal-footer" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 24px", borderTop: "1px solid var(--border-glass)" }}>
               <button
+                type="button"
                 onClick={() => {
                   setShowSchemeItemsDrawer(false);
                   setShowBulkItemModal(true);
@@ -1762,12 +1907,286 @@ export default function SchemeManagementStudio({
                 className="btn btn-primary btn-sm"
                 style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
               >
-                <Plus size={14} /> Add More Items
+                <Plus size={14} /> + Add More Items (Paste)
               </button>
 
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowSchemeItemsDrawer(false)}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowSchemeItemsDrawer(false)}>
                 Close
               </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ==================== 7b. MODAL: DIRECT EXCEL PASTE / ADD PRODUCTS (NO FILE UPLOAD NEEDED) ==================== */}
+      {showBulkItemModal && activeScheme && (
+        <div className="modal-backdrop" onClick={() => setShowBulkItemModal(false)}>
+          <div className="modal-dialog glass-panel card-fade-in" style={{ maxWidth: "760px", width: "100%", maxHeight: "90vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+            
+            <div className="modal-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "1px solid var(--border-glass)" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                  <span className="badge badge-primary" style={{ fontWeight: 800 }}>
+                    Direct Excel Paste Wizard
+                  </span>
+                  <span className="badge badge-secondary">{activeScheme.name}</span>
+                </div>
+                <h3 style={{ margin: 0, fontSize: "1.3rem", fontWeight: 800, color: "var(--text-main)", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Sparkles size={20} style={{ color: "var(--primary)" }} /> Add Products to {activeScheme.name}
+                </h3>
+                <p style={{ margin: "4px 0 0 0", fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                  Paste product names directly from Excel or Google Sheets (Ctrl+V) without needing a file.
+                </p>
+              </div>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowBulkItemModal(false)}><X size={18} /></button>
+            </div>
+
+            {/* Mode Switcher: Direct Paste vs Item Catalog Picker */}
+            <div style={{ display: "flex", padding: "0 24px", borderBottom: "1px solid var(--border-glass)", background: "rgba(255,255,255,0.02)" }}>
+              <button
+                type="button"
+                onClick={() => setBulkImportMode("paste")}
+                style={{
+                  padding: "10px 18px",
+                  background: "none",
+                  border: "none",
+                  borderBottom: bulkImportMode === "paste" ? "2px solid #38bdf8" : "2px solid transparent",
+                  color: bulkImportMode === "paste" ? "#38bdf8" : "var(--text-muted)",
+                  fontWeight: bulkImportMode === "paste" ? 800 : 600,
+                  fontSize: "0.86rem",
+                  cursor: "pointer"
+                }}
+              >
+                📋 Paste from Excel / Google Sheets
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkImportMode("select")}
+                style={{
+                  padding: "10px 18px",
+                  background: "none",
+                  border: "none",
+                  borderBottom: bulkImportMode === "select" ? "2px solid #38bdf8" : "2px solid transparent",
+                  color: bulkImportMode === "select" ? "#38bdf8" : "var(--text-muted)",
+                  fontWeight: bulkImportMode === "select" ? 800 : 600,
+                  fontSize: "0.86rem",
+                  cursor: "pointer"
+                }}
+              >
+                🔍 Pick from Item Catalog (FG)
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ padding: "18px 24px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "16px" }}>
+              
+              {/* Default Scheme Dates Config */}
+              <div style={{ background: "rgba(56, 189, 248, 0.06)", border: "1px solid rgba(56, 189, 248, 0.2)", borderRadius: "10px", padding: "12px 16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div>
+                  <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "4px", display: "block" }}>
+                    Default Valid From Date
+                  </label>
+                  <input
+                    type="date"
+                    value={bulkDefaultStartDate}
+                    onChange={e => setBulkDefaultStartDate(e.target.value)}
+                    className="form-control"
+                    style={{ height: "34px", fontSize: "0.84rem" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "4px", display: "block" }}>
+                    Default Valid Till Date
+                  </label>
+                  <input
+                    type="date"
+                    value={bulkDefaultEndDate}
+                    onChange={e => setBulkDefaultEndDate(e.target.value)}
+                    className="form-control"
+                    style={{ height: "34px", fontSize: "0.84rem" }}
+                  />
+                </div>
+              </div>
+
+              {bulkImportMode === "paste" ? (
+                <>
+                  <div>
+                    <label style={{ fontSize: "0.84rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>Paste Excel Cells or Text (Ctrl+V):</span>
+                      <span style={{ fontSize: "0.76rem", color: "var(--text-muted)" }}>Supports Item Names or 3-column table</span>
+                    </label>
+                    <textarea
+                      rows={6}
+                      placeholder={`Paste items directly from Excel or Sheets...\nExamples:\nDC25\nDC26\nDC27\nCH65\t2026-07-01\t2026-09-30\nBT220\t2026-07-01\t2026-09-30`}
+                      value={bulkRawText}
+                      onChange={e => setBulkRawText(e.target.value)}
+                      className="form-control"
+                      style={{ fontSize: "0.84rem", fontFamily: "monospace", lineHeight: 1.4, width: "100%" }}
+                    />
+                  </div>
+
+                  {/* Parsed Preview Table */}
+                  {bulkParsedItems.length > 0 && (
+                    <div style={{ border: "1px solid var(--border-glass)", borderRadius: "10px", padding: "12px 14px", background: "rgba(16, 185, 129, 0.04)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                        <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "#10b981" }}>
+                          ✅ Detected {bulkParsedItems.length} Products to Import:
+                        </span>
+                        <span style={{ fontSize: "0.76rem", color: "var(--text-muted)" }}>
+                          Duplicates auto-merged
+                        </span>
+                      </div>
+
+                      <div style={{ maxHeight: "180px", overflowY: "auto", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+                        <table className="table" style={{ width: "100%", fontSize: "0.8rem", margin: 0 }}>
+                          <thead>
+                            <tr style={{ background: "rgba(255,255,255,0.06)" }}>
+                              <th style={{ width: "40px" }}>#</th>
+                              <th>Item Name</th>
+                              <th>Valid From</th>
+                              <th>Valid Till</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {bulkParsedItems.map((p, pIdx) => (
+                              <tr key={pIdx}>
+                                <td style={{ color: "var(--text-muted)" }}>{pIdx + 1}</td>
+                                <td style={{ fontWeight: 700, color: "#38bdf8" }}>{p.itemName}</td>
+                                <td>{p.startDate}</td>
+                                <td>{p.endDate}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* Mode: Pick from FG Catalog */
+                <div>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "10px" }}>
+                    <div style={{ position: "relative", flex: 1 }}>
+                      <Search size={15} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+                      <input
+                        type="text"
+                        placeholder="Search Finished Goods (FG) catalog..."
+                        value={catalogSearch}
+                        onChange={e => setCatalogSearch(e.target.value)}
+                        className="form-control"
+                        style={{ paddingLeft: "36px", height: "36px", fontSize: "0.84rem" }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const fgItems = (items || []).filter(i => {
+                          const t = (i.itemType || i.type || "").toUpperCase();
+                          return t === "FG" || t.includes("FG") || t.includes("FINISHED");
+                        }).map(i => i.name || i.model).filter(Boolean);
+                        setSelectedCatalogItems(fgItems);
+                      }}
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: "0.76rem", whiteSpace: "nowrap" }}
+                    >
+                      Select All FG
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCatalogItems([])}
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: "0.76rem", whiteSpace: "nowrap" }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+
+                  <div style={{ maxHeight: "250px", overflowY: "auto", border: "1px solid var(--border-glass)", borderRadius: "10px", padding: "10px" }}>
+                    {(() => {
+                      const filtered = (items || []).filter(i => {
+                        const t = (i.itemType || i.type || "").toUpperCase();
+                        const isFg = t === "FG" || t.includes("FG") || t.includes("FINISHED") || !t;
+                        if (!isFg) return false;
+                        const q = catalogSearch.toLowerCase().trim();
+                        if (!q) return true;
+                        return (i.name || "").toLowerCase().includes(q) || (i.category || "").toLowerCase().includes(q) || (i.id || "").toLowerCase().includes(q);
+                      });
+
+                      if (filtered.length === 0) {
+                        return <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem" }}>No matching catalog items found.</div>;
+                      }
+
+                      return (
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "6px" }}>
+                          {filtered.map((it, idx) => {
+                            const name = it.name || it.model || it.id;
+                            const isChecked = selectedCatalogItems.includes(name);
+                            return (
+                              <label key={idx} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", background: isChecked ? "rgba(56, 189, 248, 0.12)" : "rgba(255,255,255,0.03)", borderRadius: "6px", border: isChecked ? "1px solid rgba(56, 189, 248, 0.4)" : "1px solid var(--border-glass)", cursor: "pointer", fontSize: "0.82rem" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    setSelectedCatalogItems(prev => prev.includes(name) ? prev.filter(x => x !== name) : [...prev, name]);
+                                  }}
+                                />
+                                <span style={{ fontWeight: isChecked ? 700 : 500, color: isChecked ? "#38bdf8" : "var(--text-main)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {name}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "6px" }}>
+                    Selected {selectedCatalogItems.length} products from catalog
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            <div className="modal-footer" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 24px", borderTop: "1px solid var(--border-glass)", flexWrap: "wrap", gap: "10px" }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  setShowBulkItemModal(false);
+                  setShowSchemeItemsDrawer(true);
+                }}
+              >
+                Back to Item List
+              </button>
+
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => handleCommitBulkItems(false)}
+                  disabled={bulkImportMode === "paste" ? bulkParsedItems.length === 0 : selectedCatalogItems.length === 0}
+                  className="btn btn-primary btn-sm"
+                  style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "5px" }}
+                >
+                  <Plus size={14} /> + Add / Append ({bulkImportMode === "paste" ? bulkParsedItems.length : selectedCatalogItems.length}) Items
+                </button>
+
+                {bulkImportMode === "paste" && bulkParsedItems.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`Replace all existing items in "${activeScheme.name}" with these ${bulkParsedItems.length} newly pasted products?`)) {
+                        handleCommitBulkItems(true);
+                      }
+                    }}
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontWeight: 700, borderColor: "rgba(245, 158, 11, 0.4)", color: "#f59e0b" }}
+                    title="Replace current product list with newly pasted items"
+                  >
+                    🔄 Replace Entire List ({bulkParsedItems.length})
+                  </button>
+                )}
+              </div>
             </div>
 
           </div>

@@ -71,6 +71,7 @@ export default function SuperAdminDashboard({
   onDeleteScheme,
   onBulkAddSchemeItems,
   onDeleteSchemeItem,
+  onBulkDeleteSchemeItems,
   designations = [],
   onAddDesignation,
   onPullModuleData,
@@ -1396,6 +1397,7 @@ export default function SuperAdminDashboard({
             onDeleteScheme={onDeleteScheme}
             onBulkAddSchemeItems={onBulkAddSchemeItems}
             onDeleteSchemeItem={onDeleteSchemeItem}
+            onBulkDeleteSchemeItems={onBulkDeleteSchemeItems}
           />
         )}
 

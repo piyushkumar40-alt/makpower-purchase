@@ -6504,9 +6504,14 @@ app.post("/api/schemes/:id/items", async (req, res) => {
         }
       });
 
+      const updatedObj = {
+        ...existing,
+        items: currentItems,
+        updatedAt: nowIso
+      };
       await pool.query('UPDATE schemes SET "items" = $1, "updatedAt" = $2 WHERE "id" = $3', [JSON.stringify(currentItems), nowIso, schemeId]);
       invalidateStateCache();
-      res.json({ success: true, count: currentItems.length, items: currentItems });
+      res.json({ success: true, scheme: updatedObj, count: currentItems.length, items: currentItems });
     } catch (err) {
       console.error("POST /api/schemes/:id/items error:", err.message);
       res.status(500).json({ error: "Failed to add items to scheme: " + err.message });
@@ -6540,7 +6545,7 @@ app.post("/api/schemes/:id/items", async (req, res) => {
     data.schemes[idx].updatedAt = nowIso;
     writeLocalJson(data);
     invalidateStateCache();
-    res.json({ success: true, count: currentItems.length, items: currentItems });
+    res.json({ success: true, scheme: data.schemes[idx], count: currentItems.length, items: currentItems });
   }
 });
 
@@ -6560,9 +6565,15 @@ app.delete("/api/schemes/:id/items/:itemName", async (req, res) => {
       let currentItems = existing.items ? (typeof existing.items === "string" ? JSON.parse(existing.items) : existing.items) : [];
       currentItems = currentItems.filter(i => (i.itemName || "").trim().toLowerCase() !== cleanTarget);
 
+      const updatedObj = {
+        ...existing,
+        items: currentItems,
+        updatedAt: nowIso
+      };
+
       await pool.query('UPDATE schemes SET "items" = $1, "updatedAt" = $2 WHERE "id" = $3', [JSON.stringify(currentItems), nowIso, schemeId]);
       invalidateStateCache();
-      res.json({ success: true, count: currentItems.length, items: currentItems });
+      res.json({ success: true, scheme: updatedObj, count: currentItems.length, items: currentItems });
     } catch (err) {
       console.error("DELETE /api/schemes/:id/items error:", err.message);
       res.status(500).json({ error: "Failed to remove item from scheme." });
@@ -6578,7 +6589,52 @@ app.delete("/api/schemes/:id/items/:itemName", async (req, res) => {
     data.schemes[idx].updatedAt = nowIso;
     writeLocalJson(data);
     invalidateStateCache();
-    res.json({ success: true, count: data.schemes[idx].items.length, items: data.schemes[idx].items });
+    res.json({ success: true, scheme: data.schemes[idx], count: data.schemes[idx].items.length, items: data.schemes[idx].items });
+  }
+});
+
+// 5b. POST /api/schemes/:id/items/delete-batch - Bulk remove items from a scheme
+app.post("/api/schemes/:id/items/delete-batch", async (req, res) => {
+  const schemeId = req.params.id;
+  const { itemNames = [] } = req.body;
+  const targetSet = new Set((itemNames || []).map(n => String(n || "").trim().toLowerCase()));
+  const nowIso = new Date().toISOString().split("T")[0];
+
+  if (isPg) {
+    try {
+      const existingRes = await pool.query('SELECT * FROM schemes WHERE "id" = $1', [schemeId]);
+      if (existingRes.rows.length === 0) {
+        return res.status(404).json({ error: "Scheme not found." });
+      }
+      const existing = existingRes.rows[0];
+      let currentItems = existing.items ? (typeof existing.items === "string" ? JSON.parse(existing.items) : existing.items) : [];
+      currentItems = currentItems.filter(i => !targetSet.has((i.itemName || "").trim().toLowerCase()));
+
+      const updatedObj = {
+        ...existing,
+        items: currentItems,
+        updatedAt: nowIso
+      };
+
+      await pool.query('UPDATE schemes SET "items" = $1, "updatedAt" = $2 WHERE "id" = $3', [JSON.stringify(currentItems), nowIso, schemeId]);
+      invalidateStateCache();
+      res.json({ success: true, scheme: updatedObj, count: currentItems.length, items: currentItems });
+    } catch (err) {
+      console.error("POST /api/schemes/:id/items/delete-batch error:", err.message);
+      res.status(500).json({ error: "Failed to batch remove items: " + err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.schemes) data.schemes = [];
+    const idx = data.schemes.findIndex(s => s.id === schemeId);
+    if (idx === -1) {
+      return res.status(404).json({ error: "Scheme not found." });
+    }
+    data.schemes[idx].items = (data.schemes[idx].items || []).filter(i => !targetSet.has((i.itemName || "").trim().toLowerCase()));
+    data.schemes[idx].updatedAt = nowIso;
+    writeLocalJson(data);
+    invalidateStateCache();
+    res.json({ success: true, scheme: data.schemes[idx], count: data.schemes[idx].items.length, items: data.schemes[idx].items });
   }
 });
 

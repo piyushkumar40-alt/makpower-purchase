@@ -119,6 +119,7 @@ export default function CrmDashboard({
   onDeleteScheme,
   onBulkAddSchemeItems,
   onDeleteSchemeItem,
+  onBulkDeleteSchemeItems,
   loadingModules = {},
   recordSectionVisit,
   currentUserId
@@ -3008,6 +3009,7 @@ export default function CrmDashboard({
           onDeleteScheme={onDeleteScheme}
           onBulkAddSchemeItems={onBulkAddSchemeItems}
           onDeleteSchemeItem={onDeleteSchemeItem}
+          onBulkDeleteSchemeItems={onBulkDeleteSchemeItems}
         />
       )}
 

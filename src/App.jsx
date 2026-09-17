@@ -1821,6 +1821,31 @@ export default function App() {
   };
 
   const handleBulkAddSchemeItems = async (schemeId, itemsList, replaceAll = false) => {
+    // Optimistic state update
+    setSchemes(prev => {
+      const next = prev.map(s => {
+        if (s.id !== schemeId) return s;
+        let existingItems = replaceAll ? [] : [...(s.items || [])];
+        itemsList.forEach(newItem => {
+          if (!newItem || !newItem.itemName) return;
+          const clean = String(newItem.itemName).trim();
+          const eIdx = existingItems.findIndex(i => (i.itemName || "").trim().toLowerCase() === clean.toLowerCase());
+          if (eIdx >= 0) {
+            existingItems[eIdx] = { ...existingItems[eIdx], ...newItem, itemName: clean };
+          } else {
+            existingItems.push({ ...newItem, itemName: clean });
+          }
+        });
+        return { ...s, items: existingItems };
+      });
+      try {
+        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+        cached.schemes = next;
+        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+      } catch (e) {}
+      return next;
+    });
+
     try {
       const res = await postData(`/api/schemes/${encodeURIComponent(schemeId)}/items`, { items: itemsList, replaceAll });
       if (res && res.success && res.scheme) {
@@ -1843,6 +1868,24 @@ export default function App() {
   };
 
   const handleDeleteSchemeItem = async (schemeId, itemName) => {
+    const cleanTarget = String(itemName || "").trim().toLowerCase();
+    // Optimistic local state update
+    setSchemes(prev => {
+      const next = prev.map(s => {
+        if (s.id !== schemeId) return s;
+        return {
+          ...s,
+          items: (s.items || []).filter(i => (i.itemName || "").trim().toLowerCase() !== cleanTarget)
+        };
+      });
+      try {
+        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+        cached.schemes = next;
+        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+      } catch (e) {}
+      return next;
+    });
+
     try {
       const res = await fetch(`/api/schemes/${encodeURIComponent(schemeId)}/items/${encodeURIComponent(itemName)}`, { method: "DELETE" });
       const data = await res.json();
@@ -1861,6 +1904,46 @@ export default function App() {
       return data;
     } catch (err) {
       console.error("Failed to delete scheme item:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const handleBulkDeleteSchemeItems = async (schemeId, itemNames = []) => {
+    const targetSet = new Set((itemNames || []).map(n => String(n || "").trim().toLowerCase()));
+    // Optimistic local state update
+    setSchemes(prev => {
+      const next = prev.map(s => {
+        if (s.id !== schemeId) return s;
+        return {
+          ...s,
+          items: (s.items || []).filter(i => !targetSet.has((i.itemName || "").trim().toLowerCase()))
+        };
+      });
+      try {
+        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+        cached.schemes = next;
+        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+      } catch (e) {}
+      return next;
+    });
+
+    try {
+      const res = await postData(`/api/schemes/${encodeURIComponent(schemeId)}/items/delete-batch`, { itemNames });
+      if (res && res.success && res.scheme) {
+        setSchemes(prev => {
+          const next = prev.map(s => s.id === res.scheme.id ? res.scheme : s);
+          try {
+            const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+            cached.schemes = next;
+            localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+          } catch (e) {}
+          return next;
+        });
+        logSystemActivity("CRM_SCHEME_ITEMS_BULK_DELETE", `Batch removed ${itemNames.length} items from scheme #${schemeId}`, "Sales Scheme", schemeId);
+      }
+      return res;
+    } catch (err) {
+      console.error("Failed to bulk delete scheme items:", err);
       return { success: false, error: err.message };
     }
   };
@@ -2928,6 +3011,7 @@ export default function App() {
             onDeleteScheme={handleDeleteScheme}
             onBulkAddSchemeItems={handleBulkAddSchemeItems}
             onDeleteSchemeItem={handleDeleteSchemeItem}
+            onBulkDeleteSchemeItems={handleBulkDeleteSchemeItems}
             onPullModuleData={pullModuleData}
             loadingModules={loadingModules}
             recordSectionVisit={recordSectionVisit}
@@ -2999,6 +3083,7 @@ export default function App() {
             onDeleteScheme={handleDeleteScheme}
             onBulkAddSchemeItems={handleBulkAddSchemeItems}
             onDeleteSchemeItem={handleDeleteSchemeItem}
+            onBulkDeleteSchemeItems={handleBulkDeleteSchemeItems}
             onAddUser={addPurchaser}
             onUpdateUser={updateUserInfo}
             onDeleteUser={handleDeleteUser}
