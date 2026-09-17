@@ -1948,6 +1948,18 @@ async function calculateImsFullSummary(forceFresh = false) {
   }
 }
 
+// In-memory cache variables and cache invalidation
+let livePartyCategorySalesCache = null;
+let livePartyCategorySalesTimestamp = 0;
+const LIVE_PARTY_CAT_CACHE_TTL_MS = 60000;
+let imsFullSummaryCache = null;
+
+function invalidateStateCache() {
+  livePartyCategorySalesCache = null;
+  livePartyCategorySalesTimestamp = 0;
+  imsFullSummaryCache = null;
+}
+
 // 4-Month Party Category Sales Generator & Sync
 function get4TargetMonths() {
   const months = [];
@@ -1981,6 +1993,55 @@ function extractYearMonthFromAnyDate(dStr) {
     return `${yr}-${mo}`;
   }
   return "";
+}
+
+// Function to clean and normalize category names
+function cleanCategoryName(category) {
+  if (!category || typeof category !== "string") return category || "";
+  let str = category.trim();
+
+  // 1. Remove "Z ", "ZZ ", "S " wording from everywhere (prefixes, suffixes, internal words)
+  str = str.replace(/^((ZZ|Z|S)[\s\-_]+)+/gi, "");
+  str = str.replace(/([\s\-_]+(ZZ|Z|S))+$/gi, "");
+  str = str.replace(/\b(ZZ|Z|S)\b[\s\-_]*/gi, " ");
+  str = str.replace(/\s+/g, " ").trim();
+
+  if (!str) return "";
+
+  const lower = str.toLowerCase();
+
+  // 2. Merge all polymers into single "Polymer"
+  if (
+    lower === "polymer" ||
+    lower.includes("polymer") ||
+    lower.includes("li-poly") ||
+    lower.includes("lithium poly") ||
+    lower.includes("pouch battery") ||
+    lower.includes("poly battery") ||
+    lower === "polymers" ||
+    lower.startsWith("poly ")
+  ) {
+    return "Polymer";
+  }
+
+  // 3. Merge all data cables into single "Data Cable"
+  if (
+    lower === "data cable" ||
+    lower.includes("data cable") ||
+    lower.includes("datacable") ||
+    lower.includes("data-cable") ||
+    lower.includes("data_cable") ||
+    lower === "cables" ||
+    lower === "cable" ||
+    lower.includes("usb cable") ||
+    lower.includes("charging cable") ||
+    lower.includes("type-c cable") ||
+    lower.includes("braided cable")
+  ) {
+    return "Data Cable";
+  }
+
+  return str;
 }
 
 // Function to check if item type is FG (Finished Goods)
@@ -2039,7 +2100,7 @@ async function getLivePartyCategoryMonthlySales() {
       (itemsRes.rows || []).forEach(it => {
         const typeStr = it.itemType || "";
         if (!isFinishedGoodType(typeStr)) return;
-        const cat = (it.category || "").trim();
+        const cat = cleanCategoryName(it.category || "");
         if (!cat || cat.toUpperCase() === "GENERAL" || cat.toUpperCase() === "UNSPECIFIED" || cat.toUpperCase() === "RM" || cat.toUpperCase() === "RAW") return;
 
         if (it.id) {
@@ -2130,7 +2191,7 @@ async function getLivePartyCategoryMonthlySales() {
     (data.items || []).forEach(it => {
       const typeStr = it.itemType || it.type || "";
       if (!isFinishedGoodType(typeStr)) return;
-      const cat = (it.category || "").trim();
+      const cat = cleanCategoryName(it.category || "");
       if (!cat || cat.toUpperCase() === "GENERAL" || cat.toUpperCase() === "UNSPECIFIED" || cat.toUpperCase() === "RM" || cat.toUpperCase() === "RAW") return;
       if (it.id) {
         const rawId = String(it.id).trim().toLowerCase();

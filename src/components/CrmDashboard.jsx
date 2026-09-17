@@ -10,7 +10,7 @@ import {
 import Pagination from "./Pagination";
 import { useLoading } from "../context/LoadingContext";
 import DateRangeFilter, { isDateInBetween, formatYMD } from "./DateRangeFilter";
-import { downloadCsv } from "../utils/formatters";
+import { downloadCsv, cleanCategoryName } from "../utils/formatters";
 import SchemeManagementStudio from "./SchemeManagementStudio";
 
 // Helper to normalize and match party names across all formats and sub-components
@@ -35,7 +35,7 @@ export const getCatalogFgCategories = (items = []) => {
   const cats = new Set();
   (items || []).forEach(it => {
     if (isFgItem(it)) {
-      const c = (it.category || "").trim();
+      const c = cleanCategoryName(it.category || "");
       if (c && c.toUpperCase() !== "GENERAL" && c.toUpperCase() !== "UNSPECIFIED" && c.toUpperCase() !== "RM" && c.toUpperCase() !== "RAW") {
         cats.add(c);
       }
@@ -57,18 +57,18 @@ export const resolveItemFgCategory = (itemNameOrModel, itemId = "", items = [], 
       return (cleanId && itId === cleanId) || (cleanName && itName === cleanName);
     });
     if (found && found.category) {
-      const c = found.category.trim();
+      const c = cleanCategoryName(found.category);
       if (c && c.toUpperCase() !== "GENERAL" && c.toUpperCase() !== "UNSPECIFIED" && c.toUpperCase() !== "RM") {
         return c;
       }
     }
   }
 
-  // If rawCat matches an existing catalog FG category
+  // If rawCat matches an existing catalog FG category or can be cleaned
   if (rawCat && typeof rawCat === "string") {
-    const trimmedCat = rawCat.trim();
+    const cleanedRaw = cleanCategoryName(rawCat);
     const fgCats = getCatalogFgCategories(items);
-    const match = fgCats.find(c => c.toLowerCase() === trimmedCat.toLowerCase());
+    const match = fgCats.find(c => c.toLowerCase() === cleanedRaw.toLowerCase());
     if (match) return match;
   }
 
@@ -77,8 +77,8 @@ export const resolveItemFgCategory = (itemNameOrModel, itemId = "", items = [], 
 
 // Clean category string without hardcoded overrides
 export const normalizeCategory = (cat, itemDesc = "") => {
-  if (!cat) return (itemDesc || "").trim();
-  return String(cat).trim();
+  if (!cat) return cleanCategoryName(itemDesc || "");
+  return cleanCategoryName(cat);
 };
 
 export default function CrmDashboard({
@@ -879,40 +879,17 @@ export default function CrmDashboard({
     return Array.from(new Set(currentSalesOrders.map(o => o.category).filter(Boolean)));
   }, [currentSalesOrders]);
 
-  // Finished Goods (FG) Category filter logic
+  // Finished Goods (FG) Category filter logic - STRICTLY from Master Item Catalog & Stock (FG ONLY)
   const fgCategoryList = useMemo(() => {
-    const set = new Set();
-    items.forEach(it => {
-      const type = (it.itemType || "").trim().toUpperCase();
-      if (type === "FG" || (!type && it.category)) {
-        if (it.category && it.category.trim()) {
-          set.add(it.category.trim());
-        }
-      }
-    });
-
-    // Standard Makpower Finished Goods (FG) categories
-    const standardFg = [
-      "Fast Charger", "Data Cable", "Neckband", "TWS Earbuds", 
-      "Polymer", "Power Bank", "Earphones", "Batteries", "Speaker", 
-      "Smart Watch", "Car Charger", "Mobile Accessories"
-    ];
-    standardFg.forEach(c => set.add(c));
-    return set;
+    return new Set(getCatalogFgCategories(items));
   }, [items]);
 
   const normalizeFgCategory = (cat) => {
     if (!cat) return "";
-    const clean = cat.trim();
-    const lower = clean.toLowerCase();
-    if (lower.includes("polymer") || lower.includes("li-poly") || lower.includes("lithium poly") || lower.includes("pouch battery")) {
-      return "Polymer";
-    }
-    if (clean === "General" || clean === "Unspecified") return "";
-    if (lower.includes("raw") || lower.includes("material") || lower.includes("pcb") || lower.includes("ic ") || lower.includes("packing") || lower.includes("box") || lower.includes("carton") || lower.includes("wire") || lower.includes("hardware") || lower.includes("connector")) {
-      return "";
-    }
-    return clean;
+    const clean = cleanCategoryName(cat);
+    const fgCats = getCatalogFgCategories(items);
+    const matched = fgCats.find(c => c.toLowerCase() === clean.toLowerCase());
+    return matched || "";
   };
 
   const isFgCategory = (cat) => {
@@ -3599,11 +3576,11 @@ function Party360Modal({
     });
 
     relevantSales.forEach(s => {
-      const rawCat = (s.category || "").trim();
+      const rawCat = cleanCategoryName(s.category || "");
       if (!rawCat) return;
-      // Match against known FG categories from catalog
-      const matchedFgCat = fgCats.find(c => c.toLowerCase() === rawCat.toLowerCase()) || (fgCats.length === 0 ? rawCat : null);
-      if (!matchedFgCat) return; // NOT an FG category -> Ignore!
+      // Match against known FG categories from catalog strictly
+      const matchedFgCat = fgCats.find(c => c.toLowerCase() === rawCat.toLowerCase());
+      if (!matchedFgCat) return; // NOT an FG category in catalog -> Ignore!
 
       if (!map.has(matchedFgCat)) {
         map.set(matchedFgCat, { category: matchedFgCat, m0: 0, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
@@ -3663,7 +3640,8 @@ function Party360Modal({
     (crmPartyRemarks || []).forEach(r => {
       const matchP = r.partyId === party.id || (r.partyName && r.partyName.trim().toLowerCase() === (party.name || "").trim().toLowerCase());
       if (matchP && r.category && r.category !== "General") {
-        const matchedFgCat = fgCats.find(c => c.toLowerCase() === r.category.trim().toLowerCase());
+        const cleanedRemarkCat = cleanCategoryName(r.category);
+        const matchedFgCat = fgCats.find(c => c.toLowerCase() === cleanedRemarkCat.toLowerCase());
         if (matchedFgCat && !map.has(matchedFgCat)) {
           map.set(matchedFgCat, { category: matchedFgCat, m0: 0, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
         }
@@ -3671,7 +3649,7 @@ function Party360Modal({
     });
 
     return Array.from(map.values()).sort((a, b) => b.totalQty - a.totalQty || a.category.localeCompare(b.category));
-  }, [partyCategoryMonthlySales, salesOrders, crmPartyRemarks, items, party, last4Months]);
+  }, [partyCategoryMonthlySales, salesOrders, dispatches, crmPartyRemarks, items, party, last4Months]);
 
   const partyCategoryTotals = useMemo(() => {
     return partyCategoryRows.reduce((acc, r) => {
@@ -4228,10 +4206,10 @@ function PartyMonthlyCategoryStudioModal({
     });
 
     relevantSales.forEach(s => {
-      const rawCat = (s.category || "").trim();
+      const rawCat = cleanCategoryName(s.category || "");
       if (!rawCat) return;
-      const matchedFgCat = fgCats.find(c => c.toLowerCase() === rawCat.toLowerCase()) || (fgCats.length === 0 ? rawCat : null);
-      if (!matchedFgCat) return; // NOT an FG category -> Ignore!
+      const matchedFgCat = fgCats.find(c => c.toLowerCase() === rawCat.toLowerCase());
+      if (!matchedFgCat) return; // NOT an FG category in catalog -> Ignore!
 
       if (!map.has(matchedFgCat)) {
         map.set(matchedFgCat, { category: matchedFgCat, m0: 0, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
@@ -4293,7 +4271,8 @@ function PartyMonthlyCategoryStudioModal({
     (crmPartyRemarks || []).forEach(r => {
       const matchP = r.partyId === party.id || (r.partyName && r.partyName.trim().toLowerCase() === (party.name || "").trim().toLowerCase());
       if (matchP && r.category && r.category !== "General") {
-        const matchedFgCat = fgCats.find(c => c.toLowerCase() === r.category.trim().toLowerCase());
+        const cleanedRemarkCat = cleanCategoryName(r.category);
+        const matchedFgCat = fgCats.find(c => c.toLowerCase() === cleanedRemarkCat.toLowerCase());
         if (matchedFgCat && !map.has(matchedFgCat)) {
           map.set(matchedFgCat, { category: matchedFgCat, m0: 0, m1: 0, m2: 0, m3: 0, totalQty: 0, totalRevenue: 0 });
         }
