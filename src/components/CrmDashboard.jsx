@@ -3765,44 +3765,44 @@ function Party360Modal({
                 )}
               </div>
 
-              <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", width: "100%", borderRadius: "10px", border: "1px solid var(--border-glass)" }}>
-                <table className="table" style={{ width: "100%", minWidth: "580px", fontSize: "0.82rem", margin: 0 }}>
-                  <thead>
+              <div style={{ overflow: "auto", maxHeight: "60vh", WebkitOverflowScrolling: "touch", width: "100%", borderRadius: "10px", border: "1px solid var(--border-glass)", position: "relative" }}>
+                <table className="table" style={{ width: "100%", minWidth: "580px", fontSize: "0.82rem", margin: 0, borderCollapse: "separate", borderSpacing: 0 }}>
+                  <thead style={{ position: "sticky", top: 0, zIndex: 30 }}>
                     <tr>
-                      <th style={{ width: "20%" }}>Category</th>
-                      <th style={{ width: "11%", textAlign: "right" }}>{last4Months[0].label}</th>
-                      <th style={{ width: "11%", textAlign: "right" }}>{last4Months[1].label}</th>
-                      <th style={{ width: "11%", textAlign: "right" }}>{last4Months[2].label}</th>
-                      <th style={{ width: "12%", textAlign: "right", color: "var(--primary)" }}>{last4Months[3].label} (Current)</th>
-                      <th style={{ width: "12%", textAlign: "right" }}>4-Mo Total</th>
-                      <th style={{ width: "23%", textAlign: "center" }}>Remarks</th>
+                      <th style={{ position: "sticky", top: 0, zIndex: 30, width: "20%" }}>Category</th>
+                      <th style={{ position: "sticky", top: 0, zIndex: 30, width: "11%", textAlign: "right" }}>{last4Months[0].label}</th>
+                      <th style={{ position: "sticky", top: 0, zIndex: 30, width: "11%", textAlign: "right" }}>{last4Months[1].label}</th>
+                      <th style={{ position: "sticky", top: 0, zIndex: 30, width: "11%", textAlign: "right" }}>{last4Months[2].label}</th>
+                      <th style={{ position: "sticky", top: 0, zIndex: 30, width: "12%", textAlign: "right", color: "var(--primary)" }}>{last4Months[3].label} (Current)</th>
+                      <th style={{ position: "sticky", top: 0, zIndex: 30, width: "12%", textAlign: "right" }}>4-Mo Total</th>
+                      <th style={{ position: "sticky", top: 0, zIndex: 30, width: "23%", textAlign: "center" }}>Remarks</th>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {/* Grand Total Summary Row */}
-                    <tr style={{ background: "rgba(56, 189, 248, 0.12)", borderBottom: "2px solid rgba(56, 189, 248, 0.35)", fontWeight: 800 }}>
-                      <td style={{ padding: "10px 12px" }}>
+                    {/* Sticky Grand Total Summary Row */}
+                    <tr style={{ position: "sticky", top: "33px", zIndex: 25, background: "var(--bg-primary-subtle, rgba(56, 189, 248, 0.15))", borderBottom: "2px solid rgba(56, 189, 248, 0.4)", fontWeight: 800 }}>
+                      <td style={{ position: "sticky", top: "33px", zIndex: 25, background: "inherit", padding: "8px 12px" }}>
                         <strong style={{ color: "#38bdf8", fontSize: "0.92rem", letterSpacing: "0.5px" }}>TOTAL</strong>
                       </td>
-                      <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
+                      <td style={{ position: "sticky", top: "33px", zIndex: 25, background: "inherit", textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
                         {partyCategoryTotals.m0 > 0 ? `${partyCategoryTotals.m0.toLocaleString()} Pcs` : "—"}
                       </td>
-                      <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
+                      <td style={{ position: "sticky", top: "33px", zIndex: 25, background: "inherit", textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
                         {partyCategoryTotals.m1 > 0 ? `${partyCategoryTotals.m1.toLocaleString()} Pcs` : "—"}
                       </td>
-                      <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
+                      <td style={{ position: "sticky", top: "33px", zIndex: 25, background: "inherit", textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
                         {partyCategoryTotals.m2 > 0 ? `${partyCategoryTotals.m2.toLocaleString()} Pcs` : "—"}
                       </td>
-                      <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
+                      <td style={{ position: "sticky", top: "33px", zIndex: 25, background: "inherit", textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
                         {partyCategoryTotals.m3 > 0 ? `${partyCategoryTotals.m3.toLocaleString()} Pcs` : "—"}
                       </td>
-                      <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 900, fontSize: "0.92rem" }}>
+                      <td style={{ position: "sticky", top: "33px", zIndex: 25, background: "inherit", textAlign: "right", color: "#38bdf8", fontWeight: 900, fontSize: "0.92rem" }}>
                         {partyCategoryTotals.totalQty > 0 ? `${partyCategoryTotals.totalQty.toLocaleString()} Pcs` : "0 Pcs"}
                       </td>
-                      <td style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.78rem" }}>
+                      <td style={{ position: "sticky", top: "33px", zIndex: 25, background: "inherit", textAlign: "center", color: "var(--text-muted)", fontSize: "0.78rem" }}>
                         —
                       </td>
                     </tr>
+                  </thead>
+                  <tbody>
 
                     {partyCategoryRows.map(row => {
                       const categoryRemarks = (crmPartyRemarks || []).filter(r => 
@@ -4537,46 +4537,46 @@ function PartyMonthlyCategoryStudioModal({
             </button>
           )}
         </div>
-        <div style={{ overflowX: "auto" }}>
-          <table className="table" style={{ width: "100%", fontSize: "0.85rem", minWidth: "950px" }}>
-            <thead>
+        <div style={{ overflow: "auto", maxHeight: "60vh", WebkitOverflowScrolling: "touch", borderRadius: "10px", border: "1px solid var(--border-glass)", position: "relative" }}>
+          <table className="table" style={{ width: "100%", fontSize: "0.85rem", minWidth: "950px", margin: 0, borderCollapse: "separate", borderSpacing: 0 }}>
+            <thead style={{ position: "sticky", top: 0, zIndex: 30 }}>
               <tr>
-                <th style={{ width: "18%" }}>Category</th>
-                <th style={{ width: "10%", textAlign: "right" }}>{last4Months[0]?.label || last4Months[0]?.monthName || "Month 1"}</th>
-                <th style={{ width: "10%", textAlign: "right" }}>{last4Months[1]?.label || last4Months[1]?.monthName || "Month 2"}</th>
-                <th style={{ width: "10%", textAlign: "right" }}>{last4Months[2]?.label || last4Months[2]?.monthName || "Month 3"}</th>
-                <th style={{ width: "10%", textAlign: "right", color: "var(--primary)", fontWeight: 700 }}>
+                <th style={{ position: "sticky", top: 0, zIndex: 30, width: "18%" }}>Category</th>
+                <th style={{ position: "sticky", top: 0, zIndex: 30, width: "10%", textAlign: "right" }}>{last4Months[0]?.label || last4Months[0]?.monthName || "Month 1"}</th>
+                <th style={{ position: "sticky", top: 0, zIndex: 30, width: "10%", textAlign: "right" }}>{last4Months[1]?.label || last4Months[1]?.monthName || "Month 2"}</th>
+                <th style={{ position: "sticky", top: 0, zIndex: 30, width: "10%", textAlign: "right" }}>{last4Months[2]?.label || last4Months[2]?.monthName || "Month 3"}</th>
+                <th style={{ position: "sticky", top: 0, zIndex: 30, width: "10%", textAlign: "right", color: "var(--primary)", fontWeight: 700 }}>
                   {last4Months[3]?.label || last4Months[3]?.monthName || "Month 4"} (Current)
                 </th>
-                <th style={{ width: "30%" }}>Add Remarks ({last4Months[3]?.label || last4Months[3]?.monthName || "Current"})</th>
-                <th style={{ width: "12%", textAlign: "center" }}>Remarks History</th>
+                <th style={{ position: "sticky", top: 0, zIndex: 30, width: "30%" }}>Add Remarks ({last4Months[3]?.label || last4Months[3]?.monthName || "Current"})</th>
+                <th style={{ position: "sticky", top: 0, zIndex: 30, width: "12%", textAlign: "center" }}>Remarks History</th>
               </tr>
-            </thead>
-            <tbody>
-              {/* Grand Total Summary Row */}
-              <tr style={{ background: "rgba(56, 189, 248, 0.12)", borderBottom: "2px solid rgba(56, 189, 248, 0.35)", fontWeight: 800 }}>
-                <td style={{ padding: "10px 12px" }}>
+              {/* Grand Total Summary Row (Sticky right under header) */}
+              <tr style={{ position: "sticky", top: "33px", zIndex: 25, background: "var(--bg-primary-subtle, rgba(56, 189, 248, 0.15))", borderBottom: "2px solid rgba(56, 189, 248, 0.4)", fontWeight: 800 }}>
+                <td style={{ position: "sticky", top: "33px", zIndex: 25, background: "inherit", padding: "8px 12px" }}>
                   <strong style={{ color: "#38bdf8", fontSize: "0.92rem", letterSpacing: "0.5px" }}>TOTAL</strong>
                 </td>
-                <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
+                <td style={{ position: "sticky", top: "33px", zIndex: 25, background: "inherit", textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
                   {categoryMatrixTotals.m0 > 0 ? `${categoryMatrixTotals.m0.toLocaleString()} Pcs` : "—"}
                 </td>
-                <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
+                <td style={{ position: "sticky", top: "33px", zIndex: 25, background: "inherit", textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
                   {categoryMatrixTotals.m1 > 0 ? `${categoryMatrixTotals.m1.toLocaleString()} Pcs` : "—"}
                 </td>
-                <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
+                <td style={{ position: "sticky", top: "33px", zIndex: 25, background: "inherit", textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
                   {categoryMatrixTotals.m2 > 0 ? `${categoryMatrixTotals.m2.toLocaleString()} Pcs` : "—"}
                 </td>
-                <td style={{ textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
+                <td style={{ position: "sticky", top: "33px", zIndex: 25, background: "inherit", textAlign: "right", color: "#38bdf8", fontWeight: 800 }}>
                   {categoryMatrixTotals.m3 > 0 ? `${categoryMatrixTotals.m3.toLocaleString()} Pcs` : "—"}
                 </td>
-                <td style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>
+                <td style={{ position: "sticky", top: "33px", zIndex: 25, background: "inherit", color: "var(--text-muted)", fontSize: "0.82rem" }}>
                   Total 4-Mo Volume: <strong style={{ color: "#38bdf8", fontWeight: 800 }}>{categoryMatrixTotals.totalQty.toLocaleString()} Pcs</strong>
                 </td>
-                <td style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.78rem" }}>
+                <td style={{ position: "sticky", top: "33px", zIndex: 25, background: "inherit", textAlign: "center", color: "var(--text-muted)", fontSize: "0.78rem" }}>
                   —
                 </td>
               </tr>
+            </thead>
+            <tbody>
 
               {categoryMatrixRows.map(row => {
                 const categoryRemarks = allPartyRemarks.filter(r => matchRemarkToCategory(r.category, row.category));
