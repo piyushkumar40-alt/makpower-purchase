@@ -12,10 +12,11 @@ import {
   initialCargoShipments, 
   initialCargoCompanies,
   initialCrmParties,
-  initialCrmSalesOrders,
-  initialCrmDispatches,
-  initialDesignations,
-  initialImsTransactions
+  initialCrmSalesOrders, 
+  initialCrmDispatches, 
+  initialDesignations, 
+  initialImsTransactions,
+  initialSchemes
 } from "./src/mockData.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -130,6 +131,7 @@ function readLocalJson() {
       crmParties: initialCrmParties,
       crmSalesOrders: initialCrmSalesOrders,
       crmDispatches: initialCrmDispatches,
+      schemes: initialSchemes,
       imsTransactions: [],
       designations: initialDesignations,
       items: [],
@@ -230,6 +232,9 @@ function readLocalJson() {
         timestamp: r.timestamp || r.orderDate || ""
       }));
     }
+    if (!Array.isArray(data.schemes) || data.schemes.length === 0) {
+      data.schemes = initialSchemes;
+    }
     const adminIdx = data.users.findIndex(x => x.id === "u-admin" || x.role === "superadmin" || x.email === "admin@company.com" || x.email === "admin@demo.com" || x.email === "admin@makpowerindia.com");
     if (adminIdx !== -1) {
       if (!data.users[adminIdx].password) {
@@ -251,6 +256,7 @@ function readLocalJson() {
       crmSalesOrders: initialCrmSalesOrders,
       crmDispatches: initialCrmDispatches,
       designations: initialDesignations,
+      schemes: initialSchemes,
       items: [],
       settings: {
         isHidden: false,
@@ -567,8 +573,43 @@ async function setupPgDatabase() {
             [tx.id, tx.date, tx.itemName, tx.itemId || "", tx.stockQty, tx.movementType, tx.partyName || "", tx.remarks || "", tx.source || "initial", tx.isMissingId || false, tx.location || "Delhi", tx.createdAt || new Date().toISOString()]
           );
         }
-        await pool.query(`INSERT INTO sys_metadata ("key", "value") VALUES ('ims_seeded', 'true') ON CONFLICT DO NOTHING`);
-        console.log("Seeded initial IMS stock movements once.");
+      // Seed initial Sales Schemes configured by Admin
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS schemes (
+          "id" TEXT PRIMARY KEY,
+          "name" TEXT,
+          "title" TEXT,
+          "schemeType" TEXT,
+          "description" TEXT,
+          "startDate" TEXT,
+          "endDate" TEXT,
+          "targetQty" INTEGER,
+          "giftReward" TEXT,
+          "status" TEXT,
+          "items" TEXT,
+          "tiers" TEXT,
+          "createdAt" TEXT,
+          "updatedAt" TEXT
+        );
+      `);
+
+      const schemeCountCheck = await pool.query("SELECT COUNT(*) FROM schemes");
+      if (parseInt(schemeCountCheck.rows[0].count) === 0) {
+        for (const s of initialSchemes) {
+          await pool.query(
+            `INSERT INTO schemes ("id", "name", "title", "schemeType", "description", "startDate", "endDate", "targetQty", "giftReward", "status", "items", "tiers", "createdAt", "updatedAt")
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+             ON CONFLICT ("id") DO NOTHING`,
+            [
+              s.id, s.name, s.title || s.name, s.schemeType || "qty_dispatch", s.description || "",
+              s.startDate, s.endDate, s.targetQty || 0, s.giftReward || "", s.status || "active",
+              JSON.stringify(s.items || []), JSON.stringify(s.tiers || []),
+              s.createdAt || new Date().toISOString().split("T")[0],
+              new Date().toISOString().split("T")[0]
+            ]
+          );
+        }
+        console.log("Seeded initial Schemes into database.");
       }
     } catch (crmSeedErr) {
       console.warn("CRM / IMS table seeding notice:", crmSeedErr.message);
@@ -1939,73 +1980,15 @@ function extractYearMonthFromAnyDate(dStr) {
   return "";
 }
 
-function normalizeFgCategory(cat = "", itemDesc = "", itemType = "") {
-  // If explicitly marked as Raw Material / RM, exclude from FG category sales
-  const typeUpper = (itemType || "").trim().toUpperCase();
-  if (typeUpper === "RM" || typeUpper === "RAW" || typeUpper === "RAW MATERIAL" || typeUpper === "NON CONSUMABLES") {
-    return "";
-  }
-
-  const rawCat = (cat || "").trim();
-  const rawCatLower = rawCat.toLowerCase();
-  const rawDescLower = (itemDesc || "").toLowerCase();
-  const combined = `${rawCatLower} ${rawDescLower}`;
-
-  // 1. Polymer Batteries: merge any polymer items (POLYMER ASUS BATTERY, S POLYMER BATTERY, Z POLYMER, etc.)
-  if (combined.includes("polymer") || combined.includes("li-poly") || combined.includes("lithium poly")) {
-    return "Polymer Batteries";
-  }
-
-  // 2. Eco Battery: must contain 'eco' word and NOT contain 'cell', 'body', etc.
-  const hasEco = /\beco\b/i.test(combined) || combined.startsWith("eco-") || combined.startsWith("eco ") || combined.includes("eco battery");
-  const isExcludedRawOrPart = combined.includes("cell") || combined.includes("body") || combined.includes("pcb") || combined.includes("bottom") || combined.includes("top") || combined.includes("inner") || combined.includes("housing") || combined.includes("raw");
-  if (hasEco && !isExcludedRawOrPart) {
-    return "Eco Battery";
-  }
-
-  // 3. Pouch Battery
-  if (combined.includes("pouch")) {
-    return "Pouch Battery";
-  }
-
-  // If item is FG, use its master catalog category name directly
-  if (rawCat && rawCat !== "General" && rawCat !== "Unspecified" && rawCat !== "RM" && rawCat !== "PCB" && rawCat !== "Bottom" && rawCat !== "Top" && rawCat !== "Inner" && rawCat !== "Blister") {
-    if (rawCatLower.includes("cable") || rawCatLower.includes("aux")) return "Data Cable";
-    if (rawCatLower.includes("neckband")) return "Neckband";
-    if (rawCatLower.includes("tempered") || rawCatLower.includes("soldier") || rawCatLower.includes("glass")) return "TEMPERED SOLDIER";
-    if (rawCatLower.includes("tws") || rawCatLower.includes("earbuds") || rawCatLower.includes("buds")) return "TWS Earbuds";
-    if (rawCatLower.includes("power bank") || rawCatLower.includes("powerbank")) return "Power Bank";
-    if (rawCatLower.includes("handsfree") || rawCatLower.includes("headphone") || rawCatLower.includes("earphone")) return "Earphones";
-    if (rawCatLower.includes("battery") || rawCatLower.includes("batteries")) return "Batteries";
-    if (rawCatLower.includes("charger") || rawCatLower.includes("adapter")) {
-      if (rawCatLower.includes("car")) return "Car Charger";
-      return "Fast Charger";
-    }
-    if (rawCatLower.includes("car")) return "Car Charger";
-    if (rawCatLower.includes("speaker") || rawCatLower.includes("audio") || rawCatLower.includes("soundbar")) return "Speaker";
-    if (rawCatLower.includes("watch")) return "Smart Watch";
-    return rawCat;
-  }
-
-  // Fallback keyword matching on itemDesc only for FG items
-  if (typeUpper === "FG" || typeUpper === "FINISHED GOODS" || !typeUpper) {
-    if (combined.includes("fast charge") || combined.includes("charger") || combined.includes("adapter")) return "Fast Charger";
-    if (combined.includes("cable") || combined.includes("usb") || combined.includes("type-c") || combined.includes("micro")) return "Data Cable";
-    if (combined.includes("neckband")) return "Neckband";
-    if (combined.includes("tempered") || combined.includes("soldier") || combined.includes("glass")) return "TEMPERED SOLDIER";
-    if (combined.includes("tws") || combined.includes("earbuds") || combined.includes("airpods") || combined.includes("buds")) return "TWS Earbuds";
-    if (combined.includes("power bank") || combined.includes("powerbank")) return "Power Bank";
-    if (combined.includes("earphone") || combined.includes("headphone") || combined.includes("handsfree")) return "Earphones";
-    if (combined.includes("battery") || combined.includes("batteries") || combined.includes("bf3")) return "Batteries";
-    if (combined.includes("speaker") || combined.includes("soundbar") || combined.includes("audio")) return "Speaker";
-    if (combined.includes("car charge") || combined.includes("car")) return "Car Charger";
-    if (combined.includes("watch")) return "Smart Watch";
-    return "Other";
-  }
-  return "Other";
+// Function to check if item type is FG (Finished Goods)
+function isFinishedGoodType(typeStr) {
+  if (!typeStr) return false;
+  const s = String(typeStr).trim().toUpperCase();
+  return s === "FG" || s.includes("FG") || s.includes("FINISHED");
 }
 
 // Live dynamic calculation of 4-month category sales directly from ims_transactions & crm_sales_orders
+// CATEGORY IS TAKEN STRICTLY FROM ITEM CATALOG & STOCK (FOR ONLY FG ITEMS)
 async function getLivePartyCategoryMonthlySales() {
   const targetMonths = get4TargetMonths();
   const targetMonthKeys = new Set(targetMonths.map(m => m.key));
@@ -2048,23 +2031,26 @@ async function getLivePartyCategoryMonthlySales() {
         `, [earliestDateStr])
       ]);
 
-      const itemMap = new Map();
+      // Build FG Item map strictly from Master Item Catalog (FG items ONLY)
+      const fgItemMap = new Map();
       (itemsRes.rows || []).forEach(it => {
-        const cat = it.category || "";
-        const itemType = it.itemType || "";
-        const obj = { category: cat, itemType };
+        const typeStr = it.itemType || "";
+        if (!isFinishedGoodType(typeStr)) return;
+        const cat = (it.category || "").trim();
+        if (!cat || cat.toUpperCase() === "GENERAL" || cat.toUpperCase() === "UNSPECIFIED" || cat.toUpperCase() === "RM" || cat.toUpperCase() === "RAW") return;
+
         if (it.id) {
           const rawId = String(it.id).trim().toLowerCase();
           const cleanId = rawId.replace(/^#+/, "");
-          itemMap.set(rawId, obj);
-          itemMap.set(cleanId, obj);
-          itemMap.set('#' + cleanId, obj);
+          fgItemMap.set(rawId, cat);
+          fgItemMap.set(cleanId, cat);
+          fgItemMap.set('#' + cleanId, cat);
         }
         if (it.name) {
           const rawName = String(it.name).trim().toLowerCase();
           const cleanName = rawName.replace(/\s+/g, ' ');
-          itemMap.set(rawName, obj);
-          itemMap.set(cleanName, obj);
+          fgItemMap.set(rawName, cat);
+          fgItemMap.set(cleanName, cat);
         }
       });
 
@@ -2081,10 +2067,9 @@ async function getLivePartyCategoryMonthlySales() {
         const rawItemId = String(r.itemId || "").trim().toLowerCase();
         const cleanItemId = rawItemId.replace(/^#+/, "");
         
-        const itInfo = itemMap.get(rawName) || itemMap.get(cleanName) || itemMap.get(rawItemId) || itemMap.get(cleanItemId) || itemMap.get('#' + cleanItemId) || { category: "", itemType: "" };
-        
-        const cat = normalizeFgCategory(itInfo.category, r.itemName || "", itInfo.itemType);
-        if (!cat) return;
+        // Match strictly against FG Item Catalog
+        const cat = fgItemMap.get(rawName) || fgItemMap.get(cleanName) || fgItemMap.get(rawItemId) || fgItemMap.get(cleanItemId) || fgItemMap.get('#' + cleanItemId) || "";
+        if (!cat) return; // Disregard any non-FG / uncataloged items
 
         const key = `${pName}___${cat}___${month}`;
         if (!agg.has(key)) {
@@ -2101,7 +2086,9 @@ async function getLivePartyCategoryMonthlySales() {
         const month = extractYearMonthFromAnyDate(o.orderDate);
         if (!targetMonthKeys.has(month)) return;
 
-        const cat = normalizeFgCategory(o.category, o.itemModel || "");
+        const rawModel = (o.itemModel || "").trim().toLowerCase();
+        const cleanModel = rawModel.replace(/\s+/g, ' ');
+        const cat = fgItemMap.get(rawModel) || fgItemMap.get(cleanModel) || "";
         if (!cat) return;
 
         const key = `${pName}___${cat}___${month}`;
@@ -2133,14 +2120,25 @@ async function getLivePartyCategoryMonthlySales() {
       return [];
     }
   } else {
-    // Local JSON live aggregation directly from current transactions & orders
+    // Local JSON live aggregation directly from current transactions & orders (FG ONLY)
     const data = readLocalJson();
     const agg = new Map();
-    const itemMap = new Map();
+    const fgItemMap = new Map();
     (data.items || []).forEach(it => {
-      const cat = it.category || "";
-      if (it.id) itemMap.set(String(it.id).trim().toLowerCase(), cat);
-      if (it.name) itemMap.set(it.name.trim().toLowerCase(), cat);
+      const typeStr = it.itemType || it.type || "";
+      if (!isFinishedGoodType(typeStr)) return;
+      const cat = (it.category || "").trim();
+      if (!cat || cat.toUpperCase() === "GENERAL" || cat.toUpperCase() === "UNSPECIFIED" || cat.toUpperCase() === "RM" || cat.toUpperCase() === "RAW") return;
+      if (it.id) {
+        const rawId = String(it.id).trim().toLowerCase();
+        fgItemMap.set(rawId, cat);
+        fgItemMap.set(rawId.replace(/^#+/, ""), cat);
+      }
+      if (it.name) {
+        const rawName = String(it.name).trim().toLowerCase();
+        fgItemMap.set(rawName, cat);
+        fgItemMap.set(rawName.replace(/\s+/g, ' '), cat);
+      }
     });
 
     (data.imsTransactions || []).forEach(tx => {
@@ -2149,8 +2147,8 @@ async function getLivePartyCategoryMonthlySales() {
       const q = parseInt(tx.stockQty) || 0;
       if (pName && pName !== "—" && q < 0 && targetMonthKeys.has(month)) {
         const rawItemId = String(tx.itemId || "").trim().toLowerCase();
-        const rawCat = itemMap.get(rawItemId) || itemMap.get(rawItemId.replace(/^#+/, "")) || itemMap.get((tx.itemName || "").trim().toLowerCase()) || "";
-        const cat = normalizeFgCategory(rawCat, tx.itemName || "");
+        const rawName = String(tx.itemName || "").trim().toLowerCase();
+        const cat = fgItemMap.get(rawItemId) || fgItemMap.get(rawItemId.replace(/^#+/, "")) || fgItemMap.get(rawName) || fgItemMap.get(rawName.replace(/\s+/g, ' ')) || "";
         if (cat) {
           const key = `${pName}___${cat}___${month}`;
           if (!agg.has(key)) {
@@ -2167,7 +2165,8 @@ async function getLivePartyCategoryMonthlySales() {
       const pName = (o.partyName || "").trim();
       const month = extractYearMonthFromAnyDate(o.orderDate);
       if (pName && targetMonthKeys.has(month)) {
-        const cat = normalizeFgCategory(o.category, o.itemModel || "");
+        const rawModel = String(o.itemModel || "").trim().toLowerCase();
+        const cat = fgItemMap.get(rawModel) || fgItemMap.get(rawModel.replace(/\s+/g, ' ')) || "";
         if (cat) {
           const key = `${pName}___${cat}___${month}`;
           if (!agg.has(key)) {
@@ -2416,6 +2415,7 @@ app.get("/api/state", async (req, res) => {
         crmPartiesRes,
         designationsRes,
         itemPricesRes,
+        schemesRes,
         partyCatSalesList
       ] = await Promise.all([
         pool.query("SELECT * FROM users"),
@@ -2428,6 +2428,7 @@ app.get("/api/state", async (req, res) => {
         pool.query(crmPartiesQuery, crmPartiesParams),
         pool.query("SELECT * FROM designations"),
         pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC"),
+        pool.query("SELECT * FROM schemes ORDER BY \"startDate\" ASC, \"name\" ASC"),
         getLivePartyCategoryMonthlySales()
       ]);
 
@@ -2574,6 +2575,11 @@ app.get("/api/state", async (req, res) => {
         itemPrices: (itemPricesRes?.rows || []).map(p => ({
           ...p,
           pp: p.pp ? parseFloat(p.pp) : 0
+        })),
+        schemes: (schemesRes?.rows || []).map(s => ({
+          ...s,
+          items: s.items ? (typeof s.items === "string" ? JSON.parse(s.items) : s.items) : [],
+          tiers: s.tiers ? (typeof s.tiers === "string" ? JSON.parse(s.tiers) : s.tiers) : []
         })),
         crmPartyRemarks: crmPartyRemarksRes?.rows || [],
         partyCategoryMonths: get4TargetMonths(),
@@ -6279,6 +6285,318 @@ app.delete("/api/prices/:id", async (req, res) => {
     if (!data.itemPrices) data.itemPrices = [];
     data.itemPrices = data.itemPrices.filter(p => p.id !== priceId);
     writeLocalJson(data);
+    res.json({ success: true });
+  }
+});
+
+// ==================== SCHEMES MANAGEMENT & DISPATCH REPORTING ENDPOINTS ====================
+
+// 1. GET /api/schemes - Fetch all schemes
+app.get("/api/schemes", async (req, res) => {
+  if (isPg) {
+    try {
+      const result = await pool.query('SELECT * FROM schemes ORDER BY "startDate" ASC, "name" ASC');
+      const rows = result.rows.map(s => ({
+        ...s,
+        items: s.items ? (typeof s.items === "string" ? JSON.parse(s.items) : s.items) : [],
+        tiers: s.tiers ? (typeof s.tiers === "string" ? JSON.parse(s.tiers) : s.tiers) : []
+      }));
+      res.json({ success: true, schemes: rows });
+    } catch (err) {
+      console.error("GET /api/schemes error:", err.message);
+      res.status(500).json({ error: "Failed to fetch schemes: " + err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    res.json({ success: true, schemes: data.schemes || initialSchemes });
+  }
+});
+
+// 2. POST /api/schemes - Create new scheme
+app.post("/api/schemes", async (req, res) => {
+  const { id, name, title, schemeType, description, startDate, endDate, targetQty, giftReward, status, items, tiers } = req.body;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: "Scheme Name is required." });
+  }
+
+  const schemeId = id || `scheme-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const nowIso = new Date().toISOString().split("T")[0];
+  const itemsArray = Array.isArray(items) ? items : [];
+  const tiersArray = Array.isArray(tiers) ? tiers : [];
+
+  const schemeObj = {
+    id: schemeId,
+    name: name.trim(),
+    title: (title || name).trim(),
+    schemeType: schemeType || "qty_dispatch",
+    description: (description || "").trim(),
+    startDate: startDate || nowIso,
+    endDate: endDate || "2026-09-30",
+    targetQty: parseInt(targetQty) || 0,
+    giftReward: (giftReward || "").trim(),
+    status: status || "active",
+    items: itemsArray,
+    tiers: tiersArray,
+    createdAt: nowIso,
+    updatedAt: nowIso
+  };
+
+  if (isPg) {
+    try {
+      await pool.query(
+        `INSERT INTO schemes ("id", "name", "title", "schemeType", "description", "startDate", "endDate", "targetQty", "giftReward", "status", "items", "tiers", "createdAt", "updatedAt")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         ON CONFLICT ("id") DO UPDATE SET
+           "name" = EXCLUDED."name",
+           "title" = EXCLUDED."title",
+           "schemeType" = EXCLUDED."schemeType",
+           "description" = EXCLUDED."description",
+           "startDate" = EXCLUDED."startDate",
+           "endDate" = EXCLUDED."endDate",
+           "targetQty" = EXCLUDED."targetQty",
+           "giftReward" = EXCLUDED."giftReward",
+           "status" = EXCLUDED."status",
+           "items" = EXCLUDED."items",
+           "tiers" = EXCLUDED."tiers",
+           "updatedAt" = EXCLUDED."updatedAt"`,
+        [
+          schemeObj.id, schemeObj.name, schemeObj.title, schemeObj.schemeType,
+          schemeObj.description, schemeObj.startDate, schemeObj.endDate,
+          schemeObj.targetQty, schemeObj.giftReward, schemeObj.status,
+          JSON.stringify(schemeObj.items), JSON.stringify(schemeObj.tiers),
+          schemeObj.createdAt, schemeObj.updatedAt
+        ]
+      );
+      invalidateStateCache();
+      res.json({ success: true, scheme: schemeObj });
+    } catch (err) {
+      console.error("POST /api/schemes error:", err.message);
+      res.status(500).json({ error: "Failed to create scheme: " + err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.schemes) data.schemes = [];
+    const idx = data.schemes.findIndex(s => s.id === schemeId);
+    if (idx >= 0) {
+      data.schemes[idx] = schemeObj;
+    } else {
+      data.schemes.unshift(schemeObj);
+    }
+    writeLocalJson(data);
+    invalidateStateCache();
+    res.json({ success: true, scheme: schemeObj });
+  }
+});
+
+// 3. PUT /api/schemes/:id - Update existing scheme
+app.put("/api/schemes/:id", async (req, res) => {
+  const schemeId = req.params.id;
+  const { name, title, schemeType, description, startDate, endDate, targetQty, giftReward, status, items, tiers } = req.body;
+  const nowIso = new Date().toISOString().split("T")[0];
+
+  if (isPg) {
+    try {
+      const existingRes = await pool.query('SELECT * FROM schemes WHERE "id" = $1', [schemeId]);
+      if (existingRes.rows.length === 0) {
+        return res.status(404).json({ error: "Scheme not found." });
+      }
+      const existing = existingRes.rows[0];
+      const updatedObj = {
+        id: schemeId,
+        name: name !== undefined ? name.trim() : existing.name,
+        title: title !== undefined ? title.trim() : existing.title,
+        schemeType: schemeType !== undefined ? schemeType : existing.schemeType,
+        description: description !== undefined ? description : existing.description,
+        startDate: startDate !== undefined ? startDate : existing.startDate,
+        endDate: endDate !== undefined ? endDate : existing.endDate,
+        targetQty: targetQty !== undefined ? parseInt(targetQty) || 0 : existing.targetQty,
+        giftReward: giftReward !== undefined ? giftReward : existing.giftReward,
+        status: status !== undefined ? status : existing.status,
+        items: items !== undefined ? items : (existing.items ? (typeof existing.items === "string" ? JSON.parse(existing.items) : existing.items) : []),
+        tiers: tiers !== undefined ? tiers : (existing.tiers ? (typeof existing.tiers === "string" ? JSON.parse(existing.tiers) : existing.tiers) : []),
+        updatedAt: nowIso
+      };
+
+      await pool.query(
+        `UPDATE schemes SET
+           "name" = $1, "title" = $2, "schemeType" = $3, "description" = $4,
+           "startDate" = $5, "endDate" = $6, "targetQty" = $7, "giftReward" = $8,
+           "status" = $9, "items" = $10, "tiers" = $11, "updatedAt" = $12
+         WHERE "id" = $13`,
+        [
+          updatedObj.name, updatedObj.title, updatedObj.schemeType, updatedObj.description,
+          updatedObj.startDate, updatedObj.endDate, updatedObj.targetQty, updatedObj.giftReward,
+          updatedObj.status, JSON.stringify(updatedObj.items), JSON.stringify(updatedObj.tiers),
+          updatedObj.updatedAt, schemeId
+        ]
+      );
+      invalidateStateCache();
+      res.json({ success: true, scheme: updatedObj });
+    } catch (err) {
+      console.error("PUT /api/schemes/:id error:", err.message);
+      res.status(500).json({ error: "Failed to update scheme: " + err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.schemes) data.schemes = [];
+    const idx = data.schemes.findIndex(s => s.id === schemeId);
+    if (idx === -1) {
+      return res.status(404).json({ error: "Scheme not found." });
+    }
+    const existing = data.schemes[idx];
+    const updatedObj = {
+      ...existing,
+      name: name !== undefined ? name.trim() : existing.name,
+      title: title !== undefined ? title.trim() : existing.title,
+      schemeType: schemeType !== undefined ? schemeType : existing.schemeType,
+      description: description !== undefined ? description : existing.description,
+      startDate: startDate !== undefined ? startDate : existing.startDate,
+      endDate: endDate !== undefined ? endDate : existing.endDate,
+      targetQty: targetQty !== undefined ? parseInt(targetQty) || 0 : existing.targetQty,
+      giftReward: giftReward !== undefined ? giftReward : existing.giftReward,
+      status: status !== undefined ? status : existing.status,
+      items: items !== undefined ? items : (existing.items || []),
+      tiers: tiers !== undefined ? tiers : (existing.tiers || []),
+      updatedAt: nowIso
+    };
+    data.schemes[idx] = updatedObj;
+    writeLocalJson(data);
+    invalidateStateCache();
+    res.json({ success: true, scheme: updatedObj });
+  }
+});
+
+// 4. POST /api/schemes/:id/items - Bulk add or replace items for a scheme
+app.post("/api/schemes/:id/items", async (req, res) => {
+  const schemeId = req.params.id;
+  const { items, replaceAll = false } = req.body;
+  if (!Array.isArray(items)) {
+    return res.status(400).json({ error: "Items array is required." });
+  }
+
+  const nowIso = new Date().toISOString().split("T")[0];
+
+  if (isPg) {
+    try {
+      const existingRes = await pool.query('SELECT * FROM schemes WHERE "id" = $1', [schemeId]);
+      if (existingRes.rows.length === 0) {
+        return res.status(404).json({ error: "Scheme not found." });
+      }
+      const existing = existingRes.rows[0];
+      let currentItems = replaceAll ? [] : (existing.items ? (typeof existing.items === "string" ? JSON.parse(existing.items) : existing.items) : []);
+
+      // Upsert / append items
+      items.forEach(newItem => {
+        if (!newItem || !newItem.itemName) return;
+        const cleanName = String(newItem.itemName).trim();
+        const start = newItem.startDate || existing.startDate || "2026-06-01";
+        const end = newItem.endDate || existing.endDate || "2026-09-30";
+        const target = parseInt(newItem.targetQty) || 0;
+
+        const existingIdx = currentItems.findIndex(i => (i.itemName || "").trim().toLowerCase() === cleanName.toLowerCase());
+        if (existingIdx >= 0) {
+          currentItems[existingIdx] = { ...currentItems[existingIdx], itemName: cleanName, startDate: start, endDate: end, targetQty: target };
+        } else {
+          currentItems.push({ itemName: cleanName, startDate: start, endDate: end, targetQty: target });
+        }
+      });
+
+      await pool.query('UPDATE schemes SET "items" = $1, "updatedAt" = $2 WHERE "id" = $3', [JSON.stringify(currentItems), nowIso, schemeId]);
+      invalidateStateCache();
+      res.json({ success: true, count: currentItems.length, items: currentItems });
+    } catch (err) {
+      console.error("POST /api/schemes/:id/items error:", err.message);
+      res.status(500).json({ error: "Failed to add items to scheme: " + err.message });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.schemes) data.schemes = [];
+    const idx = data.schemes.findIndex(s => s.id === schemeId);
+    if (idx === -1) {
+      return res.status(404).json({ error: "Scheme not found." });
+    }
+    const existing = data.schemes[idx];
+    let currentItems = replaceAll ? [] : (existing.items || []);
+
+    items.forEach(newItem => {
+      if (!newItem || !newItem.itemName) return;
+      const cleanName = String(newItem.itemName).trim();
+      const start = newItem.startDate || existing.startDate || "2026-06-01";
+      const end = newItem.endDate || existing.endDate || "2026-09-30";
+      const target = parseInt(newItem.targetQty) || 0;
+
+      const existingIdx = currentItems.findIndex(i => (i.itemName || "").trim().toLowerCase() === cleanName.toLowerCase());
+      if (existingIdx >= 0) {
+        currentItems[existingIdx] = { ...currentItems[existingIdx], itemName: cleanName, startDate: start, endDate: end, targetQty: target };
+      } else {
+        currentItems.push({ itemName: cleanName, startDate: start, endDate: end, targetQty: target });
+      }
+    });
+
+    data.schemes[idx].items = currentItems;
+    data.schemes[idx].updatedAt = nowIso;
+    writeLocalJson(data);
+    invalidateStateCache();
+    res.json({ success: true, count: currentItems.length, items: currentItems });
+  }
+});
+
+// 5. DELETE /api/schemes/:id/items/:itemName - Remove a single item from a scheme
+app.delete("/api/schemes/:id/items/:itemName", async (req, res) => {
+  const { id: schemeId, itemName } = req.params;
+  const cleanTarget = String(itemName || "").trim().toLowerCase();
+  const nowIso = new Date().toISOString().split("T")[0];
+
+  if (isPg) {
+    try {
+      const existingRes = await pool.query('SELECT * FROM schemes WHERE "id" = $1', [schemeId]);
+      if (existingRes.rows.length === 0) {
+        return res.status(404).json({ error: "Scheme not found." });
+      }
+      const existing = existingRes.rows[0];
+      let currentItems = existing.items ? (typeof existing.items === "string" ? JSON.parse(existing.items) : existing.items) : [];
+      currentItems = currentItems.filter(i => (i.itemName || "").trim().toLowerCase() !== cleanTarget);
+
+      await pool.query('UPDATE schemes SET "items" = $1, "updatedAt" = $2 WHERE "id" = $3', [JSON.stringify(currentItems), nowIso, schemeId]);
+      invalidateStateCache();
+      res.json({ success: true, count: currentItems.length, items: currentItems });
+    } catch (err) {
+      console.error("DELETE /api/schemes/:id/items error:", err.message);
+      res.status(500).json({ error: "Failed to remove item from scheme." });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.schemes) data.schemes = [];
+    const idx = data.schemes.findIndex(s => s.id === schemeId);
+    if (idx === -1) {
+      return res.status(404).json({ error: "Scheme not found." });
+    }
+    data.schemes[idx].items = (data.schemes[idx].items || []).filter(i => (i.itemName || "").trim().toLowerCase() !== cleanTarget);
+    data.schemes[idx].updatedAt = nowIso;
+    writeLocalJson(data);
+    invalidateStateCache();
+    res.json({ success: true, count: data.schemes[idx].items.length, items: data.schemes[idx].items });
+  }
+});
+
+// 6. DELETE /api/schemes/:id - Delete a scheme
+app.delete("/api/schemes/:id", async (req, res) => {
+  const schemeId = req.params.id;
+  if (isPg) {
+    try {
+      await pool.query('DELETE FROM schemes WHERE "id" = $1', [schemeId]);
+      invalidateStateCache();
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/schemes/:id error:", err.message);
+      res.status(500).json({ error: "Failed to delete scheme." });
+    }
+  } else {
+    const data = readLocalJson();
+    if (!data.schemes) data.schemes = [];
+    data.schemes = data.schemes.filter(s => s.id !== schemeId);
+    writeLocalJson(data);
+    invalidateStateCache();
     res.json({ success: true });
   }
 });

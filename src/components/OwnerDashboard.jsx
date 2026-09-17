@@ -38,32 +38,7 @@ export function formatIndianQty(val) {
 export function normalizeCategory(cat) {
   if (!cat) return "Other";
   const clean = String(cat).trim();
-  const lower = clean.toLowerCase();
-  if (lower.includes("polymer") || lower.includes("li-poly") || lower.includes("lithium poly") || lower.includes("pouch battery")) {
-    return "Polymer Battery";
-  }
-  if (lower.includes("neckband") || lower.includes("neck band")) {
-    return "Neckband";
-  }
-  if (lower.includes("charger") || lower.includes("adaptor") || lower.includes("adapter")) {
-    return "Chargers";
-  }
-  if (lower.includes("cable") || lower.includes("data wire") || lower.includes("usb")) {
-    return "Data Cables";
-  }
-  if (lower.includes("earphone") || lower.includes("headphone") || lower.includes("tws") || lower.includes("airpod") || lower.includes("earbuds")) {
-    return "Earphones & TWS";
-  }
-  if (lower.includes("touch") || lower.includes("display") || lower.includes("combo") || lower.includes("folder")) {
-    return "Touch & Display";
-  }
-  if (lower.includes("speaker") || lower.includes("soundbar")) {
-    return "Speakers";
-  }
-  if (lower.includes("power bank") || lower.includes("powerbank")) {
-    return "Power Banks";
-  }
-  if (clean === "General" || clean === "Unspecified") return "Other";
+  if (!clean || clean === "General" || clean === "Unspecified") return "Other";
   return clean;
 }
 

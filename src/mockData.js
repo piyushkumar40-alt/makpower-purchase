@@ -355,3 +355,84 @@ export const initialCrmDispatches = [];
 
 // Initial IMS Transactions (empty by default)
 export const initialImsTransactions = [];
+
+// Initial Sales Schemes configured by Admin
+export const initialSchemes = [
+  {
+    id: "scheme-goa",
+    name: "Goa Scheme",
+    title: "Goa Trip Incentive Scheme",
+    schemeType: "qty_dispatch",
+    description: "Qualifying dispatches of selected Data Cables, Fast Chargers, and Bluetooth devices earn Goa Trip packages.",
+    startDate: "2026-06-01",
+    endDate: "2026-09-30",
+    targetQty: 10000,
+    giftReward: "Goa Trip (3N/4D All Expenses Paid)",
+    status: "active",
+    items: [
+      { itemName: "DC24", startDate: "2026-06-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "DC25", startDate: "2026-06-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "DC26", startDate: "2026-06-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "DC27", startDate: "2026-06-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "DC28", startDate: "2026-06-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "DC29", startDate: "2026-06-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "CH65", startDate: "2026-07-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "CH53", startDate: "2026-07-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "CH60", startDate: "2026-07-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "CH106", startDate: "2026-07-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "BT220", startDate: "2026-07-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "BT311", startDate: "2026-07-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "BT405", startDate: "2026-07-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "BT320", startDate: "2026-07-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "BT300", startDate: "2026-07-01", endDate: "2026-09-30", targetQty: 0 }
+    ],
+    tiers: [
+      { targetQty: 7500, giftTitle: "Goa Trip Package (Single)", description: "3 Nights / 4 Days Deluxe Stay + Travel" },
+      { targetQty: 15000, giftTitle: "Goa Trip Premium (Couple)", description: "3 Nights / 4 Days 5-Star Resort + Flight Tickets for 2" },
+      { targetQty: 25000, giftTitle: "Goa VIP Experience + Gold Coin", description: "VIP Suite + 10g 24K Gold Coin" }
+    ],
+    createdAt: "2026-06-01"
+  },
+  {
+    id: "scheme-neckband",
+    name: "Neckband Scheme",
+    title: "Neckband Dispatch Rewards",
+    schemeType: "qty_dispatch",
+    description: "Milestone gift rewards on monthly dispatched volume of Bluetooth Neckbands.",
+    startDate: "2026-07-01",
+    endDate: "2026-09-30",
+    targetQty: 5000,
+    giftReward: "Smart Watch & Free Stock Gift Pack",
+    status: "active",
+    items: [
+      { itemName: "BT220", startDate: "2026-07-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "BT311", startDate: "2026-07-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "BT405", startDate: "2026-07-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "BT320", startDate: "2026-07-01", endDate: "2026-09-30", targetQty: 0 },
+      { itemName: "BT300", startDate: "2026-07-01", endDate: "2026-09-30", targetQty: 0 }
+    ],
+    tiers: [
+      { targetQty: 2000, giftTitle: "10 Free Neckbands Pack", description: "10 Pcs BT Neckbands complimentary" },
+      { targetQty: 5000, giftTitle: "Smart Watch Pro + 25 Neckbands", description: "AMOLED Smart Watch + 25 Pcs Stock" },
+      { targetQty: 10000, giftTitle: "43\" 4K Smart TV", description: "43-inch Smart LED TV" }
+    ],
+    createdAt: "2026-07-01"
+  },
+  {
+    id: "scheme-2percent",
+    name: "2% Scheme",
+    title: "2% Turnover Incentive Scheme",
+    schemeType: "percentage",
+    description: "2% Turnover and Cash Incentive Scheme for qualifying wholesale partners.",
+    startDate: "2026-06-01",
+    endDate: "2026-09-30",
+    targetQty: 0,
+    giftReward: "2% Additional Turnover Discount",
+    status: "active",
+    items: [],
+    tiers: [
+      { targetQty: 100000, giftTitle: "2% Extra Credit Note", description: "2% additional turnover incentive applied on quarterly volume" }
+    ],
+    createdAt: "2026-06-01"
+  }
+];

@@ -3,7 +3,8 @@ import {
   Users, User, UserCheck, Building, Database, FileText, Plus, UserMinus, RefreshCw, Download, 
   Upload, Eye, EyeOff, Truck, ChevronRight, Sliders, Package, ShieldCheck, Clock, 
   UserX, LogOut, Folder, HardDrive, Trash2, Copy, ExternalLink, Key, Check, 
-  CheckCircle, CheckCircle2, Layers, AlertTriangle, ShieldAlert, X, Search, Edit2, Tag, DollarSign
+  CheckCircle, CheckCircle2, Layers, AlertTriangle, ShieldAlert, X, Search, Edit2, Tag, DollarSign,
+  Award, Gift
 } from "lucide-react";
 import TransferModal from "./TransferModal";
 import { getCurrencySymbol, CargoCompaniesPanel, VendorDetailModal, CargoCompanyDetailModal } from "./PurchaserDashboard";
@@ -12,6 +13,7 @@ import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import PriceManagementPanel from "./PriceManagementPanel";
+import SchemeManagementStudio from "./SchemeManagementStudio";
 import { QuickCreateDesignationModal, QuickCreateVendorModal, QuickCreateCargoCompanyModal, QuickCreateItemModal, QuickCreateUserModal } from "./QuickCreateModals";
 import { useLoading } from "../context/LoadingContext";
 import { initialUsers } from "../mockData";
@@ -50,6 +52,7 @@ export default function SuperAdminDashboard({
   onResolveMissingId,
   onNavigateView,
   crmParties = [],
+  crmDispatches = [],
   onAddParty,
   onUpdateParty,
   onDeleteParty,
@@ -62,6 +65,12 @@ export default function SuperAdminDashboard({
   onDeletePrice,
   onBatchUploadPrices,
   onBulkDeletePrices,
+  schemes = [],
+  onAddScheme,
+  onUpdateScheme,
+  onDeleteScheme,
+  onBulkAddSchemeItems,
+  onDeleteSchemeItem,
   designations = [],
   onAddDesignation,
   onPullModuleData,
@@ -1151,6 +1160,14 @@ export default function SuperAdminDashboard({
         </button>
 
         <button 
+          onClick={() => handleTabSwitch("schemes")}
+          className={`sidebar-link ${subTab === "schemes" ? "active" : ""}`}
+          style={{ color: "#f59e0b", fontWeight: 700 }}
+        >
+          <Award size={16} /> Sales Schemes & Reports
+        </button>
+
+        <button 
           onClick={() => handleTabSwitch("pricemanagement")}
           className={`sidebar-link ${subTab === "pricemanagement" ? "active" : ""}`}
           style={{ color: "#34d399", fontWeight: 700 }}
@@ -1361,6 +1378,25 @@ export default function SuperAdminDashboard({
               cargoCompanies={cargoCompanies}
             />
           )
+        )}
+
+        {/* SALES SCHEMES HUB & DESIGNER TAB */}
+        {subTab === "schemes" && (
+          <SchemeManagementStudio
+            schemes={schemes}
+            crmParties={crmParties}
+            crmDispatches={crmDispatches}
+            imsTransactions={imsTransactions}
+            users={effectiveUsers}
+            items={items}
+            currentUser={currentUser || { role: "superadmin", name: "Admin" }}
+            isAdmin={true}
+            onAddScheme={onAddScheme}
+            onUpdateScheme={onUpdateScheme}
+            onDeleteScheme={onDeleteScheme}
+            onBulkAddSchemeItems={onBulkAddSchemeItems}
+            onDeleteSchemeItem={onDeleteSchemeItem}
+          />
         )}
 
         {/* PRICE MANAGEMENT TAB (IMAGE 3 SPECIFICATION) */}

@@ -28,9 +28,6 @@ export const normalizeCategoryName = (category) => {
   if (!category) return "General";
   let str = cleanCategoryName(String(category));
   if (!str) return "General";
-  if (str.toLowerCase().includes("polymer")) {
-    return "Polymer";
-  }
   return str;
 };
 

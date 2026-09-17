@@ -15,7 +15,7 @@ import HomePage from "./components/HomePage";
 import CrmDashboard from "./components/CrmDashboard";
 import ImsDashboard from "./components/ImsDashboard";
 import ChangePasswordModal, { isWeakPassword } from "./components/ChangePasswordModal";
-import { initialUsers, initialVendors, initialRequests, initialCargoShipments, initialCargoCompanies, initialCrmParties, initialCrmSalesOrders, initialCrmDispatches, initialImsTransactions } from "./mockData";
+import { initialUsers, initialVendors, initialRequests, initialCargoShipments, initialCargoCompanies, initialCrmParties, initialCrmSalesOrders, initialCrmDispatches, initialImsTransactions, initialSchemes } from "./mockData";
 import { 
   recordUserLogin, 
   recordSectionVisit, 
@@ -159,6 +159,12 @@ export default function App() {
   });
   const [partyCategoryMonthlySales, setPartyCategoryMonthlySales] = useState(() => cachedState?.partyCategoryMonthlySales || []);
   const [partyCategoryMonths, setPartyCategoryMonths] = useState(() => cachedState?.partyCategoryMonths || []);
+  const [schemes, setSchemes] = useState(() => {
+    if (cachedState?.schemes && Array.isArray(cachedState.schemes) && cachedState.schemes.length > 0) {
+      return cachedState.schemes;
+    }
+    return initialSchemes;
+  });
   const [settings, setSettings] = useState(() => cachedState?.settings || { isHidden: false, redirectUrl: "https://www.google.com" });
   const [loading, setLoading] = useState(() => {
     try {
@@ -406,6 +412,10 @@ export default function App() {
           const res = await fetch("/api/designations");
           const data = await res.json();
           if (Array.isArray(data)) setDesignations(data);
+        } else if (moduleKey === "schemes" || moduleKey === "sales_schemes") {
+          const res = await fetch("/api/schemes");
+          const data = await res.json();
+          if (Array.isArray(data)) setSchemes(data);
         }
         loadedModulesRef.current.add(moduleKey);
       } catch (err) {
@@ -650,6 +660,9 @@ export default function App() {
         if (Array.isArray(data.partyCategoryMonths) && data.partyCategoryMonths.length > 0) {
           setPartyCategoryMonths(data.partyCategoryMonths);
         }
+        if (Array.isArray(data.schemes) && data.schemes.length > 0) {
+          setSchemes(data.schemes);
+        }
         
         if (data.settings) {
           setSettings(data.settings);
@@ -689,6 +702,7 @@ export default function App() {
               imsSummary: data.imsSummary || existingCache.imsSummary || null,
               itemPrices: (Array.isArray(data.itemPrices) && data.itemPrices.length > 0) ? data.itemPrices : (existingCache.itemPrices || []),
               crmPartyRemarks: (Array.isArray(data.crmPartyRemarks) && data.crmPartyRemarks.length > 0) ? data.crmPartyRemarks : (existingCache.crmPartyRemarks || []),
+              schemes: (Array.isArray(data.schemes) && data.schemes.length > 0) ? data.schemes : (existingCache.schemes || initialSchemes),
               settings: data.settings || existingCache.settings || {}
             }));
           } catch (e) {
@@ -1722,6 +1736,131 @@ export default function App() {
       return res;
     } catch (err) {
       console.error("Failed to bulk delete prices:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  // ==================== SALES SCHEME MANAGEMENT HANDLERS ====================
+  const handleAddScheme = async (schemeData) => {
+    try {
+      const res = await postData("/api/schemes", schemeData);
+      if (res && res.success && res.scheme) {
+        setSchemes(prev => {
+          const idx = prev.findIndex(s => s.id === res.scheme.id);
+          let next;
+          if (idx !== -1) {
+            next = [...prev];
+            next[idx] = res.scheme;
+          } else {
+            next = [...prev, res.scheme];
+          }
+          try {
+            const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+            cached.schemes = next;
+            localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+          } catch (e) {}
+          return next;
+        });
+        logSystemActivity("CRM_SCHEME_CREATED", `Created sales scheme "${res.scheme.name}"`, "Sales Scheme", res.scheme.id);
+      }
+      return res;
+    } catch (err) {
+      console.error("Failed to create scheme:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const handleUpdateScheme = async (schemeData) => {
+    try {
+      const res = await fetch(`/api/schemes/${encodeURIComponent(schemeData.id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(schemeData)
+      });
+      const data = await res.json();
+      if (data && data.success && data.scheme) {
+        setSchemes(prev => {
+          const next = prev.map(s => s.id === data.scheme.id ? data.scheme : s);
+          try {
+            const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+            cached.schemes = next;
+            localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+          } catch (e) {}
+          return next;
+        });
+        logSystemActivity("CRM_SCHEME_UPDATED", `Updated sales scheme "${data.scheme.name}"`, "Sales Scheme", data.scheme.id);
+      }
+      return data;
+    } catch (err) {
+      console.error("Failed to update scheme:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const handleDeleteScheme = async (schemeId) => {
+    setSchemes(prev => {
+      const next = prev.filter(s => s.id !== schemeId);
+      try {
+        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+        cached.schemes = next;
+        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+      } catch (e) {}
+      return next;
+    });
+    try {
+      const res = await fetch(`/api/schemes/${encodeURIComponent(schemeId)}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data && data.success) {
+        logSystemActivity("CRM_SCHEME_DELETED", `Deleted sales scheme ID: ${schemeId}`, "Sales Scheme", schemeId);
+      }
+      return data;
+    } catch (err) {
+      console.error("Failed to delete scheme:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const handleBulkAddSchemeItems = async (schemeId, itemsList, replaceAll = false) => {
+    try {
+      const res = await postData(`/api/schemes/${encodeURIComponent(schemeId)}/items`, { items: itemsList, replaceAll });
+      if (res && res.success && res.scheme) {
+        setSchemes(prev => {
+          const next = prev.map(s => s.id === res.scheme.id ? res.scheme : s);
+          try {
+            const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+            cached.schemes = next;
+            localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+          } catch (e) {}
+          return next;
+        });
+        logSystemActivity("CRM_SCHEME_ITEMS_BULK", `Added ${itemsList.length} items to scheme "${res.scheme.name}"`, "Sales Scheme", schemeId);
+      }
+      return res;
+    } catch (err) {
+      console.error("Failed to bulk add items to scheme:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const handleDeleteSchemeItem = async (schemeId, itemName) => {
+    try {
+      const res = await fetch(`/api/schemes/${encodeURIComponent(schemeId)}/items/${encodeURIComponent(itemName)}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data && data.success && data.scheme) {
+        setSchemes(prev => {
+          const next = prev.map(s => s.id === data.scheme.id ? data.scheme : s);
+          try {
+            const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
+            cached.schemes = next;
+            localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
+          } catch (e) {}
+          return next;
+        });
+        logSystemActivity("CRM_SCHEME_ITEM_REMOVED", `Removed item "${itemName}" from scheme #${schemeId}`, "Sales Scheme", schemeId);
+      }
+      return data;
+    } catch (err) {
+      console.error("Failed to delete scheme item:", err);
       return { success: false, error: err.message };
     }
   };
@@ -2782,10 +2921,18 @@ export default function App() {
             onDeletePrice={handleDeletePrice}
             onBatchUploadPrices={handleBatchUploadPrices}
             onBulkDeletePrices={handleBulkDeletePrices}
+            crmDispatches={crmDispatches}
+            schemes={schemes}
+            onAddScheme={handleAddScheme}
+            onUpdateScheme={handleUpdateScheme}
+            onDeleteScheme={handleDeleteScheme}
+            onBulkAddSchemeItems={handleBulkAddSchemeItems}
+            onDeleteSchemeItem={handleDeleteSchemeItem}
             onPullModuleData={pullModuleData}
             loadingModules={loadingModules}
             recordSectionVisit={recordSectionVisit}
             currentUserId={currentUser?.id}
+            currentUser={currentUser}
           />
         )}
 
@@ -2831,6 +2978,7 @@ export default function App() {
             imsTransactions={imsTransactions}
             items={items}
             itemPrices={itemPrices}
+            schemes={schemes}
             loading={loading}
             initialLoadComplete={initialLoadComplete}
             onAddParty={handleAddParty}
@@ -2846,6 +2994,11 @@ export default function App() {
             onDeleteSalesOrder={handleDeleteSalesOrder}
             onAddDispatch={handleAddDispatch}
             onDeleteDispatch={handleDeleteDispatch}
+            onAddScheme={handleAddScheme}
+            onUpdateScheme={handleUpdateScheme}
+            onDeleteScheme={handleDeleteScheme}
+            onBulkAddSchemeItems={handleBulkAddSchemeItems}
+            onDeleteSchemeItem={handleDeleteSchemeItem}
             onAddUser={addPurchaser}
             onUpdateUser={updateUserInfo}
             onDeleteUser={handleDeleteUser}
