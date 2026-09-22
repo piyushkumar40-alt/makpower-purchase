@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download, FileSpreadsheet, UploadCloud, CheckSquare } from "lucide-react";
+import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download, FileSpreadsheet, UploadCloud, CheckSquare, Calendar } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import { uploadToCloudinary } from "../utils/upload";
 import ItemMasterView from "./ItemMasterView";
@@ -435,6 +435,7 @@ export default function PurchaserDashboard({
   const [step1BatchCurrency, setStep1BatchCurrency] = useState("RMB");
   const [step1BatchPrice, setStep1BatchPrice] = useState("");
   const [step1BatchEdd, setStep1BatchEdd] = useState("");
+  const [step1SelectedOrderDate, setStep1SelectedOrderDate] = useState("");
   const [step1FeedbackMsg, setStep1FeedbackMsg] = useState("");
   const [lastFocusedStep1Index, setLastFocusedStep1Index] = useState(null);
   const [lastFocusedStep1Field, setLastFocusedStep1Field] = useState("price");
@@ -725,6 +726,46 @@ export default function PurchaserDashboard({
     window.addEventListener("keydown", handleGlobalStep1KeyDown, true);
     return () => window.removeEventListener("keydown", handleGlobalStep1KeyDown, true);
   }, [activeTab, lastFocusedStep1Index, lastFocusedStep1Field, step1CheckedIds, sortedPendingReqs, step1InlineEdits, accessibleVendors]);
+
+  // Unique order dates present in Step 1 pending unpriced requests
+  const step1AvailableOrderDates = useMemo(() => {
+    const countMap = {};
+    (pendingReqs || []).forEach(r => {
+      const d = (r.orderDate || (r.createdAt ? r.createdAt.split("T")[0] : "") || "").trim();
+      if (d) {
+        countMap[d] = (countMap[d] || 0) + 1;
+      }
+    });
+    return Object.entries(countMap)
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([date, count]) => ({ date, count }));
+  }, [pendingReqs]);
+
+  const handleSelectByOrderDate = (dateStr, mode = "replace") => {
+    if (!dateStr) return;
+    const cleanDate = dateStr.trim();
+    const matchedIds = (pendingReqs || [])
+      .filter(r => {
+        const d = (r.orderDate || (r.createdAt ? r.createdAt.split("T")[0] : "") || "").trim();
+        return d === cleanDate;
+      })
+      .map(r => r.id);
+
+    if (matchedIds.length === 0) {
+      setStep1FeedbackMsg(`No unpriced orders found for ${cleanDate}`);
+      setTimeout(() => setStep1FeedbackMsg(""), 3500);
+      return;
+    }
+
+    if (mode === "add") {
+      setStep1CheckedIds(prev => Array.from(new Set([...prev, ...matchedIds])));
+      setStep1FeedbackMsg(`Added ${matchedIds.length} order(s) from ${cleanDate} to selection`);
+    } else {
+      setStep1CheckedIds(matchedIds);
+      setStep1FeedbackMsg(`Selected ${matchedIds.length} order(s) for ${cleanDate}`);
+    }
+    setTimeout(() => setStep1FeedbackMsg(""), 3500);
+  };
 
   // Step 2: Vendor Ready sorting (only orders not yet assigned to cargo)
   const rawVrItems = useMemo(() => {
@@ -1081,6 +1122,67 @@ export default function PurchaserDashboard({
                       )}
                     </div>
 
+                    {/* Select by Order Date Control */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.25)", padding: "4px 10px", borderRadius: "8px", flexWrap: "wrap" }}>
+                      <span style={{ fontSize: "0.8rem", color: "#38bdf8", fontWeight: 700, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                        <Calendar size={14} /> Select by Order Date:
+                      </span>
+                      <select
+                        className="form-control"
+                        value={step1SelectedOrderDate}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setStep1SelectedOrderDate(val);
+                          if (val) handleSelectByOrderDate(val, "replace");
+                        }}
+                        style={{ width: "175px", padding: "4px 8px", fontSize: "0.82rem", height: "auto", fontWeight: 600 }}
+                      >
+                        <option value="">Select by Order Date...</option>
+                        {step1AvailableOrderDates.map(({ date, count }) => (
+                          <option key={date} value={date}>
+                            {date} ({count} items)
+                          </option>
+                        ))}
+                      </select>
+                      <input 
+                        type="date"
+                        className="form-control"
+                        value={step1SelectedOrderDate}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setStep1SelectedOrderDate(val);
+                          if (val) handleSelectByOrderDate(val, "replace");
+                        }}
+                        style={{ width: "135px", padding: "4px 6px", fontSize: "0.82rem", height: "auto" }}
+                        title="Pick date to select"
+                      />
+                      {step1SelectedOrderDate && (
+                        <button
+                          type="button"
+                          onClick={() => handleSelectByOrderDate(step1SelectedOrderDate, "add")}
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap" }}
+                          title="Add this date's items to current selection"
+                        >
+                          + Add
+                        </button>
+                      )}
+                      {step1CheckedIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStep1CheckedIds([]);
+                            setStep1SelectedOrderDate("");
+                          }}
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap", color: "var(--text-muted)" }}
+                          title="Deselect all selected items"
+                        >
+                          Deselect
+                        </button>
+                      )}
+                    </div>
+
                     {/* Batch Vendor Selector */}
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Vendor:</span>
@@ -1385,8 +1487,18 @@ export default function PurchaserDashboard({
                                       }
                                     }}
                                   />
-                                </td>
-                                <td>{r.orderDate}</td>
+                              <td 
+                                style={{ cursor: "pointer" }}
+                                title={`Click to select all orders with Order Date ${r.orderDate}`}
+                                onClick={() => {
+                                  setStep1SelectedOrderDate(r.orderDate);
+                                  handleSelectByOrderDate(r.orderDate, "replace");
+                                }}
+                              >
+                                <span style={{ borderBottom: "1px dashed rgba(56, 189, 248, 0.45)" }}>
+                                  {r.orderDate}
+                                </span>
+                              </td>
                                 <td style={{ fontWeight: 600 }}>{r.model}</td>
                                 <td>
                                   <div style={{ fontWeight: 700 }}>{qty} Pcs</div>
@@ -1431,8 +1543,18 @@ export default function PurchaserDashboard({
                                     }
                                   }}
                                 />
+                              <td 
+                                style={{ width: "95px", minWidth: "95px", whiteSpace: "nowrap", cursor: "pointer" }}
+                                title={`Click to select all orders with Order Date ${r.orderDate}`}
+                                onClick={() => {
+                                  setStep1SelectedOrderDate(r.orderDate);
+                                  handleSelectByOrderDate(r.orderDate, "replace");
+                                }}
+                              >
+                                <span style={{ borderBottom: "1px dashed rgba(56, 189, 248, 0.45)", color: "var(--text-main)" }}>
+                                  {r.orderDate}
+                                </span>
                               </td>
-                              <td>{r.orderDate}</td>
                               <td style={{ fontWeight: 600, color: "var(--text-main)" }}>
                                 <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
                                   <span>{r.model}</span>
