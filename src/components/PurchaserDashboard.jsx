@@ -2030,6 +2030,9 @@ export default function PurchaserDashboard({
                       setCheckedRequestIds([]);
                       setPlannerNewQtyMap({});
                       setPlannerNewPriceMap({});
+                      setStep3SelectedOrderDate("");
+                      setStep3SelectedCategory("");
+                      setStep3ModelSearch("");
                       setExcelNotification(null);
                     }}
                   >
@@ -2073,8 +2076,15 @@ export default function PurchaserDashboard({
                 .map(([name, count]) => ({ name, count }))
                 .sort((a, b) => b.count - a.count);
 
-              // Filter ready requests by category and model search
+              // Filter ready requests by order date, category, and model search
               const step3FilteredRequests = readyRequests.filter(r => {
+                if (step3SelectedOrderDate) {
+                  const rDateClean = parseFlexibleDate(r.orderDate);
+                  const selDateClean = parseFlexibleDate(step3SelectedOrderDate);
+                  const matchesDate = r.orderDate === step3SelectedOrderDate || 
+                    (rDateClean && selDateClean && rDateClean === selDateClean);
+                  if (!matchesDate) return false;
+                }
                 if (step3SelectedCategory) {
                   const c = cleanCategoryName(r.category) || "Uncategorized";
                   if (c.toLowerCase() !== step3SelectedCategory.toLowerCase()) return false;
@@ -2175,7 +2185,7 @@ export default function PurchaserDashboard({
                       value={step3SelectedOrderDate}
                       onChange={e => setStep3SelectedOrderDate(e.target.value)}
                     >
-                      <option value="">All / Pick Date...</option>
+                      <option value="">All Dates ({readyRequests.length})</option>
                       {step3AvailableDates.map(d => (
                         <option key={d.date} value={d.date}>
                           {d.date} ({d.count} items, {d.qty.toLocaleString()} Pcs)
@@ -2188,26 +2198,47 @@ export default function PurchaserDashboard({
                       style={{ width: "130px", padding: "3px 6px", fontSize: "0.78rem" }}
                       value={step3SelectedOrderDate}
                       onChange={e => setStep3SelectedOrderDate(e.target.value)}
-                      title="Pick exact date"
+                      title="Pick exact date to filter table"
                     />
                     {step3SelectedOrderDate && (
                       <>
                         <button
                           type="button"
+                          onClick={() => setStep3SelectedOrderDate("")}
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: "2px 6px", fontSize: "0.75rem" }}
+                          title="Clear date filter (show all dates)"
+                        >
+                          ✕
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => {
-                            const matching = readyRequests.filter(r => r.orderDate === step3SelectedOrderDate);
+                            const matching = readyRequests.filter(r => {
+                              const rDateClean = parseFlexibleDate(r.orderDate);
+                              const selDateClean = parseFlexibleDate(step3SelectedOrderDate);
+                              return r.orderDate === step3SelectedOrderDate || (rDateClean && selDateClean && rDateClean === selDateClean);
+                            });
                             setCheckedRequestIds(matching.map(r => r.id));
                           }}
                           className="btn btn-primary btn-sm"
                           style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap" }}
                           title={`Select all items for ${step3SelectedOrderDate}`}
                         >
-                          Select Date ({readyRequests.filter(r => r.orderDate === step3SelectedOrderDate).length})
+                          Select Date ({readyRequests.filter(r => {
+                            const rDateClean = parseFlexibleDate(r.orderDate);
+                            const selDateClean = parseFlexibleDate(step3SelectedOrderDate);
+                            return r.orderDate === step3SelectedOrderDate || (rDateClean && selDateClean && rDateClean === selDateClean);
+                          }).length})
                         </button>
                         <button
                           type="button"
                           onClick={() => {
-                            const matchingIds = readyRequests.filter(r => r.orderDate === step3SelectedOrderDate).map(r => r.id);
+                            const matchingIds = readyRequests.filter(r => {
+                              const rDateClean = parseFlexibleDate(r.orderDate);
+                              const selDateClean = parseFlexibleDate(step3SelectedOrderDate);
+                              return r.orderDate === step3SelectedOrderDate || (rDateClean && selDateClean && rDateClean === selDateClean);
+                            }).map(r => r.id);
                             setCheckedRequestIds(prev => Array.from(new Set([...prev, ...matchingIds])));
                           }}
                           className="btn btn-secondary btn-sm"
@@ -2220,7 +2251,11 @@ export default function PurchaserDashboard({
                           <button
                             type="button"
                             onClick={() => {
-                              const forDate = readyRequests.filter(r => r.orderDate === step3SelectedOrderDate);
+                              const forDate = readyRequests.filter(r => {
+                                const rDateClean = parseFlexibleDate(r.orderDate);
+                                const selDateClean = parseFlexibleDate(step3SelectedOrderDate);
+                                return r.orderDate === step3SelectedOrderDate || (rDateClean && selDateClean && rDateClean === selDateClean);
+                              });
                               if (forDate.length === 0) {
                                 alert(`No orders found for date ${step3SelectedOrderDate}`);
                                 return;
@@ -2237,7 +2272,11 @@ export default function PurchaserDashboard({
                             style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: "4px", background: "rgba(239, 68, 68, 0.2)", border: "1px solid rgba(239, 68, 68, 0.4)", color: "#f87171" }}
                             title={`Permanently delete all orders for date ${step3SelectedOrderDate}`}
                           >
-                            <Trash2 size={12} /> Delete Date ({readyRequests.filter(r => r.orderDate === step3SelectedOrderDate).length})
+                            <Trash2 size={12} /> Delete Date ({readyRequests.filter(r => {
+                              const rDateClean = parseFlexibleDate(r.orderDate);
+                              const selDateClean = parseFlexibleDate(step3SelectedOrderDate);
+                              return r.orderDate === step3SelectedOrderDate || (rDateClean && selDateClean && rDateClean === selDateClean);
+                            }).length})
                           </button>
                         )}
                       </>
