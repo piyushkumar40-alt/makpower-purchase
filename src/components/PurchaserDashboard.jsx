@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download, FileSpreadsheet, UploadCloud, CheckSquare, Calendar, Trash2 } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import { uploadToCloudinary } from "../utils/upload";
@@ -418,48 +418,58 @@ export default function PurchaserDashboard({
     }
   };
 
-  const handleDownloadShippingSampleFile = (availableItems = []) => {
-    const headers = ["Order Date", "Item Name", "Qty", "Price"];
+  const handleDownloadShippingSampleFile = (availableItems = [], targetDate = "") => {
+    const headers = ["Item Name", "Qty", "Price"];
+    let pool = availableItems;
+    if (targetDate) {
+      const filtered = availableItems.filter(r => r.orderDate === targetDate);
+      if (filtered.length > 0) pool = filtered;
+    }
     let rows = [];
-    if (availableItems && availableItems.length > 0) {
-      rows = availableItems.slice(0, 8).map(r => [
-        r.orderDate || new Date().toISOString().split("T")[0],
+    if (pool && pool.length > 0) {
+      rows = pool.slice(0, 8).map(r => [
         r.model || "Item Model",
         r.vendorOrderQuantity || r.orderQuantity || 50,
         r.priceRmb || 10
       ]);
     } else {
       rows = [
-        ["2026-08-19", "M11", 50, 15.5],
-        ["2026-08-19", "39LX", 100, 22.0],
-        ["2026-09-07", "BLP837", 30, 8.5],
-        ["2026-09-07", "BN51", 352, 12.0],
-        ["2026-09-07", "BN5M", 50, 14.2]
+        ["M11", 50, 15.5],
+        ["39LX", 100, 22.0],
+        ["BLP837", 30, 8.5],
+        ["BN51", 352, 12.0],
+        ["BN5M", 50, 14.2]
       ];
     }
-    downloadExcelOrCsv(headers, rows, "Sample_Shipping_Update");
+    const filename = targetDate ? `Sample_Shipping_${targetDate}` : "Sample_Shipping_Update";
+    downloadExcelOrCsv(headers, rows, filename);
   };
 
-  const handleDownloadVrSampleFile = (availableItems = []) => {
-    const headers = ["Order Date", "Item Name", "Qty", "Price"];
+  const handleDownloadVrSampleFile = (availableItems = [], targetDate = "") => {
+    const headers = ["Item Name", "Qty", "Price"];
+    let pool = availableItems;
+    if (targetDate) {
+      const filtered = availableItems.filter(r => r.orderDate === targetDate);
+      if (filtered.length > 0) pool = filtered;
+    }
     let rows = [];
-    if (availableItems && availableItems.length > 0) {
-      rows = availableItems.slice(0, 10).map(r => [
-        r.orderDate || new Date().toISOString().split("T")[0],
+    if (pool && pool.length > 0) {
+      rows = pool.slice(0, 10).map(r => [
         r.model || "Item Model",
         r.vendorOrderQuantity || r.orderQuantity || 50,
         r.priceRmb || 10
       ]);
     } else {
       rows = [
-        ["2026-08-19", "M11", 50, 15.5],
-        ["2026-08-19", "39LX", 100, 22.0],
-        ["2026-09-07", "BLP837", 30, 8.5],
-        ["2026-09-07", "BN51", 352, 12.0],
-        ["2026-09-07", "BN5M", 50, 14.2]
+        ["M11", 50, 15.5],
+        ["39LX", 100, 22.0],
+        ["BLP837", 30, 8.5],
+        ["BN51", 352, 12.0],
+        ["BN5M", 50, 14.2]
       ];
     }
-    downloadExcelOrCsv(headers, rows, "Sample_Vendor_Ready_Update");
+    const filename = targetDate ? `Sample_Vendor_Ready_${targetDate}` : "Sample_Vendor_Ready_Update";
+    downloadExcelOrCsv(headers, rows, filename);
   };
 
   // Step 1 Batch Update & Paste State
@@ -2120,11 +2130,11 @@ export default function PurchaserDashboard({
                     <button 
                       type="button"
                       onClick={() => {
-                        handleDownloadShippingSampleFile(readyRequests);
+                        handleDownloadShippingSampleFile(readyRequests, step3SelectedOrderDate);
                       }}
                       className="btn btn-secondary btn-sm"
                       style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", padding: "6px 12px" }}
-                      title="Download sample Excel template (Order Date, Item Name, Qty, Price)"
+                      title="Download sample Excel template (Item Name, Qty, Price)"
                     >
                       <Download size={14} /> Download Sample File
                     </button>
@@ -2376,7 +2386,10 @@ export default function PurchaserDashboard({
                     }}
                   >
                     <div style={{ fontSize: "0.86rem", color: "var(--text-main)" }}>
-                      <strong style={{ color: "var(--success, #16a34a)" }}>✓ {excelNotification.matchedCount} item(s) matched & selected</strong> with updated details
+                      <strong style={{ color: "var(--success, #16a34a)" }}>✓ {excelNotification.matchedCount} item(s) matched & selected</strong>
+                      {excelNotification.targetOrderDate && (
+                        <span> for order date <strong>{excelNotification.targetOrderDate}</strong></span>
+                      )} with updated details
                       {excelNotification.dateAdjustedCount > 0 && (
                         <span style={{ marginLeft: "6px", fontSize: "0.8rem", color: "var(--primary, #0284c7)" }}>
                           ({excelNotification.dateAdjustedCount} date(s) smart-matched & corrected)
@@ -3043,7 +3056,7 @@ export default function PurchaserDashboard({
                   onClick={() => handleDownloadVrSampleFile(rawVrItems)}
                   className="btn btn-secondary btn-sm"
                   style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", padding: "8px 12px" }}
-                  title="Download sample Excel template (Order Date, Item Name, Qty, Price)"
+                  title="Download sample Excel template (Item Name, Qty, Price)"
                 >
                   <Download size={14} /> Download Sample File
                 </button>
@@ -3074,7 +3087,10 @@ export default function PurchaserDashboard({
                 }}
               >
                 <div style={{ fontSize: "0.86rem", color: "var(--text-main)" }}>
-                  <strong style={{ color: "var(--success, #16a34a)" }}>✓ {vrExcelNotification.matchedCount} item(s) matched & selected</strong> with updated details
+                  <strong style={{ color: "var(--success, #16a34a)" }}>✓ {vrExcelNotification.matchedCount} item(s) matched & selected</strong>
+                  {vrExcelNotification.targetOrderDate && (
+                    <span> for order date <strong>{vrExcelNotification.targetOrderDate}</strong></span>
+                  )} with updated details
                   {vrExcelNotification.dateAdjustedCount > 0 && (
                     <span style={{ marginLeft: "6px", fontSize: "0.8rem", color: "var(--primary, #0284c7)" }}>
                       ({vrExcelNotification.dateAdjustedCount} date(s) smart-matched & corrected)
@@ -4355,10 +4371,14 @@ export default function PurchaserDashboard({
         <ExcelShippingUpdateModal 
           availableItems={plannerCandidateRequests.filter(r => r.vendorId === plannerVendorId)}
           vendorName={vendors.find(v => v.id === plannerVendorId)?.name || "Selected Vendor"}
+          defaultOrderDate={step3SelectedOrderDate}
           onClose={() => setShowExcelUpdateModal(false)}
           onApplyMatches={(analysis) => {
-            const { matchedReqIds, newQtyMap, newPriceMap, newDateMap, matched, unmatched, syncOrderDates } = analysis;
+            const { matchedReqIds, newQtyMap, newPriceMap, newDateMap, matched, unmatched, syncOrderDates, selectedUploadOrderDate } = analysis;
 
+            if (selectedUploadOrderDate) {
+              setStep3SelectedOrderDate(selectedUploadOrderDate);
+            }
             setCheckedRequestIds(prev => Array.from(new Set([...prev, ...matchedReqIds])));
             setPlannerNewQtyMap(prev => ({ ...prev, ...newQtyMap }));
             if (newPriceMap && Object.keys(newPriceMap).length > 0) {
@@ -4394,6 +4414,7 @@ export default function PurchaserDashboard({
             const dateAdjustedCount = matched.filter(m => m.isDateCorrected).length;
             setExcelNotification({
               matchedCount: matched.length,
+              targetOrderDate: selectedUploadOrderDate,
               dateAdjustedCount,
               unmatchedCount: unmatched.length,
               unmatchedList: unmatched,
@@ -4402,9 +4423,9 @@ export default function PurchaserDashboard({
 
             setShowExcelUpdateModal(false);
           }}
-          onDownloadSample={() => {
+          onDownloadSample={(date) => {
             const readyRequests = plannerCandidateRequests.filter(r => r.vendorId === plannerVendorId);
-            handleDownloadShippingSampleFile(readyRequests);
+            handleDownloadShippingSampleFile(readyRequests, date || step3SelectedOrderDate);
           }}
         />
       )}
@@ -4418,7 +4439,7 @@ export default function PurchaserDashboard({
           notFoundFileName="NotFound_VendorReady_Items"
           onClose={() => setShowVrExcelModal(false)}
           onApplyMatches={(analysis) => {
-            const { matchedReqIds, newQtyMap, newPriceMap, newDateMap, newReadyDateMap, matched, unmatched, syncOrderDates } = analysis;
+            const { matchedReqIds, newQtyMap, newPriceMap, newDateMap, newReadyDateMap, matched, unmatched, syncOrderDates, selectedUploadOrderDate } = analysis;
 
             setVrChecked(prev => Array.from(new Set([...prev, ...matchedReqIds])));
             setVrNewQtyMap(prev => ({ ...prev, ...newQtyMap }));
@@ -4460,6 +4481,7 @@ export default function PurchaserDashboard({
             const dateAdjustedCount = matched.filter(m => m.isDateCorrected).length;
             setVrExcelNotification({
               matchedCount: matched.length,
+              targetOrderDate: selectedUploadOrderDate,
               dateAdjustedCount,
               unmatchedCount: unmatched.length,
               unmatchedList: unmatched,
@@ -4468,8 +4490,8 @@ export default function PurchaserDashboard({
 
             setShowVrExcelModal(false);
           }}
-          onDownloadSample={() => {
-            handleDownloadVrSampleFile(rawVrItems);
+          onDownloadSample={(date) => {
+            handleDownloadVrSampleFile(rawVrItems, date);
           }}
         />
       )}
@@ -5497,7 +5519,7 @@ function ReceiveCargoModal({ cargo, requests, purchasers = [], onClose, onConfir
 // ==================== EXCEL SHIPPING UPDATE & PARSER UTILITIES ====================
 export const cleanModelStr = (s) => String(s || "").toLowerCase().replace(/[\s\-_/.]/g, "");
 
-export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => {
+export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = [], targetOrderDate = "") => {
   if (!rawRows || rawRows.length === 0) {
     throw new Error("Uploaded content is empty or contains no rows.");
   }
@@ -5513,16 +5535,31 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
   for (let i = 0; i < Math.min(rawRows.length, 5); i++) {
     const row = rawRows[i];
     if (!Array.isArray(row)) continue;
+    let foundItem = -1;
+    let foundQty = -1;
+    let foundPrice = -1;
+    let foundDate = -1;
+    let foundReadyDate = -1;
+
     row.forEach((cell, idx) => {
       const cStr = String(cell || "").toLowerCase().trim();
-      if (readyDateColIdx === -1 && (cStr.includes("ready") || cStr.includes("vendor ready"))) readyDateColIdx = idx;
-      if (dateColIdx === -1 && (cStr.includes("date") || cStr === "d") && idx !== readyDateColIdx) dateColIdx = idx;
-      if (itemColIdx === -1 && (cStr.includes("model") || cStr.includes("item") || cStr.includes("name") || cStr === "e")) itemColIdx = idx;
-      if (qtyColIdx === -1 && (cStr.includes("qty") || cStr.includes("quantity") || cStr.includes("count") || cStr === "f")) qtyColIdx = idx;
-      if (priceColIdx === -1 && (cStr.includes("price") || cStr.includes("rate") || cStr.includes("rmb") || cStr.includes("amount") || cStr.includes("cost") || cStr === "price rmb")) priceColIdx = idx;
+      if (foundReadyDate === -1 && (cStr.includes("ready") || cStr.includes("vendor ready"))) foundReadyDate = idx;
+      if (foundDate === -1 && (cStr.includes("order date") || cStr.includes("date") || cStr === "d") && idx !== foundReadyDate) foundDate = idx;
+      if (foundItem === -1 && (cStr.includes("model") || cStr.includes("item") || cStr.includes("name") || cStr === "e")) foundItem = idx;
+      if (foundQty === -1 && (cStr.includes("qty") || cStr.includes("quantity") || cStr.includes("count") || cStr === "f")) foundQty = idx;
+      if (foundPrice === -1 && (cStr.includes("price") || cStr.includes("rate") || cStr.includes("rmb") || cStr.includes("amount") || cStr.includes("cost") || cStr === "price rmb")) foundPrice = idx;
     });
-    if (dateColIdx !== -1 && (itemColIdx !== -1 || qtyColIdx !== -1)) {
+
+    // Valid header if:
+    // 1. Both item and qty are found (standard 2 or 3-column format: Item Name, Qty, Price)
+    // 2. Or date and item are found (legacy 4-column format: Date, Item, Qty, Price)
+    if ((foundItem !== -1 && foundQty !== -1) || (foundDate !== -1 && foundItem !== -1)) {
       headerRowIdx = i;
+      itemColIdx = foundItem;
+      qtyColIdx = foundQty;
+      priceColIdx = foundPrice;
+      dateColIdx = foundDate;
+      readyDateColIdx = foundReadyDate;
       break;
     }
   }
@@ -5530,32 +5567,36 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
   const dataRows = headerRowIdx !== -1 ? rawRows.slice(headerRowIdx + 1) : rawRows;
 
   // Auto-detect columns from first data row if headers were missing or incomplete
-  if (dateColIdx === -1 || itemColIdx === -1 || qtyColIdx === -1) {
+  if (itemColIdx === -1 || qtyColIdx === -1) {
     const sampleRow = dataRows.find(r => Array.isArray(r) && r.filter(c => c !== "" && c != null).length >= 2);
     if (sampleRow) {
-      sampleRow.forEach((c, idx) => {
-        const str = String(c || "").trim();
-        const num = Number(str);
-        if (dateColIdx === -1 && (parseFlexibleDate(c) || str.match(/\d{1,4}[-\/\.]\d{1,2}[-\/\.]\d{1,4}/))) {
-          dateColIdx = idx;
-        } else if (qtyColIdx === -1 && !isNaN(num) && num > 0 && Number.isInteger(num)) {
-          qtyColIdx = idx;
-        } else if (itemColIdx === -1 && str.length > 0 && isNaN(num)) {
-          itemColIdx = idx;
-        }
-      });
+      // Check if sampleRow[0] is a date:
+      const col0Str = String(sampleRow[0] || "").trim();
+      const isCol0Date = !!(parseFlexibleDate(sampleRow[0]) && col0Str.match(/\d{1,4}[-\/\.]\d{1,2}[-\/\.]\d{1,4}/));
+
+      if (isCol0Date) {
+        // Legacy format: [Date, Item, Qty, Price]
+        dateColIdx = 0;
+        itemColIdx = 1;
+        qtyColIdx = 2;
+        if (sampleRow.length > 3) priceColIdx = 3;
+      } else {
+        // New standard format: [Item, Qty, Price]
+        dateColIdx = -1;
+        itemColIdx = 0;
+        qtyColIdx = 1;
+        if (sampleRow.length > 2) priceColIdx = 2;
+      }
     }
   }
 
-  // Fallbacks if still not found
-  if (dateColIdx === -1) dateColIdx = 0;
-  if (itemColIdx === -1) itemColIdx = 1;
-  if (qtyColIdx === -1) qtyColIdx = 2;
+  // Fallbacks if still not assigned
+  if (itemColIdx === -1) itemColIdx = (dateColIdx === 0 ? 1 : 0);
+  if (qtyColIdx === -1) qtyColIdx = (itemColIdx === 0 ? 1 : 2);
   if (priceColIdx === -1) {
-    const col3HasPrice = dataRows.some(r => Array.isArray(r) && r[3] !== undefined && r[3] !== null && r[3] !== "" && !isNaN(parseFloat(String(r[3]).replace(/[^0-9.]/g, ""))));
-    if (col3HasPrice && readyDateColIdx !== 3 && dateColIdx !== 3 && itemColIdx !== 3 && qtyColIdx !== 3) {
-      priceColIdx = 3;
-    }
+    const candidatePriceIdx = itemColIdx === 0 ? 2 : 3;
+    const hasPrice = dataRows.some(r => Array.isArray(r) && r[candidatePriceIdx] !== undefined && r[candidatePriceIdx] !== null && r[candidatePriceIdx] !== "" && !isNaN(parseFloat(String(r[candidatePriceIdx]).replace(/[^0-9.]/g, ""))));
+    if (hasPrice) priceColIdx = candidatePriceIdx;
   }
 
   const matched = [];
@@ -5569,7 +5610,7 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
   dataRows.forEach((row) => {
     if (!Array.isArray(row) || row.every(c => c === "" || c == null)) return;
 
-    const rawDate = row[dateColIdx];
+    const rawDate = dateColIdx !== -1 ? row[dateColIdx] : null;
     const rawItem = row[itemColIdx];
     const rawQty = row[qtyColIdx];
     const rawReadyDate = readyDateColIdx !== -1 ? row[readyDateColIdx] : null;
@@ -5583,7 +5624,7 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
       }
     }
 
-    const cleanDate = parseFlexibleDate(rawDate);
+    const cleanDate = rawDate ? parseFlexibleDate(rawDate) : (targetOrderDate || "");
     const cleanReadyDate = rawReadyDate ? parseFlexibleDate(rawReadyDate) : null;
     const itemStr = String(rawItem || "").trim();
     const qtyNum = parseInt(String(rawQty || "").replace(/[^0-9]/g, ""), 10);
@@ -5592,7 +5633,7 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
 
     if (!itemStr) {
       unmatched.push({
-        orderDate: cleanDate || String(rawDate || "—"),
+        orderDate: cleanDate || targetOrderDate || "—",
         itemName: "—",
         qty: !isNaN(qtyNum) ? qtyNum : String(rawQty || "—"),
         price: priceNum !== null ? priceNum : String(rawPrice || "—"),
@@ -5603,7 +5644,7 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
 
     if (isNaN(qtyNum) || qtyNum <= 0) {
       unmatched.push({
-        orderDate: cleanDate || String(rawDate || "—"),
+        orderDate: cleanDate || targetOrderDate || "—",
         itemName: itemStr,
         qty: String(rawQty || "—"),
         price: priceNum !== null ? priceNum : String(rawPrice || "—"),
@@ -5614,7 +5655,8 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
 
     const cleanInputModel = cleanModelStr(itemStr);
 
-    // Find candidate items for this model among unclaimed requests
+    // Find candidate items for this model among available items
+    // (availableItems is already constrained to targetOrderDate when selected!)
     const candidates = availableItems.filter(r => {
       if (matchedReqIds.has(r.id)) return false;
       const rModelClean = cleanModelStr(r.model);
@@ -5622,27 +5664,37 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
     });
 
     if (candidates.length > 0) {
-      // Look for candidate with exact or variant date match first
-      const dateVariants = getDateVariants(cleanDate || rawDate);
-      let matchedReq = candidates.find(r => {
-        const rDateClean = parseFlexibleDate(r.orderDate);
-        const rDateRaw = String(r.orderDate || "").trim();
-        return (
-          (cleanDate && rDateClean === cleanDate) ||
-          (rDateClean && dateVariants.includes(rDateClean)) ||
-          (rDateRaw && dateVariants.includes(rDateRaw))
-        );
-      });
-
-      let isDateCorrected = false;
-      if (!matchedReq) {
-        // Smart match by Model: ONLY if candidates has exactly 1 order for this model
-        // If there are multiple orders for this model with DIFFERENT order dates,
-        // do not blindly pick candidates[0], which causes wrong date selection (e.g. 2026-08-09 instead of 2026-08-10)!
-        if (candidates.length === 1) {
-          matchedReq = candidates[0];
-          isDateCorrected = true;
+      let matchedReq = null;
+      if (targetOrderDate) {
+        if (dateColIdx !== -1 && rawDate && cleanDate && cleanDate !== targetOrderDate) {
+          unmatched.push({
+            orderDate: cleanDate,
+            itemName: itemStr,
+            qty: qtyNum,
+            price: priceNum !== null ? priceNum : String(rawPrice || "—"),
+            reason: `File date (${cleanDate}) differs from selected target date (${targetOrderDate})`
+          });
+          return;
         }
+        // Available items already filtered to targetOrderDate
+        matchedReq = candidates[0];
+      } else if (cleanDate) {
+        // Fallback for legacy files with dates
+        const dateVariants = getDateVariants(cleanDate || rawDate);
+        matchedReq = candidates.find(r => {
+          const rDateClean = parseFlexibleDate(r.orderDate);
+          const rDateRaw = String(r.orderDate || "").trim();
+          return (
+            (cleanDate && rDateClean === cleanDate) ||
+            (rDateClean && dateVariants.includes(rDateClean)) ||
+            (rDateRaw && dateVariants.includes(rDateRaw))
+          );
+        });
+        if (!matchedReq && candidates.length === 1) {
+          matchedReq = candidates[0];
+        }
+      } else {
+        matchedReq = candidates[0];
       }
 
       if (matchedReq) {
@@ -5650,9 +5702,6 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
         newQtyMap[matchedReq.id] = qtyNum;
         if (priceNum !== null) {
           newPriceMap[matchedReq.id] = priceNum;
-        }
-        if (cleanDate) {
-          newDateMap[matchedReq.id] = cleanDate;
         }
         if (cleanReadyDate) {
           newReadyDateMap[matchedReq.id] = cleanReadyDate;
@@ -5662,22 +5711,20 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
           reqId: matchedReq.id,
           model: matchedReq.model,
           orderDate: matchedReq.orderDate,
-          excelDate: cleanDate || String(rawDate || matchedReq.orderDate),
-          isDateCorrected,
+          excelDate: cleanDate || targetOrderDate || matchedReq.orderDate,
+          isDateCorrected: false,
           originalQty: matchedReq.vendorOrderQuantity || matchedReq.orderQuantity,
           newQty: qtyNum,
           originalPrice: matchedReq.priceRmb,
           newPrice: priceNum
         });
       } else {
-        // Multiple candidate orders exist for this model but none matched the file date
-        const distinctOrderDates = Array.from(new Set(candidates.map(c => c.orderDate || "Unknown"))).join(", ");
         unmatched.push({
-          orderDate: cleanDate || String(rawDate || "—"),
+          orderDate: cleanDate || targetOrderDate || "—",
           itemName: itemStr,
           qty: qtyNum,
           price: priceNum !== null ? priceNum : String(rawPrice || "—"),
-          reason: `Found ${candidates.length} order(s) for "${itemStr}" on date(s) [${distinctOrderDates}], but none match file date "${cleanDate || rawDate}"`
+          reason: `Found ${candidates.length} order(s) for "${itemStr}", but none match order date "${cleanDate || targetOrderDate}"`
         });
       }
     } else {
@@ -5691,11 +5738,13 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
       if (alreadyClaimed) {
         specificReason = "Duplicate item row (Already matched with previous row in file)";
       } else {
-        specificReason = "Item Name not found for this vendor";
+        specificReason = targetOrderDate 
+          ? `Item "${itemStr}" not found in orders for date ${targetOrderDate}` 
+          : "Item Name not found for this vendor";
       }
 
       unmatched.push({
-        orderDate: cleanDate || String(rawDate || "—"),
+        orderDate: cleanDate || targetOrderDate || "—",
         itemName: itemStr,
         qty: qtyNum,
         price: priceNum !== null ? priceNum : String(rawPrice || "—"),
@@ -5704,7 +5753,7 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
     }
   });
 
-  return { matched, unmatched, newQtyMap, newPriceMap, newDateMap, newReadyDateMap, matchedReqIds: Array.from(matchedReqIds) };
+  return { matched, unmatched, newQtyMap, newPriceMap, newDateMap, newReadyDateMap, matchedReqIds: Array.from(matchedReqIds), targetOrderDate };
 };
 
 // ==================== EXCEL SHIPPING / VENDOR READY QUANTITY UPDATE MODAL ====================
@@ -5713,6 +5762,7 @@ function ExcelShippingUpdateModal({
   vendorName = "",
   title = "Update Quantities from Excel File",
   notFoundFileName = "NotFound_Items",
+  defaultOrderDate = "",
   onClose,
   onApplyMatches,
   onDownloadSample
@@ -5726,15 +5776,53 @@ function ExcelShippingUpdateModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [syncOrderDates, setSyncOrderDates] = useState(true);
+  const [lastRawRows, setLastRawRows] = useState(null);
+  const [lastSourceName, setLastSourceName] = useState("");
   const fileInputRef = React.useRef(null);
 
-  const processRows = (rows, sourceName = "") => {
+  // Group available items by Order Date for dropdown selection
+  const modalAvailableDates = useMemo(() => {
+    const dMap = {};
+    (availableItems || []).forEach(r => {
+      const d = r.orderDate || "Unknown";
+      if (!dMap[d]) dMap[d] = { date: d, count: 0, pcs: 0 };
+      dMap[d].count += 1;
+      dMap[d].pcs += parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+    });
+    return Object.values(dMap).sort((a, b) => (b.date > a.date ? 1 : -1));
+  }, [availableItems]);
+
+  const [selectedUploadOrderDate, setSelectedUploadOrderDate] = useState(() => {
+    if (defaultOrderDate) return defaultOrderDate;
+    return modalAvailableDates.length > 0 ? modalAvailableDates[0].date : "";
+  });
+
+  useEffect(() => {
+    if (defaultOrderDate) {
+      setSelectedUploadOrderDate(defaultOrderDate);
+    } else if (!selectedUploadOrderDate && modalAvailableDates.length > 0) {
+      setSelectedUploadOrderDate(modalAvailableDates[0].date);
+    }
+  }, [defaultOrderDate, modalAvailableDates]);
+
+  const runAnalysis = (rows, sourceName = "", targetDate = selectedUploadOrderDate) => {
     setErrorMsg("");
     try {
+      if (!targetDate) {
+        throw new Error("Please select a Target Order Date first.");
+      }
       if (!rows || rows.length === 0) {
         throw new Error("No data found in uploaded content.");
       }
-      const result = parseExcelShippingRowsAndMatch(rows, availableItems);
+
+      // Filter availableItems strictly to the selected targetDate
+      const targetItemsForDate = availableItems.filter(r => {
+        const rDateClean = parseFlexibleDate(r.orderDate);
+        const selDateClean = parseFlexibleDate(targetDate);
+        return r.orderDate === targetDate || (rDateClean && selDateClean && rDateClean === selDateClean);
+      });
+
+      const result = parseExcelShippingRowsAndMatch(rows, targetItemsForDate, targetDate);
       setAnalysis(result);
       if (sourceName) setFileName(sourceName);
     } catch (err) {
@@ -5743,8 +5831,25 @@ function ExcelShippingUpdateModal({
     }
   };
 
+  const processRows = (rows, sourceName = "") => {
+    setLastRawRows(rows);
+    setLastSourceName(sourceName);
+    runAnalysis(rows, sourceName, selectedUploadOrderDate);
+  };
+
+  const handleDateChange = (newDate) => {
+    setSelectedUploadOrderDate(newDate);
+    if (lastRawRows) {
+      runAnalysis(lastRawRows, lastSourceName, newDate);
+    }
+  };
+
   const processFile = (file) => {
     if (!file) return;
+    if (!selectedUploadOrderDate) {
+      setErrorMsg("Please select a Target Order Date first before uploading an Excel file.");
+      return;
+    }
     setIsProcessing(true);
     setErrorMsg("");
     setFileName(file.name);
@@ -5801,8 +5906,12 @@ function ExcelShippingUpdateModal({
   };
 
   const handleAnalyzePaste = () => {
+    if (!selectedUploadOrderDate) {
+      setErrorMsg("Please select a Target Order Date first before analyzing pasted rows.");
+      return;
+    }
     if (!pastedText.trim()) {
-      setErrorMsg("Please paste Excel rows containing Order Date, Item Name, and Qty.");
+      setErrorMsg("Please paste rows containing Item Name and Qty.");
       return;
     }
     const lines = pastedText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -5815,7 +5924,11 @@ function ExcelShippingUpdateModal({
 
   const handleConfirmApply = () => {
     if (!analysis) return;
-    onApplyMatches({ ...analysis, syncOrderDates });
+    onApplyMatches({
+      ...analysis,
+      selectedUploadOrderDate,
+      syncOrderDates
+    });
   };
 
   return (
@@ -5828,7 +5941,7 @@ function ExcelShippingUpdateModal({
               <FileSpreadsheet size={22} /> {title}
             </h3>
             <p style={{ margin: "4px 0 0 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-              Vendor: <strong>{vendorName}</strong> • {availableItems.length} items available for matching
+              Vendor: <strong>{vendorName}</strong> • {availableItems.length} items available across {modalAvailableDates.length} order date(s)
             </p>
           </div>
           <button 
@@ -5841,25 +5954,84 @@ function ExcelShippingUpdateModal({
           </button>
         </div>
 
-        {/* Instructions & Sample Download */}
-        <div style={{ background: "var(--bg-card-hover, rgba(241, 245, 249, 0.7))", border: "1px solid var(--border-glass, #cbd5e1)", borderRadius: "10px", padding: "14px", marginBottom: "16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
-            <div>
-              <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-main)", marginBottom: "4px" }}>
-                Required Columns: <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Order Date</code>, <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Item Name</code>, <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Qty</code>, <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Price (Optional)</code>
-              </div>
-              <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                Matches by Order Date & Item Name. Matched items are auto-selected with New Qty and New Price filled. Any unmatched items will be automatically downloaded to <code style={{ padding: "1px 5px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)" }}>{notFoundFileName}.xlsx</code>.
-              </div>
+        {/* 1. SELECT TARGET ORDER DATE CARD */}
+        <div style={{
+          background: selectedUploadOrderDate ? "rgba(2, 132, 199, 0.05)" : "rgba(239, 68, 68, 0.05)",
+          border: selectedUploadOrderDate ? "1.5px solid var(--primary, #0284c7)" : "1.5px solid var(--danger, #dc2626)",
+          borderRadius: "10px",
+          padding: "14px 16px",
+          marginBottom: "16px"
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "8px" }}>
+            <label style={{ fontSize: "0.9rem", fontWeight: 700, color: selectedUploadOrderDate ? "var(--primary, #0284c7)" : "var(--danger, #dc2626)", display: "flex", alignItems: "center", gap: "6px", margin: 0 }}>
+              <Calendar size={16} /> 1. Select Target Order Date (Required)
+            </label>
+            <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+              Data will be uploaded and applied to this date ONLY
+            </span>
+          </div>
+
+          <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ flex: "1 1 240px", minWidth: "220px" }}>
+              <select
+                className="form-control"
+                value={selectedUploadOrderDate}
+                onChange={(e) => handleDateChange(e.target.value)}
+                style={{
+                  fontWeight: 600,
+                  fontSize: "0.88rem",
+                  borderColor: !selectedUploadOrderDate ? "var(--danger, #dc2626)" : "var(--primary, #0284c7)"
+                }}
+              >
+                <option value="">-- Select Order Date ({modalAvailableDates.length} available) --</option>
+                {modalAvailableDates.map(d => (
+                  <option key={d.date} value={d.date}>
+                    {d.date} — {d.count} item{d.count !== 1 ? "s" : ""} ({d.pcs.toLocaleString()} Pcs)
+                  </option>
+                ))}
+              </select>
             </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>or custom:</span>
+              <input
+                type="date"
+                className="form-control"
+                value={selectedUploadOrderDate}
+                onChange={(e) => handleDateChange(e.target.value)}
+                style={{ fontSize: "0.85rem", padding: "6px 10px", width: "150px" }}
+              />
+            </div>
+
             <button
               type="button"
-              onClick={onDownloadSample}
+              onClick={() => onDownloadSample && onDownloadSample(selectedUploadOrderDate)}
               className="btn btn-secondary btn-sm"
-              style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", whiteSpace: "nowrap" }}
+              style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", whiteSpace: "nowrap", marginLeft: "auto" }}
+              title={selectedUploadOrderDate ? `Download template pre-filled with items from ${selectedUploadOrderDate}` : "Download sample template"}
             >
-              <Download size={14} /> Download Sample File
+              <Download size={14} /> Download Sample {selectedUploadOrderDate ? `(${selectedUploadOrderDate})` : "File"}
             </button>
+          </div>
+
+          {selectedUploadOrderDate ? (
+            <div style={{ marginTop: "8px", fontSize: "0.78rem", color: "var(--text-muted)" }}>
+              Target Orders: <strong>{availableItems.filter(r => r.orderDate === selectedUploadOrderDate).length} items</strong> available for date <strong>{selectedUploadOrderDate}</strong>.
+            </div>
+          ) : (
+            <div style={{ marginTop: "8px", fontSize: "0.78rem", color: "var(--danger, #dc2626)", fontWeight: 600 }}>
+              ⚠️ Please choose an Order Date before uploading or pasting rows.
+            </div>
+          )}
+        </div>
+
+        {/* Instructions */}
+        <div style={{ background: "var(--bg-card-hover, rgba(241, 245, 249, 0.7))", border: "1px solid var(--border-glass, #cbd5e1)", borderRadius: "10px", padding: "12px 14px", marginBottom: "16px" }}>
+          <div style={{ fontSize: "0.84rem", fontWeight: 600, color: "var(--text-main)", marginBottom: "4px" }}>
+            File Format: <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Item Name</code>, <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Qty</code>, <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Price (Optional)</code>
+          </div>
+          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+            Matches items in selected date <strong>{selectedUploadOrderDate || "(choose above)"}</strong>. Matched items are auto-selected with New Qty and New Price filled. Any items not found for this date will be exported to <code style={{ padding: "1px 5px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)" }}>{notFoundFileName}.xlsx</code>.
           </div>
         </div>
 
@@ -5887,7 +6059,13 @@ function ExcelShippingUpdateModal({
         {inputMode === "file" && (
           <div style={{ marginBottom: "16px" }}>
             <div 
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => {
+                if (!selectedUploadOrderDate) {
+                  setErrorMsg("Please select a Target Order Date first.");
+                  return;
+                }
+                fileInputRef.current?.click();
+              }}
               onDragOver={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -5931,6 +6109,10 @@ function ExcelShippingUpdateModal({
                 style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "6px" }}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (!selectedUploadOrderDate) {
+                    setErrorMsg("Please select a Target Order Date first.");
+                    return;
+                  }
                   fileInputRef.current?.click();
                 }}
               >
@@ -5957,7 +6139,7 @@ function ExcelShippingUpdateModal({
             <textarea
               className="form-control"
               rows={5}
-              placeholder={`Paste rows from Excel or Google Sheets here...\nExample:\n9/7/2026\tBLP837\t30\t15.5\n9/7/2026\tBN51\t352\t12.0`}
+              placeholder={`Paste rows from Excel or Google Sheets (Item Name, Qty, Price)...\nExample:\nBLP837\t30\t15.5\nBN51\t352\t12.0\nM11\t50`}
               value={pastedText}
               onChange={e => setPastedText(e.target.value)}
               style={{ fontSize: "0.82rem", fontFamily: "monospace" }}
@@ -5985,12 +6167,10 @@ function ExcelShippingUpdateModal({
           <div style={{ marginTop: "12px", marginBottom: "20px" }}>
             <div style={{ display: "flex", gap: "12px", marginBottom: "12px", flexWrap: "wrap" }}>
               <div style={{ flex: 1, padding: "12px 14px", borderRadius: "8px", background: "rgba(34, 197, 94, 0.1)", border: "1px solid rgba(34, 197, 94, 0.3)" }}>
-                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Matched Items</div>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Matched Items ({selectedUploadOrderDate})</div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--success, #16a34a)" }}>{analysis.matched.length}</div>
                 <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>
-                  {analysis.matched.filter(m => m.isDateCorrected).length > 0 
-                    ? `Auto-matched (${analysis.matched.filter(m => m.isDateCorrected).length} date(s) smart-reconciled)` 
-                    : "Will be selected & updated in table"}
+                  Will be selected & updated in table for {selectedUploadOrderDate}
                 </div>
               </div>
               <div style={{ flex: 1, padding: "12px 14px", borderRadius: "8px", background: analysis.unmatched.length > 0 ? "rgba(245, 158, 11, 0.1)" : "var(--bg-card-hover, rgba(0,0,0,0.03))", border: analysis.unmatched.length > 0 ? "1px solid rgba(245, 158, 11, 0.3)" : "1px solid var(--border-glass, #cbd5e1)" }}>
