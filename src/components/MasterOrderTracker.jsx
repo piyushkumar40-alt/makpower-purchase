@@ -19,8 +19,10 @@ import {
   Eye, 
   Ban,
   FileSpreadsheet,
-  Trash2
+  Trash2,
+  CheckSquare
 } from "lucide-react";
+import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
 
 export function getOrderStage(r, cargo) {
   if (r.status === "Cancelled") {
@@ -116,10 +118,19 @@ export default function MasterOrderTracker({
   currentUser,
   isPurchaseManager = false,
   isSearchAdmin = false,
+  isAdmin: propIsAdmin,
   onEditRequest,
   onNavigateStep,
   onDeleteRequests
 }) {
+  const isAdmin = Boolean(
+    propIsAdmin ||
+    isSearchAdmin ||
+    currentUser?.role === "superadmin" ||
+    currentUser?.role === "owner" ||
+    currentUser?.role === "admin"
+  );
+
   const [searchQuery, setSearchQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
   const [vendorFilter, setVendorFilter] = useState("");
@@ -131,12 +142,16 @@ export default function MasterOrderTracker({
   const [sortField, setSortField] = useState("orderDate");
   const [sortDirection, setSortDirection] = useState("desc");
 
+  // Selection & Admin Delete state
+  const [selectedOrderIds, setSelectedOrderIds] = useState([]);
+  const [adminDeleteConfirm, setAdminDeleteConfirm] = useState(null);
+
   const accessibleRequests = useMemo(() => {
-    if (isSearchAdmin || isPurchaseManager) {
+    if (isAdmin || isPurchaseManager) {
       return requests || [];
     }
     return (requests || []).filter(r => r.purchaserId === currentUser?.id);
-  }, [requests, isSearchAdmin, isPurchaseManager, currentUser]);
+  }, [requests, isAdmin, isPurchaseManager, currentUser]);
 
   const vendorMap = useMemo(() => {
     const map = {};
@@ -381,6 +396,75 @@ export default function MasterOrderTracker({
   };
 
   const hasActiveFilters = searchQuery || stageFilter !== "all" || vendorFilter || cargoFilter || purchaserFilter !== "all" || fromDate || toDate;
+
+  // Selected orders metrics
+  const selectedRequests = useMemo(() => {
+    if (selectedOrderIds.length === 0) return [];
+    const idSet = new Set(selectedOrderIds);
+    return enrichedRequests.filter(r => idSet.has(r.id));
+  }, [enrichedRequests, selectedOrderIds]);
+
+  const totalSelectedQty = useMemo(() => {
+    return selectedRequests.reduce((sum, r) => sum + r._effectiveQty, 0);
+  }, [selectedRequests]);
+
+  const totalSelectedRmb = useMemo(() => {
+    return selectedRequests.reduce((sum, r) => sum + r._totalRmb, 0);
+  }, [selectedRequests]);
+
+  // Selection actions
+  const toggleSelectRow = (id) => {
+    setSelectedOrderIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (sortedRequests.length === 0) return;
+    const allFilteredSelected = sortedRequests.every(r => selectedOrderIds.includes(r.id));
+    if (allFilteredSelected) {
+      const sortedIds = new Set(sortedRequests.map(r => r.id));
+      setSelectedOrderIds(prev => prev.filter(id => !sortedIds.has(id)));
+    } else {
+      const currentSet = new Set(selectedOrderIds);
+      sortedRequests.forEach(r => currentSet.add(r.id));
+      setSelectedOrderIds(Array.from(currentSet));
+    }
+  };
+
+  const handleSelectAllFiltered = () => {
+    const currentSet = new Set(selectedOrderIds);
+    sortedRequests.forEach(r => currentSet.add(r.id));
+    setSelectedOrderIds(Array.from(currentSet));
+  };
+
+  const handleClearSelection = () => {
+    setSelectedOrderIds([]);
+  };
+
+  const handleTriggerBatchDelete = () => {
+    if (selectedOrderIds.length === 0) return;
+    setAdminDeleteConfirm({
+      title: `Delete Selected Orders (${selectedOrderIds.length})`,
+      description: `Permanently delete ${selectedOrderIds.length} selected order(s) across all stages from the Master Tracker. This action is irreversible.`,
+      requestIds: selectedOrderIds,
+      targets: selectedRequests
+    });
+  };
+
+  const handleConfirmDelete = async (reason) => {
+    if (!adminDeleteConfirm || !onDeleteRequests) return;
+    try {
+      const { requestIds } = adminDeleteConfirm;
+      await onDeleteRequests(requestIds, reason || `Admin deleted ${requestIds.length} order(s) from Master Order Tracker`);
+      const deletedSet = new Set(requestIds);
+      setSelectedOrderIds(prev => prev.filter(id => !deletedSet.has(id)));
+      setAdminDeleteConfirm(null);
+    } catch (err) {
+      console.error("Batch delete failed:", err);
+      alert("Failed to delete orders: " + (err.message || "Unknown error"));
+    }
+  };
 
   return (
     <div className="card-fade-in" style={{ paddingBottom: "40px" }}>
@@ -672,15 +756,85 @@ export default function MasterOrderTracker({
       </div>
 
       <div className="glass-panel" style={{ padding: "6px" }}>
-        <div style={{ padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-glass)", flexWrap: "wrap", gap: "8px" }}>
-          <div style={{ fontSize: "0.9rem", fontWeight: 700 }}>
-            Showing <span style={{ color: "#38bdf8" }}>{sortedRequests.length}</span> of {enrichedRequests.length} Orders
-            {hasActiveFilters && (
-              <span style={{ marginLeft: "8px", fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 400 }}>
-                (Filtered)
-              </span>
+        <div style={{ padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-glass)", flexWrap: "wrap", gap: "10px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+            <div style={{ fontSize: "0.9rem", fontWeight: 700 }}>
+              Showing <span style={{ color: "#38bdf8" }}>{sortedRequests.length}</span> of {enrichedRequests.length} Orders
+              {hasActiveFilters && (
+                <span style={{ marginLeft: "8px", fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 400 }}>
+                  (Filtered)
+                </span>
+              )}
+            </div>
+
+            {isAdmin && (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                {selectedOrderIds.length > 0 ? (
+                  <>
+                    <span
+                      style={{
+                        background: "rgba(239, 68, 68, 0.15)",
+                        color: "#f87171",
+                        border: "1px solid rgba(239, 68, 68, 0.3)",
+                        padding: "4px 10px",
+                        borderRadius: "6px",
+                        fontSize: "0.8rem",
+                        fontWeight: 700,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px"
+                      }}
+                    >
+                      📌 {selectedOrderIds.length} Selected ({totalSelectedQty.toLocaleString()} Pcs)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleClearSelection}
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: "0.78rem", padding: "4px 8px" }}
+                      title="Clear selection"
+                    >
+                      ✕ Clear
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleTriggerBatchDelete}
+                      className="btn btn-danger btn-sm"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        fontWeight: 700,
+                        fontSize: "0.8rem",
+                        padding: "5px 12px",
+                        background: "#ef4444",
+                        color: "#ffffff",
+                        border: "none",
+                        boxShadow: "0 2px 8px rgba(239, 68, 68, 0.35)",
+                        cursor: "pointer"
+                      }}
+                      title={`Permanently delete ${selectedOrderIds.length} selected orders`}
+                    >
+                      <Trash2 size={13} /> Delete Selected ({selectedOrderIds.length})
+                    </button>
+                  </>
+                ) : (
+                  sortedRequests.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleSelectAllFiltered}
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: "0.76rem", padding: "3px 8px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                      title="Select all orders currently shown"
+                    >
+                      <CheckSquare size={12} /> Select All Filtered ({sortedRequests.length})
+                    </button>
+                  )
+                )}
+              </div>
             )}
           </div>
+
           <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
             💡 Click on any <strong>Item / Model</strong> to edit details, or click a <strong>Stage Badge</strong> to jump to that workflow step.
           </div>
@@ -701,6 +855,28 @@ export default function MasterOrderTracker({
             <table className="custom-table" style={{ fontSize: "0.88rem" }}>
               <thead>
                 <tr>
+                  {isAdmin && (
+                    <th style={{ width: "42px", textAlign: "center", padding: "8px 6px" }}>
+                      <input
+                        type="checkbox"
+                        checked={sortedRequests.length > 0 && sortedRequests.every(r => selectedOrderIds.includes(r.id))}
+                        ref={el => {
+                          if (el) {
+                            const isSome = sortedRequests.some(r => selectedOrderIds.includes(r.id));
+                            const isAll = sortedRequests.length > 0 && sortedRequests.every(r => selectedOrderIds.includes(r.id));
+                            el.indeterminate = isSome && !isAll;
+                          }
+                        }}
+                        onChange={toggleSelectAll}
+                        style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#ef4444" }}
+                        title={
+                          sortedRequests.length > 0 && sortedRequests.every(r => selectedOrderIds.includes(r.id))
+                            ? "Deselect all filtered orders"
+                            : `Select all ${sortedRequests.length} filtered orders`
+                        }
+                      />
+                    </th>
+                  )}
                   <th onClick={() => handleSort("orderDate")} style={{ cursor: "pointer", minWidth: "105px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                       Order Date <ArrowUpDown size={12} />
@@ -748,9 +924,27 @@ export default function MasterOrderTracker({
                   const stage = r._stage;
                   const vName = r._vendor?.name || (r.vendorId ? "Unknown Vendor" : "Not Assigned");
                   const pName = r._purchaser?.name || "Purchaser";
+                  const isSelected = selectedOrderIds.includes(r.id);
 
                   return (
-                    <tr key={r.id}>
+                    <tr 
+                      key={r.id}
+                      style={{
+                        background: isSelected ? "rgba(239, 68, 68, 0.08)" : undefined,
+                        transition: "background 0.15s ease"
+                      }}
+                    >
+                      {isAdmin && (
+                        <td style={{ textAlign: "center", padding: "8px 6px" }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectRow(r.id)}
+                            style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#ef4444" }}
+                            title={`Select order #${r.id} (${r.model})`}
+                          />
+                        </td>
+                      )}
                       <td style={{ color: "var(--text-muted)", fontSize: "0.82rem", whiteSpace: "nowrap" }}>
                         {r._effectiveOrderDate || "—"}
                       </td>
@@ -921,13 +1115,16 @@ export default function MasterOrderTracker({
                           >
                             <Eye size={12} /> View
                           </button>
-                          {onDeleteRequests && (isSearchAdmin || currentUser?.role === "superadmin" || currentUser?.role === "owner" || currentUser?.role === "admin") && (
+                          {onDeleteRequests && isAdmin && (
                             <button
                               type="button"
                               onClick={() => {
-                                if (window.confirm(`Permanently delete complete order #${r.id} (${r.model}, ${r.vendorOrderQuantity || r.orderQuantity} Pcs, Order Date: ${r.orderDate})? This action cannot be undone.`)) {
-                                  onDeleteRequests([r.id], `Admin deleted order #${r.id} (${r.model}) from Master Tracker`);
-                                }
+                                setAdminDeleteConfirm({
+                                  title: `Delete Order #${r.id} (${r.model})`,
+                                  description: `Permanently delete complete order #${r.id} (${r.model}, ${r._effectiveQty.toLocaleString()} Pcs, Order Date: ${r._effectiveOrderDate || "—"}). This action is irreversible.`,
+                                  requestIds: [r.id],
+                                  targets: [r]
+                                });
                               }}
                               className="btn btn-danger btn-sm"
                               style={{ padding: "4px 6px", display: "inline-flex", alignItems: "center", gap: "3px", fontSize: "0.75rem", background: "rgba(239, 68, 68, 0.18)", border: "1px solid rgba(239, 68, 68, 0.4)", color: "#f87171" }}
@@ -946,6 +1143,14 @@ export default function MasterOrderTracker({
           </div>
         )}
       </div>
+
+      {adminDeleteConfirm && (
+        <AdminDeleteConfirmModal
+          confirmData={adminDeleteConfirm}
+          onClose={() => setAdminDeleteConfirm(null)}
+          onConfirm={handleConfirmDelete}
+        />
+      )}
     </div>
   );
 }
