@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { 
   Search, 
   Filter, 
@@ -196,9 +196,68 @@ export default function MasterOrderTracker({
     });
   }, [accessibleRequests, cargoMap, vendorMap, purchaserMap]);
 
+  // Helper to test if a request matches current filters (allowing one filter key to be excluded for calculating facet options)
+  const matchesFilter = (r, excludeKey = "") => {
+    // 1. Purchaser Filter
+    if (excludeKey !== "purchaser" && (isAdmin || isPurchaseManager) && purchaserFilter !== "all") {
+      if (r.purchaserId !== purchaserFilter) return false;
+    }
+
+    // 2. Stage Filter
+    if (excludeKey !== "stage" && stageFilter !== "all") {
+      if (stageFilter === "in_progress") {
+        if (r._stage.key === "received" || r._stage.key === "cancelled") return false;
+      } else if (r._stage.key !== stageFilter) {
+        return false;
+      }
+    }
+
+    // 3. Vendor Filter
+    if (excludeKey !== "vendor" && vendorFilter && r.vendorId !== vendorFilter) {
+      return false;
+    }
+
+    // 4. Cargo Filter
+    if (excludeKey !== "cargo" && cargoFilter) {
+      if (cargoFilter === "no_cargo") {
+        if (r.cargoId) return false;
+      } else if (r.cargoId !== cargoFilter) {
+        return false;
+      }
+    }
+
+    // 5. Date Filters
+    if (excludeKey !== "date") {
+      if (fromDate && (!r._effectiveOrderDate || r._effectiveOrderDate < fromDate)) return false;
+      if (toDate && (!r._effectiveOrderDate || r._effectiveOrderDate > toDate)) return false;
+    }
+
+    // 6. Search Query
+    if (excludeKey !== "search" && searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const modelMatch = (r.model || "").toLowerCase().includes(q);
+      const idMatch = (r.id || "").toLowerCase().includes(q);
+      const vendorMatch = (r._vendor?.name || "").toLowerCase().includes(q);
+      const cargoMatch = (r.cargoId || "").toLowerCase().includes(q);
+      const purchaserMatch = (r._purchaser?.name || "").toLowerCase().includes(q);
+      const remarksMatch = (r.remarks || "").toLowerCase().includes(q);
+
+      if (!modelMatch && !idMatch && !vendorMatch && !cargoMatch && !purchaserMatch && !remarksMatch) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  // 1. Stage facet candidate requests & counts (interlocked with vendor, cargo, purchaser, dates, search)
+  const candidateForStage = useMemo(() => {
+    return enrichedRequests.filter(r => matchesFilter(r, "stage"));
+  }, [enrichedRequests, vendorFilter, cargoFilter, purchaserFilter, fromDate, toDate, searchQuery, isAdmin, isPurchaseManager]);
+
   const stageCounts = useMemo(() => {
     const counts = {
-      total: enrichedRequests.length,
+      total: candidateForStage.length,
       totalPcs: 0,
       step1: 0,
       priced: 0,
@@ -209,7 +268,7 @@ export default function MasterOrderTracker({
       cancelled: 0
     };
 
-    enrichedRequests.forEach(r => {
+    candidateForStage.forEach(r => {
       counts.totalPcs += r._effectiveQty;
       if (counts[r._stage.key] !== undefined) {
         counts[r._stage.key]++;
@@ -217,84 +276,158 @@ export default function MasterOrderTracker({
     });
 
     return counts;
-  }, [enrichedRequests]);
+  }, [candidateForStage]);
+
+  // 2. Vendor facet candidate requests & relevant vendors (interlocked with stage, cargo, purchaser, dates, search)
+  const candidateForVendor = useMemo(() => {
+    return enrichedRequests.filter(r => matchesFilter(r, "vendor"));
+  }, [enrichedRequests, stageFilter, cargoFilter, purchaserFilter, fromDate, toDate, searchQuery, isAdmin, isPurchaseManager]);
 
   const relevantVendors = useMemo(() => {
-    return (vendors || [])
+    const vendorCountMap = {};
+    candidateForVendor.forEach(r => {
+      if (r.vendorId) {
+        vendorCountMap[r.vendorId] = (vendorCountMap[r.vendorId] || 0) + 1;
+      }
+    });
+
+    const list = (vendors || [])
       .filter(v => {
         if (String(v.status || "Active").trim().toLowerCase() === "inactive") return false;
-        const count = enrichedRequests.filter(r => r.vendorId === v.id).length;
-        return count > 0; // Only show vendors that have orders for this purchaser/view
+        return (vendorCountMap[v.id] || 0) > 0;
       })
-      .sort((a, b) => {
-        const countA = enrichedRequests.filter(r => r.vendorId === a.id).length;
-        const countB = enrichedRequests.filter(r => r.vendorId === b.id).length;
-        if (countB !== countA) return countB - countA;
-        return (a.name || "").localeCompare(b.name || "");
-      });
-  }, [vendors, enrichedRequests]);
+      .map(v => ({
+        ...v,
+        count: vendorCountMap[v.id] || 0
+      }));
+
+    // Fallback if vendor not in `vendors` list
+    Object.keys(vendorCountMap).forEach(vid => {
+      if (!list.some(v => v.id === vid)) {
+        const found = vendorMap[vid];
+        list.push({
+          id: vid,
+          name: found?.name || `Vendor #${vid}`,
+          count: vendorCountMap[vid]
+        });
+      }
+    });
+
+    return list.sort((a, b) => b.count - a.count || (a.name || "").localeCompare(b.name || ""));
+  }, [vendors, candidateForVendor, vendorMap]);
+
+  // 3. Cargo facet candidate requests & relevant cargos (interlocked with stage, vendor, purchaser, dates, search)
+  const candidateForCargo = useMemo(() => {
+    return enrichedRequests.filter(r => matchesFilter(r, "cargo"));
+  }, [enrichedRequests, stageFilter, vendorFilter, purchaserFilter, fromDate, toDate, searchQuery, isAdmin, isPurchaseManager]);
+
+  const noCargoCount = useMemo(() => {
+    return candidateForCargo.filter(r => !r.cargoId).length;
+  }, [candidateForCargo]);
 
   const relevantCargos = useMemo(() => {
-    return (cargos || [])
-      .filter(c => {
-        const count = enrichedRequests.filter(r => r.cargoId === c.id).length;
-        return count > 0; // Only show non-empty cargos that have orders for this purchaser/view
-      })
-      .sort((a, b) => {
-        return (b.cargoOrderDate || b.id || "").localeCompare(a.cargoOrderDate || a.id || "");
-      });
-  }, [cargos, enrichedRequests]);
-
-  const filteredRequests = useMemo(() => {
-    return enrichedRequests.filter(r => {
-      if ((isPurchaseManager || isSearchAdmin) && purchaserFilter !== "all") {
-        if (r.purchaserId !== purchaserFilter) return false;
+    const cargoCountMap = {};
+    candidateForCargo.forEach(r => {
+      if (r.cargoId) {
+        cargoCountMap[r.cargoId] = (cargoCountMap[r.cargoId] || 0) + 1;
       }
-
-      if (stageFilter !== "all") {
-        if (stageFilter === "in_progress") {
-          if (r._stage.key === "received" || r._stage.key === "cancelled") return false;
-        } else if (r._stage.key !== stageFilter) {
-          return false;
-        }
-      }
-
-      if (vendorFilter && r.vendorId !== vendorFilter) {
-        return false;
-      }
-
-      if (cargoFilter) {
-        if (cargoFilter === "no_cargo") {
-          if (r.cargoId) return false;
-        } else if (r.cargoId !== cargoFilter) {
-          return false;
-        }
-      }
-
-      if (fromDate) {
-        if (!r._effectiveOrderDate || r._effectiveOrderDate < fromDate) return false;
-      }
-      if (toDate) {
-        if (!r._effectiveOrderDate || r._effectiveOrderDate > toDate) return false;
-      }
-
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const modelMatch = (r.model || "").toLowerCase().includes(q);
-        const idMatch = (r.id || "").toLowerCase().includes(q);
-        const vendorMatch = (r._vendor?.name || "").toLowerCase().includes(q);
-        const cargoMatch = (r.cargoId || "").toLowerCase().includes(q);
-        const purchaserMatch = (r._purchaser?.name || "").toLowerCase().includes(q);
-        const remarksMatch = (r.remarks || "").toLowerCase().includes(q);
-
-        if (!modelMatch && !idMatch && !vendorMatch && !cargoMatch && !purchaserMatch && !remarksMatch) {
-          return false;
-        }
-      }
-
-      return true;
     });
-  }, [enrichedRequests, isPurchaseManager, isSearchAdmin, purchaserFilter, stageFilter, vendorFilter, cargoFilter, fromDate, toDate, searchQuery]);
+
+    const list = (cargos || [])
+      .filter(c => (cargoCountMap[c.id] || 0) > 0)
+      .map(c => ({
+        ...c,
+        count: cargoCountMap[c.id] || 0
+      }));
+
+    // Fallback if cargo not in `cargos` list
+    Object.keys(cargoCountMap).forEach(cid => {
+      if (!list.some(c => c.id === cid)) {
+        const found = cargoMap[cid];
+        list.push({
+          id: cid,
+          vendorId: found?.vendorId,
+          cargoOrderDate: found?.cargoOrderDate,
+          count: cargoCountMap[cid]
+        });
+      }
+    });
+
+    return list.sort((a, b) => (b.cargoOrderDate || b.id || "").localeCompare(a.cargoOrderDate || a.id || ""));
+  }, [cargos, candidateForCargo, cargoMap]);
+
+  // 4. Purchaser facet candidate requests & relevant purchasers (interlocked with stage, vendor, cargo, dates, search)
+  const candidateForPurchaser = useMemo(() => {
+    return enrichedRequests.filter(r => matchesFilter(r, "purchaser"));
+  }, [enrichedRequests, stageFilter, vendorFilter, cargoFilter, fromDate, toDate, searchQuery, isAdmin, isPurchaseManager]);
+
+  const relevantPurchasers = useMemo(() => {
+    const purchaserCountMap = {};
+    candidateForPurchaser.forEach(r => {
+      if (r.purchaserId) {
+        purchaserCountMap[r.purchaserId] = (purchaserCountMap[r.purchaserId] || 0) + 1;
+      }
+    });
+
+    const list = (purchasers || [])
+      .filter(p => (purchaserCountMap[p.id] || 0) > 0)
+      .map(p => ({
+        ...p,
+        count: purchaserCountMap[p.id] || 0
+      }));
+
+    Object.keys(purchaserCountMap).forEach(pid => {
+      if (!list.some(p => p.id === pid)) {
+        const found = purchaserMap[pid];
+        list.push({
+          id: pid,
+          name: found?.name || `Purchaser #${pid}`,
+          count: purchaserCountMap[pid]
+        });
+      }
+    });
+
+    return list.sort((a, b) => b.count - a.count || (a.name || "").localeCompare(b.name || ""));
+  }, [purchasers, candidateForPurchaser, purchaserMap]);
+
+  // Auto-reset purchaser filter if previously selected purchaser has no matching orders under new filters
+  useEffect(() => {
+    if (purchaserFilter !== "all") {
+      const exists = relevantPurchasers.some(p => p.id === purchaserFilter);
+      if (!exists) {
+        setPurchaserFilter("all");
+      }
+    }
+  }, [relevantPurchasers, purchaserFilter]);
+
+  // Auto-reset cargo filter if previously selected cargo has no matching orders under new filters
+  useEffect(() => {
+    if (cargoFilter) {
+      if (cargoFilter === "no_cargo") {
+        if (noCargoCount === 0) setCargoFilter("");
+      } else {
+        const exists = relevantCargos.some(c => c.id === cargoFilter);
+        if (!exists) {
+          setCargoFilter("");
+        }
+      }
+    }
+  }, [relevantCargos, cargoFilter, noCargoCount]);
+
+  // Auto-reset vendor filter if previously selected vendor has no matching orders under new filters
+  useEffect(() => {
+    if (vendorFilter) {
+      const exists = relevantVendors.some(v => v.id === vendorFilter);
+      if (!exists) {
+        setVendorFilter("");
+      }
+    }
+  }, [relevantVendors, vendorFilter]);
+
+  // 5. Final filtered requests (all active filters applied)
+  const filteredRequests = useMemo(() => {
+    return enrichedRequests.filter(r => matchesFilter(r));
+  }, [enrichedRequests, stageFilter, vendorFilter, cargoFilter, purchaserFilter, fromDate, toDate, searchQuery, isAdmin, isPurchaseManager]);
 
   const sortedRequests = useMemo(() => {
     const list = [...filteredRequests];
@@ -650,15 +783,15 @@ export default function MasterOrderTracker({
               onChange={e => setStageFilter(e.target.value)}
               style={{ fontWeight: 600, borderColor: stageFilter !== "all" ? "var(--primary)" : undefined }}
             >
-              <option value="all">🌐 All Stages ({enrichedRequests.length})</option>
-              <option value="in_progress">⏳ All Active / In Progress</option>
-              <option value="step1">📝 Step 1: Starting (Unpriced)</option>
-              <option value="priced">💰 Priced (Production Pending)</option>
-              <option value="vendorready">🏭 Step 2: Ready at Vendor</option>
-              <option value="cargo">📦 Step 3: Cargo Consolidated</option>
-              <option value="pickedup">🚚 Step 4: Picked Up / In Transit</option>
-              <option value="received">✅ Step 5: Received in Warehouse</option>
-              <option value="cancelled">🚫 Cancelled Orders</option>
+              <option value="all">🌐 All Stages ({stageCounts.total})</option>
+              <option value="in_progress">⏳ All Active / In Progress ({stageCounts.total - stageCounts.received - stageCounts.cancelled})</option>
+              <option value="step1">📝 Step 1: Starting (Unpriced) ({stageCounts.step1})</option>
+              <option value="priced">💰 Priced (Production Pending) ({stageCounts.priced})</option>
+              <option value="vendorready">🏭 Step 2: Ready at Vendor ({stageCounts.vendorready})</option>
+              <option value="cargo">📦 Step 3: Cargo Consolidated ({stageCounts.cargo})</option>
+              <option value="pickedup">🚚 Step 4: Picked Up / In Transit ({stageCounts.pickedup})</option>
+              <option value="received">✅ Step 5: Received in Warehouse ({stageCounts.received})</option>
+              <option value="cancelled">🚫 Cancelled Orders ({stageCounts.cancelled})</option>
             </select>
           </div>
 
@@ -673,14 +806,11 @@ export default function MasterOrderTracker({
               style={{ fontWeight: 500, borderColor: vendorFilter ? "var(--primary)" : undefined }}
             >
               <option value="">All Vendors ({relevantVendors.length})</option>
-              {relevantVendors.map(v => {
-                const count = enrichedRequests.filter(r => r.vendorId === v.id).length;
-                return (
-                  <option key={v.id} value={v.id}>
-                    {v.name} ({count} items)
-                  </option>
-                );
-              })}
+              {relevantVendors.map(v => (
+                <option key={v.id} value={v.id}>
+                  {v.name} ({v.count} items)
+                </option>
+              ))}
             </select>
           </div>
 
@@ -695,20 +825,21 @@ export default function MasterOrderTracker({
               style={{ fontWeight: 500, borderColor: cargoFilter ? "var(--primary)" : undefined }}
             >
               <option value="">All Cargo Batches ({relevantCargos.length})</option>
-              <option value="no_cargo">⚠️ Orders Not Yet in Any Cargo</option>
+              {noCargoCount > 0 && (
+                <option value="no_cargo">⚠️ Orders Not Yet in Any Cargo ({noCargoCount} items)</option>
+              )}
               {relevantCargos.map(c => {
-                const count = enrichedRequests.filter(r => r.cargoId === c.id).length;
                 const vName = vendorMap[c.vendorId]?.name || "Vendor";
                 return (
                   <option key={c.id} value={c.id}>
-                    📦 {c.id} ({vName}, {count} items)
+                    📦 {c.id} ({vName}, {c.count} items)
                   </option>
                 );
               })}
             </select>
           </div>
 
-          {(isPurchaseManager || isSearchAdmin) && (
+          {(isAdmin || isPurchaseManager) && (
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <User size={14} /> Filter by Purchaser
@@ -719,10 +850,11 @@ export default function MasterOrderTracker({
                 onChange={e => setPurchaserFilter(e.target.value)}
                 style={{ fontWeight: 600, borderColor: purchaserFilter !== "all" ? "var(--primary)" : undefined }}
               >
-                <option value="all">👥 All Purchasers</option>
-                <option value={currentUser?.id}>👤 My Orders Only ({currentUser?.name})</option>
-                {purchasers.filter(p => p.id !== currentUser?.id).map(p => (
-                  <option key={p.id} value={p.id}>👤 {p.name}</option>
+                <option value="all">👥 All Purchasers ({candidateForPurchaser.length} items)</option>
+                {relevantPurchasers.map(p => (
+                  <option key={p.id} value={p.id}>
+                    👤 {p.name} ({p.count} items)
+                  </option>
                 ))}
               </select>
             </div>
