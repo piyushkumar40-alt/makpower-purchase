@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Plus, Trash2, CheckCircle2, Clipboard, ShieldAlert, Sparkles, X, Package, Copy, Check } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
 import { QuickCreateItemModal, QuickCreateUserModal } from "./QuickCreateModals";
-import { cleanCategoryName } from "../utils/formatters";
+import { cleanCategoryName, parseFlexibleDate } from "../utils/formatters";
 
 export default function RequesterForm({ 
   onAddRequests, 
@@ -653,27 +653,10 @@ export default function RequesterForm({
     setRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
   };
 
-  // Parse Date from DD/MM/YYYY to YYYY-MM-DD
+  // Parse Date flexibly using parseFlexibleDate
   const parseExcelDate = (dateStr) => {
     if (!dateStr) return "";
-    const cleaned = dateStr.trim();
-    // Match DD/MM/YYYY
-    const dmyMatch = cleaned.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
-    if (dmyMatch) {
-      const day = dmyMatch[1].padStart(2, '0');
-      const month = dmyMatch[2].padStart(2, '0');
-      const year = dmyMatch[3];
-      return `${year}-${month}-${day}`;
-    }
-    // Match YYYY-MM-DD
-    const ymdMatch = cleaned.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
-    if (ymdMatch) {
-      const year = ymdMatch[1];
-      const month = ymdMatch[2].padStart(2, '0');
-      const day = ymdMatch[3].padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    }
-    return cleaned;
+    return parseFlexibleDate(dateStr);
   };
 
   // Match Purchaser Name (e.g. "Mr. Anees" or "Anees")

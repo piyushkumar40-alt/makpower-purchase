@@ -1087,6 +1087,35 @@ export default function App() {
     logSystemActivity("CANCEL_ORDER", `Cancelled purchase order ${target.model} (#${target.id}) ${reason ? `- Reason: ${reason}` : ""}`, "Requisition", target.id, target, updated);
   };
 
+  const deleteRequests = async (requestIds, reason = "") => {
+    const ids = Array.isArray(requestIds) ? requestIds : [requestIds];
+    if (ids.length === 0) return { success: false, count: 0 };
+
+    const targets = requests.filter(r => ids.includes(r.id));
+    const targetDates = Array.from(new Set(targets.map(r => r.orderDate).filter(Boolean)));
+    const targetModels = targets.map(r => r.model).filter(Boolean).slice(0, 5).join(", ");
+    const moreSuffix = targets.length > 5 ? ` and ${targets.length - 5} more` : "";
+
+    const res = await postData("/api/requests/delete-batch", { ids });
+    setRequests(prev => prev.filter(r => !ids.includes(r.id)));
+    logSystemActivity(
+      "DELETE_ORDERS",
+      `Permanently deleted ${ids.length} purchase order(s) [${targetModels}${moreSuffix}]${targetDates.length > 0 ? ` (Order Date: ${targetDates.join(", ")})` : ""}${reason ? ` - Reason: ${reason}` : ""}`,
+      "Requisition",
+      ids[0],
+      targets
+    );
+    return res;
+  };
+
+  const deleteRequestsByDate = async (orderDate, reason = "") => {
+    if (!orderDate) return { success: false, count: 0 };
+    const matching = requests.filter(r => r.orderDate === orderDate);
+    if (matching.length === 0) return { success: false, count: 0 };
+    const ids = matching.map(r => r.id);
+    return await deleteRequests(ids, reason || `Deleted all ${matching.length} order(s) for date ${orderDate}`);
+  };
+
   const undoCargoAssignment = async (requestId) => {
     const target = requests.find(r => r.id === requestId);
     if (!target) return;
@@ -2463,6 +2492,16 @@ export default function App() {
                     IMS Stock Ledger
                   </button>
                 )}
+
+                {currentUser?.role === "superadmin" && (
+                  <button 
+                    onClick={() => setActiveView("dashboard")} 
+                    className={`nav-tab-item ${activeView === "dashboard" ? "active" : ""}`}
+                    style={{ color: "#10b981", fontWeight: 700 }}
+                  >
+                    Purchases Workboard
+                  </button>
+                )}
                 
                 {currentUser.role !== "superadmin" && !["crm", "asm", "tsm", "rsm"].includes(currentUser.role) && (
                   <button 
@@ -2748,6 +2787,15 @@ export default function App() {
                       <Layers size={18} /> <span>IMS Stock Ledger</span>
                     </button>
                   )}
+
+                  {currentUser?.role === "superadmin" && (
+                    <button 
+                      onClick={() => { setActiveView("dashboard"); setMobileMenuOpen(false); }} 
+                      className={`mobile-nav-item ${activeView === "dashboard" ? "active" : ""}`}
+                    >
+                      <BarChart2 size={18} /> <span>Purchases Workboard</span>
+                    </button>
+                  )}
                   
                   {currentUser.role !== "superadmin" && !["crm", "asm", "tsm", "rsm"].includes(currentUser.role) && (
                     <button 
@@ -2979,6 +3027,8 @@ export default function App() {
             settings={settings}
             onUpdateSettings={handleUpdateSystemSettings}
             onBatchUpdateRequests={batchUpdateRequests}
+            onDeleteRequests={deleteRequests}
+            onDeleteRequestsByDate={deleteRequestsByDate}
             items={items}
             onAddItem={addItem}
             onBulkAddItems={bulkAddItems}
@@ -3107,6 +3157,8 @@ export default function App() {
             onUpdateRequest={updateRequest}
             batchUpdateRequests={batchUpdateRequests}
             onCancelOrder={cancelRequest}
+            onDeleteRequests={deleteRequests}
+            onDeleteRequestsByDate={deleteRequestsByDate}
             onUndoCargoAssignment={undoCargoAssignment}
             onUndoPricing={undoPricing}
             onAddCargo={addCargo}

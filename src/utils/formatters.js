@@ -111,10 +111,27 @@ export const downloadExcelOrCsv = (headers, rows, filename = "export") => {
 export const parseFlexibleDate = (dateVal) => {
   if (!dateVal) return "";
   if (dateVal instanceof Date && !isNaN(dateVal.getTime())) {
-    // Avoid UTC timezone day shifts across midnight in local time
-    const y = dateVal.getFullYear();
-    const m = String(dateVal.getMonth() + 1).padStart(2, "0");
-    const d = String(dateVal.getDate()).padStart(2, "0");
+    // SheetJS creates UTC midnight Date objects (00:00:00 UTC) when reading Excel dates.
+    // Using local getDate() causes dates to shift backwards by 1 day in any negative timezone.
+    // Check if UTC midnight first:
+    if (dateVal.getUTCHours() === 0 && dateVal.getUTCMinutes() === 0 && dateVal.getUTCSeconds() === 0) {
+      const y = dateVal.getUTCFullYear();
+      const m = String(dateVal.getUTCMonth() + 1).padStart(2, "0");
+      const d = String(dateVal.getUTCDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+    // Check if constructed at local midnight:
+    if (dateVal.getHours() === 0 && dateVal.getMinutes() === 0 && dateVal.getSeconds() === 0) {
+      const y = dateVal.getFullYear();
+      const m = String(dateVal.getMonth() + 1).padStart(2, "0");
+      const d = String(dateVal.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+    // Fallback using midday buffer (add 12 hours) to avoid edge boundary crossings:
+    const buffered = new Date(dateVal.getTime() + 12 * 3600 * 1000);
+    const y = buffered.getUTCFullYear();
+    const m = String(buffered.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(buffered.getUTCDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
   }
   const str = String(dateVal).trim();
@@ -187,14 +204,35 @@ export const getDateVariants = (dateVal) => {
   const variants = new Set([base, String(dateVal).trim()]);
   const parts = base.split("-");
   if (parts.length === 3) {
-    // Swapped day and month (e.g. 2026-08-07 <-> 2026-07-08)
-    variants.add(`${parts[0]}-${parts[2]}-${parts[1]}`);
-    variants.add(`${parts[2]}/${parts[1]}/${parts[0]}`);
-    variants.add(`${parts[1]}/${parts[2]}/${parts[0]}`);
-    const mTrim = String(parseInt(parts[1], 10));
-    const dTrim = String(parseInt(parts[2], 10));
-    variants.add(`${mTrim}/${dTrim}/${parts[0]}`);
-    variants.add(`${dTrim}/${mTrim}/${parts[0]}`);
+    const year = parts[0];
+    const month = parts[1];
+    const day = parts[2];
+
+    // Swapped day and month (e.g. 2026-08-10 <-> 2026-10-08)
+    variants.add(`${year}-${day}-${month}`);
+    variants.add(`${day}/${month}/${year}`);
+    variants.add(`${month}/${day}/${year}`);
+    const mTrim = String(parseInt(month, 10));
+    const dTrim = String(parseInt(day, 10));
+    variants.add(`${mTrim}/${dTrim}/${year}`);
+    variants.add(`${dTrim}/${mTrim}/${year}`);
+    variants.add(`${year}/${month}/${day}`);
+    variants.add(`${year}.${month}.${day}`);
+    variants.add(`${day}-${month}-${year}`);
+
+    // Adjacent ±1 day variants (reconciles past timezone shifts e.g. 2026-08-09 vs 2026-08-10)
+    try {
+      const curDt = new Date(`${year}-${month}-${day}T12:00:00Z`);
+      if (!isNaN(curDt.getTime())) {
+        const prevDt = new Date(curDt.getTime() - 86400000);
+        const nextDt = new Date(curDt.getTime() + 86400000);
+        const fmt = d => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+        variants.add(fmt(prevDt));
+        variants.add(fmt(nextDt));
+      }
+    } catch {
+      // Ignore date math error
+    }
   }
   return Array.from(variants);
 };

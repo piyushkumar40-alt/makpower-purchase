@@ -3248,6 +3248,90 @@ app.post("/api/requests/batch", async (req, res) => {
   }
 });
 
+// 3b. DELETE /api/requests/:id - Permanently deletes an individual request/order
+app.delete("/api/requests/:id", async (req, res) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ error: "Request ID is required." });
+  isOrderDataDirty = true;
+  if (isPg) {
+    try {
+      await pool.query('DELETE FROM requests WHERE "id" = $1', [id]);
+      markAppActivity();
+      invalidateStateCache();
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/requests/:id error:", err.message);
+      res.status(500).json({ error: "Failed to delete request." });
+    }
+  } else {
+    const data = readLocalJson();
+    data.requests = (data.requests || []).filter(r => r.id !== id);
+    writeLocalJson(data);
+    markAppActivity();
+    invalidateStateCache();
+    res.json({ success: true });
+  }
+});
+
+// 3c. POST /api/requests/delete-batch - Permanently deletes multiple requests/orders by IDs
+app.post("/api/requests/delete-batch", async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: "ids must be a non-empty array." });
+  }
+  isOrderDataDirty = true;
+  if (isPg) {
+    try {
+      await pool.query('DELETE FROM requests WHERE "id" = ANY($1)', [ids]);
+      markAppActivity();
+      invalidateStateCache();
+      res.json({ success: true, count: ids.length });
+    } catch (err) {
+      console.error("POST /api/requests/delete-batch error:", err.message);
+      res.status(500).json({ error: "Failed to batch delete requests." });
+    }
+  } else {
+    const data = readLocalJson();
+    const idSet = new Set(ids);
+    data.requests = (data.requests || []).filter(r => !idSet.has(r.id));
+    writeLocalJson(data);
+    markAppActivity();
+    invalidateStateCache();
+    res.json({ success: true, count: ids.length });
+  }
+});
+
+// 3d. POST /api/requests/delete-by-date - Permanently deletes orders by orderDate (or dates array)
+app.post("/api/requests/delete-by-date", async (req, res) => {
+  const { orderDate, orderDates } = req.body;
+  const dates = orderDates || (orderDate ? [orderDate] : []);
+  if (!Array.isArray(dates) || dates.length === 0) {
+    return res.status(400).json({ error: "orderDate or orderDates array is required." });
+  }
+  isOrderDataDirty = true;
+  if (isPg) {
+    try {
+      const result = await pool.query('DELETE FROM requests WHERE "orderDate" = ANY($1) RETURNING "id"', [dates]);
+      markAppActivity();
+      invalidateStateCache();
+      res.json({ success: true, count: result.rowCount });
+    } catch (err) {
+      console.error("POST /api/requests/delete-by-date error:", err.message);
+      res.status(500).json({ error: "Failed to delete requests by date." });
+    }
+  } else {
+    const data = readLocalJson();
+    const dateSet = new Set(dates);
+    const beforeCount = (data.requests || []).length;
+    data.requests = (data.requests || []).filter(r => !dateSet.has(r.orderDate));
+    const deletedCount = beforeCount - data.requests.length;
+    writeLocalJson(data);
+    markAppActivity();
+    invalidateStateCache();
+    res.json({ success: true, count: deletedCount });
+  }
+});
+
 // 4. POST /api/cargos - Upserts cargo shipments
 app.post("/api/cargos", async (req, res) => {
   const c = req.body;

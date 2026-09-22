@@ -18,7 +18,8 @@ import {
   User, 
   Eye, 
   Ban,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Trash2
 } from "lucide-react";
 
 export function getOrderStage(r, cargo) {
@@ -116,7 +117,8 @@ export default function MasterOrderTracker({
   isPurchaseManager = false,
   isSearchAdmin = false,
   onEditRequest,
-  onNavigateStep
+  onNavigateStep,
+  onDeleteRequests
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
@@ -885,15 +887,32 @@ export default function MasterOrderTracker({
                       )}
 
                       <td style={{ textAlign: "center" }}>
-                        <button
-                          type="button"
-                          onClick={() => onEditRequest && onEditRequest(r)}
-                          className="btn btn-secondary btn-sm"
-                          style={{ padding: "4px 8px", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "4px" }}
-                          title="Open order edit modal"
-                        >
-                          <Eye size={12} /> View
-                        </button>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                          <button
+                            type="button"
+                            onClick={() => onEditRequest && onEditRequest(r)}
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: "4px 8px", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                            title="Open order edit modal"
+                          >
+                            <Eye size={12} /> View
+                          </button>
+                          {onDeleteRequests && (isSearchAdmin || currentUser?.role === "superadmin" || currentUser?.role === "owner" || currentUser?.role === "admin") && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`Permanently delete complete order #${r.id} (${r.model}, ${r.vendorOrderQuantity || r.orderQuantity} Pcs, Order Date: ${r.orderDate})? This action cannot be undone.`)) {
+                                  onDeleteRequests([r.id], `Admin deleted order #${r.id} (${r.model}) from Master Tracker`);
+                                }
+                              }}
+                              className="btn btn-danger btn-sm"
+                              style={{ padding: "4px 6px", display: "inline-flex", alignItems: "center", gap: "3px", fontSize: "0.75rem", background: "rgba(239, 68, 68, 0.18)", border: "1px solid rgba(239, 68, 68, 0.4)", color: "#f87171" }}
+                              title="Permanently Delete Complete Order (Admin only)"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download, FileSpreadsheet, UploadCloud, CheckSquare, Calendar } from "lucide-react";
+import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download, FileSpreadsheet, UploadCloud, CheckSquare, Calendar, Trash2 } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import { uploadToCloudinary } from "../utils/upload";
 import ItemMasterView from "./ItemMasterView";
@@ -294,6 +294,8 @@ export default function PurchaserDashboard({
   onUpdateRequest,
   batchUpdateRequests,
   onCancelOrder,
+  onDeleteRequests,
+  onDeleteRequestsByDate,
   onUndoCargoAssignment,
   onUndoPricing,
   onAddCargo,
@@ -316,8 +318,17 @@ export default function PurchaserDashboard({
     return localStorage.getItem("makpower_purchaser_tab") || "alerts";
   });
 
-  // Purchase Manager role flag
+  // Admin and Purchase Manager role flags
+  const isAdmin = currentUser?.role === "superadmin" || currentUser?.role === "owner" || currentUser?.role === "admin";
   const isPurchaseManager = currentUser?.role === "purchase_manager" || (currentUser?.designation && currentUser.designation.toLowerCase().trim() === "purchase manager");
+
+  // Admin delete confirmation modal state
+  const [adminDeleteConfirm, setAdminDeleteConfirm] = useState(null);
+
+  // Step 3 (Cargo Planner) multi-factor selection & filtering states
+  const [step3SelectedOrderDate, setStep3SelectedOrderDate] = useState("");
+  const [step3SelectedCategory, setStep3SelectedCategory] = useState("");
+  const [step3ModelSearch, setStep3ModelSearch] = useState("");
 
   // Filter vendors by current user to enforce vendor isolation (e.g. Himanshi's vendors shouldn't be in Anees's dashboard)
   const accessibleVendors = useMemo(() => {
@@ -379,6 +390,33 @@ export default function PurchaserDashboard({
   const [plannerSortDiffTop, setPlannerSortDiffTop] = useState(false);
   const [showExcelUpdateModal, setShowExcelUpdateModal] = useState(false);
   const [excelNotification, setExcelNotification] = useState(null); // { matchedCount, unmatchedCount, unmatchedList, timestamp }
+
+  const handleExecuteAdminDelete = async (reason) => {
+    if (!adminDeleteConfirm) return;
+    try {
+      const { requestIds, orderDate, title } = adminDeleteConfirm;
+      if (orderDate && (!requestIds || requestIds.length === 0)) {
+        if (onDeleteRequestsByDate) {
+          await onDeleteRequestsByDate(orderDate, reason || `Admin deleted all orders for date ${orderDate}`);
+        }
+      } else if (requestIds && requestIds.length > 0) {
+        if (onDeleteRequests) {
+          await onDeleteRequests(requestIds, reason || `Admin deleted ${requestIds.length} order(s): ${title || ''}`);
+        }
+      }
+      // Clear checked selections across all tabs
+      if (requestIds && requestIds.length > 0) {
+        const idSet = new Set(requestIds);
+        setStep1CheckedIds(prev => prev.filter(id => !idSet.has(id)));
+        setVrChecked(prev => prev.filter(id => !idSet.has(id)));
+        setCheckedRequestIds(prev => prev.filter(id => !idSet.has(id)));
+      }
+      setAdminDeleteConfirm(null);
+    } catch (err) {
+      console.error("Admin delete failed:", err);
+      alert("Failed to delete orders: " + (err.message || "Unknown error"));
+    }
+  };
 
   const handleDownloadShippingSampleFile = (availableItems = []) => {
     const headers = ["Order Date", "Item Name", "Qty", "Price"];
@@ -1057,6 +1095,7 @@ export default function PurchaserDashboard({
             isSearchAdmin={isSearchAdmin}
             onEditRequest={(r) => setEditingRequest(r)}
             onNavigateStep={(stepKey) => setActiveTab(stepKey)}
+            onDeleteRequests={onDeleteRequests}
           />
         )}
 
@@ -1179,6 +1218,49 @@ export default function PurchaserDashboard({
                           title="Deselect all selected items"
                         >
                           Deselect
+                        </button>
+                      )}
+                      {isAdmin && step1SelectedOrderDate && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const forDate = pendingReqs.filter(r => r.orderDate === step1SelectedOrderDate);
+                            if (forDate.length === 0) {
+                              alert(`No unpriced orders found for date ${step1SelectedOrderDate}`);
+                              return;
+                            }
+                            setAdminDeleteConfirm({
+                              title: `Delete All Orders for Date: ${step1SelectedOrderDate}`,
+                              description: `Permanently delete all ${forDate.length} unpriced order(s) placed on ${step1SelectedOrderDate}. This cannot be undone.`,
+                              requestIds: forDate.map(r => r.id),
+                              orderDate: step1SelectedOrderDate,
+                              targets: forDate
+                            });
+                          }}
+                          className="btn btn-danger btn-sm"
+                          style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: "4px", background: "rgba(239, 68, 68, 0.2)", border: "1px solid rgba(239, 68, 68, 0.4)", color: "#f87171" }}
+                          title={`Permanently delete all unpriced orders for date ${step1SelectedOrderDate}`}
+                        >
+                          <Trash2 size={12} /> Delete Date ({pendingReqs.filter(r => r.orderDate === step1SelectedOrderDate).length})
+                        </button>
+                      )}
+                      {isAdmin && step1CheckedIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const selectedReqs = pendingReqs.filter(r => step1CheckedIds.includes(r.id));
+                            setAdminDeleteConfirm({
+                              title: `Delete Selected Orders (${step1CheckedIds.length})`,
+                              description: `Permanently delete ${step1CheckedIds.length} selected unpriced order(s). This action cannot be undone.`,
+                              requestIds: step1CheckedIds,
+                              targets: selectedReqs
+                            });
+                          }}
+                          className="btn btn-danger btn-sm"
+                          style={{ padding: "4px 9px", fontSize: "0.76rem", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                          title="Permanently delete all selected orders at once"
+                        >
+                          <Trash2 size={12} /> Delete Selected ({step1CheckedIds.length})
                         </button>
                       )}
                     </div>
@@ -1521,9 +1603,26 @@ export default function PurchaserDashboard({
                                   </button>
                                 </td>
                                 <td style={{ textAlign: "center" }}>
-                                  <button onClick={() => setCancellingRequest(r)} className="btn btn-danger btn-sm" style={{ padding: "4px 6px" }}>
-                                    <XCircle size={14} />
-                                  </button>
+                                  <div style={{ display: "inline-flex", gap: "4px", alignItems: "center" }}>
+                                    <button onClick={() => setCancellingRequest(r)} className="btn btn-secondary btn-sm" style={{ padding: "4px 6px" }} title="Cancel Order">
+                                      <XCircle size={14} />
+                                    </button>
+                                    {isAdmin && (
+                                      <button 
+                                        onClick={() => setAdminDeleteConfirm({
+                                          title: `Delete Complete Order: ${r.model}`,
+                                          description: `Permanently delete unpriced order #${r.id} (${r.model}, ${r.orderQuantity} Pcs, Order Date: ${r.orderDate}). This action cannot be undone.`,
+                                          requestIds: [r.id],
+                                          targets: [r]
+                                        })} 
+                                        className="btn btn-danger btn-sm" 
+                                        style={{ padding: "4px 6px" }} 
+                                        title="Permanently Delete Complete Order (Admin only)"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
                                </tr>
                             );
@@ -1797,11 +1896,28 @@ export default function PurchaserDashboard({
                                 </button>
                               </td>
 
-                              {/* Cancel */}
-                              <td style={{ width: "70px", minWidth: "70px", textAlign: "center" }}>
-                                <button onClick={() => setCancellingRequest(r)} className="btn btn-danger btn-sm" style={{ padding: "4px 6px" }}>
-                                  <XCircle size={14} />
-                                </button>
+                              {/* Cancel / Delete */}
+                              <td style={{ width: isAdmin ? "85px" : "70px", minWidth: isAdmin ? "85px" : "70px", textAlign: "center" }}>
+                                <div style={{ display: "inline-flex", gap: "4px", alignItems: "center" }}>
+                                  <button onClick={() => setCancellingRequest(r)} className="btn btn-secondary btn-sm" style={{ padding: "4px 6px" }} title="Cancel Order">
+                                    <XCircle size={14} />
+                                  </button>
+                                  {isAdmin && (
+                                    <button 
+                                      onClick={() => setAdminDeleteConfirm({
+                                        title: `Delete Complete Order: ${r.model}`,
+                                        description: `Permanently delete unpriced order #${r.id} (${r.model}, ${r.orderQuantity} Pcs, Order Date: ${r.orderDate}). This action cannot be undone.`,
+                                        requestIds: [r.id],
+                                        targets: [r]
+                                      })} 
+                                      className="btn btn-danger btn-sm" 
+                                      style={{ padding: "4px 6px" }} 
+                                      title="Permanently Delete Complete Order (Admin only)"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );
@@ -1925,6 +2041,42 @@ export default function PurchaserDashboard({
 
             {plannerVendorId && (() => {
               const readyRequests = plannerCandidateRequests.filter(r => r.vendorId === plannerVendorId);
+
+              // Distinct order dates available for this vendor
+              const step3DateMap = {};
+              readyRequests.forEach(r => {
+                const d = r.orderDate || "Unknown";
+                const q = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+                if (!step3DateMap[d]) step3DateMap[d] = { date: d, count: 0, qty: 0 };
+                step3DateMap[d].count += 1;
+                step3DateMap[d].qty += (isNaN(q) ? 0 : q);
+              });
+              const step3AvailableDates = Object.values(step3DateMap).sort((a, b) => b.date.localeCompare(a.date));
+
+              // Distinct categories available for this vendor
+              const step3CatMap = {};
+              readyRequests.forEach(r => {
+                const c = cleanCategoryName(r.category) || "Uncategorized";
+                step3CatMap[c] = (step3CatMap[c] || 0) + 1;
+              });
+              const step3AvailableCategories = Object.entries(step3CatMap)
+                .map(([name, count]) => ({ name, count }))
+                .sort((a, b) => b.count - a.count);
+
+              // Filter ready requests by category and model search
+              const step3FilteredRequests = readyRequests.filter(r => {
+                if (step3SelectedCategory) {
+                  const c = cleanCategoryName(r.category) || "Uncategorized";
+                  if (c.toLowerCase() !== step3SelectedCategory.toLowerCase()) return false;
+                }
+                if (step3ModelSearch.trim()) {
+                  const q = step3ModelSearch.trim().toLowerCase();
+                  const m = (r.model || "").toLowerCase();
+                  if (!m.includes(q)) return false;
+                }
+                return true;
+              });
+
               const selectedReadyRequests = readyRequests.filter(r => checkedRequestIds.includes(r.id));
               const selectedCount = selectedReadyRequests.length;
               const selectedOrigQty = selectedReadyRequests.reduce((acc, r) => acc + parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10), 0);
@@ -1984,6 +2136,227 @@ export default function PurchaserDashboard({
                     >
                       <FileSpreadsheet size={15} /> Update from Excel File
                     </button>
+                  </div>
+                </div>
+
+                {/* Step 3 Multi-Factor Selection & Filter Toolbar */}
+                <div 
+                  style={{ 
+                    display: "flex", 
+                    alignItems: "center", 
+                    gap: "10px", 
+                    flexWrap: "wrap", 
+                    background: "rgba(255, 255, 255, 0.03)", 
+                    padding: "10px 14px", 
+                    borderRadius: "10px", 
+                    border: "1px solid var(--border-glass, rgba(255,255,255,0.1))",
+                    marginBottom: "16px"
+                  }}
+                >
+                  {/* Select by Order Date */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                    <Calendar size={15} style={{ color: "var(--primary, #38bdf8)" }} />
+                    <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-main)", whiteSpace: "nowrap" }}>
+                      Order Date:
+                    </span>
+                    <select
+                      className="form-control"
+                      style={{ width: "auto", minWidth: "150px", maxWidth: "210px", padding: "4px 8px", fontSize: "0.8rem" }}
+                      value={step3SelectedOrderDate}
+                      onChange={e => setStep3SelectedOrderDate(e.target.value)}
+                    >
+                      <option value="">All / Pick Date...</option>
+                      {step3AvailableDates.map(d => (
+                        <option key={d.date} value={d.date}>
+                          {d.date} ({d.count} items, {d.qty.toLocaleString()} Pcs)
+                        </option>
+                      ))}
+                    </select>
+                    <input 
+                      type="date"
+                      className="form-control"
+                      style={{ width: "130px", padding: "3px 6px", fontSize: "0.78rem" }}
+                      value={step3SelectedOrderDate}
+                      onChange={e => setStep3SelectedOrderDate(e.target.value)}
+                      title="Pick exact date"
+                    />
+                    {step3SelectedOrderDate && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const matching = readyRequests.filter(r => r.orderDate === step3SelectedOrderDate);
+                            setCheckedRequestIds(matching.map(r => r.id));
+                          }}
+                          className="btn btn-primary btn-sm"
+                          style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap" }}
+                          title={`Select all items for ${step3SelectedOrderDate}`}
+                        >
+                          Select Date ({readyRequests.filter(r => r.orderDate === step3SelectedOrderDate).length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const matchingIds = readyRequests.filter(r => r.orderDate === step3SelectedOrderDate).map(r => r.id);
+                            setCheckedRequestIds(prev => Array.from(new Set([...prev, ...matchingIds])));
+                          }}
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap" }}
+                          title={`Add items for ${step3SelectedOrderDate} to current selection`}
+                        >
+                          + Add
+                        </button>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const forDate = readyRequests.filter(r => r.orderDate === step3SelectedOrderDate);
+                              if (forDate.length === 0) {
+                                alert(`No orders found for date ${step3SelectedOrderDate}`);
+                                return;
+                              }
+                              setAdminDeleteConfirm({
+                                title: `Delete All Orders for Date: ${step3SelectedOrderDate}`,
+                                description: `Permanently delete all ${forDate.length} order(s) placed on ${step3SelectedOrderDate} for this vendor. This cannot be undone.`,
+                                requestIds: forDate.map(r => r.id),
+                                orderDate: step3SelectedOrderDate,
+                                targets: forDate
+                              });
+                            }}
+                            className="btn btn-danger btn-sm"
+                            style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: "4px", background: "rgba(239, 68, 68, 0.2)", border: "1px solid rgba(239, 68, 68, 0.4)", color: "#f87171" }}
+                            title={`Permanently delete all orders for date ${step3SelectedOrderDate}`}
+                          >
+                            <Trash2 size={12} /> Delete Date ({readyRequests.filter(r => r.orderDate === step3SelectedOrderDate).length})
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  <span style={{ color: "var(--border-glass)", opacity: 0.6 }}>|</span>
+
+                  {/* Select by Category */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                    <Layers size={15} style={{ color: "var(--primary, #38bdf8)" }} />
+                    <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-main)", whiteSpace: "nowrap" }}>
+                      Category:
+                    </span>
+                    <select
+                      className="form-control"
+                      style={{ width: "auto", minWidth: "130px", maxWidth: "180px", padding: "4px 8px", fontSize: "0.8rem" }}
+                      value={step3SelectedCategory}
+                      onChange={e => setStep3SelectedCategory(e.target.value)}
+                    >
+                      <option value="">All Categories ({readyRequests.length})</option>
+                      {step3AvailableCategories.map(c => (
+                        <option key={c.name} value={c.name}>
+                          {c.name} ({c.count})
+                        </option>
+                      ))}
+                    </select>
+                    {step3SelectedCategory && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const matching = readyRequests.filter(r => (cleanCategoryName(r.category) || "Uncategorized").toLowerCase() === step3SelectedCategory.toLowerCase());
+                            setCheckedRequestIds(matching.map(r => r.id));
+                          }}
+                          className="btn btn-primary btn-sm"
+                          style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap" }}
+                          title={`Select all items in category "${step3SelectedCategory}"`}
+                        >
+                          Select Cat ({readyRequests.filter(r => (cleanCategoryName(r.category) || "Uncategorized").toLowerCase() === step3SelectedCategory.toLowerCase()).length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const matchingIds = readyRequests
+                              .filter(r => (cleanCategoryName(r.category) || "Uncategorized").toLowerCase() === step3SelectedCategory.toLowerCase())
+                              .map(r => r.id);
+                            setCheckedRequestIds(prev => Array.from(new Set([...prev, ...matchingIds])));
+                          }}
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap" }}
+                          title={`Add items in category "${step3SelectedCategory}" to selection`}
+                        >
+                          + Add
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  <span style={{ color: "var(--border-glass)", opacity: 0.6 }}>|</span>
+
+                  {/* Model Search */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <input
+                      type="text"
+                      className="form-control"
+                      style={{ width: "130px", padding: "4px 8px", fontSize: "0.8rem" }}
+                      placeholder="Search model..."
+                      value={step3ModelSearch}
+                      onChange={e => setStep3ModelSearch(e.target.value)}
+                    />
+                    {step3ModelSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setStep3ModelSearch("")}
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: "2px 6px", fontSize: "0.75rem" }}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Action buttons */}
+                  <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCheckedRequestIds(step3FilteredRequests.map(r => r.id));
+                      }}
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: "4px 10px", fontSize: "0.76rem", whiteSpace: "nowrap" }}
+                      title="Select all currently visible filtered items"
+                    >
+                      Select All Filtered ({step3FilteredRequests.length})
+                    </button>
+                    {checkedRequestIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCheckedRequestIds([]);
+                          setStep3SelectedOrderDate("");
+                        }}
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap", color: "var(--text-muted)" }}
+                        title="Clear selection"
+                      >
+                        Deselect All
+                      </button>
+                    )}
+                    {isAdmin && checkedRequestIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const selectedReqs = readyRequests.filter(r => checkedRequestIds.includes(r.id));
+                          setAdminDeleteConfirm({
+                            title: `Delete Selected Orders (${checkedRequestIds.length})`,
+                            description: `Permanently delete ${checkedRequestIds.length} selected order(s) for this vendor. This action cannot be undone.`,
+                            requestIds: checkedRequestIds,
+                            targets: selectedReqs
+                          });
+                        }}
+                        className="btn btn-danger btn-sm"
+                        style={{ padding: "4px 10px", fontSize: "0.76rem", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                        title="Permanently delete all selected orders at once"
+                      >
+                        <Trash2 size={12} /> Delete Selected ({checkedRequestIds.length})
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -2153,14 +2526,15 @@ export default function PurchaserDashboard({
                             type="checkbox"
                             className="checkbox-input"
                             checked={
-                              readyRequests.length > 0 &&
-                              checkedRequestIds.length === readyRequests.length
+                              step3FilteredRequests.length > 0 &&
+                              step3FilteredRequests.every(r => checkedRequestIds.includes(r.id))
                             }
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setCheckedRequestIds(readyRequests.map(r => r.id));
+                                setCheckedRequestIds(prev => Array.from(new Set([...prev, ...step3FilteredRequests.map(r => r.id)])));
                               } else {
-                                setCheckedRequestIds([]);
+                                const filteredIdSet = new Set(step3FilteredRequests.map(r => r.id));
+                                setCheckedRequestIds(prev => prev.filter(id => !filteredIdSet.has(id)));
                               }
                             }}
                           />
@@ -2177,11 +2551,12 @@ export default function PurchaserDashboard({
                         <th>Ready Date</th>
                         <th>Cancel</th>
                         <th>Undo Pricing</th>
+                        {isAdmin && <th>Delete</th>}
                       </tr>
                     </thead>
                     <tbody>
                       {(() => {
-                        const itemsToRender = [...readyRequests].sort((a, b) => {
+                        const itemsToRender = [...step3FilteredRequests].sort((a, b) => {
                           if (!plannerSortDiffTop) return 0;
                           const getDiffScore = (r) => {
                             const isChecked = checkedRequestIds.includes(r.id);
@@ -2209,8 +2584,10 @@ export default function PurchaserDashboard({
 
                         return itemsToRender.length === 0 ? (
                           <tr>
-                            <td colSpan="13" style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
-                              No items priced for this vendor. Go to <strong>Step 1: Commercial & Timeline Specification</strong> to assign vendor and price.
+                            <td colSpan={isAdmin ? 14 : 13} style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                              {step3FilteredRequests.length === 0 && readyRequests.length > 0 
+                                ? "No items match the current filter criteria."
+                                : <>No items priced for this vendor. Go to <strong>Step 1: Commercial & Timeline Specification</strong> to assign vendor and price.</>}
                             </td>
                           </tr>
                         ) : (
@@ -2430,6 +2807,24 @@ export default function PurchaserDashboard({
                                   <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", opacity: 0.6 }}>Undo expired</span>
                                 ) : null}
                               </td>
+                              {isAdmin && (
+                                <td style={{ textAlign: "center" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setAdminDeleteConfirm({
+                                      title: `Delete Complete Order: ${r.model}`,
+                                      description: `Permanently delete order #${r.id} (${r.model}, ${r.vendorOrderQuantity || r.orderQuantity} Pcs, Order Date: ${r.orderDate}). This action cannot be undone.`,
+                                      requestIds: [r.id],
+                                      targets: [r]
+                                    })}
+                                    className="btn btn-danger btn-sm"
+                                    style={{ padding: "4px 8px", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                                    title="Permanently Delete Complete Order (Admin only)"
+                                  >
+                                    <Trash2 size={13} /> Delete
+                                  </button>
+                                </td>
+                              )}
                             </tr>
                           );
                         })
@@ -2468,7 +2863,7 @@ export default function PurchaserDashboard({
                               {getCurrencySymbol(selectedCurrency)}{Number(selectedTotalPrice.toFixed(2)).toLocaleString()}
                             </strong>
                           </td>
-                          <td colSpan="4"></td>
+                          <td colSpan={isAdmin ? 5 : 4}></td>
                         </tr>
                       </tfoot>
                     )}
@@ -2856,14 +3251,35 @@ export default function PurchaserDashboard({
                           Total Price: <strong style={{ fontWeight: 800, fontSize: "1.02rem" }}>{getCurrencySymbol(vrCurrency)}{Number(vrSelectedTotalPrice.toFixed(2)).toLocaleString()}</strong>
                         </span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setVrChecked([])}
-                        className="btn btn-secondary btn-sm"
-                        style={{ fontSize: "0.75rem", padding: "3px 8px", opacity: 0.85 }}
-                      >
-                        Deselect All
-                      </button>
+                      <div style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
+                        <button
+                          type="button"
+                          onClick={() => setVrChecked([])}
+                          className="btn btn-secondary btn-sm"
+                          style={{ fontSize: "0.75rem", padding: "3px 8px", opacity: 0.85 }}
+                        >
+                          Deselect All
+                        </button>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const selectedReqs = vrItems.filter(r => vrChecked.includes(r.id));
+                              setAdminDeleteConfirm({
+                                title: `Delete Selected Orders (${vrChecked.length})`,
+                                description: `Permanently delete ${vrChecked.length} selected vendor ready order(s). This action cannot be undone.`,
+                                requestIds: vrChecked,
+                                targets: selectedReqs
+                              });
+                            }}
+                            className="btn btn-danger btn-sm"
+                            style={{ fontSize: "0.75rem", padding: "3px 10px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                            title="Permanently delete all selected orders at once"
+                          >
+                            <Trash2 size={12} /> Delete Selected ({vrChecked.length})
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -2887,6 +3303,7 @@ export default function PurchaserDashboard({
                           <RenderStep2SortHeader colKey="vendorEdd" title="EDD" />
                           <RenderStep2SortHeader colKey="pricedAt" title="Priced At" getValue={r => r.pricedAt ? r.pricedAt.split("T")[0] : ""} />
                           <RenderStep2SortHeader colKey="vendorEdd" title="EDD Status" getValue={r => r.vendorEdd ? (vrDate && r.vendorEdd && vrDate > r.vendorEdd ? "Late vs EDD" : "On Time") : "No EDD set"} />
+                          {isAdmin && <th style={{ width: "60px", textAlign: "center" }}>Delete</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -3085,6 +3502,24 @@ export default function PurchaserDashboard({
                                     : <span style={{ color: "var(--success)", fontSize: "0.8rem" }}>✓ On Time</span>
                                 ) : <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>No EDD set</span>}
                               </td>
+                              {isAdmin && (
+                                <td style={{ textAlign: "center" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setAdminDeleteConfirm({
+                                      title: `Delete Complete Order: ${r.model}`,
+                                      description: `Permanently delete vendor ready order #${r.id} (${r.model}, ${r.orderQuantity} Pcs, Order Date: ${r.orderDate}). This action cannot be undone.`,
+                                      requestIds: [r.id],
+                                      targets: [r]
+                                    })}
+                                    className="btn btn-danger btn-sm"
+                                    style={{ padding: "3px 6px" }}
+                                    title="Permanently Delete Complete Order (Admin only)"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </td>
+                              )}
                             </tr>
                           );
                         });
@@ -3117,7 +3552,7 @@ export default function PurchaserDashboard({
                               )}
                             </td>
                             <td colSpan="2"></td>
-                            <td colSpan="5"></td>
+                            <td colSpan={isAdmin ? "6" : "5"}></td>
                           </tr>
                         </tfoot>
                       )}
@@ -3852,6 +4287,16 @@ export default function PurchaserDashboard({
           requests={requests}
           onClose={() => setViewingRequest(null)}
           onCancelOrder={viewingRequest.status !== "Cancelled" && viewingRequest.isMaterialRec !== "Yes" ? (req) => { setViewingRequest(null); setCancellingRequest(req); } : null}
+          isAdmin={isAdmin}
+          onDeleteOrder={(req) => {
+            setViewingRequest(null);
+            setAdminDeleteConfirm({
+              title: `Delete Complete Order: ${req.model}`,
+              description: `Permanently delete order #${req.id} (${req.model}, ${req.vendorOrderQuantity || req.orderQuantity} Pcs, Order Date: ${req.orderDate}). This action cannot be undone.`,
+              requestIds: [req.id],
+              targets: [req]
+            });
+          }}
         />
       )}
 
@@ -4111,11 +4556,151 @@ export default function PurchaserDashboard({
         </div>
       )}
 
+      {/* ==================== ADMIN PERMANENT DELETE CONFIRMATION MODAL ==================== */}
+      {adminDeleteConfirm && (
+        <AdminDeleteConfirmModal
+          confirmData={adminDeleteConfirm}
+          onClose={() => setAdminDeleteConfirm(null)}
+          onConfirm={handleExecuteAdminDelete}
+        />
+      )}
+
     </div>
   );
 }
 
 // --------------------- SUB COMPONENT MODALS ---------------------
+
+// Admin Permanent Delete Confirmation Modal
+export function AdminDeleteConfirmModal({ confirmData, onClose, onConfirm }) {
+  useModalEscape(onClose);
+  const [reason, setReason] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  if (!confirmData) return null;
+
+  const { title, description, requestIds = [], orderDate, targets = [] } = confirmData;
+  const count = requestIds.length || targets.length;
+  const totalQty = targets.reduce((sum, r) => sum + parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10), 0);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      await onConfirm(reason);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" style={{ zIndex: 9999 }}>
+      <div className="glass-panel modal-content" style={{ maxWidth: "560px", width: "95%", border: "1px solid rgba(239, 68, 68, 0.4)", boxShadow: "0 20px 40px rgba(0, 0, 0, 0.5)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", borderBottom: "1px solid rgba(239, 68, 68, 0.2)", paddingBottom: "14px", marginBottom: "16px" }}>
+          <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "rgba(239, 68, 68, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "#ef4444", flexShrink: 0 }}>
+            <Trash2 size={22} />
+          </div>
+          <div>
+            <h3 style={{ margin: 0, fontSize: "1.25rem", color: "#f87171", fontWeight: 700 }}>
+              {title || "Confirm Permanent Order Deletion"}
+            </h3>
+            <p style={{ margin: "3px 0 0 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+              Admin Action • Irreversible Operation
+            </p>
+          </div>
+        </div>
+
+        <div style={{ background: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.25)", borderRadius: "8px", padding: "12px 14px", marginBottom: "16px" }}>
+          <p style={{ margin: 0, fontSize: "0.88rem", color: "var(--text-main)", lineHeight: 1.5 }}>
+            {description}
+          </p>
+        </div>
+
+        {/* Order Details Summary */}
+        <div style={{ background: "var(--bg-card, rgba(30, 41, 59, 0.5))", borderRadius: "8px", padding: "12px 14px", marginBottom: "16px", border: "1px solid var(--border-glass)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "10px", marginBottom: targets.length > 0 ? "10px" : 0 }}>
+            <div>
+              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "block" }}>Orders to Delete</span>
+              <strong style={{ fontSize: "1.1rem", color: "#f87171" }}>{count} Order{count !== 1 ? "s" : ""}</strong>
+            </div>
+            {totalQty > 0 && (
+              <div>
+                <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "block" }}>Total Quantity</span>
+                <strong style={{ fontSize: "1.1rem", color: "var(--text-main)" }}>{totalQty.toLocaleString()} Pcs</strong>
+              </div>
+            )}
+            {orderDate && (
+              <div>
+                <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "block" }}>Order Date</span>
+                <strong style={{ fontSize: "0.95rem", color: "var(--primary)" }}>{orderDate}</strong>
+              </div>
+            )}
+          </div>
+
+          {targets.length > 0 && (
+            <div style={{ marginTop: "10px", borderTop: "1px solid var(--border-glass)", paddingTop: "8px" }}>
+              <span style={{ fontSize: "0.74rem", color: "var(--text-muted)", display: "block", marginBottom: "6px" }}>Target Items:</span>
+              <div style={{ maxHeight: "120px", overflowY: "auto", display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                {targets.slice(0, 15).map(t => (
+                  <span key={t.id} style={{ fontSize: "0.75rem", background: "rgba(255, 255, 255, 0.06)", padding: "3px 8px", borderRadius: "4px", border: "1px solid var(--border-glass)" }}>
+                    {t.model} ({t.vendorOrderQuantity || t.orderQuantity} Pcs)
+                  </span>
+                ))}
+                {targets.length > 15 && (
+                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", padding: "3px 6px" }}>
+                    +{targets.length - 15} more
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="form-group" style={{ marginBottom: "18px" }}>
+            <label className="form-label" style={{ fontSize: "0.82rem" }}>
+              Reason for Deletion (Optional):
+            </label>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="e.g. Uploaded by mistake, duplicate entry, customer cancelled..."
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              disabled={isSubmitting}
+              autoFocus
+            />
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn btn-secondary"
+              disabled={isSubmitting}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-danger"
+              disabled={isSubmitting}
+              style={{ display: "flex", alignItems: "center", gap: "6px", background: "#ef4444", fontWeight: 700 }}
+            >
+              {isSubmitting ? (
+                <>Deleting...</>
+              ) : (
+                <>
+                  <Trash2 size={15} /> Yes, Permanently Delete
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 export const convertToRmb = (amount, currency) => {
   const num = parseFloat(amount || 0);
@@ -4543,7 +5128,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
 }
 
 // 2. DETAILED READ-ONLY VIEW MODAL (ALL 27 FIELDS)
-function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purchasers, items = [], requests = [], onClose, onCancelOrder }) {
+function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purchasers, items = [], requests = [], onClose, onCancelOrder, onDeleteOrder, isAdmin }) {
   useModalEscape(onClose);
   const pName = purchasers.find(p => p.id === request.purchaserId)?.name || "Unknown";
   const vName = vendors.find(v => v.id === request.vendorId)?.name || "Unknown";
@@ -4575,6 +5160,17 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
             {onCancelOrder && (
               <button onClick={() => onCancelOrder(request)} className="btn btn-danger btn-sm">
                 <XCircle size={14} /> Cancel Order
+              </button>
+            )}
+            {isAdmin && onDeleteOrder && (
+              <button
+                type="button"
+                onClick={() => onDeleteOrder(request)}
+                className="btn btn-danger btn-sm"
+                style={{ display: "inline-flex", alignItems: "center", gap: "4px", background: "#ef4444" }}
+                title="Permanently Delete Complete Order (Admin only)"
+              >
+                <Trash2 size={14} /> Delete Order
               </button>
             )}
             <button onClick={onClose} className="btn btn-secondary btn-sm">Close</button>
@@ -5040,35 +5636,50 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = []) => 
 
       let isDateCorrected = false;
       if (!matchedReq) {
-        // Smart match by Model: item exists for this vendor ready for shipping!
-        // Automatically reconcile / correct date format mismatch (e.g. 2026-07-08 vs 2026-08-19)
-        matchedReq = candidates[0];
-        isDateCorrected = true;
+        // Smart match by Model: ONLY if candidates has exactly 1 order for this model
+        // If there are multiple orders for this model with DIFFERENT order dates,
+        // do not blindly pick candidates[0], which causes wrong date selection (e.g. 2026-08-09 instead of 2026-08-10)!
+        if (candidates.length === 1) {
+          matchedReq = candidates[0];
+          isDateCorrected = true;
+        }
       }
 
-      matchedReqIds.add(matchedReq.id);
-      newQtyMap[matchedReq.id] = qtyNum;
-      if (priceNum !== null) {
-        newPriceMap[matchedReq.id] = priceNum;
-      }
-      if (cleanDate) {
-        newDateMap[matchedReq.id] = cleanDate;
-      }
-      if (cleanReadyDate) {
-        newReadyDateMap[matchedReq.id] = cleanReadyDate;
-      }
+      if (matchedReq) {
+        matchedReqIds.add(matchedReq.id);
+        newQtyMap[matchedReq.id] = qtyNum;
+        if (priceNum !== null) {
+          newPriceMap[matchedReq.id] = priceNum;
+        }
+        if (cleanDate) {
+          newDateMap[matchedReq.id] = cleanDate;
+        }
+        if (cleanReadyDate) {
+          newReadyDateMap[matchedReq.id] = cleanReadyDate;
+        }
 
-      matched.push({
-        reqId: matchedReq.id,
-        model: matchedReq.model,
-        orderDate: matchedReq.orderDate,
-        excelDate: cleanDate || String(rawDate || matchedReq.orderDate),
-        isDateCorrected,
-        originalQty: matchedReq.vendorOrderQuantity || matchedReq.orderQuantity,
-        newQty: qtyNum,
-        originalPrice: matchedReq.priceRmb,
-        newPrice: priceNum
-      });
+        matched.push({
+          reqId: matchedReq.id,
+          model: matchedReq.model,
+          orderDate: matchedReq.orderDate,
+          excelDate: cleanDate || String(rawDate || matchedReq.orderDate),
+          isDateCorrected,
+          originalQty: matchedReq.vendorOrderQuantity || matchedReq.orderQuantity,
+          newQty: qtyNum,
+          originalPrice: matchedReq.priceRmb,
+          newPrice: priceNum
+        });
+      } else {
+        // Multiple candidate orders exist for this model but none matched the file date
+        const distinctOrderDates = Array.from(new Set(candidates.map(c => c.orderDate || "Unknown"))).join(", ");
+        unmatched.push({
+          orderDate: cleanDate || String(rawDate || "—"),
+          itemName: itemStr,
+          qty: qtyNum,
+          price: priceNum !== null ? priceNum : String(rawPrice || "—"),
+          reason: `Found ${candidates.length} order(s) for "${itemStr}" on date(s) [${distinctOrderDates}], but none match file date "${cleanDate || rawDate}"`
+        });
+      }
     } else {
       // No unclaimed candidate for this model
       let specificReason = "";
@@ -5152,7 +5763,7 @@ function ExcelShippingUpdateModal({
             : window.XLSX.read(new Uint8Array(data), { type: "array", cellDates: true });
           const firstSheet = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheet];
-          rawRows = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+          rawRows = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "", raw: false, dateNF: "yyyy-mm-dd" });
         } else {
           const text = typeof data === "string" ? data : new TextDecoder().decode(new Uint8Array(data));
           const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
