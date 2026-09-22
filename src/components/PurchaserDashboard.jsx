@@ -1487,6 +1487,7 @@ export default function PurchaserDashboard({
                                       }
                                     }}
                                   />
+                                </td>
                               <td 
                                 style={{ cursor: "pointer" }}
                                 title={`Click to select all orders with Order Date ${r.orderDate}`}
@@ -1543,6 +1544,7 @@ export default function PurchaserDashboard({
                                     }
                                   }}
                                 />
+                              </td>
                               <td 
                                 style={{ width: "95px", minWidth: "95px", whiteSpace: "nowrap", cursor: "pointer" }}
                                 title={`Click to select all orders with Order Date ${r.orderDate}`}
