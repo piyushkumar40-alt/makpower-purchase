@@ -5736,6 +5736,19 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = [], tar
   const newDateMap = {};
   const newReadyDateMap = {};
 
+  // Track allocation per available item for smart waterfall distribution ("fill first qty to full then fill 2nd qty")
+  const itemAllocations = new Map();
+  availableItems.forEach(r => {
+    const origQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+    itemAllocations.set(r.id, {
+      req: r,
+      origQty: origQty > 0 ? origQty : 0,
+      allocatedQty: 0,
+      remainingNeeded: origQty > 0 ? origQty : 0,
+      matched: false
+    });
+  });
+
   dataRows.forEach((row) => {
     if (!Array.isArray(row) || row.every(c => c === "" || c == null)) return;
 
@@ -5784,100 +5797,124 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = [], tar
 
     const cleanInputModel = cleanModelStr(itemStr);
 
-    // Find candidate items for this model among available items
-    // (availableItems is already constrained to targetOrderDate when selected!)
-    const candidates = availableItems.filter(r => {
-      if (matchedReqIds.has(r.id)) return false;
+    // Find all candidate items for this model among available items
+    let candidates = availableItems.filter(r => {
       const rModelClean = cleanModelStr(r.model);
       return rModelClean === cleanInputModel || (r.model && r.model.toLowerCase().trim() === itemStr.toLowerCase());
     });
 
-    if (candidates.length > 0) {
-      let matchedReq = null;
-      if (targetOrderDate) {
-        if (dateColIdx !== -1 && rawDate && cleanDate && cleanDate !== targetOrderDate) {
-          unmatched.push({
-            orderDate: cleanDate,
-            itemName: itemStr,
-            qty: qtyNum,
-            price: priceNum !== null ? priceNum : String(rawPrice || "—"),
-            reason: `File date (${cleanDate}) differs from selected target date (${targetOrderDate})`
-          });
-          return;
-        }
-        // Available items already filtered to targetOrderDate
-        matchedReq = candidates[0];
-      } else if (cleanDate) {
-        // Fallback for legacy files with dates
-        const dateVariants = getDateVariants(cleanDate || rawDate);
-        matchedReq = candidates.find(r => {
-          const rDateClean = parseFlexibleDate(r.orderDate);
-          const rDateRaw = String(r.orderDate || "").trim();
-          return (
-            (cleanDate && rDateClean === cleanDate) ||
-            (rDateClean && dateVariants.includes(rDateClean)) ||
-            (rDateRaw && dateVariants.includes(rDateRaw))
-          );
-        });
-        if (!matchedReq && candidates.length === 1) {
-          matchedReq = candidates[0];
-        }
-      } else {
-        matchedReq = candidates[0];
-      }
-
-      if (matchedReq) {
-        matchedReqIds.add(matchedReq.id);
-        newQtyMap[matchedReq.id] = qtyNum;
-        if (priceNum !== null) {
-          newPriceMap[matchedReq.id] = priceNum;
-        }
-        if (cleanReadyDate) {
-          newReadyDateMap[matchedReq.id] = cleanReadyDate;
-        }
-
-        matched.push({
-          reqId: matchedReq.id,
-          model: matchedReq.model,
-          orderDate: matchedReq.orderDate,
-          excelDate: cleanDate || targetOrderDate || matchedReq.orderDate,
-          isDateCorrected: false,
-          originalQty: matchedReq.vendorOrderQuantity || matchedReq.orderQuantity,
-          newQty: qtyNum,
-          originalPrice: matchedReq.priceRmb,
-          newPrice: priceNum
-        });
-      } else {
+    // Check date filters
+    if (targetOrderDate) {
+      if (dateColIdx !== -1 && rawDate && cleanDate && cleanDate !== targetOrderDate) {
         unmatched.push({
-          orderDate: cleanDate || targetOrderDate || "—",
+          orderDate: cleanDate,
           itemName: itemStr,
           qty: qtyNum,
           price: priceNum !== null ? priceNum : String(rawPrice || "—"),
-          reason: `Found ${candidates.length} order(s) for "${itemStr}", but none match order date "${cleanDate || targetOrderDate}"`
+          reason: `File date (${cleanDate}) differs from selected target date (${targetOrderDate})`
         });
+        return;
       }
-    } else {
-      // No unclaimed candidate for this model
-      let specificReason = "";
-      const alreadyClaimed = availableItems.some(r => {
-        const rModelClean = cleanModelStr(r.model);
-        return (rModelClean === cleanInputModel || (r.model && r.model.toLowerCase().trim() === itemStr.toLowerCase())) && matchedReqIds.has(r.id);
+      // availableItems is already filtered to targetOrderDate
+    } else if (cleanDate) {
+      const dateVariants = getDateVariants(cleanDate || rawDate);
+      const dateMatched = candidates.filter(r => {
+        const rDateClean = parseFlexibleDate(r.orderDate);
+        const rDateRaw = String(r.orderDate || "").trim();
+        return (
+          (cleanDate && rDateClean === cleanDate) ||
+          (rDateClean && dateVariants.includes(rDateClean)) ||
+          (rDateRaw && dateVariants.includes(rDateRaw))
+        );
       });
-
-      if (alreadyClaimed) {
-        specificReason = "Duplicate item row (Already matched with previous row in file)";
-      } else {
-        specificReason = targetOrderDate 
-          ? `Item "${itemStr}" not found in orders for date ${targetOrderDate}` 
-          : "Item Name not found for this vendor";
+      if (dateMatched.length > 0) {
+        candidates = dateMatched;
       }
+    }
 
+    if (candidates.length === 0) {
       unmatched.push({
         orderDate: cleanDate || targetOrderDate || "—",
         itemName: itemStr,
         qty: qtyNum,
         price: priceNum !== null ? priceNum : String(rawPrice || "—"),
-        reason: specificReason
+        reason: targetOrderDate 
+          ? `Item "${itemStr}" not found in orders for date ${targetOrderDate}` 
+          : "Item Name not found for this vendor"
+      });
+      return;
+    }
+
+    // Smart Waterfall Allocation:
+    // If multiple orders exist for this model, fill the first item's quantity to full first,
+    // then fill the 2nd item with the remaining quantity!
+    const needyCandidates = candidates.filter(r => {
+      const alloc = itemAllocations.get(r.id);
+      return alloc && alloc.remainingNeeded > 0;
+    });
+
+    let remainingToDistribute = qtyNum;
+
+    if (needyCandidates.length > 0) {
+      for (const r of needyCandidates) {
+        if (remainingToDistribute <= 0) break;
+        const alloc = itemAllocations.get(r.id);
+        const take = Math.min(remainingToDistribute, alloc.remainingNeeded);
+        alloc.allocatedQty += take;
+        alloc.remainingNeeded -= take;
+        remainingToDistribute -= take;
+        alloc.matched = true;
+        matchedReqIds.add(r.id);
+        newQtyMap[r.id] = alloc.allocatedQty;
+        if (priceNum !== null) newPriceMap[r.id] = priceNum;
+        if (cleanReadyDate) newReadyDateMap[r.id] = cleanReadyDate;
+        if (cleanDate && alloc.req.orderDate && cleanDate !== alloc.req.orderDate) {
+          newDateMap[r.id] = cleanDate;
+        }
+      }
+
+      // If all candidates for this model are now full, but there is still extra quantity in this row,
+      // allocate the surplus to the last candidate
+      if (remainingToDistribute > 0) {
+        const lastCandidate = candidates[candidates.length - 1];
+        const alloc = itemAllocations.get(lastCandidate.id);
+        alloc.allocatedQty += remainingToDistribute;
+        remainingToDistribute = 0;
+        alloc.matched = true;
+        matchedReqIds.add(lastCandidate.id);
+        newQtyMap[lastCandidate.id] = alloc.allocatedQty;
+        if (priceNum !== null) newPriceMap[lastCandidate.id] = priceNum;
+        if (cleanReadyDate) newReadyDateMap[lastCandidate.id] = cleanReadyDate;
+      }
+    } else {
+      // All candidate orders for this model were already 100% full before this row!
+      // Put the extra quantity on the last candidate
+      const lastCandidate = candidates[candidates.length - 1];
+      const alloc = itemAllocations.get(lastCandidate.id);
+      alloc.allocatedQty += qtyNum;
+      alloc.matched = true;
+      matchedReqIds.add(lastCandidate.id);
+      newQtyMap[lastCandidate.id] = alloc.allocatedQty;
+      if (priceNum !== null) newPriceMap[lastCandidate.id] = priceNum;
+      if (cleanReadyDate) newReadyDateMap[lastCandidate.id] = cleanReadyDate;
+    }
+  });
+
+  // Build matched list preserving the display order of availableItems
+  availableItems.forEach(r => {
+    const alloc = itemAllocations.get(r.id);
+    if (alloc && alloc.matched) {
+      const isDateCorrected = !!(newDateMap[r.id] && newDateMap[r.id] !== r.orderDate);
+      matched.push({
+        reqId: r.id,
+        model: r.model,
+        orderDate: r.orderDate,
+        excelDate: newDateMap[r.id] || targetOrderDate || r.orderDate,
+        isDateCorrected,
+        originalQty: alloc.origQty,
+        newQty: alloc.allocatedQty,
+        originalPrice: r.priceRmb,
+        newPrice: newPriceMap[r.id] !== undefined ? newPriceMap[r.id] : r.priceRmb
       });
     }
   });
