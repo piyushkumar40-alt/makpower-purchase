@@ -371,6 +371,7 @@ export default function PurchaserDashboard({
   const [receivingCargo, setReceivingCargo] = useState(null); // cargo awaiting receive date
   // Vendor-ready bulk selection
   const [vrFilter, setVrFilter] = useState("");        // vendor filter for vendor-ready tab
+  const [vrSelectedOrderDate, setVrSelectedOrderDate] = useState(""); // order date filter for vendor-ready tab
   const [vrChecked, setVrChecked] = useState([]);     // checked request ids
   const [vrDate, setVrDate] = useState(new Date().toISOString().split("T")[0]);
   const [vrNewQtyMap, setVrNewQtyMap] = useState({}); // { [reqId]: number }
@@ -452,7 +453,11 @@ export default function PurchaserDashboard({
     const headers = ["Item Name", "Qty", "Price"];
     let pool = availableItems;
     if (targetDate) {
-      const filtered = availableItems.filter(r => r.orderDate === targetDate);
+      const filtered = availableItems.filter(r => {
+        const rDateClean = parseFlexibleDate(r.orderDate);
+        const selDateClean = parseFlexibleDate(targetDate);
+        return r.orderDate === targetDate || (rDateClean && selDateClean && rDateClean === selDateClean);
+      });
       if (filtered.length > 0) pool = filtered;
     }
     let rows = [];
@@ -828,13 +833,38 @@ export default function PurchaserDashboard({
     setTimeout(() => setStep1FeedbackMsg(""), 3500);
   };
 
-  // Step 2: Vendor Ready sorting (only orders not yet assigned to cargo)
-  const rawVrItems = useMemo(() => {
+  // Step 2: Candidate pool of all priced orders not yet vendor ready for the chosen vendor
+  const vrCandidatePool = useMemo(() => {
     return myRequests.filter(r =>
       r.priceRmb && !r.vendorReadyDate && !r.cargoId && r.status !== "Cancelled" &&
       (vrFilter === "" || r.vendorId === vrFilter)
     );
   }, [myRequests, vrFilter]);
+
+  // Step 2: Available order dates for the filtered vendor
+  const vrAvailableDates = useMemo(() => {
+    const dateMap = {};
+    vrCandidatePool.forEach(r => {
+      const d = r.orderDate || "No Date";
+      if (!dateMap[d]) dateMap[d] = { date: d, count: 0, qty: 0 };
+      dateMap[d].count++;
+      dateMap[d].qty += parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+    });
+    return Object.values(dateMap).sort((a, b) => b.date.localeCompare(a.date));
+  }, [vrCandidatePool]);
+
+  // Step 2: Vendor Ready sorting (filtered by selected Order Date if any)
+  const rawVrItems = useMemo(() => {
+    return vrCandidatePool.filter(r => {
+      if (vrSelectedOrderDate) {
+        const rDateClean = parseFlexibleDate(r.orderDate);
+        const selDateClean = parseFlexibleDate(vrSelectedOrderDate);
+        const matches = r.orderDate === vrSelectedOrderDate || (rDateClean && selDateClean && rDateClean === selDateClean);
+        if (!matches) return false;
+      }
+      return true;
+    });
+  }, [vrCandidatePool, vrSelectedOrderDate]);
   const { items: vrItems, copyToastMessage: vrToast, RenderSortHeader: RenderStep2SortHeader } = useSortableData(rawVrItems);
 
   // Step 3 Planner candidate requests (Cross-purchaser for Purchase Manager and Admin)
@@ -3035,6 +3065,7 @@ export default function PurchaserDashboard({
                     const matched = activeVendors.find(v => v.name.toLowerCase() === val.toLowerCase());
                     setVrFilter(matched ? matched.id : "");
                     setVrChecked([]);
+                    setVrSelectedOrderDate("");
                     setVrNewQtyMap({});
                     setVrNewReadyDateMap({});
                     setVrExcelNotification(null);
@@ -3047,6 +3078,123 @@ export default function PurchaserDashboard({
                   ))}
                 </datalist>
               </div>
+
+              {/* Filter by Order Date */}
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                  <Calendar size={13} /> Filter by Order Date
+                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <select
+                    className="form-control"
+                    style={{ minWidth: "170px", maxWidth: "240px", fontWeight: 600, borderColor: vrSelectedOrderDate ? "var(--primary)" : undefined }}
+                    value={vrSelectedOrderDate}
+                    onChange={e => {
+                      const newDate = e.target.value;
+                      setVrSelectedOrderDate(newDate);
+                      if (newDate) {
+                        const matchingIds = vrCandidatePool.filter(r => {
+                          const rDateClean = parseFlexibleDate(r.orderDate);
+                          const selDateClean = parseFlexibleDate(newDate);
+                          return r.orderDate === newDate || (rDateClean && selDateClean && rDateClean === selDateClean);
+                        }).map(r => r.id);
+                        setVrChecked(matchingIds);
+                      } else {
+                        setVrChecked([]);
+                      }
+                    }}
+                  >
+                    <option value="">All Dates ({vrCandidatePool.length} items)</option>
+                    {vrAvailableDates.map(d => (
+                      <option key={d.date} value={d.date}>
+                        {d.date} ({d.count} items, {d.qty.toLocaleString()} Pcs)
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="date"
+                    className="form-control"
+                    style={{ width: "130px", padding: "3px 6px", fontSize: "0.78rem" }}
+                    value={vrSelectedOrderDate}
+                    onChange={e => {
+                      const newDate = e.target.value;
+                      setVrSelectedOrderDate(newDate);
+                      if (newDate) {
+                        const matchingIds = vrCandidatePool.filter(r => {
+                          const rDateClean = parseFlexibleDate(r.orderDate);
+                          const selDateClean = parseFlexibleDate(newDate);
+                          return r.orderDate === newDate || (rDateClean && selDateClean && rDateClean === selDateClean);
+                        }).map(r => r.id);
+                        setVrChecked(matchingIds);
+                      } else {
+                        setVrChecked([]);
+                      }
+                    }}
+                    title="Pick exact calendar date"
+                  />
+                  {vrSelectedOrderDate && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVrSelectedOrderDate("");
+                        setVrChecked([]);
+                      }}
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: "3px 7px", fontSize: "0.75rem" }}
+                      title="Clear date filter (show all dates)"
+                    >
+                      ✕
+                    </button>
+                  )}
+                  {vrSelectedOrderDate && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const matchingIds = vrCandidatePool.filter(r => {
+                          const rDateClean = parseFlexibleDate(r.orderDate);
+                          const selDateClean = parseFlexibleDate(vrSelectedOrderDate);
+                          return r.orderDate === vrSelectedOrderDate || (rDateClean && selDateClean && rDateClean === selDateClean);
+                        }).map(r => r.id);
+                        setVrChecked(matchingIds);
+                      }}
+                      className="btn btn-primary btn-sm"
+                      style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap" }}
+                      title={`Select all items for ${vrSelectedOrderDate}`}
+                    >
+                      Select Date ({rawVrItems.length})
+                    </button>
+                  )}
+                  {isAdmin && vrSelectedOrderDate && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const forDate = vrCandidatePool.filter(r => {
+                          const rDateClean = parseFlexibleDate(r.orderDate);
+                          const selDateClean = parseFlexibleDate(vrSelectedOrderDate);
+                          return r.orderDate === vrSelectedOrderDate || (rDateClean && selDateClean && rDateClean === selDateClean);
+                        });
+                        if (forDate.length === 0) {
+                          alert(`No orders found for date ${vrSelectedOrderDate}`);
+                          return;
+                        }
+                        setAdminDeleteConfirm({
+                          title: `Delete All Orders for Date: ${vrSelectedOrderDate}`,
+                          description: `Permanently delete all ${forDate.length} order(s) placed on ${vrSelectedOrderDate} for this vendor. This cannot be undone.`,
+                          requestIds: forDate.map(r => r.id),
+                          orderDate: vrSelectedOrderDate,
+                          targets: forDate
+                        });
+                      }}
+                      className="btn btn-danger btn-sm"
+                      style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: "4px", background: "rgba(239, 68, 68, 0.2)", border: "1px solid rgba(239, 68, 68, 0.4)", color: "#f87171" }}
+                      title={`Permanently delete all orders for date ${vrSelectedOrderDate}`}
+                    >
+                      <Trash2 size={12} /> Delete Date ({rawVrItems.length})
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Ready Date</label>
                 <input type="date" className="form-control" value={vrDate} onChange={e => setVrDate(e.target.value)} style={{ minWidth: "160px" }} />
@@ -3105,7 +3253,7 @@ export default function PurchaserDashboard({
               <div style={{ marginLeft: "auto", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
                 <button 
                   type="button"
-                  onClick={() => handleDownloadVrSampleFile(rawVrItems)}
+                  onClick={() => handleDownloadVrSampleFile(rawVrItems, vrSelectedOrderDate)}
                   className="btn btn-secondary btn-sm"
                   style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.82rem", padding: "8px 12px" }}
                   title="Download sample Excel template (Item Name, Qty, Price)"
@@ -4507,13 +4655,17 @@ export default function PurchaserDashboard({
       {showVrExcelModal && (
         <ExcelShippingUpdateModal 
           title="Update & Confirm Vendor Ready from Excel"
-          availableItems={rawVrItems}
+          availableItems={vrCandidatePool}
           vendorName={vrFilter ? (vendors.find(v => v.id === vrFilter)?.name || "Selected Vendor") : "All Pending Vendors"}
+          defaultOrderDate={vrSelectedOrderDate}
           notFoundFileName="NotFound_VendorReady_Items"
           onClose={() => setShowVrExcelModal(false)}
           onApplyMatches={(analysis) => {
             const { matchedReqIds, newQtyMap, newPriceMap, newDateMap, newReadyDateMap, matched, unmatched, syncOrderDates, selectedUploadOrderDate } = analysis;
 
+            if (selectedUploadOrderDate) {
+              setVrSelectedOrderDate(selectedUploadOrderDate);
+            }
             setVrChecked(prev => Array.from(new Set([...prev, ...matchedReqIds])));
             setVrNewQtyMap(prev => ({ ...prev, ...newQtyMap }));
             if (newPriceMap && Object.keys(newPriceMap).length > 0) {
@@ -4564,7 +4716,7 @@ export default function PurchaserDashboard({
             setShowVrExcelModal(false);
           }}
           onDownloadSample={(date) => {
-            handleDownloadVrSampleFile(rawVrItems, date);
+            handleDownloadVrSampleFile(vrCandidatePool, date || vrSelectedOrderDate);
           }}
         />
       )}
