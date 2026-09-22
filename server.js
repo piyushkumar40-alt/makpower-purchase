@@ -3389,6 +3389,53 @@ app.post("/api/cargos", async (req, res) => {
   }
 });
 
+// DELETE /api/cargos/:id - Deletes a cargo shipment and unlinks requests
+app.delete("/api/cargos/:id", async (req, res) => {
+  const { id } = req.params;
+  invalidateStateCache();
+  if (isPg) {
+    try {
+      await pool.query('UPDATE requests SET "cargoId" = NULL WHERE "cargoId" = $1', [id]);
+      await pool.query('DELETE FROM cargos WHERE "id" = $1', [id]);
+      res.json({ success: true, message: `Cargo ${id} deleted.` });
+    } catch (err) {
+      console.error("DELETE /api/cargos error:", err.message);
+      res.status(500).json({ error: "Failed to delete cargo." });
+    }
+  } else {
+    const data = readLocalJson();
+    data.requests = (data.requests || []).map(r => r.cargoId === id ? { ...r, cargoId: null } : r);
+    data.cargos = (data.cargos || []).filter(c => c.id !== id);
+    writeLocalJson(data);
+    res.json({ success: true, message: `Cargo ${id} deleted.` });
+  }
+});
+
+// POST /api/cargos/purge-empty - Automatically deletes ghost/empty cargos with 0 requests
+app.post("/api/cargos/purge-empty", async (req, res) => {
+  invalidateStateCache();
+  if (isPg) {
+    try {
+      const result = await pool.query(`
+        DELETE FROM cargos 
+        WHERE id NOT IN (SELECT DISTINCT "cargoId" FROM requests WHERE "cargoId" IS NOT NULL)
+      `);
+      res.json({ success: true, deletedCount: result.rowCount });
+    } catch (err) {
+      console.error("POST /api/cargos/purge-empty error:", err.message);
+      res.status(500).json({ error: "Failed to purge empty cargos." });
+    }
+  } else {
+    const data = readLocalJson();
+    const activeCargoIds = new Set((data.requests || []).map(r => r.cargoId).filter(Boolean));
+    const beforeCount = (data.cargos || []).length;
+    data.cargos = (data.cargos || []).filter(c => activeCargoIds.has(c.id));
+    const deletedCount = beforeCount - data.cargos.length;
+    writeLocalJson(data);
+    res.json({ success: true, deletedCount });
+  }
+});
+
 // 5. POST /api/vendors - Upserts vendors
 app.post("/api/vendors", async (req, res) => {
   const v = req.body;

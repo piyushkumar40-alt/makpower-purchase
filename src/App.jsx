@@ -1300,6 +1300,27 @@ export default function App() {
     logSystemActivity("UPDATE_CARGO", `Updated Cargo Shipment #${updatedCargo.id} (${updatedCargo.cargoDetail || "Cargo"})${behalfText}`, "Cargo", updatedCargo.id, oldCargo, cargoWithDate);
   };
 
+  const deleteCargo = async (cargoId) => {
+    try {
+      await fetch(`/api/cargos/${cargoId}`, { method: "DELETE" });
+      setCargos(prev => prev.filter(c => c.id !== cargoId));
+      setRequests(prev => prev.map(r => r.cargoId === cargoId ? { ...r, cargoId: null } : r));
+      logSystemActivity("DELETE_CARGO", `Deleted Cargo Shipment #${cargoId}`, "Cargo", cargoId);
+    } catch (err) {
+      console.error("deleteCargo error:", err);
+    }
+  };
+
+  const purgeEmptyCargos = async () => {
+    try {
+      await fetch("/api/cargos/purge-empty", { method: "POST" });
+      const activeCargoIds = new Set((requests || []).map(r => r.cargoId).filter(Boolean));
+      setCargos(prev => prev.filter(c => activeCargoIds.has(c.id)));
+    } catch (err) {
+      console.error("purgeEmptyCargos error:", err);
+    }
+  };
+
   const addPurchaser = async (name, email, password, designation = "Purchaser", explicitRole = null, phone = "", territory = "", parentCrmId = "") => {
     const cleanName = sanitizeUserName(name);
     const exists = users.some(u => u.email.toLowerCase() === email.toLowerCase());
@@ -3163,6 +3184,8 @@ export default function App() {
             onUndoPricing={undoPricing}
             onAddCargo={addCargo}
             onUpdateCargo={updateCargo}
+            onDeleteCargo={deleteCargo}
+            onPurgeEmptyCargos={purgeEmptyCargos}
             onAddVendor={addVendor}
             onUpdateVendor={updateVendor}
             onRemoveVendor={removeVendor}

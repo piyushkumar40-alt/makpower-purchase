@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download, FileSpreadsheet, UploadCloud, CheckSquare, Calendar, Trash2 } from "lucide-react";
+import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download, FileSpreadsheet, UploadCloud, CheckSquare, Calendar, Trash2, Search, ArrowUpDown, Filter, Building2, Package, Lock, X } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import { uploadToCloudinary } from "../utils/upload";
 import ItemMasterView from "./ItemMasterView";
@@ -300,6 +300,8 @@ export default function PurchaserDashboard({
   onUndoPricing,
   onAddCargo,
   onUpdateCargo,
+  onDeleteCargo,
+  onPurgeEmptyCargos,
   onAddVendor,
   onUpdateVendor,
   onRemoveVendor,
@@ -644,7 +646,17 @@ export default function PurchaserDashboard({
   const myRequests = allMyRequests.filter(r => r.status !== "Cancelled");
   // Cancelled requests
   const cancelledRequests = allMyRequests.filter(r => r.status === "Cancelled");
-  const myCargos = cargos;
+  
+  // Scoped cargos: Exclude ghost/empty cargos with 0 items, and isolate to current purchaser
+  const myCargos = useMemo(() => {
+    return (cargos || []).filter(c => {
+      const cargoItems = (requests || []).filter(r => r.cargoId === c.id && r.status !== "Cancelled");
+      if (cargoItems.length === 0) return false; // Filter out empty/ghost cargos with 0 items
+      if (isSearchAdmin || isAdmin) return true;
+      // For individual purchaser: only cargos containing their items
+      return cargoItems.some(r => r.purchaserId === currentUser?.id);
+    });
+  }, [cargos, requests, isSearchAdmin, isAdmin, currentUser]);
 
   // Step 1: Unpriced pending requests sorting at top level
   const step1PendingReqs = useMemo(() => {
@@ -955,11 +967,12 @@ export default function PurchaserDashboard({
               { value: "vendorready", label: "Step 2: Vendor Ready" },
               { value: "planner", label: "Step 3: Cargo Consolidation" },
               { value: "cargopickup", label: "Step 4: Cargo Pickup" },
-              { value: "shipments", label: "Step 5: Transit Tracking & Receipt" },
-              { value: "all", label: "Received History" },
+              { value: "shipments", label: "Step 5: Transit Tracking & Warehouse Receipting" },
+              { value: "docs", label: `Step 6: Pending Document Uploads ${myCargos.filter(c => !c.packingListFile || !c.invoiceFile || !c.cargoReceiptFile).length > 0 ? `(${myCargos.filter(c => !c.packingListFile || !c.invoiceFile || !c.cargoReceiptFile).length} Missing)` : ""}` },
+              { value: "all", label: "Received History (Warehouse Archive)" },
               { value: "cancelled", label: "Cancelled Orders" }
             ]}
-            value={["masterorder", "pending", "vendorready", "planner", "cargopickup", "shipments", "all", "cancelled"].includes(activeTab) ? activeTab : ""}
+            value={["masterorder", "pending", "vendorready", "planner", "cargopickup", "shipments", "docs", "all", "cancelled"].includes(activeTab) ? activeTab : ""}
             onChange={(val) => setActiveTab(val)}
             placeholder="-- Select Workflow Step --"
             accentColor="#0284c7"
@@ -970,16 +983,14 @@ export default function PurchaserDashboard({
             label="Directories & Modules"
             icon={Folder}
             options={[
-              { value: "masterorder", label: "📋 Master Order Tracker" },
               { value: "alerts", label: `Operations Alerts ${totalAlertsCount > 0 ? `(${totalAlertsCount} Alerts)` : ""}` },
-              { value: "docs", label: `Pending Documents ${myCargos.filter(c => !c.packingListFile || !c.invoiceFile || !c.cargoReceiptFile).length > 0 ? `(${myCargos.filter(c => !c.packingListFile || !c.invoiceFile || !c.cargoReceiptFile).length} Missing)` : ""}` },
               { value: "vendors", label: "Vendor Registry" },
               { value: "cargocompanies", label: "Logistics Carriers" },
               { value: "itemmaster", label: "Item Catalog & Stock" },
-              { value: "auditlogs", label: `System Audit Logs & Version History (${auditLogs.length})` },
+              ...(isAdmin ? [{ value: "auditlogs", label: `System Audit Logs & Version History (${auditLogs.length})` }] : []),
               { value: "studiopipeline", label: "📊 Purchase Report" }
             ]}
-            value={["alerts", "docs", "vendors", "cargocompanies", "itemmaster", "auditlogs", "studiopipeline"].includes(activeTab) ? activeTab : ""}
+            value={["alerts", "vendors", "cargocompanies", "itemmaster", ...(isAdmin ? ["auditlogs"] : []), "studiopipeline"].includes(activeTab) ? activeTab : ""}
             onChange={(val) => {
               if (val === "itemmaster" && onNavigateView) {
                 onNavigateView("itemcatalog");
@@ -1007,7 +1018,7 @@ export default function PurchaserDashboard({
 
       <div className="main-content" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
         {/* Core Analytics bar visible across all panels */}
-        <AnalyticsPanel requests={myRequests} vendors={vendors} cargos={cargos} onSelectTab={setActiveTab} />
+        <AnalyticsPanel requests={myRequests} vendors={vendors} cargos={myCargos} onSelectTab={setActiveTab} />
 
         {/* ==================== ALERTS TAB ==================== */}
         {activeTab === "alerts" && (
@@ -3840,7 +3851,12 @@ export default function PurchaserDashboard({
                 <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
                   {inTransitCargos.map(cargo => {
                   const vName = vendors.find(v => v.id === cargo.vendorId)?.name || "Unknown Vendor";
-                  const cargoItems = requests.filter(r => r.cargoId === cargo.id);
+                  // Isolate items: only show items belonging to this purchaser if not admin
+                  const cargoItems = (isSearchAdmin || isAdmin)
+                    ? requests.filter(r => r.cargoId === cargo.id && r.status !== "Cancelled")
+                    : requests.filter(r => r.cargoId === cargo.id && r.purchaserId === currentUser?.id && r.status !== "Cancelled");
+                  
+                  if (cargoItems.length === 0) return null;
                   
                   return (
                     <div key={cargo.id} className="glass-panel" style={{ padding: "24px" }}>
@@ -3954,7 +3970,7 @@ export default function PurchaserDashboard({
                                   <div>
                                     <button 
                                       type="button"
-                                      onClick={() => setEditingRequest(item)}
+                                      onClick={() => setViewingRequest(item)}
                                       style={{
                                         background: "none",
                                         border: "none",
@@ -3966,13 +3982,25 @@ export default function PurchaserDashboard({
                                         textDecoration: "underline",
                                         fontSize: "inherit"
                                       }}
-                                      title="Click to edit all order details for this item"
+                                      title="Click to view full order details (Locked while in transit)"
                                     >
                                       {item.model}
-                                    </button> — Quantity: {item.orderQuantity} units
+                                    </button> — Quantity: {item.vendorOrderQuantity || item.orderQuantity} units
+                                    <span style={{ marginLeft: "10px", color: "var(--text-muted)", fontSize: "0.82rem" }}>
+                                      📅 Order Date: <strong style={{ color: "var(--text-main)" }}>{item.orderDate || "—"}</strong>
+                                    </span>
                                     <span className="badge" style={{ marginLeft: "8px", fontSize: "0.7rem", background: item.purchaserId === currentUser?.id ? "rgba(34, 197, 94, 0.12)" : "rgba(56, 189, 248, 0.12)", color: item.purchaserId === currentUser?.id ? "var(--success)" : "var(--primary)" }}>
                                       Purchaser: {purchasers.find(p => p.id === item.purchaserId)?.name || item.purchaserName || "Purchaser"}
                                     </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setViewingRequest(item)}
+                                      className="btn btn-secondary btn-sm"
+                                      style={{ marginLeft: "8px", padding: "2px 8px", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                                      title="View Order Details"
+                                    >
+                                      <Eye size={12} /> Order Details
+                                    </button>
                                     {item.cargoAssignedByName && item.cargoAssignedBy !== item.purchaserId && (
                                       <span className="badge" style={{ marginLeft: "6px", fontSize: "0.68rem", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)" }}>
                                         📦 Assigned by {item.cargoAssignedByName}
@@ -4142,7 +4170,7 @@ export default function PurchaserDashboard({
         )}
 
         {/* ==================== SYSTEM AUDIT LOGS & VERSION HISTORY TAB ==================== */}
-        {activeTab === "auditlogs" && (
+        {activeTab === "auditlogs" && isAdmin && (
           <AuditLogsPanel 
             auditLogs={auditLogs} 
             users={purchasers.length > 0 ? purchasers : []} 
@@ -4170,6 +4198,10 @@ export default function PurchaserDashboard({
             cargoCompanies={cargoCompanies}
             onUpdateCargo={onUpdateCargo}
             onUpdateRequest={onUpdateRequest}
+            onDeleteCargo={onDeleteCargo}
+            onPurgeEmptyCargos={onPurgeEmptyCargos}
+            currentUser={currentUser}
+            isAdmin={isAdmin}
           />
         )}
         {activeTab === "cancelled" && (
@@ -4820,6 +4852,9 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
   const [category, setCategory] = useState(cleanCategoryName(request.category) || "");
   const [showQuickVendorModal, setShowQuickVendorModal] = useState(false);
 
+  // Lock order parameters if goods are currently in transit till received
+  const isInTransit = Boolean(request.cargoId && request.isMaterialRec !== "Yes");
+
   // Auto-calculated totals
   const effectiveQty = vendorOrderQuantity ? parseFloat(vendorOrderQuantity) : parseFloat(orderQuantity || request.orderQuantity || 1);
   const totalRmb = price !== "" ? parseFloat(price) * effectiveQty : (request.totalRmb || 0);
@@ -4874,6 +4909,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (isInTransit) return;
     const matched = vendors.find(v => v.id === vendorId || v.name.toLowerCase() === vendorSearchText.trim().toLowerCase());
     const finalVendorId = matched ? matched.id : vendorId;
     const origQty = parseInt(orderQuantity || request.orderQuantity || 1, 10);
@@ -4917,8 +4953,9 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
         {/* Modal Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px", marginBottom: "16px" }}>
           <div>
-            <h3 style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--primary)", margin: 0 }}>
+            <h3 style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--primary)", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
               Edit Order Details — {request.model}
+              {isInTransit && <span className="badge badge-cargo" style={{ fontSize: "0.72rem" }}><Lock size={12} /> In Transit (Locked)</span>}
             </h3>
             <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px", margin: 0 }}>
               Update all order parameters for any workflow step (Requisition, Pricing, Vendor Ready, Cargo & Receipt).
@@ -4926,6 +4963,13 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
           </div>
           <button onClick={onClose} className="btn btn-secondary btn-sm">Close</button>
         </div>
+
+        {isInTransit && (
+          <div style={{ background: "rgba(245, 158, 11, 0.12)", border: "1px solid rgba(245, 158, 11, 0.35)", borderRadius: "8px", padding: "12px 16px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "10px", color: "#f59e0b", fontSize: "0.88rem", fontWeight: 600 }}>
+            <Lock size={18} />
+            <span>This order is currently In Transit in Cargo <strong>{request.cargoId}</strong>. Order parameters are locked and cannot be modified until received at the warehouse.</span>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           
@@ -4942,6 +4986,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
                   className="form-control" 
                   value={model} 
                   onChange={e => setModel(e.target.value)} 
+                  disabled={isInTransit}
                   required 
                 />
               </div>
@@ -4952,6 +4997,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
                   className="form-control" 
                   value={orderDate} 
                   onChange={e => setOrderDate(e.target.value)} 
+                  disabled={isInTransit}
                 />
               </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
@@ -4961,6 +5007,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
                   className="form-control" 
                   value={orderQuantity} 
                   onChange={e => setOrderQuantity(e.target.value)} 
+                  disabled={isInTransit}
                   min="1"
                   required 
                 />
@@ -4976,7 +5023,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "12px" }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>Item Type (FG / RM)</label>
-                <select className="form-control" value={itemType} onChange={e => setItemType(e.target.value)}>
+                <select className="form-control" value={itemType} onChange={e => setItemType(e.target.value)} disabled={isInTransit}>
                   <option value="FG">FG (Finished Goods)</option>
                   <option value="RM">RM (Raw Material)</option>
                 </select>
@@ -4984,7 +5031,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
 
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>Source Type</label>
-                <select className="form-control" value={type} onChange={e => setType(e.target.value)}>
+                <select className="form-control" value={type} onChange={e => setType(e.target.value)} disabled={isInTransit}>
                   <option value="Import">Import</option>
                   <option value="Local">Local</option>
                 </select>
@@ -4992,7 +5039,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
 
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>Item Nature</label>
-                <select className="form-control" value={itemNature} onChange={e => setItemNature(e.target.value)}>
+                <select className="form-control" value={itemNature} onChange={e => setItemNature(e.target.value)} disabled={isInTransit}>
                   <option value="Non Consumables">Non Consumables</option>
                   <option value="Consumables">Consumables</option>
                 </select>
@@ -5000,7 +5047,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
 
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>Category</label>
-                <input type="text" className="form-control" placeholder="e.g. Battery" value={category} onChange={e => setCategory(e.target.value)} />
+                <input type="text" className="form-control" placeholder="e.g. Battery" value={category} onChange={e => setCategory(e.target.value)} disabled={isInTransit} />
               </div>
             </div>
           </div>
@@ -5015,7 +5062,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
             <div className="form-group" style={{ marginBottom: "12px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
                 <label className="form-label" style={{ margin: 0 }}>Vendor / Supplier</label>
-                {onAddVendor && (
+                {onAddVendor && !isInTransit && (
                   <button type="button" onClick={() => setShowQuickVendorModal(true)} style={{ color: "#38bdf8", background: "none", border: "none", cursor: "pointer", fontSize: "0.8rem", fontWeight: 600 }}>
                     + Create New Vendor
                   </button>
@@ -5027,6 +5074,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
                 className="form-control"
                 placeholder="Type or Select Vendor..."
                 value={vendorSearchText}
+                disabled={isInTransit}
                 onChange={e => {
                   const val = e.target.value;
                   setVendorSearchText(val);
@@ -5051,13 +5099,14 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
                   placeholder={`Req: ${orderQuantity || request.orderQuantity}`}
                   value={vendorOrderQuantity}
                   onChange={e => setVendorOrderQuantity(e.target.value)}
+                  disabled={isInTransit}
                   min="1"
                 />
               </div>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>Currency</label>
-                <select className="form-control" value={currency} onChange={e => setCurrency(e.target.value)}>
+                <select className="form-control" value={currency} onChange={e => setCurrency(e.target.value)} disabled={isInTransit}>
                   <option value="RMB">RMB (¥)</option>
                   <option value="USD">USD ($)</option>
                   <option value="INR">INR (₹)</option>
@@ -5072,6 +5121,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
                   placeholder="Price..." 
                   value={price} 
                   onChange={e => setPrice(e.target.value)} 
+                  disabled={isInTransit}
                   step="any"
                 />
               </div>
@@ -5083,17 +5133,17 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
 
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>Advance Payment ({currency})</label>
-                <input type="number" className="form-control" value={advance} onChange={e => setAdvance(e.target.value)} min="0" step="any" />
+                <input type="number" className="form-control" value={advance} onChange={e => setAdvance(e.target.value)} disabled={isInTransit} min="0" step="any" />
               </div>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>Vendor EDD (Delivery Date)</label>
-                <input type="date" className="form-control" value={edd} onChange={e => setEdd(e.target.value)} />
+                <input type="date" className="form-control" value={edd} onChange={e => setEdd(e.target.value)} disabled={isInTransit} />
               </div>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>Vendor Ready Date (Step 2)</label>
-                <input type="date" className="form-control" value={vendorReadyDate} onChange={e => setVendorReadyDate(e.target.value)} />
+                <input type="date" className="form-control" value={vendorReadyDate} onChange={e => setVendorReadyDate(e.target.value)} disabled={isInTransit} />
               </div>
             </div>
           </div>
@@ -5106,7 +5156,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>Assigned Cargo Shipment</label>
-                <select className="form-control" value={cargoId} onChange={e => setCargoId(e.target.value)}>
+                <select className="form-control" value={cargoId} onChange={e => setCargoId(e.target.value)} disabled={isInTransit}>
                   <option value="">No Cargo (Not yet assigned)</option>
                   {cargos.map(c => (
                     <option key={c.id} value={c.id}>
@@ -5118,7 +5168,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
 
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>Material Received at Warehouse?</label>
-                <select className="form-control" value={isMaterialRec} onChange={e => setIsMaterialRec(e.target.value)}>
+                <select className="form-control" value={isMaterialRec} onChange={e => setIsMaterialRec(e.target.value)} disabled={isInTransit}>
                   <option value="No">No - In Transit / Pending</option>
                   <option value="Yes">Yes - Received at Warehouse</option>
                 </select>
@@ -5127,7 +5177,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
               {isMaterialRec === "Yes" && (
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label" style={{ fontSize: "0.78rem" }}>Actual Receipt Date</label>
-                  <input type="date" className="form-control" value={actualReceivedDate} onChange={e => setActualReceivedDate(e.target.value)} />
+                  <input type="date" className="form-control" value={actualReceivedDate} onChange={e => setActualReceivedDate(e.target.value)} disabled={isInTransit} />
                 </div>
               )}
             </div>
@@ -5144,30 +5194,40 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
               {activePhoto ? (
                 <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
                   <img src={activePhoto} alt={model} style={{ width: "64px", height: "64px", borderRadius: "8px", objectFit: "cover", border: "1px solid var(--primary)" }} />
-                  <label className="btn btn-secondary btn-sm" style={{ cursor: "pointer" }}>
-                    Change Photo
-                    <input type="file" accept="image/*" onChange={handlePhotoUpload} disabled={uploadingPhoto} style={{ display: "none" }} />
-                  </label>
+                  {!isInTransit && (
+                    <label className="btn btn-secondary btn-sm" style={{ cursor: "pointer" }}>
+                      Change Photo
+                      <input type="file" accept="image/*" onChange={handlePhotoUpload} disabled={uploadingPhoto} style={{ display: "none" }} />
+                    </label>
+                  )}
                 </div>
               ) : (
-                <label className="doc-upload-btn" style={{ padding: "8px", fontSize: "0.8rem", cursor: "pointer" }}>
-                  Upload Product Photo
-                  <input type="file" accept="image/*" onChange={handlePhotoUpload} disabled={uploadingPhoto} style={{ display: "none" }} />
-                </label>
+                !isInTransit && (
+                  <label className="doc-upload-btn" style={{ padding: "8px", fontSize: "0.8rem", cursor: "pointer" }}>
+                    Upload Product Photo
+                    <input type="file" accept="image/*" onChange={handlePhotoUpload} disabled={uploadingPhoto} style={{ display: "none" }} />
+                  </label>
+                )
               )}
             </div>
 
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" style={{ fontSize: "0.78rem" }}>Purchaser Internal Notes</label>
-              <textarea className="form-control" rows="2" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Internal notes, wire payment details, production tracking comments..." />
+              <textarea className="form-control" rows="2" value={notes} onChange={e => setNotes(e.target.value)} disabled={isInTransit} placeholder="Internal notes, wire payment details, production tracking comments..." />
             </div>
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-            <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
-            <button type="submit" className="btn btn-primary" style={{ padding: "8px 24px", fontWeight: 700 }}>
-              Save All Changes
-            </button>
+            <button type="button" onClick={onClose} className="btn btn-secondary">Close</button>
+            {!isInTransit ? (
+              <button type="submit" className="btn btn-primary" style={{ padding: "8px 24px", fontWeight: 700 }}>
+                Save All Changes
+              </button>
+            ) : (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "#f59e0b", fontSize: "0.85rem", fontWeight: 600, padding: "8px 14px", background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.25)", borderRadius: "6px" }}>
+                <Lock size={14} /> Locked While In Freight Transit
+              </span>
+            )}
           </div>
         </form>
 
@@ -5211,8 +5271,10 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px", marginBottom: "20px" }}>
           <div>
-            <h3 style={{ fontSize: "1.4rem", fontWeight: 700 }}>Requisition Details: {request.model}</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Logged Date: {request.orderDate}</p>
+            <h3 style={{ fontSize: "1.4rem", fontWeight: 700, margin: 0 }}>Requisition Details: {request.model}</h3>
+            <p style={{ color: "#38bdf8", fontSize: "0.9rem", fontWeight: 700, marginTop: "4px", margin: 0 }}>
+              📅 Order Date: {request.orderDate || "—"}
+            </p>
           </div>
           <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
             {request.status === "Cancelled" && (
@@ -5265,6 +5327,7 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
               Order & Payments
             </h4>
             <div className="details-list">
+              <div className="details-term">Order Date:</div><div className="details-def" style={{ fontWeight: 700, color: "#38bdf8" }}>📅 {request.orderDate || "—"}</div>
               <div className="details-term">Entry By:</div><div className="details-def">{request.entryBy || "—"}</div>
               <div className="details-term">Purchaser:</div><div className="details-def">{pName}</div>
               <div className="details-term">Vendor:</div><div className="details-def">{vName}</div>
@@ -7092,18 +7155,129 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
 }
 
 // ==================== PENDING DOCUMENTS PANEL ====================
-function PendingDocumentsPanel({ cargos, requests, vendors, cargoCompanies, onUpdateCargo, onUpdateRequest }) {
+function PendingDocumentsPanel({ 
+  cargos = [], 
+  requests = [], 
+  vendors = [], 
+  cargoCompanies = [], 
+  onUpdateCargo, 
+  onUpdateRequest,
+  onDeleteCargo,
+  onPurgeEmptyCargos,
+  currentUser,
+  isAdmin
+}) {
   const [uploadingCargo, setUploadingCargo] = useState(null); // cargo being edited for docs
   const [itemPackingFiles, setItemPackingFiles] = useState({}); // { requestId: { name, data } }
+
+  // Top Sort & Search Toolbar States
+  const [docSearch, setDocSearch] = useState("");
+  const [docSortBy, setDocSortBy] = useState("vendor"); // "vendor" | "cargo" | "item" | "category"
+  const [docSortDir, setDocSortDir] = useState("asc"); // "asc" | "desc"
+  const [docVendorFilter, setDocVendorFilter] = useState("");
+  const [docCategoryFilter, setDocCategoryFilter] = useState("");
+  const [purgingEmpty, setPurgingEmpty] = useState(false);
 
   const readFile = async (file) => {
     const url = await uploadToCloudinary(file, "makpower_docs");
     return { name: file.name, data: url };
   };
 
-  // Cargos that have at least one missing document
-  const pendingCargos = cargos.filter(c => !c.packingListFile || !c.invoiceFile || !c.cargoReceiptFile);
-  const completeCargos = cargos.filter(c => c.packingListFile && c.invoiceFile && c.cargoReceiptFile);
+  // Only active cargos that have at least 1 non-cancelled item — removes ghost/empty cargos like dfas
+  const activeCargosWithItems = useMemo(() => {
+    return (cargos || []).filter(c => {
+      const cItems = (requests || []).filter(r => r.cargoId === c.id && r.status !== "Cancelled");
+      return cItems.length > 0;
+    });
+  }, [cargos, requests]);
+
+  // Extract distinct vendors for dropdown filter
+  const availableVendors = useMemo(() => {
+    const vIds = new Set(activeCargosWithItems.map(c => c.vendorId).filter(Boolean));
+    return (vendors || []).filter(v => vIds.has(v.id)).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  }, [activeCargosWithItems, vendors]);
+
+  // Extract distinct categories for dropdown filter
+  const availableCategories = useMemo(() => {
+    const cats = new Set();
+    activeCargosWithItems.forEach(c => {
+      const cItems = (requests || []).filter(r => r.cargoId === c.id && r.status !== "Cancelled");
+      cItems.forEach(item => {
+        const cName = cleanCategoryName(item.category);
+        if (cName) cats.add(cName);
+      });
+    });
+    return Array.from(cats).sort();
+  }, [activeCargosWithItems, requests]);
+
+  // Process sorting and filtering for any list of cargos
+  const processCargos = (cargoList) => {
+    let list = [...cargoList];
+
+    // Filter by Vendor
+    if (docVendorFilter) {
+      list = list.filter(c => c.vendorId === docVendorFilter);
+    }
+
+    // Filter by Category
+    if (docCategoryFilter) {
+      list = list.filter(c => {
+        const cItems = (requests || []).filter(r => r.cargoId === c.id && r.status !== "Cancelled");
+        return cItems.some(i => cleanCategoryName(i.category) === docCategoryFilter);
+      });
+    }
+
+    // Filter by search query (Vendor, Cargo, Item Name, Category)
+    if (docSearch.trim()) {
+      const q = docSearch.trim().toLowerCase();
+      list = list.filter(c => {
+        const vName = (vendors.find(v => v.id === c.vendorId)?.name || "").toLowerCase();
+        const cargoCode = (c.id || "").toLowerCase();
+        const cItems = (requests || []).filter(r => r.cargoId === c.id && r.status !== "Cancelled");
+        const itemNames = cItems.map(i => (i.model || "").toLowerCase()).join(" ");
+        const categories = cItems.map(i => (cleanCategoryName(i.category) || "").toLowerCase()).join(" ");
+
+        return vName.includes(q) || cargoCode.includes(q) || itemNames.includes(q) || categories.includes(q);
+      });
+    }
+
+    // Sort by selected option: Vendor, Cargo, Item Name, Category
+    list.sort((a, b) => {
+      let valA = "";
+      let valB = "";
+
+      if (docSortBy === "vendor") {
+        valA = (vendors.find(v => v.id === a.vendorId)?.name || "").toLowerCase();
+        valB = (vendors.find(v => v.id === b.vendorId)?.name || "").toLowerCase();
+      } else if (docSortBy === "cargo") {
+        valA = (a.cargoOrderDate || a.id || "").toLowerCase();
+        valB = (b.cargoOrderDate || b.id || "").toLowerCase();
+      } else if (docSortBy === "item") {
+        const aItems = (requests || []).filter(r => r.cargoId === a.id && r.status !== "Cancelled");
+        const bItems = (requests || []).filter(r => r.cargoId === b.id && r.status !== "Cancelled");
+        valA = (aItems[0]?.model || "").toLowerCase();
+        valB = (bItems[0]?.model || "").toLowerCase();
+      } else if (docSortBy === "category") {
+        const aItems = (requests || []).filter(r => r.cargoId === a.id && r.status !== "Cancelled");
+        const bItems = (requests || []).filter(r => r.cargoId === b.id && r.status !== "Cancelled");
+        valA = (cleanCategoryName(aItems[0]?.category) || "").toLowerCase();
+        valB = (cleanCategoryName(bItems[0]?.category) || "").toLowerCase();
+      }
+
+      if (valA < valB) return docSortDir === "asc" ? -1 : 1;
+      if (valA > valB) return docSortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+
+    return list;
+  };
+
+  // Cargos with missing documents vs completed documents
+  const rawPendingCargos = activeCargosWithItems.filter(c => !c.packingListFile || !c.invoiceFile || !c.cargoReceiptFile);
+  const rawCompleteCargos = activeCargosWithItems.filter(c => c.packingListFile && c.invoiceFile && c.cargoReceiptFile);
+
+  const pendingCargos = processCargos(rawPendingCargos);
+  const completeCargos = processCargos(rawCompleteCargos);
 
   const handleCargoDocUpload = async (cargoId, field, dataField, file) => {
     if (!file) return;
@@ -7126,19 +7300,156 @@ function PendingDocumentsPanel({ cargos, requests, vendors, cargoCompanies, onUp
     setItemPackingFiles(prev => { const n = { ...prev }; delete n[request.id]; return n; });
   };
 
+  const handlePurgeEmpty = async () => {
+    if (onPurgeEmptyCargos) {
+      setPurgingEmpty(true);
+      await onPurgeEmptyCargos();
+      setPurgingEmpty(false);
+    }
+  };
+
+  const hasActiveFilters = docSearch || docVendorFilter || docCategoryFilter || docSortBy !== "vendor" || docSortDir !== "asc";
+
+  const resetDocFilters = () => {
+    setDocSearch("");
+    setDocSortBy("vendor");
+    setDocSortDir("asc");
+    setDocVendorFilter("");
+    setDocCategoryFilter("");
+  };
+
   return (
     <div className="card-fade-in">
-      <h3 style={{ fontSize: "1.4rem", marginBottom: "6px", display: "flex", alignItems: "center", gap: "10px" }}>
-        <FileText size={22} style={{ color: "#f59e0b" }} /> Pending Document Uploads
-      </h3>
-      <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "20px" }}>
-        Upload packing lists, invoices, and cargo receipts for cargo shipments. Packing lists can also be uploaded per order item individually within the same cargo.
-      </p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
+        <div>
+          <h3 style={{ fontSize: "1.4rem", marginBottom: "6px", display: "flex", alignItems: "center", gap: "10px" }}>
+            <FileText size={22} style={{ color: "#f59e0b" }} /> Pending Document Uploads
+          </h3>
+          <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: 0 }}>
+            Upload packing lists, invoices, and cargo receipts for active shipments. Empty or invalid cargos are automatically purged.
+          </p>
+        </div>
+
+        {onPurgeEmptyCargos && (
+          <button
+            type="button"
+            onClick={handlePurgeEmpty}
+            disabled={purgingEmpty}
+            className="btn btn-secondary btn-sm"
+            style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", color: "var(--text-muted)" }}
+            title="Purge ghost cargos that have 0 items"
+          >
+            <Trash2 size={13} /> {purgingEmpty ? "Purging Empty..." : "Purge Empty Cargos"}
+          </button>
+        )}
+      </div>
+
+      {/* TOP SORT & FILTER TOOLBAR (Vendor / Cargo / Item Name / Category) */}
+      <div className="glass-panel" style={{ padding: "16px 20px", marginBottom: "20px", display: "flex", flexDirection: "column", gap: "12px" }}>
+        <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+          
+          {/* Search box */}
+          <div style={{ position: "relative", flex: "1 1 260px" }}>
+            <Search size={15} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Search Vendor, Cargo Code, Item Name, Category..."
+              value={docSearch}
+              onChange={e => setDocSearch(e.target.value)}
+              style={{ paddingLeft: "36px" }}
+            />
+            {docSearch && (
+              <button 
+                onClick={() => setDocSearch("")}
+                style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Sort By selector */}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <label style={{ fontSize: "0.82rem", fontWeight: 700, color: "#38bdf8", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "5px", margin: 0 }}>
+              <ArrowUpDown size={14} /> Sort By:
+            </label>
+            <select
+              className="form-control"
+              value={docSortBy}
+              onChange={e => setDocSortBy(e.target.value)}
+              style={{ fontWeight: 600, minWidth: "160px" }}
+            >
+              <option value="vendor">🏢 Vendor Name</option>
+              <option value="cargo">📦 Cargo Code</option>
+              <option value="item">🏷️ Item Name</option>
+              <option value="category">🗂️ Category</option>
+            </select>
+            
+            <button
+              type="button"
+              onClick={() => setDocSortDir(prev => prev === "asc" ? "desc" : "asc")}
+              className="btn btn-secondary btn-sm"
+              style={{ padding: "6px 12px", fontWeight: 700 }}
+              title={`Sort Direction: ${docSortDir === "asc" ? "Ascending (A-Z)" : "Descending (Z-A)"}`}
+            >
+              {docSortDir === "asc" ? "🔼 Asc" : "🔽 Desc"}
+            </button>
+          </div>
+
+          {/* Filter by Vendor */}
+          {availableVendors.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <select
+                className="form-control"
+                value={docVendorFilter}
+                onChange={e => setDocVendorFilter(e.target.value)}
+                style={{ minWidth: "150px", fontSize: "0.82rem" }}
+              >
+                <option value="">All Vendors ({availableVendors.length})</option>
+                {availableVendors.map(v => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Filter by Category */}
+          {availableCategories.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <select
+                className="form-control"
+                value={docCategoryFilter}
+                onChange={e => setDocCategoryFilter(e.target.value)}
+                style={{ minWidth: "150px", fontSize: "0.82rem" }}
+              >
+                <option value="">All Categories ({availableCategories.length})</option>
+                {availableCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Reset Filters */}
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={resetDocFilters}
+              className="btn btn-secondary btn-sm"
+              style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
+            >
+              <X size={14} /> Clear
+            </button>
+          )}
+
+        </div>
+      </div>
 
       {pendingCargos.length === 0 ? (
         <div className="glass-panel" style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
           <CheckCircle2 size={36} style={{ color: "var(--success)", marginBottom: "12px", display: "inline" }} /><br />
-          All cargo shipments have their documents uploaded. No pending uploads.
+          {hasActiveFilters ? "No pending cargo shipments match the current filters." : "All active cargo shipments have their documents uploaded. No pending uploads."}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -7155,16 +7466,27 @@ function PendingDocumentsPanel({ cargos, requests, vendors, cargoCompanies, onUp
                       Vendor: <strong>{vName}</strong> | Mode: {cargo.modeOfTransport} | {cargoItems.length} item(s)
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
                     {!cargo.packingListFile && <span style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "6px", padding: "3px 10px", fontSize: "0.75rem", fontWeight: 600 }}>⚠ Packing List Missing</span>}
                     {!cargo.invoiceFile && <span style={{ background: "rgba(239,68,68,0.12)", color: "var(--danger)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "6px", padding: "3px 10px", fontSize: "0.75rem", fontWeight: 600 }}>⚠ Invoice Missing</span>}
                     {!cargo.cargoReceiptFile && <span style={{ background: "rgba(56,189,248,0.12)", color: "#38bdf8", border: "1px solid rgba(56,189,248,0.25)", borderRadius: "6px", padding: "3px 10px", fontSize: "0.75rem", fontWeight: 600 }}>⚠ Cargo Receipt Missing</span>}
+                    {onDeleteCargo && cargoItems.length === 0 && (
+                      <button 
+                        type="button" 
+                        onClick={() => onDeleteCargo(cargo.id)} 
+                        className="btn btn-danger btn-sm" 
+                        style={{ padding: "3px 8px", fontSize: "0.75rem" }}
+                        title="Delete empty cargo"
+                      >
+                        <Trash2 size={12} /> Delete
+                      </button>
+                    )}
                   </div>
                 </div>
 
                 {/* Cargo-level uploads: Packing List, Invoice, Cargo Receipt */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px", marginBottom: "16px" }}>
-                  {/* Packing List — cargo level (if cargo has one missing) */}
+                  {/* Packing List — cargo level */}
                   <div style={{ background: "rgba(0,0,0,0.15)", borderRadius: "8px", padding: "12px" }}>
                     <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px", fontWeight: 600 }}>CARGO PACKING LIST</div>
                     {cargo.packingListFile ? (
@@ -7243,7 +7565,10 @@ function PendingDocumentsPanel({ cargos, requests, vendors, cargoCompanies, onUp
                         return (
                           <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border-glass)", borderRadius: "6px", padding: "8px 14px", flexWrap: "wrap", gap: "8px" }}>
                             <div style={{ fontSize: "0.85rem" }}>
-                              <strong>{item.model}</strong> — Qty: {item.orderQuantity}
+                              <strong>{item.model}</strong> — Qty: {item.vendorOrderQuantity || item.orderQuantity} units
+                              <span style={{ marginLeft: "10px", color: "var(--text-muted)", fontSize: "0.82rem" }}>
+                                📅 Order Date: <strong style={{ color: "var(--text-main)" }}>{item.orderDate || "—"}</strong>
+                              </span>
                             </div>
                             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                               {item.itemPackingListFile ? (

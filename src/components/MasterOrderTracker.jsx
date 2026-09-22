@@ -204,6 +204,32 @@ export default function MasterOrderTracker({
     return counts;
   }, [enrichedRequests]);
 
+  const relevantVendors = useMemo(() => {
+    return (vendors || [])
+      .filter(v => {
+        if (String(v.status || "Active").trim().toLowerCase() === "inactive") return false;
+        const count = enrichedRequests.filter(r => r.vendorId === v.id).length;
+        return count > 0; // Only show vendors that have orders for this purchaser/view
+      })
+      .sort((a, b) => {
+        const countA = enrichedRequests.filter(r => r.vendorId === a.id).length;
+        const countB = enrichedRequests.filter(r => r.vendorId === b.id).length;
+        if (countB !== countA) return countB - countA;
+        return (a.name || "").localeCompare(b.name || "");
+      });
+  }, [vendors, enrichedRequests]);
+
+  const relevantCargos = useMemo(() => {
+    return (cargos || [])
+      .filter(c => {
+        const count = enrichedRequests.filter(r => r.cargoId === c.id).length;
+        return count > 0; // Only show non-empty cargos that have orders for this purchaser/view
+      })
+      .sort((a, b) => {
+        return (b.cargoOrderDate || b.id || "").localeCompare(a.cargoOrderDate || a.id || "");
+      });
+  }, [cargos, enrichedRequests]);
+
   const filteredRequests = useMemo(() => {
     return enrichedRequests.filter(r => {
       if ((isPurchaseManager || isSearchAdmin) && purchaserFilter !== "all") {
@@ -562,17 +588,15 @@ export default function MasterOrderTracker({
               onChange={e => setVendorFilter(e.target.value)}
               style={{ fontWeight: 500, borderColor: vendorFilter ? "var(--primary)" : undefined }}
             >
-              <option value="">All Vendors ({vendors.length})</option>
-              {vendors
-                .filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive")
-                .map(v => {
-                  const count = enrichedRequests.filter(r => r.vendorId === v.id).length;
-                  return (
-                    <option key={v.id} value={v.id}>
-                      {v.name} ({count} items)
-                    </option>
-                  );
-                })}
+              <option value="">All Vendors ({relevantVendors.length})</option>
+              {relevantVendors.map(v => {
+                const count = enrichedRequests.filter(r => r.vendorId === v.id).length;
+                return (
+                  <option key={v.id} value={v.id}>
+                    {v.name} ({count} items)
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -586,9 +610,9 @@ export default function MasterOrderTracker({
               onChange={e => setCargoFilter(e.target.value)}
               style={{ fontWeight: 500, borderColor: cargoFilter ? "var(--primary)" : undefined }}
             >
-              <option value="">All Cargo Batches ({cargos.length})</option>
+              <option value="">All Cargo Batches ({relevantCargos.length})</option>
               <option value="no_cargo">⚠️ Orders Not Yet in Any Cargo</option>
-              {cargos.map(c => {
+              {relevantCargos.map(c => {
                 const count = enrichedRequests.filter(r => r.cargoId === c.id).length;
                 const vName = vendorMap[c.vendorId]?.name || "Vendor";
                 return (
