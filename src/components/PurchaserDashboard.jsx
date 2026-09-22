@@ -433,7 +433,11 @@ export default function PurchaserDashboard({
   const [step1PasteText, setStep1PasteText] = useState("");
   const [step1BatchVendorId, setStep1BatchVendorId] = useState("");
   const [step1BatchCurrency, setStep1BatchCurrency] = useState("RMB");
+  const [step1BatchPrice, setStep1BatchPrice] = useState("");
   const [step1BatchEdd, setStep1BatchEdd] = useState("");
+  const [step1FeedbackMsg, setStep1FeedbackMsg] = useState("");
+  const [lastFocusedStep1Index, setLastFocusedStep1Index] = useState(null);
+  const [lastFocusedStep1Field, setLastFocusedStep1Field] = useState("price");
 
   const handleStep1PricePaste = (e, startRowIdx, pendingReqs) => {
     const clipboardData = e.clipboardData || window.clipboardData;
@@ -601,6 +605,126 @@ export default function PurchaserDashboard({
 
   const { items: sortedPendingReqs, copyToastMessage: step1Toast, RenderSortHeader: RenderStep1SortHeader } = useSortableData(step1PendingReqs);
   const allStep1Checked = step1PendingReqs.length > 0 && step1CheckedIds.length === step1PendingReqs.length;
+
+  const handleStep1FillDown = (currentRowIndex, field = "price") => {
+    if (!sortedPendingReqs || sortedPendingReqs.length === 0) return;
+
+    const currentReq = sortedPendingReqs[currentRowIndex];
+    if (!currentReq) return;
+
+    const isCurrentChecked = step1CheckedIds.includes(currentReq.id);
+    let targetIds = [];
+    let sourceReq = null;
+
+    if (step1CheckedIds.length > 0 && isCurrentChecked) {
+      sourceReq = currentReq;
+      targetIds = step1CheckedIds;
+    } else if (step1CheckedIds.length > 0 && !isCurrentChecked) {
+      if (currentRowIndex > 0) {
+        sourceReq = sortedPendingReqs[currentRowIndex - 1];
+        targetIds = [currentReq.id];
+      }
+    } else {
+      if (currentRowIndex > 0) {
+        sourceReq = sortedPendingReqs[currentRowIndex - 1];
+        targetIds = [currentReq.id];
+      } else {
+        setStep1FeedbackMsg("Top row has no row above to copy from (Ctrl+D)");
+        setTimeout(() => setStep1FeedbackMsg(""), 3000);
+        return;
+      }
+    }
+
+    if (!sourceReq || targetIds.length === 0) return;
+
+    const sourceEdits = step1InlineEdits[sourceReq.id] || {};
+    const srcVendorId = sourceEdits.vendorId !== undefined ? sourceEdits.vendorId : (sourceReq.vendorId || "");
+    const srcVendorSearchText = sourceEdits.vendorSearchText !== undefined 
+      ? sourceEdits.vendorSearchText 
+      : (accessibleVendors.find(v => v.id === srcVendorId)?.name || "");
+    const srcPrice = sourceEdits.priceRmb !== undefined ? sourceEdits.priceRmb : (sourceReq.priceRmb || "");
+    const srcCurrency = sourceEdits.currency || sourceReq.currency || "RMB";
+    const srcEdd = sourceEdits.vendorEdd !== undefined ? sourceEdits.vendorEdd : (sourceReq.vendorEdd || "");
+    const srcQty = sourceEdits.vendorOrderQuantity !== undefined ? sourceEdits.vendorOrderQuantity : (sourceReq.vendorOrderQuantity || sourceReq.orderQuantity || "");
+
+    setStep1InlineEdits(prev => {
+      const updated = { ...prev };
+      targetIds.forEach(id => {
+        const prevEdit = updated[id] || {};
+        if (field === "price" || field === "currency") {
+          updated[id] = {
+            ...prevEdit,
+            priceRmb: srcPrice,
+            currency: srcCurrency
+          };
+        } else if (field === "vendor") {
+          updated[id] = {
+            ...prevEdit,
+            vendorId: srcVendorId,
+            vendorSearchText: srcVendorSearchText
+          };
+        } else if (field === "edd") {
+          updated[id] = {
+            ...prevEdit,
+            vendorEdd: srcEdd
+          };
+        } else if (field === "qty") {
+          updated[id] = {
+            ...prevEdit,
+            vendorOrderQuantity: srcQty
+          };
+        } else {
+          updated[id] = {
+            ...prevEdit,
+            priceRmb: srcPrice,
+            currency: srcCurrency,
+            vendorId: srcVendorId,
+            vendorSearchText: srcVendorSearchText,
+            vendorEdd: srcEdd
+          };
+        }
+      });
+      return updated;
+    });
+
+    const fieldLabel = (field === "price" || field === "currency") 
+      ? "Price & Currency" 
+      : field === "vendor" 
+        ? "Vendor" 
+        : field === "edd" 
+          ? "EDD" 
+          : field === "qty" 
+            ? "Quantity" 
+            : "Details";
+
+    const feedback = targetIds.length > 1 
+      ? `Filled down ${fieldLabel} to ${targetIds.length} items (Ctrl+D)` 
+      : `Copied ${fieldLabel} from row above (Ctrl+D)`;
+    setStep1FeedbackMsg(feedback);
+    setTimeout(() => setStep1FeedbackMsg(""), 3500);
+  };
+
+  // Keyboard shortcut listener for Ctrl+D in Step 1
+  React.useEffect(() => {
+    const handleGlobalStep1KeyDown = (e) => {
+      if (activeTab !== "pending") return;
+      if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+        if (lastFocusedStep1Index !== null && lastFocusedStep1Index >= 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleStep1FillDown(lastFocusedStep1Index, lastFocusedStep1Field || "price");
+        } else if (step1CheckedIds.length > 0 && sortedPendingReqs && sortedPendingReqs.length > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          const firstCheckedIdx = sortedPendingReqs.findIndex(r => step1CheckedIds.includes(r.id));
+          handleStep1FillDown(firstCheckedIdx >= 0 ? firstCheckedIdx : 0, "price");
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalStep1KeyDown, true);
+    return () => window.removeEventListener("keydown", handleGlobalStep1KeyDown, true);
+  }, [activeTab, lastFocusedStep1Index, lastFocusedStep1Field, step1CheckedIds, sortedPendingReqs, step1InlineEdits, accessibleVendors]);
 
   // Step 2: Vendor Ready sorting (only orders not yet assigned to cargo)
   const rawVrItems = useMemo(() => {
@@ -932,9 +1056,30 @@ export default function PurchaserDashboard({
               {pendingReqs.length > 0 && (
                 <div className="glass-panel batch-controls-toolbar">
                   <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
-                    <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "#38bdf8" }}>
-                      Batch Controls ({step1CheckedIds.length > 0 ? `${step1CheckedIds.length} Selected` : "All Unpriced Items"}):
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                      <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "#38bdf8" }}>
+                        Batch Controls ({step1CheckedIds.length > 0 ? `${step1CheckedIds.length} Selected` : "All Unpriced Items"}):
+                      </span>
+                      <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", padding: "2px 8px", borderRadius: "4px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                        Tip: <kbd style={{ padding: "1px 5px", background: "rgba(56,189,248,0.2)", borderRadius: "3px", color: "#38bdf8", fontWeight: 700 }}>Ctrl+D</kbd> Fill Down
+                      </span>
+                      {step1FeedbackMsg && (
+                        <span style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          padding: "3px 10px",
+                          borderRadius: "5px",
+                          background: "rgba(16, 185, 129, 0.2)",
+                          border: "1px solid rgba(16, 185, 129, 0.4)",
+                          color: "var(--success)",
+                          fontSize: "0.8rem",
+                          fontWeight: 600
+                        }}>
+                          <Check size={13} /> {step1FeedbackMsg}
+                        </span>
+                      )}
+                    </div>
 
                     {/* Batch Vendor Selector */}
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -970,6 +1115,8 @@ export default function PurchaserDashboard({
                             });
                             return updated;
                           });
+                          setStep1FeedbackMsg(`Applied vendor to ${targetIds.length} item(s)`);
+                          setTimeout(() => setStep1FeedbackMsg(""), 3000);
                         }}
                         className="btn btn-secondary btn-sm"
                         style={{ padding: "4px 10px", fontSize: "0.78rem" }}
@@ -978,36 +1125,86 @@ export default function PurchaserDashboard({
                       </button>
                     </div>
 
-                    {/* Batch Currency Selector */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Currency:</span>
+                    {/* Batch Currency & Price/Amount Selector */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                      <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Currency & Price:</span>
                       <select
                         className="form-control"
                         value={step1BatchCurrency}
                         onChange={e => setStep1BatchCurrency(e.target.value)}
-                        style={{ width: "115px", padding: "4px 8px", fontSize: "0.82rem", height: "auto", fontWeight: 600 }}
+                        style={{ width: "105px", padding: "4px 6px", fontSize: "0.82rem", height: "auto", fontWeight: 600 }}
                       >
                         <option value="RMB">RMB (¥)</option>
                         <option value="USD">USD ($)</option>
                         <option value="INR">INR (₹)</option>
                       </select>
+                      <input 
+                        type="text" 
+                        inputMode="decimal"
+                        className="form-control"
+                        placeholder={`Amount (${getCurrencySymbol(step1BatchCurrency)})`}
+                        value={step1BatchPrice}
+                        onChange={e => setStep1BatchPrice(e.target.value.replace(/[^0-9.]/g, ""))}
+                        style={{ width: "105px", padding: "4px 8px", fontSize: "0.82rem", height: "auto" }}
+                      />
                       <button 
                         type="button"
                         onClick={() => {
                           const targetIds = step1CheckedIds.length > 0 ? step1CheckedIds : pendingReqs.map(r => r.id);
+                          const parsedPrice = step1BatchPrice.trim() !== "" ? parseFloat(step1BatchPrice) : null;
                           setStep1InlineEdits(prev => {
                             const updated = { ...prev };
                             targetIds.forEach(id => {
-                              updated[id] = { ...updated[id], currency: step1BatchCurrency };
+                              updated[id] = { 
+                                ...updated[id], 
+                                currency: step1BatchCurrency,
+                                ...(parsedPrice !== null && !isNaN(parsedPrice) ? { priceRmb: parsedPrice } : {})
+                              };
                             });
                             return updated;
                           });
+                          const label = parsedPrice !== null && !isNaN(parsedPrice) 
+                            ? `Applied ${step1BatchCurrency} ${parsedPrice}` 
+                            : `Applied ${step1BatchCurrency}`;
+                          setStep1FeedbackMsg(`${label} to ${targetIds.length} item(s)`);
+                          setTimeout(() => setStep1FeedbackMsg(""), 3500);
                         }}
                         className="btn btn-secondary btn-sm"
-                        style={{ padding: "4px 10px", fontSize: "0.78rem" }}
+                        style={{ padding: "4px 10px", fontSize: "0.78rem", whiteSpace: "nowrap" }}
+                        title={step1CheckedIds.length > 0 ? `Apply to ${step1CheckedIds.length} selected items` : "Apply to all pending items"}
                       >
-                        Apply Currency
+                        {step1CheckedIds.length > 0 ? `Apply Selected (${step1CheckedIds.length})` : "Apply to All"}
                       </button>
+                      {step1CheckedIds.length > 0 && step1CheckedIds.length < pendingReqs.length && (
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            const targetIds = pendingReqs.map(r => r.id);
+                            const parsedPrice = step1BatchPrice.trim() !== "" ? parseFloat(step1BatchPrice) : null;
+                            setStep1InlineEdits(prev => {
+                              const updated = { ...prev };
+                              targetIds.forEach(id => {
+                                updated[id] = { 
+                                  ...updated[id], 
+                                  currency: step1BatchCurrency,
+                                  ...(parsedPrice !== null && !isNaN(parsedPrice) ? { priceRmb: parsedPrice } : {})
+                                };
+                              });
+                              return updated;
+                            });
+                            const label = parsedPrice !== null && !isNaN(parsedPrice) 
+                              ? `Applied ${step1BatchCurrency} ${parsedPrice}` 
+                              : `Applied ${step1BatchCurrency}`;
+                            setStep1FeedbackMsg(`${label} to all ${targetIds.length} items`);
+                            setTimeout(() => setStep1FeedbackMsg(""), 3500);
+                          }}
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap", opacity: 0.9 }}
+                          title="Apply currency & price to ALL pending unpriced items"
+                        >
+                          Apply for All ({pendingReqs.length})
+                        </button>
+                      )}
                     </div>
 
                     {/* Batch EDD Date Picker */}
@@ -1097,11 +1294,27 @@ export default function PurchaserDashboard({
 
               {/* Spreadsheet / Table View */}
               <div className="glass-panel" style={{ padding: "4px" }}>
-                <div className="table-container" style={{ maxHeight: "60vh", overflowY: "auto" }}>
+                <div 
+                  className="table-container" 
+                  style={{ maxHeight: "60vh", overflowY: "auto" }}
+                  tabIndex={0}
+                  onKeyDown={e => {
+                    if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (lastFocusedStep1Index !== null && lastFocusedStep1Index >= 0) {
+                        handleStep1FillDown(lastFocusedStep1Index, lastFocusedStep1Field || "price");
+                      } else if (step1CheckedIds.length > 0 && sortedPendingReqs && sortedPendingReqs.length > 0) {
+                        const firstCheckedIdx = sortedPendingReqs.findIndex(r => step1CheckedIds.includes(r.id));
+                        handleStep1FillDown(firstCheckedIdx >= 0 ? firstCheckedIdx : 0, "price");
+                      }
+                    }
+                  }}
+                >
                   <table className="custom-table" style={{ fontSize: "0.85rem" }}>
                     <thead>
                       <tr style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-card)" }}>
-                        <th style={{ width: "40px", textAlign: "center" }}>
+                        <th style={{ width: "40px", minWidth: "40px", textAlign: "center" }}>
                           <input 
                             type="checkbox"
                             className="checkbox-input"
@@ -1115,17 +1328,17 @@ export default function PurchaserDashboard({
                             }}
                           />
                         </th>
-                        <RenderStep1SortHeader colKey="orderDate" title="Order Date" style={{ width: "100px" }} />
-                        <RenderStep1SortHeader colKey="model" title="Model / Description" />
-                        <RenderStep1SortHeader colKey="orderQuantity" title="Qty" style={{ width: "80px" }} />
-                        <RenderStep1SortHeader colKey="vendorId" title="Vendor / Supplier" getValue={r => accessibleVendors.find(v => v.id === (step1InlineEdits[r.id]?.vendorId || r.vendorId))?.name || ""} style={{ minWidth: "180px" }} />
-                        <RenderStep1SortHeader colKey="priceRmb" title="Price / Currency" style={{ minWidth: "160px" }} />
-                        <RenderStep1SortHeader colKey="totalRmb" title="Total Amount" style={{ minWidth: "130px" }} />
-                        <RenderStep1SortHeader colKey="vendorEdd" title="Vendor EDD" style={{ minWidth: "140px" }} />
-                            <th style={{ width: "90px", textAlign: "center" }}>Actions</th>
-                            <th style={{ width: "70px", textAlign: "center" }}>Cancel</th>
-                          </tr>
-                        </thead>
+                        <RenderStep1SortHeader colKey="orderDate" title="Order Date" style={{ width: "95px", minWidth: "95px" }} />
+                        <RenderStep1SortHeader colKey="model" title="Model / Description" style={{ minWidth: "150px" }} />
+                        <RenderStep1SortHeader colKey="orderQuantity" title="Qty" style={{ width: "80px", minWidth: "80px", textAlign: "center" }} />
+                        <RenderStep1SortHeader colKey="vendorId" title="Vendor / Supplier" getValue={r => accessibleVendors.find(v => v.id === (step1InlineEdits[r.id]?.vendorId || r.vendorId))?.name || ""} style={{ width: "185px", minWidth: "185px" }} />
+                        <RenderStep1SortHeader colKey="priceRmb" title="Price / Currency" style={{ width: "195px", minWidth: "195px", maxWidth: "195px" }} />
+                        <RenderStep1SortHeader colKey="totalRmb" title="Total Amount" style={{ width: "125px", minWidth: "125px", textAlign: "right" }} />
+                        <RenderStep1SortHeader colKey="vendorEdd" title="Vendor EDD" style={{ width: "140px", minWidth: "140px" }} />
+                        <th style={{ width: "85px", minWidth: "85px", textAlign: "center" }}>Actions</th>
+                        <th style={{ width: "70px", minWidth: "70px", textAlign: "center" }}>Cancel</th>
+                      </tr>
+                    </thead>
                         <tbody>
                           {sortedPendingReqs.length === 0 ? (
                             <tr>
@@ -1246,8 +1459,8 @@ export default function PurchaserDashboard({
                               </td>
 
                               {/* Editable Quantity Field (Original req qty saved, vendor qty processed ahead) */}
-                              <td>
-                                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                              <td style={{ width: "80px", minWidth: "80px", textAlign: "center" }}>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "2px", alignItems: "center" }}>
                                   <input 
                                     type="number"
                                     min="1"
@@ -1264,7 +1477,18 @@ export default function PurchaserDashboard({
                                         }
                                       }));
                                     }}
-                                    style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto", width: "85px", fontWeight: 700 }}
+                                    onFocus={() => {
+                                      setLastFocusedStep1Index(index);
+                                      setLastFocusedStep1Field("qty");
+                                    }}
+                                    onKeyDown={e => {
+                                      if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleStep1FillDown(index, "qty");
+                                      }
+                                    }}
+                                    style={{ padding: "4px 6px", fontSize: "0.85rem", height: "32px", width: "75px", fontWeight: 700, boxSizing: "border-box", textAlign: "center" }}
                                   />
                                   {r.vendorOrderQuantity && parseInt(r.vendorOrderQuantity) !== parseInt(r.orderQuantity) ? (
                                     <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
@@ -1275,7 +1499,7 @@ export default function PurchaserDashboard({
                               </td>
 
                               {/* Vendor Selection (Inline) */}
-                              <td>
+                              <td style={{ width: "185px", minWidth: "185px", boxSizing: "border-box" }}>
                                 <input 
                                   type="text" 
                                   list={`step1-vendor-list-${r.id}`}
@@ -1295,7 +1519,18 @@ export default function PurchaserDashboard({
                                       }
                                     }));
                                   }}
-                                  style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+                                  onFocus={() => {
+                                    setLastFocusedStep1Index(index);
+                                    setLastFocusedStep1Field("vendor");
+                                  }}
+                                  onKeyDown={e => {
+                                    if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleStep1FillDown(index, "vendor");
+                                    }
+                                  }}
+                                  style={{ padding: "4px 8px", fontSize: "0.85rem", height: "32px", width: "100%", boxSizing: "border-box" }}
                                 />
                                 <datalist id={`step1-vendor-list-${r.id}`}>
                                   {accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
@@ -1305,11 +1540,11 @@ export default function PurchaserDashboard({
                               </td>
 
                               {/* Price & Currency Input with Paste Handler */}
-                              <td>
-                                <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                              <td style={{ width: "195px", minWidth: "195px", maxWidth: "195px", boxSizing: "border-box", overflow: "hidden" }}>
+                                <div style={{ display: "flex", gap: "6px", alignItems: "center", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
                                   <select
                                     className="form-control"
-                                    style={{ width: "74px", padding: "4px 4px", fontSize: "0.78rem", height: "auto", fontWeight: 700, flexShrink: 0 }}
+                                    style={{ width: "72px", minWidth: "72px", maxWidth: "72px", padding: "4px 2px", fontSize: "0.78rem", height: "32px", fontWeight: 700, flexShrink: 0, boxSizing: "border-box" }}
                                     value={currentCurrency}
                                     onChange={e => {
                                       const val = e.target.value;
@@ -1320,6 +1555,17 @@ export default function PurchaserDashboard({
                                           currency: val
                                         }
                                       }));
+                                    }}
+                                    onFocus={() => {
+                                      setLastFocusedStep1Index(index);
+                                      setLastFocusedStep1Field("price");
+                                    }}
+                                    onKeyDown={e => {
+                                      if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleStep1FillDown(index, "price");
+                                      }
                                     }}
                                   >
                                     <option value="RMB">¥ RMB</option>
@@ -1342,12 +1588,27 @@ export default function PurchaserDashboard({
                                         }
                                       }));
                                     }}
+                                    onFocus={() => {
+                                      setLastFocusedStep1Index(index);
+                                      setLastFocusedStep1Field("price");
+                                    }}
                                     onPaste={e => handleStep1PricePaste(e, index, pendingReqs)}
+                                    onKeyDown={e => {
+                                      if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleStep1FillDown(index, "price");
+                                      }
+                                    }}
                                     style={{ 
+                                      flex: "1 1 0%",
+                                      minWidth: 0,
+                                      width: "100%",
+                                      flexShrink: 1,
                                       padding: "4px 8px", 
                                       fontSize: "0.85rem", 
-                                      height: "auto",
-                                      minWidth: "75px",
+                                      height: "32px",
+                                      boxSizing: "border-box",
                                       borderColor: currentPrice ? "rgba(16, 185, 129, 0.4)" : undefined,
                                       background: currentPrice ? "rgba(16, 185, 129, 0.05)" : undefined
                                     }}
@@ -1356,12 +1617,22 @@ export default function PurchaserDashboard({
                               </td>
 
                               {/* Total Calculated Amount */}
-                              <td style={{ fontWeight: 700, color: totalCalc > 0 ? "var(--primary)" : "var(--text-muted)" }}>
+                              <td style={{ 
+                                width: "125px", 
+                                minWidth: "125px", 
+                                maxWidth: "125px", 
+                                fontWeight: 700, 
+                                color: totalCalc > 0 ? "var(--primary)" : "var(--text-muted)", 
+                                textAlign: "right", 
+                                whiteSpace: "nowrap", 
+                                paddingRight: "14px", 
+                                boxSizing: "border-box" 
+                              }}>
                                 {totalCalc > 0 ? `${getCurrencySymbol(currentCurrency)}${totalCalc.toLocaleString()}` : "—"}
                               </td>
 
                               {/* EDD Date Selector (Inline) */}
-                              <td>
+                              <td style={{ width: "140px", minWidth: "140px", boxSizing: "border-box" }}>
                                 <input 
                                   type="date"
                                   className="form-control"
@@ -1375,12 +1646,23 @@ export default function PurchaserDashboard({
                                       }
                                     }));
                                   }}
-                                  style={{ padding: "4px 8px", fontSize: "0.85rem", height: "auto" }}
+                                  onFocus={() => {
+                                    setLastFocusedStep1Index(index);
+                                    setLastFocusedStep1Field("edd");
+                                  }}
+                                  onKeyDown={e => {
+                                    if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleStep1FillDown(index, "edd");
+                                    }
+                                  }}
+                                  style={{ padding: "4px 6px", fontSize: "0.82rem", height: "32px", width: "100%", boxSizing: "border-box" }}
                                 />
                               </td>
 
                               {/* Actions */}
-                              <td style={{ textAlign: "center" }}>
+                              <td style={{ width: "85px", minWidth: "85px", textAlign: "center" }}>
                                 <button 
                                   onClick={() => handleSaveStep1Batch(pendingReqs, [r.id])} 
                                   disabled={!currentPrice || !currentEdd || (!currentVendorId && !currentVendorText)}
@@ -1392,7 +1674,7 @@ export default function PurchaserDashboard({
                               </td>
 
                               {/* Cancel */}
-                              <td style={{ textAlign: "center" }}>
+                              <td style={{ width: "70px", minWidth: "70px", textAlign: "center" }}>
                                 <button onClick={() => setCancellingRequest(r)} className="btn btn-danger btn-sm" style={{ padding: "4px 6px" }}>
                                   <XCircle size={14} />
                                 </button>
