@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download, FileSpreadsheet, UploadCloud, CheckSquare, Calendar, Trash2, Search, ArrowUpDown, Filter, Building2, Package, Lock, X } from "lucide-react";
+import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download, FileSpreadsheet, UploadCloud, CheckSquare, Calendar, Trash2, Search, ArrowUpDown, Filter, Building2, Package, Lock, X, ExternalLink } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import { uploadToCloudinary } from "../utils/upload";
 import ItemMasterView from "./ItemMasterView";
@@ -10,7 +10,7 @@ import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
-import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName } from "../utils/formatters";
+import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob } from "../utils/formatters";
 import { useModalEscape } from "../utils/useModalEscape";
 import MasterOrderTracker from "./MasterOrderTracker";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
@@ -373,6 +373,28 @@ export default function PurchaserDashboard({
   const [selectedCargoCompanyForDetail, setSelectedCargoCompanyForDetail] = useState(null);
   const [cancellingRequest, setCancellingRequest] = useState(null);
   const [receivingCargo, setReceivingCargo] = useState(null); // cargo awaiting receive date
+  const [viewingCargoDoc, setViewingCargoDoc] = useState(null);
+  useModalEscape(() => setViewingCargoDoc(null), !!viewingCargoDoc);
+
+  const handleOpenDocument = (cargo, docType, fileName, fileData, field, dataField) => {
+    if (!fileName) return;
+
+    const lowerName = String(fileName || "").toLowerCase();
+    const isSpreadsheet = lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls") || lowerName.endsWith(".csv");
+    const isImage = /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(lowerName) || (typeof fileData === "string" && fileData.startsWith("data:image/"));
+    const isPdf = lowerName.endsWith(".pdf") || (typeof fileData === "string" && fileData.startsWith("data:application/pdf"));
+
+    if (fileData) {
+      if (isSpreadsheet) {
+        downloadOrOpenBlob(fileData, fileName);
+        return;
+      }
+      setViewingCargoDoc({ cargo, docType, fileName, fileData, field, dataField, isImage, isPdf, isSpreadsheet });
+      return;
+    }
+
+    setViewingCargoDoc({ cargo, docType, fileName, fileData: "", field, dataField, isMissing: true, isSpreadsheet, isImage, isPdf });
+  };
   // Vendor-ready bulk selection
   const [vrFilter, setVrFilter] = useState("");        // vendor filter for vendor-ready tab
   const [vrSelectedOrderDate, setVrSelectedOrderDate] = useState(""); // order date filter for vendor-ready tab
@@ -4096,16 +4118,94 @@ export default function PurchaserDashboard({
                       </div>
 
                       {/* Associated Files */}
-                      <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", fontSize: "0.85rem", background: "rgba(0,0,0,0.1)", padding: "10px 16px", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+                      <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", fontSize: "0.85rem", background: "rgba(0,0,0,0.1)", padding: "10px 16px", borderRadius: "8px", border: "1px solid var(--border-glass)", alignItems: "center" }}>
                         <div style={{ fontWeight: 600, color: "var(--primary)" }}>Documents:</div>
-                        <div>
-                          Packing List: {cargo.packingListFile ? <span className="doc-link">📄 {cargo.packingListFile}</span> : <span style={{ color: "var(--text-muted)" }}>Missing</span>}
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                          Packing List: {cargo.packingListFile ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDocument(cargo, "Packing List", cargo.packingListFile, cargo.packingListData, "packingListFile", "packingListData")}
+                              title={`Click to open ${cargo.packingListFile}`}
+                              className="doc-link-btn"
+                              style={{
+                                background: "rgba(56, 189, 248, 0.12)",
+                                border: "1px solid rgba(56, 189, 248, 0.35)",
+                                padding: "3px 10px",
+                                borderRadius: "6px",
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                color: "var(--primary, #38bdf8)",
+                                textDecoration: "none",
+                                fontWeight: 600,
+                                fontSize: "0.83rem"
+                              }}
+                            >
+                              📄 {cargo.packingListFile}
+                              <ExternalLink size={12} style={{ opacity: 0.85 }} />
+                            </button>
+                          ) : (
+                            <span style={{ color: "var(--text-muted)" }}>Missing</span>
+                          )}
                         </div>
-                        <div>
-                          Invoice: {cargo.invoiceFile ? <span className="doc-link">📄 {cargo.invoiceFile}</span> : <span style={{ color: "var(--text-muted)" }}>Missing</span>}
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                          Invoice: {cargo.invoiceFile ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDocument(cargo, "Invoice", cargo.invoiceFile, cargo.invoiceData, "invoiceFile", "invoiceData")}
+                              title={`Click to open ${cargo.invoiceFile}`}
+                              className="doc-link-btn"
+                              style={{
+                                background: "rgba(56, 189, 248, 0.12)",
+                                border: "1px solid rgba(56, 189, 248, 0.35)",
+                                padding: "3px 10px",
+                                borderRadius: "6px",
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                color: "var(--primary, #38bdf8)",
+                                textDecoration: "none",
+                                fontWeight: 600,
+                                fontSize: "0.83rem"
+                              }}
+                            >
+                              📄 {cargo.invoiceFile}
+                              <ExternalLink size={12} style={{ opacity: 0.85 }} />
+                            </button>
+                          ) : (
+                            <span style={{ color: "var(--text-muted)" }}>Missing</span>
+                          )}
                         </div>
-                        <div>
-                          Cargo Receipt: {cargo.cargoReceiptFile ? <span className="doc-link">📄 {cargo.cargoReceiptFile}</span> : <span style={{ color: "var(--text-muted)" }}>Missing</span>}
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                          Cargo Receipt: {cargo.cargoReceiptFile ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDocument(cargo, "Cargo Receipt", cargo.cargoReceiptFile, cargo.cargoReceiptData, "cargoReceiptFile", "cargoReceiptData")}
+                              title={`Click to open ${cargo.cargoReceiptFile}`}
+                              className="doc-link-btn"
+                              style={{
+                                background: "rgba(56, 189, 248, 0.12)",
+                                border: "1px solid rgba(56, 189, 248, 0.35)",
+                                padding: "3px 10px",
+                                borderRadius: "6px",
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                color: "var(--primary, #38bdf8)",
+                                textDecoration: "none",
+                                fontWeight: 600,
+                                fontSize: "0.83rem"
+                              }}
+                            >
+                              📄 {cargo.cargoReceiptFile}
+                              <ExternalLink size={12} style={{ opacity: 0.85 }} />
+                            </button>
+                          ) : (
+                            <span style={{ color: "var(--text-muted)" }}>Missing</span>
+                          )}
                         </div>
                       </div>
 
@@ -4722,6 +4822,15 @@ export default function PurchaserDashboard({
           onDownloadSample={(date) => {
             handleDownloadVrSampleFile(vrCandidatePool, date || vrSelectedOrderDate);
           }}
+        />
+      )}
+
+      {/* ==================== CARGO DOCUMENT MODAL ==================== */}
+      {viewingCargoDoc && (
+        <CargoDocumentModal 
+          docInfo={viewingCargoDoc}
+          onClose={() => setViewingCargoDoc(null)}
+          onUpdateCargo={onUpdateCargo}
         />
       )}
 
@@ -5429,9 +5538,48 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
                     </div>
                   </>
                 )}
-                <div className="details-term">Packing List:</div><div className="details-def">{cargo.packingListFile ? <span className="doc-link">📄 {cargo.packingListFile}</span> : "—"}</div>
-                <div className="details-term">Invoice:</div><div className="details-def">{cargo.invoiceFile ? <span className="doc-link">📄 {cargo.invoiceFile}</span> : "—"}</div>
-                <div className="details-term">Cargo Receipt:</div><div className="details-def">{cargo.cargoReceiptFile ? <span className="doc-link">📄 {cargo.cargoReceiptFile}</span> : "—"}</div>
+                <div className="details-term">Packing List:</div>
+                <div className="details-def">
+                  {cargo.packingListFile ? (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenDocument(cargo, "Packing List", cargo.packingListFile, cargo.packingListData, "packingListFile", "packingListData")}
+                      title={`Click to open ${cargo.packingListFile}`}
+                      className="doc-link-btn"
+                      style={{ background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.35)", padding: "2px 8px", borderRadius: "4px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "5px", color: "var(--primary, #38bdf8)", fontSize: "0.85rem", fontWeight: 500 }}
+                    >
+                      📄 {cargo.packingListFile} <ExternalLink size={12} />
+                    </button>
+                  ) : "—"}
+                </div>
+                <div className="details-term">Invoice:</div>
+                <div className="details-def">
+                  {cargo.invoiceFile ? (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenDocument(cargo, "Invoice", cargo.invoiceFile, cargo.invoiceData, "invoiceFile", "invoiceData")}
+                      title={`Click to open ${cargo.invoiceFile}`}
+                      className="doc-link-btn"
+                      style={{ background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.35)", padding: "2px 8px", borderRadius: "4px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "5px", color: "var(--primary, #38bdf8)", fontSize: "0.85rem", fontWeight: 500 }}
+                    >
+                      📄 {cargo.invoiceFile} <ExternalLink size={12} />
+                    </button>
+                  ) : "—"}
+                </div>
+                <div className="details-term">Cargo Receipt:</div>
+                <div className="details-def">
+                  {cargo.cargoReceiptFile ? (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenDocument(cargo, "Cargo Receipt", cargo.cargoReceiptFile, cargo.cargoReceiptData, "cargoReceiptFile", "cargoReceiptData")}
+                      title={`Click to open ${cargo.cargoReceiptFile}`}
+                      className="doc-link-btn"
+                      style={{ background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.35)", padding: "2px 8px", borderRadius: "4px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "5px", color: "var(--primary, #38bdf8)", fontSize: "0.85rem", fontWeight: 500 }}
+                    >
+                      📄 {cargo.cargoReceiptFile} <ExternalLink size={12} />
+                    </button>
+                  ) : "—"}
+                </div>
               </div>
             ) : (
               <div style={{ color: "var(--text-muted)", fontSize: "0.9rem", padding: "10px 0" }}>
@@ -6892,6 +7040,149 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
   );
 }
 
+// 3b. CARGO DOCUMENT VIEWER & ATTACHMENT MODAL
+function CargoDocumentModal({ docInfo, onClose, onUpdateCargo }) {
+  useModalEscape(onClose);
+  if (!docInfo) return null;
+  const { cargo, docType, fileName, field, dataField } = docInfo;
+  const [currentData, setCurrentData] = useState(docInfo.fileData || "");
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  const lowerName = String(fileName || "").toLowerCase();
+  const isSpreadsheet = lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls") || lowerName.endsWith(".csv");
+  const isImage = /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(lowerName) || (typeof currentData === "string" && currentData.startsWith("data:image/"));
+  const isPdf = lowerName.endsWith(".pdf") || (typeof currentData === "string" && currentData.startsWith("data:application/pdf"));
+
+  const handleAttachFile = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setIsUploading(true);
+    setUploadError("");
+    try {
+      const url = await uploadToCloudinary(file, "makpower_docs");
+      const finalData = url || "";
+      setCurrentData(finalData);
+      if (cargo && onUpdateCargo) {
+        onUpdateCargo({
+          ...cargo,
+          [field]: file.name,
+          [dataField]: finalData
+        });
+      }
+      // Immediately trigger open / download
+      downloadOrOpenBlob(finalData, file.name);
+    } catch (err) {
+      setUploadError(`Upload failed: ${err.message}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" style={{ zIndex: 1100 }}>
+      <div className="glass-panel modal-content" style={{ width: "95%", maxWidth: isImage || isPdf ? "850px" : "600px", maxHeight: "90vh", display: "flex", flexDirection: "column", padding: "24px", position: "relative" }}>
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px", marginBottom: "16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ width: "38px", height: "38px", borderRadius: "8px", background: "rgba(56, 189, 248, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--primary)" }}>
+              {isSpreadsheet ? <FileSpreadsheet size={22} /> : isImage ? <Eye size={22} /> : <FileText size={22} />}
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700, color: "var(--text-main)" }}>{docType}</h3>
+              <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                Cargo: <span style={{ color: "var(--primary)", fontWeight: 600 }}>{cargo?.id || "—"}</span> &nbsp;|&nbsp; File: <span style={{ fontWeight: 600 }}>{fileName}</span>
+              </div>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="btn-icon" style={{ cursor: "pointer", background: "none", border: "none", color: "var(--text-muted)" }}>
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Content Body */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "10px 0" }}>
+          {/* If Image and Data Present */}
+          {isImage && currentData && (
+            <div style={{ textAlign: "center", background: "rgba(0,0,0,0.3)", borderRadius: "10px", padding: "16px", marginBottom: "16px", border: "1px solid var(--border-glass)" }}>
+              <img src={currentData} alt={fileName} style={{ maxWidth: "100%", maxHeight: "55vh", objectFit: "contain", borderRadius: "6px" }} />
+            </div>
+          )}
+
+          {/* If PDF and Data Present */}
+          {isPdf && currentData && (
+            <div style={{ background: "rgba(0,0,0,0.3)", borderRadius: "10px", overflow: "hidden", marginBottom: "16px", border: "1px solid var(--border-glass)" }}>
+              <iframe src={currentData} title={fileName} style={{ width: "100%", height: "55vh", border: "none" }} />
+            </div>
+          )}
+
+          {/* If Data Present (Spreadsheet / Any) */}
+          {currentData ? (
+            <div style={{ background: "rgba(34, 197, 94, 0.08)", border: "1px solid rgba(34, 197, 94, 0.25)", borderRadius: "8px", padding: "14px", marginBottom: "16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--success)", fontWeight: 600, fontSize: "0.9rem", marginBottom: "4px" }}>
+                <CheckCircle2 size={16} /> File Content Attached &amp; Ready
+              </div>
+              <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                Click below to open or download <strong>{fileName}</strong>.
+              </div>
+            </div>
+          ) : (
+            /* If Missing Data */
+            <div style={{ background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: "8px", padding: "16px", marginBottom: "16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#f59e0b", fontWeight: 700, fontSize: "0.95rem", marginBottom: "8px" }}>
+                <AlertTriangle size={18} /> File Content Not Attached
+              </div>
+              <p style={{ margin: "0 0 14px 0", fontSize: "0.85rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
+                The filename is registered as <strong style={{ color: "var(--primary)" }}>{fileName}</strong>, but its file content needs to be attached to open. Attach the file now to view or download it anytime:
+              </p>
+              <label className="btn btn-primary" style={{ display: "inline-flex", alignItems: "center", gap: "8px", cursor: isUploading ? "wait" : "pointer" }}>
+                <Upload size={16} /> {isUploading ? "Uploading & Attaching..." : "Choose File to Attach & Open"}
+                <input type="file" accept=".xlsx,.xls,.csv,.pdf,image/*" disabled={isUploading} style={{ display: "none" }} onChange={handleAttachFile} />
+              </label>
+              {uploadError && <div style={{ color: "var(--danger)", fontSize: "0.8rem", marginTop: "8px" }}>{uploadError}</div>}
+            </div>
+          )}
+        </div>
+
+        {/* Footer Actions */}
+        <div style={{ borderTop: "1px solid var(--border-glass)", paddingTop: "14px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+          <div>
+            <label className="btn btn-secondary btn-sm" style={{ display: "inline-flex", alignItems: "center", gap: "6px", cursor: isUploading ? "wait" : "pointer" }}>
+              <Upload size={14} /> {isUploading ? "Uploading..." : "Replace / Re-upload File"}
+              <input type="file" accept=".xlsx,.xls,.csv,.pdf,image/*" disabled={isUploading} style={{ display: "none" }} onChange={handleAttachFile} />
+            </label>
+          </div>
+          <div style={{ display: "flex", gap: "10px" }}>
+            {currentData && (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => downloadOrOpenBlob(currentData, fileName)}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+                >
+                  <Download size={14} /> Download / Open
+                </button>
+                {(isImage || isPdf) && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => window.open(currentData, "_blank")}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+                  >
+                    <ExternalLink size={14} /> Open in New Tab
+                  </button>
+                )}
+              </>
+            )}
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // 4. EDIT CARGO MODAL
 function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = [], onAddCargoCompany, onClose, onSave }) {
   useModalEscape(onClose);
@@ -7558,9 +7849,17 @@ function PendingDocumentsPanel({
                   <div style={{ background: "rgba(0,0,0,0.15)", borderRadius: "8px", padding: "12px" }}>
                     <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px", fontWeight: 600 }}>CARGO PACKING LIST</div>
                     {cargo.packingListFile ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", flexWrap: "wrap" }}>
                         <span style={{ color: "var(--success)" }}>✓</span>
-                        <span className="doc-link">📄 {cargo.packingListFile}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDocument(cargo, "Packing List", cargo.packingListFile, cargo.packingListData, "packingListFile", "packingListData")}
+                          title={`Click to open ${cargo.packingListFile}`}
+                          className="doc-link-btn"
+                          style={{ background: "rgba(56, 189, 248, 0.1)", border: "1px solid rgba(56, 189, 248, 0.3)", padding: "2px 8px", borderRadius: "4px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px", color: "var(--primary, #38bdf8)", fontSize: "0.82rem", fontWeight: 500 }}
+                        >
+                          📄 {cargo.packingListFile} <ExternalLink size={11} />
+                        </button>
                         <label style={{ cursor: "pointer", color: "var(--primary)", fontSize: "0.75rem" }}>
                           Replace
                           <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" style={{ display: "none" }}
@@ -7580,9 +7879,17 @@ function PendingDocumentsPanel({
                   <div style={{ background: "rgba(0,0,0,0.15)", borderRadius: "8px", padding: "12px" }}>
                     <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px", fontWeight: 600 }}>INVOICE</div>
                     {cargo.invoiceFile ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", flexWrap: "wrap" }}>
                         <span style={{ color: "var(--success)" }}>✓</span>
-                        <span className="doc-link">📄 {cargo.invoiceFile}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDocument(cargo, "Invoice", cargo.invoiceFile, cargo.invoiceData, "invoiceFile", "invoiceData")}
+                          title={`Click to open ${cargo.invoiceFile}`}
+                          className="doc-link-btn"
+                          style={{ background: "rgba(56, 189, 248, 0.1)", border: "1px solid rgba(56, 189, 248, 0.3)", padding: "2px 8px", borderRadius: "4px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px", color: "var(--primary, #38bdf8)", fontSize: "0.82rem", fontWeight: 500 }}
+                        >
+                          📄 {cargo.invoiceFile} <ExternalLink size={11} />
+                        </button>
                         <label style={{ cursor: "pointer", color: "var(--primary)", fontSize: "0.75rem" }}>
                           Replace
                           <input type="file" accept=".pdf,.xlsx,.xls,image/*" style={{ display: "none" }}
@@ -7602,9 +7909,17 @@ function PendingDocumentsPanel({
                   <div style={{ background: "rgba(0,0,0,0.15)", borderRadius: "8px", padding: "12px" }}>
                     <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px", fontWeight: 600 }}>CARGO RECEIPT</div>
                     {cargo.cargoReceiptFile ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", flexWrap: "wrap" }}>
                         <span style={{ color: "var(--success)" }}>✓</span>
-                        <span className="doc-link">📄 {cargo.cargoReceiptFile}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDocument(cargo, "Cargo Receipt", cargo.cargoReceiptFile, cargo.cargoReceiptData, "cargoReceiptFile", "cargoReceiptData")}
+                          title={`Click to open ${cargo.cargoReceiptFile}`}
+                          className="doc-link-btn"
+                          style={{ background: "rgba(56, 189, 248, 0.1)", border: "1px solid rgba(56, 189, 248, 0.3)", padding: "2px 8px", borderRadius: "4px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px", color: "var(--primary, #38bdf8)", fontSize: "0.82rem", fontWeight: 500 }}
+                        >
+                          📄 {cargo.cargoReceiptFile} <ExternalLink size={11} />
+                        </button>
                         <label style={{ cursor: "pointer", color: "var(--primary)", fontSize: "0.75rem" }}>
                           Replace
                           <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" style={{ display: "none" }}

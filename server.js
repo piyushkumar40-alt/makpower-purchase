@@ -675,13 +675,17 @@ async function setupPgDatabase() {
         "cargoShippingDate" TEXT,
         "cargoEta" TEXT,
         "packingListFile" TEXT,
+        "packingListData" TEXT,
         "invoiceFile" TEXT,
+        "invoiceData" TEXT,
         "cargoReceiptFile" TEXT,
         "cargoReceiptData" TEXT,
         "isMaterialRec" TEXT,
         "receivedDate" TEXT,
         "currency" TEXT
       );
+      ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "packingListData" TEXT;
+      ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "invoiceData" TEXT;
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoReceiptFile" TEXT;
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoReceiptData" TEXT;
     `);
@@ -3412,8 +3416,8 @@ app.post("/api/cargos", async (req, res) => {
         INSERT INTO cargos (
           "id", "vendorId", "cargoOrderDate", "cargoDetail", "cargoPrice", "cargoPriceUom",
           "cbmPackingList", "totalCargoPrice", "modeOfTransport", "cargoShippingDate", "cargoEta",
-          "packingListFile", "invoiceFile", "cargoReceiptFile", "cargoReceiptData", "isMaterialRec", "receivedDate", "currency"
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+          "packingListFile", "packingListData", "invoiceFile", "invoiceData", "cargoReceiptFile", "cargoReceiptData", "isMaterialRec", "receivedDate", "currency"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
         ON CONFLICT ("id") DO UPDATE SET
           "vendorId" = EXCLUDED."vendorId",
           "cargoOrderDate" = EXCLUDED."cargoOrderDate",
@@ -3426,9 +3430,11 @@ app.post("/api/cargos", async (req, res) => {
           "cargoShippingDate" = EXCLUDED."cargoShippingDate",
           "cargoEta" = EXCLUDED."cargoEta",
           "packingListFile" = EXCLUDED."packingListFile",
+          "packingListData" = COALESCE(NULLIF(EXCLUDED."packingListData", ''), cargos."packingListData"),
           "invoiceFile" = EXCLUDED."invoiceFile",
+          "invoiceData" = COALESCE(NULLIF(EXCLUDED."invoiceData", ''), cargos."invoiceData"),
           "cargoReceiptFile" = EXCLUDED."cargoReceiptFile",
-          "cargoReceiptData" = EXCLUDED."cargoReceiptData",
+          "cargoReceiptData" = COALESCE(NULLIF(EXCLUDED."cargoReceiptData", ''), cargos."cargoReceiptData"),
           "isMaterialRec" = EXCLUDED."isMaterialRec",
           "receivedDate" = EXCLUDED."receivedDate",
           "currency" = EXCLUDED."currency"
@@ -3439,7 +3445,7 @@ app.post("/api/cargos", async (req, res) => {
         c.cbmPackingList === "" ? null : parseFloat(c.cbmPackingList),
         c.totalCargoPrice === "" ? null : parseFloat(c.totalCargoPrice),
         c.modeOfTransport || "", c.cargoShippingDate || "", c.cargoEta || "",
-        c.packingListFile || "", c.invoiceFile || "", c.cargoReceiptFile || "", c.cargoReceiptData || "", c.isMaterialRec || "No", c.receivedDate || "", c.currency || "RMB"
+        c.packingListFile || "", c.packingListData || "", c.invoiceFile || "", c.invoiceData || "", c.cargoReceiptFile || "", c.cargoReceiptData || "", c.isMaterialRec || "No", c.receivedDate || "", c.currency || "RMB"
       ];
       await pool.query(query, values);
       res.json({ success: true });

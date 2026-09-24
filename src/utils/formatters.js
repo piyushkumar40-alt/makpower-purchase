@@ -390,3 +390,86 @@ export const getPurchaserDisplayName = (r, purchasers = []) => {
   }
   return "Himanshi Wadhwa";
 };
+
+/**
+ * Opens or downloads a document given its fileData (URL or Base64 Data URI) and fileName.
+ * - For images & PDFs: opens in a new tab for instant viewing.
+ * - For Excel (.xlsx, .xls), CSV, or other binary files: triggers a browser download so Excel or the OS opens it.
+ */
+export const downloadOrOpenBlob = (fileData, fileName = "document") => {
+  if (!fileData) return false;
+
+  const lowerName = String(fileName || "").toLowerCase();
+
+  // 1. HTTP or HTTPS web URL (e.g. Cloudinary CDN)
+  if (typeof fileData === "string" && (fileData.startsWith("http://") || fileData.startsWith("https://"))) {
+    const isImage = /\.(png|jpe?g|gif|webp|svg|bmp)(\?.*)?$/i.test(lowerName) || /\.(png|jpe?g|gif|webp|svg|bmp)(\?.*)?$/i.test(fileData);
+    const isPdf = /\.pdf(\?.*)?$/i.test(lowerName) || /\.pdf(\?.*)?$/i.test(fileData);
+
+    if (isImage || isPdf) {
+      window.open(fileData, "_blank", "noopener,noreferrer");
+    } else {
+      // Trigger download for Excel / spreadsheets / binary docs
+      const a = document.createElement("a");
+      a.href = fileData;
+      a.target = "_blank";
+      a.download = fileName || "document";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+    return true;
+  }
+
+  // 2. Base64 Data URI
+  if (typeof fileData === "string" && fileData.startsWith("data:")) {
+    try {
+      const parts = fileData.split(",");
+      const mimeMatch = parts[0].match(/:(.*?);/);
+      let mime = mimeMatch ? mimeMatch[1] : "";
+
+      if (!mime || mime === "application/octet-stream") {
+        if (lowerName.endsWith(".xlsx")) mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        else if (lowerName.endsWith(".xls")) mime = "application/vnd.ms-excel";
+        else if (lowerName.endsWith(".csv")) mime = "text/csv";
+        else if (lowerName.endsWith(".pdf")) mime = "application/pdf";
+        else if (lowerName.endsWith(".png")) mime = "image/png";
+        else if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) mime = "image/jpeg";
+        else if (lowerName.endsWith(".webp")) mime = "image/webp";
+        else mime = "application/octet-stream";
+      }
+
+      const byteCharacters = atob(parts[1]);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: mime });
+      const blobUrl = URL.createObjectURL(blob);
+
+      const isImage = mime.startsWith("image/");
+      const isPdf = mime === "application/pdf";
+
+      if (isImage || isPdf) {
+        window.open(blobUrl, "_blank");
+      } else {
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = fileName || "download";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
+      return true;
+    } catch (e) {
+      console.error("Error opening base64 data:", e);
+      window.open(fileData, "_blank");
+      return true;
+    }
+  }
+
+  return false;
+};

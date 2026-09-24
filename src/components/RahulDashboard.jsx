@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { LogOut, Filter, CheckSquare, Square, CheckCircle, PackageOpen, Download, RotateCcw } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
 import { useSortableData } from "../utils/useSortableData";
-import { getPurchaserDisplayName } from "../utils/formatters";
+import { getPurchaserDisplayName, downloadOrOpenBlob } from "../utils/formatters";
 
 export default function RahulDashboard({ currentUser, requests, vendors, cargos, purchasers = [], onBatchUpdateRequests, onLogout }) {
   const getPurchaserName = (r) => getPurchaserDisplayName(r, purchasers);
@@ -340,19 +340,37 @@ export default function RahulDashboard({ currentUser, requests, vendors, cargos,
                         {cargo && (cargo.packingListFile || cargo.invoiceFile || cargo.cargoReceiptFile) ? (
                           <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                             {cargo.packingListFile && (
-                              <span className="doc-link" style={{ fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "2px" }}>
+                              <button
+                                type="button"
+                                onClick={() => downloadOrOpenBlob(cargo.packingListData, cargo.packingListFile)}
+                                className="doc-link"
+                                style={{ background: "none", border: "none", padding: 0, cursor: cargo.packingListData ? "pointer" : "default", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "2px", color: "var(--primary)", textDecoration: cargo.packingListData ? "underline" : "none" }}
+                                title={cargo.packingListData ? `Open ${cargo.packingListFile}` : cargo.packingListFile}
+                              >
                                 📄 PL: {cargo.packingListFile.length > 12 ? `${cargo.packingListFile.substring(0, 10)}...` : cargo.packingListFile}
-                              </span>
+                              </button>
                             )}
                             {cargo.invoiceFile && (
-                              <span className="doc-link" style={{ fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "2px" }}>
+                              <button
+                                type="button"
+                                onClick={() => downloadOrOpenBlob(cargo.invoiceData, cargo.invoiceFile)}
+                                className="doc-link"
+                                style={{ background: "none", border: "none", padding: 0, cursor: cargo.invoiceData ? "pointer" : "default", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "2px", color: "var(--primary)", textDecoration: cargo.invoiceData ? "underline" : "none" }}
+                                title={cargo.invoiceData ? `Open ${cargo.invoiceFile}` : cargo.invoiceFile}
+                              >
                                 📄 INV: {cargo.invoiceFile.length > 12 ? `${cargo.invoiceFile.substring(0, 10)}...` : cargo.invoiceFile}
-                              </span>
+                              </button>
                             )}
                             {cargo.cargoReceiptFile && (
-                              <span className="doc-link" style={{ fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "2px" }}>
+                              <button
+                                type="button"
+                                onClick={() => downloadOrOpenBlob(cargo.cargoReceiptData, cargo.cargoReceiptFile)}
+                                className="doc-link"
+                                style={{ background: "none", border: "none", padding: 0, cursor: cargo.cargoReceiptData ? "pointer" : "default", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "2px", color: "var(--primary)", textDecoration: cargo.cargoReceiptData ? "underline" : "none" }}
+                                title={cargo.cargoReceiptData ? `Open ${cargo.cargoReceiptFile}` : cargo.cargoReceiptFile}
+                              >
                                 📄 CR: {cargo.cargoReceiptFile.length > 12 ? `${cargo.cargoReceiptFile.substring(0, 10)}...` : cargo.cargoReceiptFile}
-                              </span>
+                              </button>
                             )}
                           </div>
                         ) : (
