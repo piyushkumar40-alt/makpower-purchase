@@ -23,6 +23,7 @@ import {
   CheckSquare
 } from "lucide-react";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
+import { isRequestForUser, getPurchaserDisplayName } from "../utils/formatters";
 
 export function getOrderStage(r, cargo) {
   if (r.status === "Cancelled") {
@@ -150,8 +151,8 @@ export default function MasterOrderTracker({
     if (isAdmin || isPurchaseManager) {
       return requests || [];
     }
-    return (requests || []).filter(r => r.purchaserId === currentUser?.id);
-  }, [requests, isAdmin, isPurchaseManager, currentUser]);
+    return (requests || []).filter(r => isRequestForUser(r, currentUser, purchasers));
+  }, [requests, isAdmin, isPurchaseManager, currentUser, purchasers]);
 
   const vendorMap = useMemo(() => {
     const map = {};
@@ -175,7 +176,7 @@ export default function MasterOrderTracker({
     return accessibleRequests.map(r => {
       const cargo = r.cargoId ? cargoMap[r.cargoId] : null;
       const vendor = r.vendorId ? vendorMap[r.vendorId] : null;
-      const purchaser = r.purchaserId ? purchaserMap[r.purchaserId] : null;
+      const purchaser = (r.purchaserId && purchaserMap[r.purchaserId]) ? purchaserMap[r.purchaserId] : { id: r.purchaserId || "u-himanshi", name: getPurchaserDisplayName(r, purchasers) };
       const stage = getOrderStage(r, cargo);
       const effectiveOrderDate = r.orderDate || (r.createdAt ? r.createdAt.split("T")[0] : "") || r.requiredByDate || "";
       const effectiveQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
@@ -200,7 +201,8 @@ export default function MasterOrderTracker({
   const matchesFilter = (r, excludeKey = "") => {
     // 1. Purchaser Filter
     if (excludeKey !== "purchaser" && (isAdmin || isPurchaseManager) && purchaserFilter !== "all") {
-      if (r.purchaserId !== purchaserFilter) return false;
+      const targetPurchaser = (purchasers || []).find(p => p.id === purchaserFilter) || { id: purchaserFilter };
+      if (!isRequestForUser(r, targetPurchaser, purchasers)) return false;
     }
 
     // 2. Stage Filter
@@ -1227,8 +1229,8 @@ export default function MasterOrderTracker({
                             className="badge" 
                             style={{ 
                               fontSize: "0.72rem", 
-                              background: r.purchaserId === currentUser?.id ? "rgba(34, 197, 94, 0.12)" : "rgba(56, 189, 248, 0.12)", 
-                              color: r.purchaserId === currentUser?.id ? "var(--success)" : "var(--primary)" 
+                              background: isRequestForUser(r, currentUser, purchasers) ? "rgba(34, 197, 94, 0.12)" : "rgba(56, 189, 248, 0.12)", 
+                              color: isRequestForUser(r, currentUser, purchasers) ? "var(--success)" : "var(--primary)" 
                             }}
                           >
                             👤 {pName}

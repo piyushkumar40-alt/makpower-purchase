@@ -27,6 +27,15 @@ export const initialUsers = [
     status: "active"
   },
   {
+    id: "u-himanshi",
+    name: "Himanshi Wadhwa",
+    email: "himanshi@demo.com",
+    password: "Demo#Himanshi2026!",
+    role: "purchaser",
+    designation: "Purchaser",
+    status: "active"
+  },
+  {
     id: "u-nitin",
     name: "Nitin Kumar",
     email: "nitin@demo.com",

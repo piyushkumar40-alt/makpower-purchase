@@ -10,10 +10,12 @@ import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
-import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName } from "../utils/formatters";
+import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName } from "../utils/formatters";
 import { useModalEscape } from "../utils/useModalEscape";
 import MasterOrderTracker from "./MasterOrderTracker";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
+
+export { isRequestForUser, isVendorForUser, getPurchaserDisplayName };
 
 // ==================== TOP-LEVEL UTILITIES & METRIC CALCULATION HELPERS ====================
 export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange, placeholder, accentColor = "var(--primary)" }) {
@@ -335,11 +337,8 @@ export default function PurchaserDashboard({
 
   // Filter vendors by current user to enforce vendor isolation (e.g. Himanshi's vendors shouldn't be in Anees's dashboard)
   const accessibleVendors = useMemo(() => {
-    if (!currentUser || currentUser.role === "superadmin" || currentUser.role === "owner") {
-      return vendors;
-    }
-    return vendors.filter(v => Array.isArray(v.purchaserIds) && v.purchaserIds.includes(currentUser.id));
-  }, [vendors, currentUser]);
+    return (vendors || []).filter(v => isVendorForUser(v, currentUser, requests));
+  }, [vendors, currentUser, requests]);
 
   React.useEffect(() => {
     localStorage.setItem("makpower_purchaser_tab", activeTab);
@@ -599,6 +598,7 @@ export default function PurchaserDashboard({
 
       toUpdate.push({
         ...r,
+        purchaserId: r.purchaserId || currentUser?.id,
         vendorId: finalVendorId,
         vendorOrderQuantity: finalVendorOrderQty,
         currency: finalCurrency,
@@ -633,7 +633,7 @@ export default function PurchaserDashboard({
 
   // Filter requests based on user role (Admin sees all, Purchaser sees their own)
   const isSearchAdmin = currentUser?.role === "superadmin";
-  const rawMyRequests = isSearchAdmin ? requests : (requests || []).filter(r => r.purchaserId === currentUser?.id);
+  const rawMyRequests = isSearchAdmin ? requests : (requests || []).filter(r => isRequestForUser(r, currentUser, purchasers));
 
   // Helper: check if target date is missed
   const isTargetDateMissed = (r) => {
@@ -660,9 +660,9 @@ export default function PurchaserDashboard({
       if (cargoItems.length === 0) return false; // Filter out empty/ghost cargos with 0 items
       if (isSearchAdmin || isAdmin) return true;
       // For individual purchaser: only cargos containing their items
-      return cargoItems.some(r => r.purchaserId === currentUser?.id);
+      return cargoItems.some(r => isRequestForUser(r, currentUser, purchasers));
     });
-  }, [cargos, requests, isSearchAdmin, isAdmin, currentUser]);
+  }, [cargos, requests, isSearchAdmin, isAdmin, currentUser, purchasers]);
 
   // Step 1: Unpriced pending requests sorting at top level
   const step1PendingReqs = useMemo(() => {
@@ -870,28 +870,27 @@ export default function PurchaserDashboard({
   // Step 3 Planner candidate requests (Cross-purchaser for Purchase Manager and Admin)
   const plannerCandidateRequests = useMemo(() => {
     if (isPurchaseManager || currentUser?.role === "superadmin") {
-      return (requests || []).filter(r => 
-        r.priceRmb && !r.cargoId && r.status !== "Cancelled" &&
-        (plannerPurchaserFilter === "all" || r.purchaserId === plannerPurchaserFilter)
-      );
+      return (requests || []).filter(r => {
+        if (!r.priceRmb || r.cargoId || r.status === "Cancelled") return false;
+        if (plannerPurchaserFilter === "all") return true;
+        const targetPurchaser = (purchasers || []).find(p => p.id === plannerPurchaserFilter) || { id: plannerPurchaserFilter };
+        return isRequestForUser(r, targetPurchaser, purchasers);
+      });
     }
     return (myRequests || []).filter(r => r.priceRmb && !r.cargoId && r.status !== "Cancelled");
-  }, [requests, myRequests, isPurchaseManager, currentUser, plannerPurchaserFilter]);
+  }, [requests, myRequests, isPurchaseManager, currentUser, plannerPurchaserFilter, purchasers]);
 
   // Step 3 Vendors available in dropdown (filtered to selected purchaser, sorted by ready order count)
   const plannerAvailableVendors = useMemo(() => {
-    const effectivePurchaserId = (isPurchaseManager || currentUser?.role === "superadmin")
-      ? plannerPurchaserFilter
-      : currentUser?.id;
+    const targetPurchaser = (isPurchaseManager || currentUser?.role === "superadmin")
+      ? (plannerPurchaserFilter === "all" ? null : ((purchasers || []).find(p => p.id === plannerPurchaserFilter) || { id: plannerPurchaserFilter }))
+      : currentUser;
 
     return (vendors || [])
       .filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive")
       .filter(v => {
-        if (!effectivePurchaserId || effectivePurchaserId === "all") return true;
-        const isAssigned = Array.isArray(v.purchaserIds) && v.purchaserIds.includes(effectivePurchaserId);
-        const hasCandidateOrders = plannerCandidateRequests.some(r => r.vendorId === v.id);
-        const hasAnyOrders = (requests || []).some(r => r.purchaserId === effectivePurchaserId && r.vendorId === v.id);
-        return isAssigned || hasCandidateOrders || hasAnyOrders;
+        if (!targetPurchaser) return true;
+        return isVendorForUser(v, targetPurchaser, requests);
       })
       .sort((a, b) => {
         const countA = plannerCandidateRequests.filter(r => r.vendorId === a.id).length;
@@ -899,7 +898,7 @@ export default function PurchaserDashboard({
         if (countB !== countA) return countB - countA;
         return (a.name || "").localeCompare(b.name || "");
       });
-  }, [vendors, isPurchaseManager, currentUser, plannerPurchaserFilter, plannerCandidateRequests, requests]);
+  }, [vendors, isPurchaseManager, currentUser, plannerPurchaserFilter, plannerCandidateRequests, requests, purchasers]);
 
   // Step 4: Cargo Pickup sorting
   const rawCpItems = useMemo(() => {
@@ -915,10 +914,10 @@ export default function PurchaserDashboard({
     const base = isSearchAdmin
       ? requests
       : isPurchaseManager
-        ? (requests || []).filter(r => r.purchaserId === currentUser?.id || r.cargoReceivedBy === currentUser?.id)
+        ? (requests || []).filter(r => isRequestForUser(r, currentUser, purchasers) || r.cargoReceivedBy === currentUser?.id)
         : myRequests;
     return (base || []).filter(r => r.isMaterialRec === "Yes");
-  }, [requests, myRequests, isSearchAdmin, isPurchaseManager, currentUser]);
+  }, [requests, myRequests, isSearchAdmin, isPurchaseManager, currentUser, purchasers]);
   const { items: sortedReceivedRequests, copyToastMessage: receivedToast, RenderSortHeader: RenderReceivedSortHeader } = useSortableData(rawReceivedRequests);
 
   // Cancelled Orders sorting
@@ -2742,11 +2741,11 @@ export default function PurchaserDashboard({
                                   {r.model}
                                 </button>
                               </td>
-                              <td>
-                                <span className="badge" style={{ fontSize: "0.72rem", background: r.purchaserId === currentUser?.id ? "rgba(34, 197, 94, 0.12)" : "rgba(56, 189, 248, 0.12)", color: r.purchaserId === currentUser?.id ? "var(--success)" : "var(--primary)", border: r.purchaserId === currentUser?.id ? "1px solid rgba(34, 197, 94, 0.3)" : "1px solid rgba(56, 189, 248, 0.3)", fontWeight: 600 }}>
-                                  {purchasers.find(p => p.id === r.purchaserId)?.name || r.purchaserName || "Purchaser"}
-                                </span>
-                              </td>
+                                <td>
+                                  <span className="badge" style={{ fontSize: "0.72rem", background: isRequestForUser(r, currentUser, purchasers) ? "rgba(34, 197, 94, 0.12)" : "rgba(56, 189, 248, 0.12)", color: isRequestForUser(r, currentUser, purchasers) ? "var(--success)" : "var(--primary)", border: isRequestForUser(r, currentUser, purchasers) ? "1px solid rgba(34, 197, 94, 0.3)" : "1px solid rgba(56, 189, 248, 0.3)", fontWeight: 600 }}>
+                                    {getPurchaserDisplayName(r, purchasers)}
+                                  </span>
+                                </td>
                               <td>
                                 <div><strong>{r.vendorOrderQuantity || r.orderQuantity}</strong> Pcs</div>
                                 {r.vendorOrderQuantity && r.vendorOrderQuantity !== r.orderQuantity && (
@@ -4004,7 +4003,7 @@ export default function PurchaserDashboard({
                   // Isolate items: only show items belonging to this purchaser if not admin
                   const cargoItems = (isSearchAdmin || isAdmin)
                     ? requests.filter(r => r.cargoId === cargo.id && r.status !== "Cancelled")
-                    : requests.filter(r => r.cargoId === cargo.id && r.purchaserId === currentUser?.id && r.status !== "Cancelled");
+                    : requests.filter(r => r.cargoId === cargo.id && isRequestForUser(r, currentUser, purchasers) && r.status !== "Cancelled");
                   
                   if (cargoItems.length === 0) return null;
                   
@@ -4139,8 +4138,8 @@ export default function PurchaserDashboard({
                                     <span style={{ marginLeft: "10px", color: "var(--text-muted)", fontSize: "0.82rem" }}>
                                       📅 Order Date: <strong style={{ color: "var(--text-main)" }}>{item.orderDate || "—"}</strong>
                                     </span>
-                                    <span className="badge" style={{ marginLeft: "8px", fontSize: "0.7rem", background: item.purchaserId === currentUser?.id ? "rgba(34, 197, 94, 0.12)" : "rgba(56, 189, 248, 0.12)", color: item.purchaserId === currentUser?.id ? "var(--success)" : "var(--primary)" }}>
-                                      Purchaser: {purchasers.find(p => p.id === item.purchaserId)?.name || item.purchaserName || "Purchaser"}
+                                    <span className="badge" style={{ marginLeft: "8px", fontSize: "0.7rem", background: isRequestForUser(item, currentUser, purchasers) ? "rgba(34, 197, 94, 0.12)" : "rgba(56, 189, 248, 0.12)", color: isRequestForUser(item, currentUser, purchasers) ? "var(--success)" : "var(--primary)" }}>
+                                      Purchaser: {getPurchaserDisplayName(item, purchasers)}
                                     </span>
                                     <button
                                       type="button"
@@ -4278,9 +4277,9 @@ export default function PurchaserDashboard({
                                 >
                                   {r.model}
                                 </button>
-                                {(isSearchAdmin || isPurchaseManager) && r.purchaserId && (
+                                {(isSearchAdmin || isPurchaseManager) && (
                                   <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                                    Purchaser: <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{purchasers.find(p => p.id === r.purchaserId)?.name || r.purchaserId}</span>
+                                    Purchaser: <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{getPurchaserDisplayName(r, purchasers)}</span>
                                   </div>
                                 )}
                               </td>
@@ -5558,9 +5557,9 @@ function ReceiveCargoModal({ cargo, requests, purchasers = [], onClose, onConfir
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                         <strong style={{ color: "var(--text-main)", fontSize: "0.92rem" }}>{r.model}</strong>
-                        {r.purchaserId && (
+                        {(r.purchaserId || r.purchaserName) && (
                           <span style={{ fontSize: "0.72rem", background: "rgba(56,189,248,0.12)", color: "#38bdf8", padding: "1px 6px", borderRadius: "4px", border: "1px solid rgba(56,189,248,0.25)" }}>
-                            👤 {purchasers.find(p => p.id === r.purchaserId)?.name || r.purchaserId}
+                            👤 {getPurchaserDisplayName(r, purchasers)}
                           </span>
                         )}
                       </div>
@@ -7720,7 +7719,7 @@ function MyVendorsPanel({ currentUser, vendors, onAddVendor, onUpdateVendor, onR
   const [error, setError] = useState("");
   const [showInactive, setShowInactive] = useState(false);
 
-  const myVendors = vendors.filter(v => v.purchaserIds?.includes(currentUser?.id));
+  const myVendors = vendors.filter(v => isVendorForUser(v, currentUser, requests));
   const displayedVendors = myVendors.filter(v => showInactive || v.status !== "Inactive");
 
   const handleSubmit = (e) => {
@@ -8035,7 +8034,7 @@ export function VendorDetailModal({
   const [success, setSuccess] = useState("");
 
   const isAdmin = currentUser?.role === "superadmin";
-  const vendorRequests = (requests || []).filter(r => r && r.vendorId === vendor.id && (isAdmin || r.purchaserId === currentUser?.id));
+  const vendorRequests = (requests || []).filter(r => r && r.vendorId === vendor.id && (isAdmin || isRequestForUser(r, currentUser, purchasers)));
 
   // Calculate Metrics
   const metrics = calculateVendorMetrics(vendor, requests || []);

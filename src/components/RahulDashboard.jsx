@@ -2,17 +2,10 @@ import React, { useState } from "react";
 import { LogOut, Filter, CheckSquare, Square, CheckCircle, PackageOpen, Download, RotateCcw } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
 import { useSortableData } from "../utils/useSortableData";
+import { getPurchaserDisplayName } from "../utils/formatters";
 
 export default function RahulDashboard({ currentUser, requests, vendors, cargos, purchasers = [], onBatchUpdateRequests, onLogout }) {
-  const getPurchaserName = (r) => {
-    if (r.purchaserName) return r.purchaserName;
-    if (r.assignedPurchaser) return r.assignedPurchaser;
-    if (r.purchaserId) {
-      const found = (purchasers || []).find(p => p.id === r.purchaserId);
-      if (found) return found.name;
-    }
-    return "Himanshi Wadhwa";
-  };
+  const getPurchaserName = (r) => getPurchaserDisplayName(r, purchasers);
 
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem("makpower_rahul_tab") || "pending";

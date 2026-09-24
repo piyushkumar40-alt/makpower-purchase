@@ -17,7 +17,7 @@ import SchemeManagementStudio from "./SchemeManagementStudio";
 import { QuickCreateDesignationModal, QuickCreateVendorModal, QuickCreateCargoCompanyModal, QuickCreateItemModal, QuickCreateUserModal } from "./QuickCreateModals";
 import { useLoading } from "../context/LoadingContext";
 import { initialUsers } from "../mockData";
-import { downloadCsv } from "../utils/formatters";
+import { downloadCsv, isRequestForUser } from "../utils/formatters";
 
 export default function SuperAdminDashboard({
   users = [],
@@ -1483,7 +1483,7 @@ export default function SuperAdminDashboard({
                     };
                     const isPurchaser = staff.role === "purchaser" || staff.role === "purchase_manager";
                     const isCrmStaff = staff.role === "crm" || staff.role === "asm" || staff.role === "tsm" || staff.role === "rsm";
-                    const activeRequests = isPurchaser ? requests.filter(r => r.purchaserId === staff.id && r.isMaterialRec !== "Yes").length : 0;
+                    const activeRequests = isPurchaser ? requests.filter(r => isRequestForUser(r, staff, effectiveUsers) && r.isMaterialRec !== "Yes").length : 0;
                     return (
                       <div key={staff.id} className="glass-panel" style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: "10px", background: "rgba(255, 255, 255, 0.01)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

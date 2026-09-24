@@ -3,17 +3,10 @@ import { LogOut, Filter, CheckSquare, Square, CheckCircle, PackageOpen, Eye, X }
 import ItemMasterView from "./ItemMasterView";
 import { getEffectivePhoto } from "./PurchaserDashboard";
 import { useSortableData } from "../utils/useSortableData";
+import { getPurchaserDisplayName } from "../utils/formatters";
 
 export default function NitinDashboard({ currentUser, requests, vendors, cargos, items = [], purchasers = [], onBatchUpdateRequests, onLogout }) {
-  const getPurchaserName = (r) => {
-    if (r.purchaserName) return r.purchaserName;
-    if (r.assignedPurchaser) return r.assignedPurchaser;
-    if (r.purchaserId) {
-      const found = (purchasers || []).find(p => p.id === r.purchaserId);
-      if (found) return found.name;
-    }
-    return "Himanshi Wadhwa";
-  };
+  const getPurchaserName = (r) => getPurchaserDisplayName(r, purchasers);
 
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem("makpower_nitin_tab") || "pending";

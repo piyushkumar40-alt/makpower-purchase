@@ -23,7 +23,7 @@ import {
   TRACKABLE_MODULES 
 } from "./utils/userIntentionTracker";
 import { isDateInBetween } from "./components/DateRangeFilter";
-import { cleanCategoryName } from "./utils/formatters";
+import { cleanCategoryName, isRequestForUser } from "./utils/formatters";
 import { useLoading } from "./context/LoadingContext";
 import "./utils/useModalEscape";
 
@@ -576,7 +576,7 @@ export default function App() {
     // Cross-purchaser cargo assignment & warehouse receipt notifications
     if (currentUser?.id) {
       (requests || []).forEach(r => {
-        if (r.purchaserId === currentUser.id && r.cargoAssignedBy && r.cargoAssignedBy !== currentUser.id) {
+        if (isRequestForUser(r, currentUser, users) && r.cargoAssignedBy && r.cargoAssignedBy !== currentUser.id) {
           const notifId = `notif_cargo_assigned_${r.id}_${r.cargoId || "assigned"}`;
           if (!list.some(n => n.id === notifId)) {
             list.push({
@@ -590,7 +590,7 @@ export default function App() {
             });
           }
         }
-        if (r.purchaserId === currentUser.id && r.isMaterialRec === "Yes" && r.cargoReceivedBy && r.cargoReceivedBy !== currentUser.id) {
+        if (isRequestForUser(r, currentUser, users) && r.isMaterialRec === "Yes" && r.cargoReceivedBy && r.cargoReceivedBy !== currentUser.id) {
           const notifId = `notif_cargo_received_${r.id}_${r.cargoId || "received"}`;
           if (!list.some(n => n.id === notifId)) {
             list.push({
@@ -1219,7 +1219,7 @@ export default function App() {
     });
 
     const otherPurchaserNames = Array.from(new Set(
-      updatedItems.filter(r => r.purchaserId && r.purchaserId !== currentUser?.id).map(r => r.purchaserName || users.find(u => u.id === r.purchaserId)?.name || "Other Purchaser")
+      updatedItems.filter(r => !isRequestForUser(r, currentUser, users)).map(r => r.purchaserName || users.find(u => u.id === r.purchaserId)?.name || "Other Purchaser")
     ));
     const behalfText = otherPurchaserNames.length > 0 ? ` on behalf of ${otherPurchaserNames.join(", ")}` : "";
 
@@ -1293,7 +1293,7 @@ export default function App() {
     }
 
     const otherPurchaserNames = Array.from(new Set(
-      updatedItems.filter(r => r.purchaserId && r.purchaserId !== currentUser?.id).map(r => r.purchaserName || users.find(u => u.id === r.purchaserId)?.name || "Other Purchaser")
+      updatedItems.filter(r => !isRequestForUser(r, currentUser, users)).map(r => r.purchaserName || users.find(u => u.id === r.purchaserId)?.name || "Other Purchaser")
     ));
     const behalfText = (isNowReceived && otherPurchaserNames.length > 0) ? ` on behalf of ${otherPurchaserNames.join(", ")}` : "";
 

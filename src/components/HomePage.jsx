@@ -5,6 +5,7 @@ import {
   Sparkles, Calendar, FileText, Activity, Layers, AlertCircle
 } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
+import { isRequestForUser } from "../utils/formatters";
 
 export default function HomePage({
   currentUser,
@@ -50,7 +51,7 @@ export default function HomePage({
   const activeRequests = requests.filter(r => r.status !== "Cancelled");
 
   // Purchaser-specific data
-  const myRequests = activeRequests.filter(r => r.purchaserId === currentUser?.id);
+  const myRequests = activeRequests.filter(r => isRequestForUser(r, currentUser, users));
   
   // Upcoming tasks for Purchaser (required/EDD within 14 days or pending action)
   const upcomingTasks = myRequests.filter(r => {
@@ -73,7 +74,7 @@ export default function HomePage({
   // Person-wise delayed task breakdown for PC / Coordinator
   const activePurchasers = users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active");
   const personWiseTaskStats = activePurchasers.map(p => {
-    const pReqs = activeRequests.filter(r => r.purchaserId === p.id);
+    const pReqs = activeRequests.filter(r => isRequestForUser(r, p, activePurchasers));
     const total = pReqs.length;
     const received = pReqs.filter(r => r.isMaterialRec === "Yes").length;
     const pending = pReqs.filter(r => r.isMaterialRec !== "Yes");

@@ -87,8 +87,9 @@ export default function RequesterForm({
   const getTodayDate = () => new Date().toISOString().split("T")[0];
   const [defaultOrderDate, setDefaultOrderDate] = useState(getTodayDate);
 
-  // Determine default purchaser based on logged-in user
-  const defaultPurchaserId = currentUser?.role === "purchaser" ? currentUser.id : (purchasers[0]?.id || "");
+  // Determine default purchaser based on logged-in user (defaults to Himanshi Wadhwa for requisitions)
+  const himanshiPurchaser = (purchasers || []).find(p => p.id === "u-himanshi" || (p.name && p.name.toLowerCase().includes("himanshi")));
+  const defaultPurchaserId = currentUser?.role === "purchaser" ? currentUser.id : (himanshiPurchaser?.id || purchasers[0]?.id || "u-himanshi");
 
   // Spreadsheet rows state
   const [rows, setRows] = useState([
@@ -341,7 +342,7 @@ export default function RequesterForm({
     const startFieldIdx = Math.max(0, fieldOrder.indexOf(targetField));
 
     const neededRowCount = startRowIdx + lines.length;
-    const rowPurchaserId = currentUser?.role === "purchaser" ? currentUser.id : (purchasers[0]?.id || "");
+    const rowPurchaserId = defaultPurchaserId;
 
     setRows(prevRows => {
       let currentRows = [...prevRows];
@@ -585,7 +586,7 @@ export default function RequesterForm({
 
   // Add row
   const addRow = () => {
-    const rowPurchaserId = currentUser?.role === "purchaser" ? currentUser.id : (purchasers[0]?.id || "");
+    const rowPurchaserId = defaultPurchaserId;
     setRows(prev => [
       ...prev,
       {
@@ -605,7 +606,7 @@ export default function RequesterForm({
 
   // Add multiple rows
   const addMultipleRows = (count) => {
-    const rowPurchaserId = currentUser?.role === "purchaser" ? currentUser.id : (purchasers[0]?.id || "");
+    const rowPurchaserId = defaultPurchaserId;
     const newRows = [];
     for (let i = 0; i < count; i++) {
       newRows.push({
@@ -626,7 +627,7 @@ export default function RequesterForm({
 
   // Remove row
   const removeRow = (id) => {
-    const rowPurchaserId = currentUser?.role === "purchaser" ? currentUser.id : (purchasers[0]?.id || "");
+    const rowPurchaserId = defaultPurchaserId;
     if (rows.length === 1) {
       // Don't remove last row, reset it instead
       setRows([
@@ -659,13 +660,15 @@ export default function RequesterForm({
     return parseFlexibleDate(dateStr);
   };
 
-  // Match Purchaser Name (e.g. "Mr. Anees" or "Anees")
+  // Match Purchaser Name (e.g. "Mr. Anees", "Anees", "Himanshi", "Himanshi Wadhwa")
   const matchPurchaser = (nameStr) => {
-    const rowPurchaserId = currentUser?.role === "purchaser" ? currentUser.id : (purchasers[0]?.id || "");
-    if (!nameStr) return rowPurchaserId;
-    const cleanName = nameStr.toLowerCase().replace("mr.", "").trim();
+    if (!nameStr) return defaultPurchaserId;
+    const cleanName = nameStr.toLowerCase().replace("mr.", "").replace("ms.", "").replace("mrs.", "").trim();
+    if (!cleanName) return defaultPurchaserId;
     const match = purchasers.find(p => p?.name && (p.name.toLowerCase().includes(cleanName) || cleanName.includes(p.name.toLowerCase())));
-    return match ? match.id : rowPurchaserId;
+    if (match) return match.id;
+    if (cleanName.includes("himanshi")) return himanshiPurchaser?.id || "u-himanshi";
+    return defaultPurchaserId;
   };
 
   // Parse copy-pasted Excel text
@@ -771,7 +774,7 @@ export default function RequesterForm({
   };
 
   const handleReset = () => {
-    const rowPurchaserId = currentUser?.role === "purchaser" ? currentUser.id : (purchasers[0]?.id || "");
+    const rowPurchaserId = defaultPurchaserId;
     setRows([
       {
         id: Date.now(),

@@ -951,6 +951,20 @@ async function setupPgDatabase() {
     // Auto-clean any legacy SVG data URIs in PostgreSQL to HTTPS CDN URLs
     await pool.query(`UPDATE requests SET photo = 'https://images.unsplash.com/photo-1586864387967-d02ef85d93e8?w=300&auto=format&fit=crop&q=80' WHERE photo LIKE 'data:image%'`);
 
+    // Ensure Himanshi Wadhwa purchaser account exists in PostgreSQL
+    try {
+      const himanshiCheck = await pool.query("SELECT id FROM users WHERE LOWER(email) = 'himanshi@demo.com' OR LOWER(name) LIKE '%himanshi%'");
+      if (himanshiCheck.rows.length === 0) {
+        await pool.query(
+          `INSERT INTO users ("id", "name", "email", "password", "role", "designation", "status") VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          ["u-himanshi", "Himanshi Wadhwa", "himanshi@demo.com", "Demo#Himanshi2026!", "purchaser", "Purchaser", "active"]
+        );
+        console.log("Himanshi Wadhwa purchaser account seeded in PG database.");
+      }
+    } catch (uErr) {
+      console.warn("Himanshi user check notice:", uErr.message);
+    }
+
     // Set default 'No' only for NULL or empty purchaseUpdated records
     await pool.query(`UPDATE requests SET "purchaseUpdated" = 'No' WHERE "purchaseUpdated" IS NULL OR "purchaseUpdated" = ''`);
 
