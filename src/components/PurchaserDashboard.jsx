@@ -323,13 +323,13 @@ export default function PurchaserDashboard({
     return localStorage.getItem("makpower_purchaser_tab") || "alerts";
   });
 
-  // Admin, Purchase Manager, and Primary Purchaser (Himanshi) role flags
+  // Admin and Purchase Manager role flags (Only manager/admin can see all orders)
   const isAdmin = currentUser?.role === "superadmin" || currentUser?.role === "owner" || currentUser?.role === "admin";
-  const isPurchaseManager = currentUser?.role === "purchase_manager" || (currentUser?.designation && currentUser.designation.toLowerCase().trim() === "purchase manager");
-  const isHimanshiUser = currentUser?.id === "u-himanshi" || 
-    (currentUser?.name && currentUser.name.toLowerCase().includes("himanshi")) ||
-    (currentUser?.email && currentUser.email.toLowerCase().includes("himanshi"));
-  const hasFullPurchaseAccess = isAdmin || isPurchaseManager || isHimanshiUser;
+  const isPurchaseManager = currentUser?.role === "purchase_manager" || 
+    currentUser?.role === "purchase-manager" || 
+    (currentUser?.designation && currentUser.designation.toLowerCase().trim().includes("purchase manager")) ||
+    (currentUser?.name && currentUser.name.toLowerCase().includes("anees"));
+  const hasFullPurchaseAccess = isAdmin || isPurchaseManager;
 
   // Admin delete confirmation modal state
   const [adminDeleteConfirm, setAdminDeleteConfirm] = useState(null);
@@ -894,8 +894,8 @@ export default function PurchaserDashboard({
     return (vendors || [])
       .filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive")
       .filter(v => {
-        if (!targetPurchaser || hasFullPurchaseAccess) return true;
-        return isVendorForUser(v, targetPurchaser, requests);
+        if (!targetPurchaser && hasFullPurchaseAccess) return true;
+        return isVendorForUser(v, targetPurchaser || currentUser, requests);
       })
       .sort((a, b) => {
         const countA = plannerCandidateRequests.filter(r => r.vendorId === a.id).length;
@@ -7728,9 +7728,9 @@ function MyVendorsPanel({ currentUser, vendors, onAddVendor, onUpdateVendor, onR
     currentUser?.role === "owner" || 
     currentUser?.role === "admin" || 
     currentUser?.role === "purchase_manager" || 
+    currentUser?.role === "purchase-manager" ||
     (currentUser?.designation && currentUser.designation.toLowerCase().includes("purchase manager")) ||
-    (currentUser?.name && currentUser.name.toLowerCase().includes("himanshi")) ||
-    currentUser?.id === "u-himanshi";
+    (currentUser?.name && currentUser.name.toLowerCase().includes("anees"));
 
   const myVendors = isAllVendorsAccess ? (vendors || []) : (vendors || []).filter(v => isVendorForUser(v, currentUser, requests));
   const displayedVendors = myVendors.filter(v => showInactive || v.status !== "Inactive");

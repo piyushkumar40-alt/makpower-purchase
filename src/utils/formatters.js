@@ -247,24 +247,10 @@ export const getDateVariants = (dateVal) => {
  */
 export const isRequestForUser = (r, user, purchasers = []) => {
   if (!r || !user) return false;
-  if (user.role === "superadmin" || user.role === "owner") return true;
 
   const userId = String(user.id || "").trim().toLowerCase();
   const userName = String(user.name || "").trim().toLowerCase();
   const userEmail = String(user.email || "").trim().toLowerCase();
-
-  const isHimanshi = userId === "u-himanshi" || 
-    userName.includes("himanshi") || 
-    userEmail.includes("himanshi");
-
-  const isPurchaseManager = user.role === "purchase_manager" || 
-    (user.designation && String(user.designation).toLowerCase().includes("purchase manager")) ||
-    userName.includes("anees");
-
-  // Core purchasing leadership & primary purchaser (Himanshi & Anees) have full access to all purchase orders
-  if (isHimanshi || isPurchaseManager) {
-    return true;
-  }
 
   const rPurchaserId = String(r.purchaserId || "").trim().toLowerCase();
   const rPurchaserName = String(r.purchaserName || r.assignedPurchaser || r.purchaser || "").trim().toLowerCase();
@@ -272,22 +258,53 @@ export const isRequestForUser = (r, user, purchasers = []) => {
   // 1. Direct ID match
   if (rPurchaserId && userId && rPurchaserId === userId) return true;
 
-  // 2. Direct Name match in r.purchaserId
+  // 2. Direct Name match in r.purchaserId (e.g. "himanshi", "nitin", "rahul", "anees")
   if (rPurchaserId && userName && (rPurchaserId === userName || rPurchaserId.includes(userName) || userName.includes(rPurchaserId))) {
     return true;
   }
 
-  // 3. Name match in r.purchaserName, r.assignedPurchaser, r.purchaser
+  // 3. Name or ID match in r.purchaserName, r.assignedPurchaser, r.purchaser
   if (rPurchaserName) {
     if (userName && (rPurchaserName === userName || rPurchaserName.includes(userName) || userName.includes(rPurchaserName))) {
       return true;
     }
-    if (userId && rPurchaserName === userId) return true;
+    if (userId && (rPurchaserName === userId || rPurchaserName.includes(userId))) return true;
   }
 
-  // 4. Default unassigned requests belong to general purchase pool
-  if (!rPurchaserId && !rPurchaserName) {
-    return true;
+  // 4. Check if explicitly assigned to ANOTHER active purchaser (e.g. Anees, Nitin, Rahul)
+  const isAssignedToOther = (purchasers || []).some(p => {
+    const pId = String(p.id || "").trim().toLowerCase();
+    const pName = String(p.name || "").trim().toLowerCase();
+    if (!pId || pId === userId || (userName && pName === userName)) return false;
+    return (rPurchaserId && (rPurchaserId === pId || rPurchaserId === pName || (pName && rPurchaserId.includes(pName)))) ||
+           (rPurchaserName && (rPurchaserName === pId || rPurchaserName === pName || (pName && rPurchaserName.includes(pName))));
+  });
+
+  // If explicitly assigned to another known purchaser, this user cannot access it
+  if (isAssignedToOther) {
+    return false;
+  }
+
+  // 5. Himanshi fallback (default general purchaser for unassigned requisitions or unmapped requests)
+  const isHimanshi = userId === "u-himanshi" || 
+    userName.includes("himanshi") || 
+    userEmail.includes("himanshi");
+
+  if (isHimanshi) {
+    if (rPurchaserId.includes("himanshi") || rPurchaserName.includes("himanshi")) {
+      return true;
+    }
+    // If not assigned to another known purchaser and completely unassigned, it defaults to Himanshi
+    if (!rPurchaserId && !rPurchaserName) {
+      return true;
+    }
+    const isKnownOtherPurchaser = (purchasers || []).some(p => {
+      const pId = String(p.id || "").trim().toLowerCase();
+      return pId && pId !== "u-himanshi" && pId === rPurchaserId;
+    });
+    if (!isKnownOtherPurchaser) {
+      return true;
+    }
   }
 
   return false;
@@ -296,7 +313,7 @@ export const isRequestForUser = (r, user, purchasers = []) => {
 /**
  * Determines whether a vendor is accessible to the specified user.
  * Supports:
- * - Admin/Owner bypass
+ * - Admin/Manager bypass (SuperAdmin, Owner, Admin, Purchase Manager)
  * - purchaserIds matching user.id or user.name
  * - Himanshi matching "himanshi" or "u-himanshi" in purchaserIds
  * - Associated orders: if user has any orders with this vendor, vendor is accessible
@@ -304,24 +321,21 @@ export const isRequestForUser = (r, user, purchasers = []) => {
  */
 export const isVendorForUser = (v, user, requests = []) => {
   if (!v || !user) return false;
-  if (user.role === "superadmin" || user.role === "owner") return true;
+  if (user.role === "superadmin" || user.role === "owner" || user.role === "admin") return true;
+
+  const isPurchaseManager = user.role === "purchase_manager" || 
+    user.role === "purchase-manager" ||
+    (user.designation && String(user.designation).toLowerCase().includes("purchase manager")) ||
+    String(user.name || "").toLowerCase().includes("anees");
+
+  // Purchase Manager has full access to all vendors
+  if (isPurchaseManager) {
+    return true;
+  }
 
   const userId = String(user.id || "").trim().toLowerCase();
   const userName = String(user.name || "").trim().toLowerCase();
   const userEmail = String(user.email || "").trim().toLowerCase();
-
-  const isHimanshi = userId === "u-himanshi" || 
-    userName.includes("himanshi") || 
-    userEmail.includes("himanshi");
-
-  const isPurchaseManager = user.role === "purchase_manager" || 
-    (user.designation && String(user.designation).toLowerCase().includes("purchase manager")) ||
-    userName.includes("anees");
-
-  // Core purchasing leadership & primary purchaser (Himanshi & Anees) have full access to all vendors
-  if (isHimanshi || isPurchaseManager) {
-    return true;
-  }
 
   const pIds = Array.isArray(v.purchaserIds) ? v.purchaserIds.map(x => String(x || "").trim().toLowerCase()) : [];
 
@@ -334,11 +348,14 @@ export const isVendorForUser = (v, user, requests = []) => {
   }
 
   // 3. Himanshi match in purchaserIds
+  const isHimanshi = userId === "u-himanshi" || 
+    userName.includes("himanshi") || 
+    userEmail.includes("himanshi");
   if (isHimanshi && pIds.some(pid => pid.includes("himanshi") || pid === "u-himanshi")) {
     return true;
   }
 
-  // 4. Has existing orders for this vendor
+  // 4. Has existing orders for this vendor related to this purchaser
   if (Array.isArray(requests) && requests.some(r => r && r.vendorId === v.id && isRequestForUser(r, user))) {
     return true;
   }
