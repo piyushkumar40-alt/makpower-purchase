@@ -147,12 +147,16 @@ export default function MasterOrderTracker({
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
   const [adminDeleteConfirm, setAdminDeleteConfirm] = useState(null);
 
+  const isHimanshi = currentUser?.id === "u-himanshi" || 
+    (currentUser?.name && currentUser.name.toLowerCase().includes("himanshi")) ||
+    (currentUser?.email && currentUser.email.toLowerCase().includes("himanshi"));
+
   const accessibleRequests = useMemo(() => {
-    if (isAdmin || isPurchaseManager) {
+    if (isAdmin || isPurchaseManager || isHimanshi) {
       return requests || [];
     }
     return (requests || []).filter(r => isRequestForUser(r, currentUser, purchasers));
-  }, [requests, isAdmin, isPurchaseManager, currentUser, purchasers]);
+  }, [requests, isAdmin, isPurchaseManager, isHimanshi, currentUser, purchasers]);
 
   const vendorMap = useMemo(() => {
     const map = {};

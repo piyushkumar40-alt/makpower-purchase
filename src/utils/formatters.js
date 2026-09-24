@@ -257,6 +257,15 @@ export const isRequestForUser = (r, user, purchasers = []) => {
     userName.includes("himanshi") || 
     userEmail.includes("himanshi");
 
+  const isPurchaseManager = user.role === "purchase_manager" || 
+    (user.designation && String(user.designation).toLowerCase().includes("purchase manager")) ||
+    userName.includes("anees");
+
+  // Core purchasing leadership & primary purchaser (Himanshi & Anees) have full access to all purchase orders
+  if (isHimanshi || isPurchaseManager) {
+    return true;
+  }
+
   const rPurchaserId = String(r.purchaserId || "").trim().toLowerCase();
   const rPurchaserName = String(r.purchaserName || r.assignedPurchaser || r.purchaser || "").trim().toLowerCase();
 
@@ -276,25 +285,9 @@ export const isRequestForUser = (r, user, purchasers = []) => {
     if (userId && rPurchaserName === userId) return true;
   }
 
-  // 4. Himanshi-specific handling (default general purchaser)
-  if (isHimanshi) {
-    if (rPurchaserId.includes("himanshi") || rPurchaserName.includes("himanshi")) {
-      return true;
-    }
-
-    // Check if explicitly assigned to another active purchaser (e.g. Anees, Nitin, Rahul)
-    const isAssignedToOther = (purchasers || []).some(p => {
-      const pId = String(p.id || "").trim().toLowerCase();
-      const pName = String(p.name || "").trim().toLowerCase();
-      if (!pId || pId === "u-himanshi" || pName.includes("himanshi") || pId === userId) return false;
-      return (rPurchaserId && (rPurchaserId === pId || rPurchaserId === pName)) ||
-             (rPurchaserName && (rPurchaserName === pId || rPurchaserName === pName || (pName && rPurchaserName.includes(pName))));
-    });
-
-    // If not assigned to another known purchaser, it defaults to Himanshi
-    if (!isAssignedToOther && (!rPurchaserId || !rPurchaserName || !(purchasers || []).some(p => p.id === r.purchaserId))) {
-      return true;
-    }
+  // 4. Default unassigned requests belong to general purchase pool
+  if (!rPurchaserId && !rPurchaserName) {
+    return true;
   }
 
   return false;
@@ -320,6 +313,15 @@ export const isVendorForUser = (v, user, requests = []) => {
   const isHimanshi = userId === "u-himanshi" || 
     userName.includes("himanshi") || 
     userEmail.includes("himanshi");
+
+  const isPurchaseManager = user.role === "purchase_manager" || 
+    (user.designation && String(user.designation).toLowerCase().includes("purchase manager")) ||
+    userName.includes("anees");
+
+  // Core purchasing leadership & primary purchaser (Himanshi & Anees) have full access to all vendors
+  if (isHimanshi || isPurchaseManager) {
+    return true;
+  }
 
   const pIds = Array.isArray(v.purchaserIds) ? v.purchaserIds.map(x => String(x || "").trim().toLowerCase()) : [];
 

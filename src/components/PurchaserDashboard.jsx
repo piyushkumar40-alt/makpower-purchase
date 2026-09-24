@@ -323,9 +323,13 @@ export default function PurchaserDashboard({
     return localStorage.getItem("makpower_purchaser_tab") || "alerts";
   });
 
-  // Admin and Purchase Manager role flags
+  // Admin, Purchase Manager, and Primary Purchaser (Himanshi) role flags
   const isAdmin = currentUser?.role === "superadmin" || currentUser?.role === "owner" || currentUser?.role === "admin";
   const isPurchaseManager = currentUser?.role === "purchase_manager" || (currentUser?.designation && currentUser.designation.toLowerCase().trim() === "purchase manager");
+  const isHimanshiUser = currentUser?.id === "u-himanshi" || 
+    (currentUser?.name && currentUser.name.toLowerCase().includes("himanshi")) ||
+    (currentUser?.email && currentUser.email.toLowerCase().includes("himanshi"));
+  const hasFullPurchaseAccess = isAdmin || isPurchaseManager || isHimanshiUser;
 
   // Admin delete confirmation modal state
   const [adminDeleteConfirm, setAdminDeleteConfirm] = useState(null);
@@ -335,10 +339,11 @@ export default function PurchaserDashboard({
   const [step3SelectedCategory, setStep3SelectedCategory] = useState("");
   const [step3ModelSearch, setStep3ModelSearch] = useState("");
 
-  // Filter vendors by current user to enforce vendor isolation (e.g. Himanshi's vendors shouldn't be in Anees's dashboard)
+  // Accessible vendors: Full access for Admin, Purchase Manager, and Himanshi
   const accessibleVendors = useMemo(() => {
+    if (hasFullPurchaseAccess) return vendors || [];
     return (vendors || []).filter(v => isVendorForUser(v, currentUser, requests));
-  }, [vendors, currentUser, requests]);
+  }, [vendors, currentUser, requests, hasFullPurchaseAccess]);
 
   React.useEffect(() => {
     localStorage.setItem("makpower_purchaser_tab", activeTab);
@@ -631,8 +636,8 @@ export default function PurchaserDashboard({
   const todayStr = "2026-06-11"; // Mock system date
   const today = new Date(todayStr);
 
-  // Filter requests based on user role (Admin sees all, Purchaser sees their own)
-  const isSearchAdmin = currentUser?.role === "superadmin";
+  // Filter requests based on user role (Admin, Purchase Manager, and Himanshi see all purchase requests)
+  const isSearchAdmin = hasFullPurchaseAccess;
   const rawMyRequests = isSearchAdmin ? requests : (requests || []).filter(r => isRequestForUser(r, currentUser, purchasers));
 
   // Helper: check if target date is missed
@@ -658,11 +663,11 @@ export default function PurchaserDashboard({
     return (cargos || []).filter(c => {
       const cargoItems = (requests || []).filter(r => r.cargoId === c.id && r.status !== "Cancelled");
       if (cargoItems.length === 0) return false; // Filter out empty/ghost cargos with 0 items
-      if (isSearchAdmin || isAdmin) return true;
+      if (hasFullPurchaseAccess) return true;
       // For individual purchaser: only cargos containing their items
       return cargoItems.some(r => isRequestForUser(r, currentUser, purchasers));
     });
-  }, [cargos, requests, isSearchAdmin, isAdmin, currentUser, purchasers]);
+  }, [cargos, requests, hasFullPurchaseAccess, currentUser, purchasers]);
 
   // Step 1: Unpriced pending requests sorting at top level
   const step1PendingReqs = useMemo(() => {
@@ -867,9 +872,9 @@ export default function PurchaserDashboard({
   }, [vrCandidatePool, vrSelectedOrderDate]);
   const { items: vrItems, copyToastMessage: vrToast, RenderSortHeader: RenderStep2SortHeader } = useSortableData(rawVrItems);
 
-  // Step 3 Planner candidate requests (Cross-purchaser for Purchase Manager and Admin)
+  // Step 3 Planner candidate requests (Cross-purchaser for Purchase Manager, Himanshi, and Admin)
   const plannerCandidateRequests = useMemo(() => {
-    if (isPurchaseManager || currentUser?.role === "superadmin") {
+    if (hasFullPurchaseAccess) {
       return (requests || []).filter(r => {
         if (!r.priceRmb || r.cargoId || r.status === "Cancelled") return false;
         if (plannerPurchaserFilter === "all") return true;
@@ -878,18 +883,18 @@ export default function PurchaserDashboard({
       });
     }
     return (myRequests || []).filter(r => r.priceRmb && !r.cargoId && r.status !== "Cancelled");
-  }, [requests, myRequests, isPurchaseManager, currentUser, plannerPurchaserFilter, purchasers]);
+  }, [requests, myRequests, hasFullPurchaseAccess, currentUser, plannerPurchaserFilter, purchasers]);
 
   // Step 3 Vendors available in dropdown (filtered to selected purchaser, sorted by ready order count)
   const plannerAvailableVendors = useMemo(() => {
-    const targetPurchaser = (isPurchaseManager || currentUser?.role === "superadmin")
+    const targetPurchaser = hasFullPurchaseAccess
       ? (plannerPurchaserFilter === "all" ? null : ((purchasers || []).find(p => p.id === plannerPurchaserFilter) || { id: plannerPurchaserFilter }))
       : currentUser;
 
     return (vendors || [])
       .filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive")
       .filter(v => {
-        if (!targetPurchaser) return true;
+        if (!targetPurchaser || hasFullPurchaseAccess) return true;
         return isVendorForUser(v, targetPurchaser, requests);
       })
       .sort((a, b) => {
@@ -898,7 +903,7 @@ export default function PurchaserDashboard({
         if (countB !== countA) return countB - countA;
         return (a.name || "").localeCompare(b.name || "");
       });
-  }, [vendors, isPurchaseManager, currentUser, plannerPurchaserFilter, plannerCandidateRequests, requests, purchasers]);
+  }, [vendors, hasFullPurchaseAccess, currentUser, plannerPurchaserFilter, plannerCandidateRequests, requests, purchasers]);
 
   // Step 4: Cargo Pickup sorting
   const rawCpItems = useMemo(() => {
@@ -2037,7 +2042,7 @@ export default function PurchaserDashboard({
             
             <div className="glass-panel" style={{ padding: "24px", marginBottom: "20px" }}>
               <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
-                {(isPurchaseManager || currentUser?.role === "superadmin") && (
+                {hasFullPurchaseAccess && (
                   <div className="form-group" style={{ minWidth: "280px", marginBottom: 0, flex: "0 1 320px" }}>
                     <label className="form-label" style={{ fontWeight: 600 }}>Filter Orders by Purchaser</label>
                     <select
@@ -4001,7 +4006,7 @@ export default function PurchaserDashboard({
                   {inTransitCargos.map(cargo => {
                   const vName = vendors.find(v => v.id === cargo.vendorId)?.name || "Unknown Vendor";
                   // Isolate items: only show items belonging to this purchaser if not admin
-                  const cargoItems = (isSearchAdmin || isAdmin)
+                  const cargoItems = hasFullPurchaseAccess
                     ? requests.filter(r => r.cargoId === cargo.id && r.status !== "Cancelled")
                     : requests.filter(r => r.cargoId === cargo.id && isRequestForUser(r, currentUser, purchasers) && r.status !== "Cancelled");
                   
@@ -7719,7 +7724,15 @@ function MyVendorsPanel({ currentUser, vendors, onAddVendor, onUpdateVendor, onR
   const [error, setError] = useState("");
   const [showInactive, setShowInactive] = useState(false);
 
-  const myVendors = vendors.filter(v => isVendorForUser(v, currentUser, requests));
+  const isAllVendorsAccess = currentUser?.role === "superadmin" || 
+    currentUser?.role === "owner" || 
+    currentUser?.role === "admin" || 
+    currentUser?.role === "purchase_manager" || 
+    (currentUser?.designation && currentUser.designation.toLowerCase().includes("purchase manager")) ||
+    (currentUser?.name && currentUser.name.toLowerCase().includes("himanshi")) ||
+    currentUser?.id === "u-himanshi";
+
+  const myVendors = isAllVendorsAccess ? (vendors || []) : (vendors || []).filter(v => isVendorForUser(v, currentUser, requests));
   const displayedVendors = myVendors.filter(v => showInactive || v.status !== "Inactive");
 
   const handleSubmit = (e) => {
