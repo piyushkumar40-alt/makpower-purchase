@@ -45,6 +45,21 @@ function invalidateStateCache() {
   livePartyCategorySalesTimestamp = 0;
 }
 
+function safeJsonParse(val, fallback = []) {
+  if (!val) return fallback;
+  if (Array.isArray(val)) return val;
+  if (typeof val === "object") return val;
+  try {
+    const parsed = JSON.parse(val);
+    return parsed !== null && parsed !== undefined ? parsed : fallback;
+  } catch (e) {
+    if (typeof val === "string" && val.trim()) {
+      return val.split(",").map(s => s.trim()).filter(Boolean);
+    }
+    return fallback;
+  }
+}
+
 // Automatically invalidate full-state cache on any mutating request
 app.use((req, res, next) => {
   if (req.method !== "GET" && req.path.startsWith("/api") && !req.path.startsWith("/api/audit-logs") && !req.path.startsWith("/api/auth")) {
@@ -107,7 +122,12 @@ async function initDatabase() {
       await pool.query("SELECT NOW()");
       isPg = true;
       console.log("PostgreSQL database connected successfully.");
-      await setupPgDatabase();
+      try {
+        await setupPgDatabase();
+      } catch (setupErr) {
+        console.error("Non-fatal setupPgDatabase warning:", setupErr.message);
+        // Note: isPg remains true so existing tables and data continue to serve queries
+      }
     } catch (err) {
       console.error("PostgreSQL connection failed. Falling back to local JSON file database. Error:", err.message);
       isPg = false;
@@ -759,50 +779,54 @@ async function setupPgDatabase() {
       );
     `);
 
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS item_prices (
-        "id" TEXT PRIMARY KEY,
-        "itemId" TEXT,
-        "itemName" TEXT,
-        "pp" NUMERIC,
-        "from" TEXT,
-        "to" TEXT,
-        "createdAt" TEXT,
-        "updatedAt" TEXT
-      );
-      CREATE INDEX IF NOT EXISTS idx_item_prices_item_id ON item_prices("itemId");
-      CREATE INDEX IF NOT EXISTS idx_item_prices_dates ON item_prices("from", "to");
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS item_prices (
+          "id" TEXT PRIMARY KEY,
+          "itemId" TEXT,
+          "itemName" TEXT,
+          "pp" NUMERIC,
+          "from" TEXT,
+          "to" TEXT,
+          "createdAt" TEXT,
+          "updatedAt" TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_item_prices_item_id ON item_prices("itemId");
+        CREATE INDEX IF NOT EXISTS idx_item_prices_dates ON item_prices("from", "to");
 
-      CREATE TABLE IF NOT EXISTS crm_party_remarks (
-        "id" TEXT PRIMARY KEY,
-        "partyId" TEXT,
-        "partyName" TEXT,
-        "category" TEXT,
-        "month" TEXT,
-        "remark" TEXT,
-        "authorId" TEXT,
-        "authorName" TEXT,
-        "authorRole" TEXT,
-        "createdAt" TEXT,
-        "updatedAt" TEXT
-      );
-      CREATE INDEX IF NOT EXISTS idx_crm_remarks_party ON crm_party_remarks("partyId");
-      CREATE INDEX IF NOT EXISTS idx_crm_remarks_party_cat_month ON crm_party_remarks("partyId", "category", "month");
+        CREATE TABLE IF NOT EXISTS crm_party_remarks (
+          "id" TEXT PRIMARY KEY,
+          "partyId" TEXT,
+          "partyName" TEXT,
+          "category" TEXT,
+          "month" TEXT,
+          "remark" TEXT,
+          "authorId" TEXT,
+          "authorName" TEXT,
+          "authorRole" TEXT,
+          "createdAt" TEXT,
+          "updatedAt" TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_crm_remarks_party ON crm_party_remarks("partyId");
+        CREATE INDEX IF NOT EXISTS idx_crm_remarks_party_cat_month ON crm_party_remarks("partyId", "category", "month");
 
-      CREATE TABLE IF NOT EXISTS crm_party_category_monthly_sales (
-        "id" TEXT PRIMARY KEY,
-        "partyName" TEXT NOT NULL,
-        "partyId" TEXT,
-        "category" TEXT NOT NULL,
-        "month" TEXT NOT NULL,
-        "salesQty" BIGINT DEFAULT 0,
-        "salesRevenue" NUMERIC DEFAULT 0,
-        "orderCount" INTEGER DEFAULT 0,
-        "updatedAt" TEXT
-      );
-      CREATE INDEX IF NOT EXISTS idx_party_cat_sales_party ON crm_party_category_monthly_sales("partyName", "month");
-      CREATE INDEX IF NOT EXISTS idx_party_cat_sales_month ON crm_party_category_monthly_sales("month" DESC);
-    `);
+        CREATE TABLE IF NOT EXISTS crm_party_category_monthly_sales (
+          "id" TEXT PRIMARY KEY,
+          "partyName" TEXT NOT NULL,
+          "partyId" TEXT,
+          "category" TEXT NOT NULL,
+          "month" TEXT NOT NULL,
+          "salesQty" BIGINT DEFAULT 0,
+          "salesRevenue" NUMERIC DEFAULT 0,
+          "orderCount" INTEGER DEFAULT 0,
+          "updatedAt" TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_party_cat_sales_party ON crm_party_category_monthly_sales("partyName", "month");
+        CREATE INDEX IF NOT EXISTS idx_party_cat_sales_month ON crm_party_category_monthly_sales("month" DESC);
+      `);
+    } catch (tblErr) {
+      console.warn("Item prices / CRM remarks tables schema notice:", tblErr.message);
+    }
 
       // Seed default designations if empty
       try {
@@ -823,22 +847,26 @@ async function setupPgDatabase() {
         console.warn("Designations table seed warning:", desErr.message);
       }
 
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS audit_logs (
-        "id" TEXT PRIMARY KEY,
-        "userId" TEXT,
-        "userName" TEXT,
-        "role" TEXT,
-        "action" TEXT,
-        "details" TEXT,
-        "entityType" TEXT,
-        "entityId" TEXT,
-        "oldData" TEXT,
-        "newData" TEXT,
-        "timestamp" TEXT,
-        "isoTime" TEXT
-      );
-    `);
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS audit_logs (
+          "id" TEXT PRIMARY KEY,
+          "userId" TEXT,
+          "userName" TEXT,
+          "role" TEXT,
+          "action" TEXT,
+          "details" TEXT,
+          "entityType" TEXT,
+          "entityId" TEXT,
+          "oldData" TEXT,
+          "newData" TEXT,
+          "timestamp" TEXT,
+          "isoTime" TEXT
+        );
+      `);
+    } catch (alErr) {
+      console.warn("Audit logs table schema notice:", alErr.message);
+    }
 
     // Clean up deprecated dummy sample ASM/TSM users and unassign from crm_parties
     try {
@@ -850,13 +878,17 @@ async function setupPgDatabase() {
     }
 
     // Ensure all standard initial users exist in PG (DO NOT overwrite or resurrect deleted accounts)
-    for (const u of initialUsers) {
-      await pool.query(
-        `INSERT INTO users ("id", "name", "email", "password", "role", "designation", "status", "phone", "territory", "parentCrmId")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-         ON CONFLICT ("id") DO NOTHING`,
-        [u.id, u.name, u.email, u.password, u.role, u.designation || "Staff", "active", u.phone || "", u.territory || "", u.parentCrmId || ""]
-      );
+    try {
+      for (const u of initialUsers) {
+        await pool.query(
+          `INSERT INTO users ("id", "name", "email", "password", "role", "designation", "status", "phone", "territory", "parentCrmId")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           ON CONFLICT ("id") DO NOTHING`,
+          [u.id, u.name, u.email, u.password, u.role, u.designation || "Staff", "active", u.phone || "", u.territory || "", u.parentCrmId || ""]
+        );
+      }
+    } catch (uErr) {
+      console.warn("Initial users insertion notice:", uErr.message);
     }
 
     // Auto-seed items table from requests if empty
@@ -2321,7 +2353,7 @@ app.get("/api/state", async (req, res) => {
   const isRsmRole = userRole === "rsm";
   const isAsmTsmRole = isAsmRole || isTsmRole || isRsmRole;
   const isRestrictedRole = isCrmRole || isAsmTsmRole;
-  const isPurchaserRole = userRole === "purchaser";
+  const isPurchaserRole = userRole === "purchaser" || userRole === "purchase_manager" || userRole === "purchase-manager";
   const isPurchaseOnlyRole = isPurchaserRole || ["requester", "coordinator", "nitin", "rahul", "warehouse", "packing", "accounts"].includes(userRole);
 
   const now = Date.now();
@@ -2339,7 +2371,7 @@ app.get("/api/state", async (req, res) => {
 
   if (isPg) {
     try {
-      // ⚡ Fast Path: For purchasers and requisitioners, query ONLY purchase-related tables
+      // ⚡ Fast Path: For purchasers, purchase managers and requisitioners, query ONLY purchase-related tables
       if (isPurchaseOnlyRole) {
         const [
           usersRes,
@@ -2352,20 +2384,20 @@ app.get("/api/state", async (req, res) => {
           designationsRes,
           itemPricesRes
         ] = await Promise.all([
-          pool.query("SELECT * FROM users"),
-          pool.query("SELECT * FROM vendors"),
-          pool.query("SELECT * FROM cargo_companies"),
-          pool.query("SELECT * FROM cargos"),
-          pool.query("SELECT * FROM requests"),
-          pool.query("SELECT * FROM settings"),
-          pool.query("SELECT * FROM items ORDER BY CAST(NULLIF(regexp_replace(\"id\", '\\D', '', 'g'), '') AS INTEGER) ASC, \"id\" ASC"),
-          pool.query("SELECT * FROM designations"),
-          pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC")
+          pool.query("SELECT * FROM users").catch(e => { console.error("users query err:", e.message); return { rows: [] }; }),
+          pool.query("SELECT * FROM vendors").catch(e => { console.error("vendors query err:", e.message); return { rows: [] }; }),
+          pool.query("SELECT * FROM cargo_companies").catch(e => { console.error("cargo_companies query err:", e.message); return { rows: [] }; }),
+          pool.query("SELECT * FROM cargos").catch(e => { console.error("cargos query err:", e.message); return { rows: [] }; }),
+          pool.query("SELECT * FROM requests").catch(e => { console.error("requests query err:", e.message); return { rows: [] }; }),
+          pool.query("SELECT * FROM settings").catch(e => { console.error("settings query err:", e.message); return { rows: [] }; }),
+          pool.query("SELECT * FROM items ORDER BY LENGTH(\"id\") ASC, \"id\" ASC").catch(e => { console.error("items query err:", e.message); return { rows: [] }; }),
+          pool.query("SELECT * FROM designations").catch(e => { console.error("designations query err:", e.message); return { rows: [] }; }),
+          pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC").catch(e => { console.error("item_prices query err:", e.message); return { rows: [] }; })
         ]);
 
-        const vendors = vendorsRes.rows.map(v => ({
+        const vendors = (vendorsRes.rows || []).map(v => ({
           ...v,
-          purchaserIds: v.purchaserIds ? (typeof v.purchaserIds === "string" ? JSON.parse(v.purchaserIds) : v.purchaserIds) : []
+          purchaserIds: safeJsonParse(v.purchaserIds, [])
         }));
 
         const requests = requestsRes.rows.map(r => ({
@@ -2484,18 +2516,18 @@ app.get("/api/state", async (req, res) => {
         schemesRes,
         partyCatSalesList
       ] = await Promise.all([
-        pool.query("SELECT * FROM users"),
-        pool.query("SELECT * FROM vendors"),
-        pool.query("SELECT * FROM cargo_companies"),
-        pool.query("SELECT * FROM cargos"),
-        pool.query("SELECT * FROM requests"),
-        pool.query("SELECT * FROM settings"),
-        pool.query("SELECT * FROM items ORDER BY CAST(NULLIF(regexp_replace(\"id\", '\\D', '', 'g'), '') AS INTEGER) ASC, \"id\" ASC"),
-        pool.query(crmPartiesQuery, crmPartiesParams),
-        pool.query("SELECT * FROM designations"),
-        pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC"),
-        pool.query("SELECT * FROM schemes ORDER BY \"startDate\" ASC, \"name\" ASC"),
-        getLivePartyCategoryMonthlySales()
+        pool.query("SELECT * FROM users").catch(e => { console.error("users query err:", e.message); return { rows: [] }; }),
+        pool.query("SELECT * FROM vendors").catch(e => { console.error("vendors query err:", e.message); return { rows: [] }; }),
+        pool.query("SELECT * FROM cargo_companies").catch(e => { console.error("cargo_companies query err:", e.message); return { rows: [] }; }),
+        pool.query("SELECT * FROM cargos").catch(e => { console.error("cargos query err:", e.message); return { rows: [] }; }),
+        pool.query("SELECT * FROM requests").catch(e => { console.error("requests query err:", e.message); return { rows: [] }; }),
+        pool.query("SELECT * FROM settings").catch(e => { console.error("settings query err:", e.message); return { rows: [] }; }),
+        pool.query("SELECT * FROM items ORDER BY LENGTH(\"id\") ASC, \"id\" ASC").catch(e => { console.error("items query err:", e.message); return { rows: [] }; }),
+        pool.query(crmPartiesQuery, crmPartiesParams).catch(e => { console.error("crmParties query err:", e.message); return { rows: [] }; }),
+        pool.query("SELECT * FROM designations").catch(e => { console.error("designations query err:", e.message); return { rows: [] }; }),
+        pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC").catch(e => { console.error("item_prices query err:", e.message); return { rows: [] }; }),
+        pool.query("SELECT * FROM schemes ORDER BY \"startDate\" ASC, \"name\" ASC").catch(e => { console.error("schemes query err:", e.message); return { rows: [] }; }),
+        getLivePartyCategoryMonthlySales().catch(e => { console.error("livePartyCategoryMonthlySales query err:", e.message); return []; })
       ]);
 
       const rawParties = crmPartiesRes.rows || [];
@@ -2578,12 +2610,12 @@ app.get("/api/state", async (req, res) => {
       const imsSummary = isRestrictedRole ? (imsFullSummaryCache || null) : await calculateImsFullSummary();
 
       // Format types back
-      const vendors = vendorsRes.rows.map(v => ({
+      const vendors = (vendorsRes.rows || []).map(v => ({
         ...v,
-        purchaserIds: v.purchaserIds ? (typeof v.purchaserIds === "string" ? JSON.parse(v.purchaserIds) : v.purchaserIds) : []
+        purchaserIds: safeJsonParse(v.purchaserIds, [])
       }));
 
-      const requests = requestsRes.rows.map(r => ({
+      const requests = (requestsRes.rows || []).map(r => ({
         ...r,
         orderQuantity: r.orderQuantity ? parseInt(r.orderQuantity) : 0,
         priceRmb: r.priceRmb ? parseFloat(r.priceRmb) : "",
@@ -2592,7 +2624,7 @@ app.get("/api/state", async (req, res) => {
         balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : ""
       }));
 
-      const cargos = cargosRes.rows.map(c => ({
+      const cargos = (cargosRes.rows || []).map(c => ({
         ...c,
         cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
         cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
@@ -2600,7 +2632,7 @@ app.get("/api/state", async (req, res) => {
       }));
 
       const settings = {};
-      settingsRes.rows.forEach(row => {
+      (settingsRes.rows || []).forEach(row => {
         if (row.value === "true") settings[row.key] = true;
         else if (row.value === "false") settings[row.key] = false;
         else settings[row.key] = row.value;
@@ -2611,7 +2643,7 @@ app.get("/api/state", async (req, res) => {
       const fullState = {
         users: (usersRes.rows || []).map(u => ({ ...u, status: u.status || "active" })),
         vendors,
-        cargoCompanies: cargoCompaniesRes.rows,
+        cargoCompanies: cargoCompaniesRes.rows || [],
         cargos,
         requests,
         settings,
@@ -2644,8 +2676,8 @@ app.get("/api/state", async (req, res) => {
         })),
         schemes: (schemesRes?.rows || []).map(s => ({
           ...s,
-          items: s.items ? (typeof s.items === "string" ? JSON.parse(s.items) : s.items) : [],
-          tiers: s.tiers ? (typeof s.tiers === "string" ? JSON.parse(s.tiers) : s.tiers) : []
+          items: safeJsonParse(s.items, []),
+          tiers: safeJsonParse(s.tiers, [])
         })),
         crmPartyRemarks: crmPartyRemarksRes?.rows || [],
         partyCategoryMonths: get4TargetMonths(),
@@ -2666,7 +2698,32 @@ app.get("/api/state", async (req, res) => {
       if (stateCache && !isRestrictedRole) {
         return res.json(stateCache);
       }
-      res.status(500).json({ error: "Failed to query PG state." });
+      try {
+        const [uR, vR, rR, cR] = await Promise.all([
+          pool.query("SELECT * FROM users").catch(() => ({ rows: [] })),
+          pool.query("SELECT * FROM vendors").catch(() => ({ rows: [] })),
+          pool.query("SELECT * FROM requests").catch(() => ({ rows: [] })),
+          pool.query("SELECT * FROM cargos").catch(() => ({ rows: [] }))
+        ]);
+        return res.json({
+          users: (uR.rows || []).map(u => ({ ...u, status: u.status || "active" })),
+          vendors: (vR.rows || []).map(v => ({ ...v, purchaserIds: safeJsonParse(v.purchaserIds, []) })),
+          requests: (rR.rows || []).map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })),
+          cargos: cR.rows || [],
+          cargoCompanies: [],
+          items: [],
+          designations: initialDesignations,
+          crmParties: [],
+          crmSalesOrders: [],
+          crmDispatches: [],
+          imsTransactions: [],
+          settings: { isHidden: false, redirectUrl: "https://www.google.com" }
+        });
+      } catch (fbErr) {
+        console.error("GET /api/state ultimate fallback:", fbErr.message);
+        const data = readLocalJson();
+        return res.json(data);
+      }
     }
   } else {
     const data = readLocalJson();
@@ -2744,9 +2801,9 @@ app.get("/api/vendors", async (req, res) => {
   if (isPg) {
     try {
       const result = await pool.query('SELECT * FROM vendors ORDER BY "name" ASC');
-      const vendors = result.rows.map(v => ({
+      const vendors = (result.rows || []).map(v => ({
         ...v,
-        purchaserIds: v.purchaserIds ? (typeof v.purchaserIds === "string" ? JSON.parse(v.purchaserIds) : v.purchaserIds) : []
+        purchaserIds: safeJsonParse(v.purchaserIds, [])
       }));
       res.json(vendors);
     } catch (err) {
@@ -5757,8 +5814,8 @@ app.post("/api/audit-logs", async (req, res) => {
 app.get("/api/items", async (req, res) => {
   if (isPg) {
     try {
-      const result = await pool.query(`SELECT * FROM items ORDER BY CAST(NULLIF(regexp_replace("id", '\\D', '', 'g'), '') AS INTEGER) ASC, "id" ASC`);
-      res.json(result.rows);
+      const result = await pool.query(`SELECT * FROM items ORDER BY LENGTH("id") ASC, "id" ASC`);
+      res.json(result.rows || []);
     } catch (err) {
       console.error("GET /api/items error:", err.message);
       res.status(500).json({ error: "Failed to fetch items." });

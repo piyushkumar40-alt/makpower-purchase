@@ -627,15 +627,59 @@ export default function App() {
       try {
         const q = currentUser ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(currentUser.role)}&userName=${encodeURIComponent(currentUser.name || '')}` : "";
         const res = await fetch(`/api/state${q}`);
-        const data = await res.json();
+        let data = {};
+        if (res.ok) {
+          try {
+            data = await res.json();
+          } catch (pe) {
+            console.warn("Error parsing /api/state response:", pe);
+          }
+        } else {
+          console.warn(`GET /api/state responded with status ${res.status}. Falling back to direct endpoints.`);
+        }
         if (!isMounted) return;
 
-        if (Array.isArray(data.users) && data.users.length > 0) setUsers(data.users.map(normalizeUserData));
-        if (Array.isArray(data.vendors)) setVendors(data.vendors);
-        if (Array.isArray(data.requests)) setRequests(data.requests.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
-        if (Array.isArray(data.cargos)) setCargos(data.cargos);
-        if (Array.isArray(data.cargoCompanies)) setCargoCompanies(data.cargoCompanies);
-        if (Array.isArray(data.items)) setItems(data.items);
+        let effectiveUsers = (Array.isArray(data.users) && data.users.length > 0) ? data.users.map(normalizeUserData) : null;
+        let effectiveVendors = Array.isArray(data.vendors) ? data.vendors : [];
+        let effectiveRequests = Array.isArray(data.requests) ? data.requests.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })) : [];
+        let effectiveCargos = Array.isArray(data.cargos) ? data.cargos : [];
+        let effectiveCargoCompanies = Array.isArray(data.cargoCompanies) ? data.cargoCompanies : [];
+        let effectiveItems = Array.isArray(data.items) ? data.items : [];
+
+        // Direct Fallback Pull for Purchasing System:
+        // Guarantee purchase requests and vendors are populated even if /api/state had issues
+        const isPurchaseUser = !currentUser || ["superadmin", "owner", "admin", "purchase_manager", "purchaser", "requester", "coordinator", "nitin", "rahul", "warehouse", "packing", "accounts"].includes(currentUser.role);
+        if (isPurchaseUser && (effectiveRequests.length === 0 || effectiveVendors.length === 0)) {
+          try {
+            const [reqRes, venRes, carRes, ccRes] = await Promise.all([
+              fetch("/api/requests").then(r => r.ok ? r.json() : null).catch(() => null),
+              fetch("/api/vendors").then(r => r.ok ? r.json() : null).catch(() => null),
+              fetch("/api/cargos").then(r => r.ok ? r.json() : null).catch(() => null),
+              fetch("/api/cargo-companies").then(r => r.ok ? r.json() : null).catch(() => null)
+            ]);
+            if (Array.isArray(reqRes) && reqRes.length > 0) {
+              effectiveRequests = reqRes.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" }));
+            }
+            if (Array.isArray(venRes) && venRes.length > 0) {
+              effectiveVendors = venRes;
+            }
+            if (Array.isArray(carRes) && carRes.length > 0) {
+              effectiveCargos = carRes;
+            }
+            if (Array.isArray(ccRes) && ccRes.length > 0) {
+              effectiveCargoCompanies = ccRes;
+            }
+          } catch (pullErr) {
+            console.warn("Direct purchase pull warning:", pullErr);
+          }
+        }
+
+        if (effectiveUsers) setUsers(effectiveUsers);
+        setVendors(effectiveVendors);
+        setRequests(effectiveRequests);
+        setCargos(effectiveCargos);
+        setCargoCompanies(effectiveCargoCompanies);
+        if (effectiveItems.length > 0) setItems(effectiveItems);
         if (Array.isArray(data.designations) && data.designations.length > 0) setDesignations(data.designations);
         if (Array.isArray(data.crmParties) && data.crmParties.length > 0) setCrmParties(deduplicatePartiesKeepLast(data.crmParties));
         if (Array.isArray(data.crmSalesOrders) && data.crmSalesOrders.length > 0) setCrmSalesOrders(data.crmSalesOrders);
@@ -688,12 +732,12 @@ export default function App() {
             })();
 
             localStorage.setItem("makpower_app_state_cache", JSON.stringify({
-              users: (Array.isArray(data.users) && data.users.length > 0) ? data.users : (existingCache.users || []),
-              vendors: Array.isArray(data.vendors) ? data.vendors : (existingCache.vendors || []),
-              requests: Array.isArray(data.requests) ? data.requests : (existingCache.requests || []),
-              cargos: Array.isArray(data.cargos) ? data.cargos : (existingCache.cargos || []),
-              cargoCompanies: Array.isArray(data.cargoCompanies) ? data.cargoCompanies : (existingCache.cargoCompanies || []),
-              items: Array.isArray(data.items) ? data.items : (existingCache.items || []),
+              users: effectiveUsers || (existingCache.users || []),
+              vendors: effectiveVendors.length > 0 ? effectiveVendors : (existingCache.vendors || []),
+              requests: effectiveRequests.length > 0 ? effectiveRequests : (existingCache.requests || []),
+              cargos: effectiveCargos.length > 0 ? effectiveCargos : (existingCache.cargos || []),
+              cargoCompanies: effectiveCargoCompanies.length > 0 ? effectiveCargoCompanies : (existingCache.cargoCompanies || []),
+              items: effectiveItems.length > 0 ? effectiveItems : (existingCache.items || []),
               designations: (Array.isArray(data.designations) && data.designations.length > 0) ? data.designations : (existingCache.designations || []),
               crmParties: (Array.isArray(data.crmParties) && data.crmParties.length > 0) ? deduplicatePartiesKeepLast(data.crmParties) : (existingCache.crmParties || []),
               crmSalesOrders: (Array.isArray(data.crmSalesOrders) && data.crmSalesOrders.length > 0) ? data.crmSalesOrders : (existingCache.crmSalesOrders || []),
