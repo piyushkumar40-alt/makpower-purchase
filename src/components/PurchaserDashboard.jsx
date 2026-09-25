@@ -14,6 +14,7 @@ import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cl
 import { useModalEscape } from "../utils/useModalEscape";
 import MasterOrderTracker from "./MasterOrderTracker";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
+import AddEddModal from "./AddEddModal";
 
 export { isRequestForUser, isVendorForUser, getPurchaserDisplayName };
 
@@ -126,19 +127,28 @@ export const calculateVendorMetrics = (vendor, requests = []) => {
       delayedOrders: 0,
       categoryData: [],
       statusData: [],
-      delays: []
+      delays: [],
+      eddRevisions: [],
+      totalPostponedDays: 0,
+      totalRevisionCount: 0,
+      badImpactLevel: "Reliable",
+      badImpactColor: "var(--success)",
+      badImpactDesc: "Consistently fulfills according to committed dates."
     };
   }
 
   const safeReqs = Array.isArray(requests) ? requests : [];
-  const vendorRequests = safeReqs.filter(r => r && r.vendorId === vendor.id && r.vendorEdd);
+  const vendorRequests = safeReqs.filter(r => r && r.vendorId === vendor.id && (r.vendorEdd || (r.vendorEddHistory && r.vendorEddHistory.length > 0)));
   const totalOrders = vendorRequests.length;
   const completedCount = safeReqs.filter(r => r && r.vendorId === vendor.id && r.isMaterialRec === "Yes").length;
   const scorePending = completedCount < 5;
 
   let delayedOrdersCount = 0;
   let totalDelayDays = 0;
+  let totalRevisionCount = 0;
+  let totalPostponedDays = 0;
   const delays = [];
+  const eddRevisions = [];
   const categoryCount = {};
   const statusCount = { awaitingPrice: 0, inTransit: 0, received: 0 };
 
@@ -153,6 +163,33 @@ export const calculateVendorMetrics = (vendor, requests = []) => {
 
     const cat = cleanCategoryName(r.category) || "Other";
     categoryCount[cat] = (categoryCount[cat] || 0) + 1;
+
+    // Track EDD revision history & bad impact
+    const history = Array.isArray(r.vendorEddHistory)
+      ? r.vendorEddHistory
+      : (() => {
+          try { return JSON.parse(r.vendorEddHistory || "[]"); } catch (e) { return []; }
+        })();
+
+    if (history.length > 0) {
+      history.forEach((h, idx) => {
+        totalRevisionCount += 1;
+        const slip = parseInt(h.postponedDays || 0);
+        totalPostponedDays += slip;
+        eddRevisions.push({
+          requestId: r.id,
+          model: r.model || "PO Item",
+          orderDate: r.orderDate || "",
+          revisionNo: idx + 1,
+          previousEdd: h.previousEdd || "—",
+          newEdd: h.edd || "—",
+          slipDays: slip,
+          reason: h.reason || "Delivery rescheduled",
+          changedBy: h.changedBy || "Staff",
+          changedAt: h.changedAt ? h.changedAt.split("T")[0] : ""
+        });
+      });
+    }
 
     let delay = 0;
     const systemDate = "2026-06-11";
@@ -189,11 +226,33 @@ export const calculateVendorMetrics = (vendor, requests = []) => {
   const otdRate = totalOrders > 0 ? Math.round(((totalOrders - delayedOrdersCount) / totalOrders) * 100) : 100;
   const avgDelay = totalOrders > 0 ? parseFloat((totalDelayDays / totalOrders).toFixed(1)) : 0;
 
-  const score = scorePending
-    ? null
-    : (totalOrders > 0 
-      ? Math.max(0, Math.min(100, Math.round(100 - (avgDelay * 4) - ((delayedOrdersCount / totalOrders) * 50))))
-      : 100);
+  // Calculate Bad Impact level based on cumulative delays and revisions
+  const badImpactScore = (totalDelayDays * 2) + (totalPostponedDays * 3) + (totalRevisionCount * 5);
+  let badImpactLevel = "Reliable";
+  let badImpactColor = "var(--success)";
+  let badImpactDesc = "Consistently fulfills according to committed dates.";
+
+  if (badImpactScore > 30 || totalRevisionCount >= 3 || totalPostponedDays > 15) {
+    badImpactLevel = "Critical Bad Impact";
+    badImpactColor = "var(--danger)";
+    badImpactDesc = "Severe delivery postponements & chronic fulfillment delays causing downstream bottleneck.";
+  } else if (badImpactScore > 10 || totalRevisionCount >= 2 || totalPostponedDays > 5) {
+    badImpactLevel = "High Bad Impact";
+    badImpactColor = "#f97316"; // orange
+    badImpactDesc = "Multiple revised EDDs and moderate delays impacting production planning.";
+  } else if (badImpactScore > 0 || totalRevisionCount >= 1 || totalDelayDays > 0) {
+    badImpactLevel = "Moderate Impact";
+    badImpactColor = "var(--warning)";
+    badImpactDesc = "Minor EDD shift or slight delays noticed on past orders.";
+  }
+
+  // Factor in revisions into overall performance score
+  const revisionPenalty = Math.min(25, totalRevisionCount * 5 + Math.round(totalPostponedDays / 2));
+  const baseScore = totalOrders > 0 
+    ? Math.max(0, Math.min(100, Math.round(100 - (avgDelay * 4) - ((delayedOrdersCount / totalOrders) * 50) - revisionPenalty)))
+    : 100;
+
+  const score = scorePending ? null : baseScore;
 
   return {
     score,
@@ -203,13 +262,20 @@ export const calculateVendorMetrics = (vendor, requests = []) => {
     avgDelay,
     totalOrders,
     delayedOrders: delayedOrdersCount,
+    totalRevisionCount,
+    totalPostponedDays,
+    badImpactScore,
+    badImpactLevel,
+    badImpactColor,
+    badImpactDesc,
     categoryData: Object.entries(categoryCount).map(([name, value]) => ({ name, value })),
     statusData: [
       { name: "Awaiting Price", value: statusCount.awaitingPrice },
       { name: "In Transit", value: statusCount.inTransit },
       { name: "Received", value: statusCount.received }
     ],
-    delays
+    delays,
+    eddRevisions
   };
 };
 
@@ -221,13 +287,42 @@ export const calculateCargoCompanyMetrics = (company, cargos, requests) => {
 
   let delayedCargosCount = 0;
   let totalDelayDays = 0;
+  let totalRevisionCount = 0;
+  let totalPostponedDays = 0;
   const delays = [];
+  const etaRevisions = [];
   const modeCount = { Sea: 0, Air: 0, Land: 0, Express: 0 };
 
   companyCargos.forEach(c => {
     const mode = c.modeOfTransport || "Sea";
     if (modeCount[mode] !== undefined) {
       modeCount[mode] += 1;
+    }
+
+    const history = Array.isArray(c.cargoEtaHistory)
+      ? c.cargoEtaHistory
+      : (() => {
+          try { return JSON.parse(c.cargoEtaHistory || "[]"); } catch (e) { return []; }
+        })();
+
+    if (history.length > 0) {
+      history.forEach((h, idx) => {
+        totalRevisionCount += 1;
+        const slip = parseInt(h.postponedDays || 0);
+        totalPostponedDays += slip;
+        etaRevisions.push({
+          cargoId: c.id,
+          cargoDetail: c.cargoDetail || `Cargo #${c.id}`,
+          shippingDate: c.cargoShippingDate,
+          revisionNo: idx + 1,
+          previousEta: h.previousEta || "—",
+          newEta: h.eta || "—",
+          slipDays: slip,
+          reason: h.reason || "Transit ETA rescheduled",
+          changedBy: h.changedBy || "Staff",
+          changedAt: h.changedAt ? h.changedAt.split("T")[0] : ""
+        });
+      });
     }
 
     let delay = 0;
@@ -267,11 +362,31 @@ export const calculateCargoCompanyMetrics = (company, cargos, requests) => {
   const otaRate = totalCargos > 0 ? Math.round(((totalCargos - delayedCargosCount) / totalCargos) * 100) : 100;
   const avgDelay = totalCargos > 0 ? parseFloat((totalDelayDays / totalCargos).toFixed(1)) : 0;
 
-  const score = scorePending
-    ? null
-    : (totalCargos > 0 
-      ? Math.max(0, Math.min(100, Math.round(100 - (avgDelay * 5) - ((delayedCargosCount / totalCargos) * 50))))
-      : 100);
+  const badImpactScore = (totalDelayDays * 2) + (totalPostponedDays * 3) + (totalRevisionCount * 5);
+  let badImpactLevel = "Reliable";
+  let badImpactColor = "var(--success)";
+  let badImpactDesc = "Shipments arrive consistently on or before expected transit ETA.";
+
+  if (badImpactScore > 30 || totalRevisionCount >= 3 || totalPostponedDays > 15) {
+    badImpactLevel = "Critical Bad Impact";
+    badImpactColor = "var(--danger)";
+    badImpactDesc = "Severe freight delays and recurrent ETA pushes disrupting arrival schedules.";
+  } else if (badImpactScore > 10 || totalRevisionCount >= 2 || totalPostponedDays > 5) {
+    badImpactLevel = "High Bad Impact";
+    badImpactColor = "#f97316";
+    badImpactDesc = "Multiple ETA revisions and transit delays impacting warehouse receipt.";
+  } else if (badImpactScore > 0 || totalRevisionCount >= 1 || totalDelayDays > 0) {
+    badImpactLevel = "Moderate Impact";
+    badImpactColor = "var(--warning)";
+    badImpactDesc = "Minor ETA adjustments or slight delay noticed.";
+  }
+
+  const revisionPenalty = Math.min(25, totalRevisionCount * 5 + Math.round(totalPostponedDays / 2));
+  const baseScore = totalCargos > 0 
+    ? Math.max(0, Math.min(100, Math.round(100 - (avgDelay * 5) - ((delayedCargosCount / totalCargos) * 50) - revisionPenalty)))
+    : 100;
+
+  const score = scorePending ? null : baseScore;
 
   return {
     score,
@@ -281,8 +396,15 @@ export const calculateCargoCompanyMetrics = (company, cargos, requests) => {
     avgDelay,
     totalCargos,
     delayedCargos: delayedCargosCount,
+    totalRevisionCount,
+    totalPostponedDays,
+    badImpactScore,
+    badImpactLevel,
+    badImpactColor,
+    badImpactDesc,
     modeData: Object.entries(modeCount).map(([name, value]) => ({ name, value })).filter(x => x.value > 0),
-    delays
+    delays,
+    etaRevisions
   };
 };
 
@@ -317,8 +439,10 @@ export default function PurchaserDashboard({
   onDeleteItems,
   onUpdateItem,
   onMergeItems,
+  onUpdateEdd,
   onNavigateView
 }) {
+  const [eddModalConfig, setEddModalConfig] = useState(null);
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem("makpower_purchaser_tab") || "alerts";
   });
@@ -1933,34 +2057,51 @@ export default function PurchaserDashboard({
                                 {totalCalc > 0 ? `${getCurrencySymbol(currentCurrency)}${totalCalc.toLocaleString()}` : "—"}
                               </td>
 
-                              {/* EDD Date Selector (Inline) */}
-                              <td style={{ width: "140px", minWidth: "140px", boxSizing: "border-box" }}>
-                                <input 
-                                  type="date"
-                                  className="form-control"
-                                  value={currentEdd}
-                                  onChange={e => {
-                                    setStep1InlineEdits(prev => ({
-                                      ...prev,
-                                      [r.id]: {
-                                        ...prev[r.id],
-                                        vendorEdd: e.target.value
+                              {/* EDD Date Selector (Inline) & Revision History */}
+                              <td style={{ width: "175px", minWidth: "175px", boxSizing: "border-box" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                  <input 
+                                    type="date"
+                                    className="form-control"
+                                    value={currentEdd}
+                                    onChange={e => {
+                                      setStep1InlineEdits(prev => ({
+                                        ...prev,
+                                        [r.id]: {
+                                          ...prev[r.id],
+                                          vendorEdd: e.target.value
+                                        }
+                                      }));
+                                    }}
+                                    onFocus={() => {
+                                      setLastFocusedStep1Index(index);
+                                      setLastFocusedStep1Field("edd");
+                                    }}
+                                    onKeyDown={e => {
+                                      if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleStep1FillDown(index, "edd");
                                       }
-                                    }));
-                                  }}
-                                  onFocus={() => {
-                                    setLastFocusedStep1Index(index);
-                                    setLastFocusedStep1Field("edd");
-                                  }}
-                                  onKeyDown={e => {
-                                    if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      handleStep1FillDown(index, "edd");
-                                    }
-                                  }}
-                                  style={{ padding: "4px 6px", fontSize: "0.82rem", height: "32px", width: "100%", boxSizing: "border-box" }}
-                                />
+                                    }}
+                                    style={{ padding: "4px 6px", fontSize: "0.82rem", height: "32px", width: "100%", boxSizing: "border-box" }}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setEddModalConfig({ isOpen: true, type: "vendor", item: r })}
+                                    className="btn btn-secondary btn-sm"
+                                    style={{ padding: "2px 6px", height: "32px", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "3px", flexShrink: 0 }}
+                                    title="Add/Update Vendor EDD with Revision History"
+                                  >
+                                    <Clock size={12} />
+                                    {(() => {
+                                      const hist = Array.isArray(r.vendorEddHistory) ? r.vendorEddHistory : (typeof r.vendorEddHistory === "string" ? JSON.parse(r.vendorEddHistory || "[]") : []);
+                                      return hist.length > 0 ? (
+                                        <span style={{ fontSize: "0.7rem", color: "#f87171", fontWeight: "bold" }}>({hist.length})</span>
+                                      ) : <span>+</span>;
+                                    })()}
+                                  </button>
+                                </div>
                               </td>
 
                               {/* Actions */}
@@ -3735,7 +3876,26 @@ export default function PurchaserDashboard({
 
                               <td>{vName}</td>
                               <td>{r.orderDate}</td>
-                              <td>{r.vendorEdd || "—"}</td>
+                              <td>
+                                <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                  <span>{r.vendorEdd || "—"}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEddModalConfig({ isOpen: true, type: "vendor", item: r })}
+                                    className="btn btn-secondary btn-sm"
+                                    style={{ padding: "1px 6px", height: "24px", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "3px" }}
+                                    title="Add/Update Vendor EDD with Revision History"
+                                  >
+                                    <Clock size={11} /> +EDD
+                                    {(() => {
+                                      const hist = Array.isArray(r.vendorEddHistory) ? r.vendorEddHistory : (typeof r.vendorEddHistory === "string" ? JSON.parse(r.vendorEddHistory || "[]") : []);
+                                      return hist.length > 0 ? (
+                                        <span style={{ fontSize: "0.68rem", color: "#f87171", fontWeight: "bold" }}>({hist.length})</span>
+                                      ) : null;
+                                    })()}
+                                  </button>
+                                </div>
+                              </td>
                               <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{r.pricedAt ? r.pricedAt.split("T")[0] : "—"}</td>
                               <td>
                                 {r.vendorEdd ? (
@@ -4092,8 +4252,23 @@ export default function PurchaserDashboard({
                         </div>
                         <div>
                           <div style={{ color: "var(--text-muted)" }}>Shipping / ETA Dates:</div>
-                          <div style={{ fontWeight: 500 }}>
-                            {cargo.cargoShippingDate || "—"} <ArrowRight size={12} style={{ verticalAlign: "middle" }} /> {cargo.cargoEta || "—"}
+                          <div style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                            <span>{cargo.cargoShippingDate || "—"} <ArrowRight size={12} style={{ verticalAlign: "middle" }} /> {cargo.cargoEta || "—"}</span>
+                            <button
+                              type="button"
+                              onClick={() => setEddModalConfig({ isOpen: true, type: "cargo", item: cargo })}
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: "1px 6px", height: "22px", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "3px" }}
+                              title="Update Cargo ETA with Revision History"
+                            >
+                              <Clock size={11} /> +ETA
+                              {(() => {
+                                const hist = Array.isArray(cargo.cargoEtaHistory) ? cargo.cargoEtaHistory : (typeof cargo.cargoEtaHistory === "string" ? JSON.parse(cargo.cargoEtaHistory || "[]") : []);
+                                return hist.length > 0 ? (
+                                  <span style={{ fontSize: "0.68rem", color: "#f87171", fontWeight: "bold" }}>({hist.length})</span>
+                                ) : null;
+                              })()}
+                            </button>
                           </div>
                         </div>
                         <div>
@@ -4559,6 +4734,7 @@ export default function PurchaserDashboard({
           <MyVendorsPanel 
             currentUser={currentUser}
             vendors={vendors}
+            requests={requests}
             onAddVendor={onAddVendor}
             onUpdateVendor={onUpdateVendor}
             onRemoveVendor={onRemoveVendor}
@@ -4570,6 +4746,8 @@ export default function PurchaserDashboard({
         {activeTab === "cargocompanies" && (
           <CargoCompaniesPanel 
             cargoCompanies={cargoCompanies}
+            cargos={cargos}
+            requests={requests}
             onAddCargoCompany={onAddCargoCompany}
             onUpdateCargoCompany={onUpdateCargoCompany}
             onRemoveCargoCompany={onRemoveCargoCompany}
@@ -4860,6 +5038,29 @@ export default function PurchaserDashboard({
           onUpdateVendor={onUpdateVendor}
           onRemoveVendor={onRemoveVendor}
           onClose={() => setSelectedVendorForDetail(null)}
+        />
+      )}
+
+      {/* ==================== CARGO COMPANY DETAIL MODAL ==================== */}
+      {selectedCargoCompanyForDetail && (
+        <CargoCompanyDetailModal
+          company={selectedCargoCompanyForDetail}
+          cargos={cargos}
+          requests={requests}
+          onUpdateCargoCompany={onUpdateCargoCompany}
+          onClose={() => setSelectedCargoCompanyForDetail(null)}
+        />
+      )}
+
+      {/* ==================== ADD / UPDATE EDD MODAL ==================== */}
+      {eddModalConfig && eddModalConfig.isOpen && (
+        <AddEddModal
+          isOpen={eddModalConfig.isOpen}
+          onClose={() => setEddModalConfig(null)}
+          onSave={onUpdateEdd}
+          type={eddModalConfig.type || "vendor"}
+          item={eddModalConfig.item}
+          currentUser={currentUser}
         />
       )}
 
@@ -5483,7 +5684,24 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
               <div className="details-term">Total Price:</div><div className="details-def">{request.totalRmb ? `${getCurrencySymbol(request.currency)}${Number(request.totalRmb).toLocaleString()}` : "—"}</div>
               <div className="details-term">Advance Payment:</div><div className="details-def">{request.advancePayment ? `${getCurrencySymbol(request.currency)}${Number(request.advancePayment).toLocaleString()}` : "—"}</div>
               <div className="details-term">Balance Payment:</div><div className="details-def">{request.balancePayment ? `${getCurrencySymbol(request.currency)}${Number(request.balancePayment).toLocaleString()}` : "—"}</div>
-              <div className="details-term">Vendor EDD:</div><div className="details-def">{request.vendorEdd || "—"}</div>
+              <div className="details-term">Vendor EDD:</div>
+              <div className="details-def">
+                <span>{request.vendorEdd || "—"}</span>
+                {(() => {
+                  const history = Array.isArray(request.vendorEddHistory)
+                    ? request.vendorEddHistory
+                    : (() => {
+                        try { return JSON.parse(request.vendorEddHistory || "[]"); } catch (e) { return []; }
+                      })();
+                  if (!history || history.length === 0) return null;
+                  const totalSlip = history.reduce((acc, h) => acc + (parseInt(h.postponedDays || 0) || 0), 0);
+                  return (
+                    <span style={{ marginLeft: "8px", fontSize: "0.74rem", color: totalSlip > 0 ? "var(--danger)" : "var(--primary)", fontWeight: 600 }}>
+                      (⚠️ Rescheduled {history.length} time{history.length > 1 ? "s" : ""}, {totalSlip > 0 ? `+${totalSlip}d delayed` : `${totalSlip}d`})
+                    </span>
+                  );
+                })()}
+              </div>
               <div className="details-term">Received?</div><div className="details-def" style={{ fontWeight: 600, color: request.isMaterialRec === "Yes" ? "var(--success)" : "var(--danger)" }}>{request.isMaterialRec}</div>
               {request.actualReceivedDate && (
                 <>
@@ -5519,7 +5737,24 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
                 <div className="details-term">Transport Mode:</div><div className="details-def" style={{ fontWeight: 600 }}>{cargo.modeOfTransport || "—"}</div>
                 <div className="details-term">Cargo Company:</div><div className="details-def">{cargoCompanies.find(cc => cc.id === cargo.cargoCompanyId)?.name || "—"}</div>
                 <div className="details-term">Shipping Date:</div><div className="details-def">{cargo.cargoShippingDate || "—"}</div>
-                <div className="details-term">Cargo ETA:</div><div className="details-def">{cargo.cargoEta || "—"}</div>
+                <div className="details-term">Cargo ETA:</div>
+                <div className="details-def">
+                  <span>{cargo.cargoEta || "—"}</span>
+                  {(() => {
+                    const history = Array.isArray(cargo.cargoEtaHistory)
+                      ? cargo.cargoEtaHistory
+                      : (() => {
+                          try { return JSON.parse(cargo.cargoEtaHistory || "[]"); } catch (e) { return []; }
+                        })();
+                    if (!history || history.length === 0) return null;
+                    const totalSlip = history.reduce((acc, h) => acc + (parseInt(h.postponedDays || 0) || 0), 0);
+                    return (
+                      <span style={{ marginLeft: "8px", fontSize: "0.74rem", color: totalSlip > 0 ? "var(--danger)" : "var(--primary)", fontWeight: 600 }}>
+                        (⚠️ Rescheduled {history.length} time{history.length > 1 ? "s" : ""}, {totalSlip > 0 ? `+${totalSlip}d delayed` : `${totalSlip}d`})
+                      </span>
+                    );
+                  })()}
+                </div>
                 {request.cargoAssignedByName && (
                   <>
                     <div className="details-term">Cargo Assigned By:</div>
@@ -8030,7 +8265,7 @@ function PendingDocumentsPanel({
 }
 
 // 5. MY VENDORS PANEL FOR PURCHASERS
-function MyVendorsPanel({ currentUser, vendors, onAddVendor, onUpdateVendor, onRemoveVendor, onSelectVendor }) {
+function MyVendorsPanel({ currentUser, vendors, requests = [], onAddVendor, onUpdateVendor, onRemoveVendor, onSelectVendor }) {
   const [newVendorName, setNewVendorName] = useState("");
   const [location, setLocation] = useState("");
   const [phone, setPhone] = useState("");
@@ -8096,33 +8331,51 @@ function MyVendorsPanel({ currentUser, vendors, onAddVendor, onUpdateVendor, onR
               {showInactive ? "No vendors registered." : "No active vendors. Check 'Show Inactive' or register one on the right!"}
             </div>
           ) : (
-            displayedVendors.map(vendor => (
-              <div 
-                key={vendor.id} 
-                className="glass-panel" 
-                onClick={() => onSelectVendor(vendor)}
-                style={{ 
-                  padding: "16px 20px", 
-                  background: "rgba(255, 255, 255, 0.02)", 
-                  cursor: "pointer", 
-                  display: "flex", 
-                  justifyContent: "space-between", 
-                  alignItems: "center",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border-glass)",
-                  transition: "all 0.2s ease",
-                  opacity: vendor.status === "Inactive" ? 0.55 : 1
-                }}
-              >
-                <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>
-                  {vendor.name} {vendor.status === "Inactive" && <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontStyle: "italic" }}>(Inactive)</span>}
-                </span>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>View Details</span>
-                  <ChevronRight size={16} style={{ color: "var(--primary)" }} />
+            displayedVendors.map(vendor => {
+              const vMetrics = calculateVendorMetrics(vendor, requests);
+              return (
+                <div 
+                  key={vendor.id} 
+                  className="glass-panel" 
+                  onClick={() => onSelectVendor(vendor)}
+                  style={{ 
+                    padding: "16px 20px", 
+                    background: "rgba(255, 255, 255, 0.02)", 
+                    cursor: "pointer", 
+                    display: "flex", 
+                    justifyContent: "space-between", 
+                    alignItems: "center",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border-glass)",
+                    transition: "all 0.2s ease",
+                    opacity: vendor.status === "Inactive" ? 0.55 : 1
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>
+                      {vendor.name} {vendor.status === "Inactive" && <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontStyle: "italic" }}>(Inactive)</span>}
+                    </span>
+                    {vMetrics.totalRevisionCount > 0 && (
+                      <span style={{
+                        fontSize: "0.7rem",
+                        padding: "2px 8px",
+                        borderRadius: "12px",
+                        background: vMetrics.badImpactColor === "var(--danger)" ? "rgba(239, 68, 68, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                        color: vMetrics.badImpactColor,
+                        border: `1px solid ${vMetrics.badImpactColor}`,
+                        fontWeight: 700
+                      }}>
+                        {vMetrics.badImpactLevel} ({vMetrics.totalRevisionCount} revs / +{vMetrics.totalPostponedDays}d slip)
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>View Details</span>
+                    <ChevronRight size={16} style={{ color: "var(--primary)" }} />
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -8194,7 +8447,7 @@ function MyVendorsPanel({ currentUser, vendors, onAddVendor, onUpdateVendor, onR
 }
 
 // 6. CARGO COMPANIES PANEL FOR PURCHASERS & ADMINS
-export function CargoCompaniesPanel({ cargoCompanies, onAddCargoCompany, onUpdateCargoCompany, onRemoveCargoCompany, onSelectCargoCompany }) {
+export function CargoCompaniesPanel({ cargoCompanies, cargos = [], requests = [], onAddCargoCompany, onUpdateCargoCompany, onRemoveCargoCompany, onSelectCargoCompany }) {
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
   const [phone, setPhone] = useState("");
@@ -8245,33 +8498,51 @@ export function CargoCompaniesPanel({ cargoCompanies, onAddCargoCompany, onUpdat
               {showInactive ? "No cargo carriers registered." : "No active logistics carriers. Check 'Show Inactive' or register one on the right!"}
             </div>
           ) : (
-            displayedCargoCompanies.map(cc => (
-              <div 
-                key={cc.id} 
-                className="glass-panel" 
-                onClick={() => onSelectCargoCompany(cc)}
-                style={{ 
-                  padding: "16px 20px", 
-                  background: "rgba(255, 255, 255, 0.02)", 
-                  cursor: "pointer", 
-                  display: "flex", 
-                  justifyContent: "space-between", 
-                  alignItems: "center",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border-glass)",
-                  transition: "all 0.2s ease",
-                  opacity: cc.status === "Inactive" ? 0.55 : 1
-                }}
-              >
-                <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>
-                  {cc.name} {cc.status === "Inactive" && <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontStyle: "italic" }}>(Inactive)</span>}
-                </span>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>View Details</span>
-                  <ChevronRight size={16} style={{ color: "var(--primary)" }} />
+            displayedCargoCompanies.map(cc => {
+              const ccMetrics = calculateCargoCompanyMetrics(cc, cargos, requests);
+              return (
+                <div 
+                  key={cc.id} 
+                  className="glass-panel" 
+                  onClick={() => onSelectCargoCompany(cc)}
+                  style={{ 
+                    padding: "16px 20px", 
+                    background: "rgba(255, 255, 255, 0.02)", 
+                    cursor: "pointer", 
+                    display: "flex", 
+                    justifyContent: "space-between", 
+                    alignItems: "center",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border-glass)",
+                    transition: "all 0.2s ease",
+                    opacity: cc.status === "Inactive" ? 0.55 : 1
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>
+                      {cc.name} {cc.status === "Inactive" && <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontStyle: "italic" }}>(Inactive)</span>}
+                    </span>
+                    {ccMetrics.totalRevisionCount > 0 && (
+                      <span style={{
+                        fontSize: "0.7rem",
+                        padding: "2px 8px",
+                        borderRadius: "12px",
+                        background: ccMetrics.badImpactColor === "var(--danger)" ? "rgba(239, 68, 68, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                        color: ccMetrics.badImpactColor,
+                        border: `1px solid ${ccMetrics.badImpactColor}`,
+                        fontWeight: 700
+                      }}>
+                        {ccMetrics.badImpactLevel} ({ccMetrics.totalRevisionCount} revs / +{ccMetrics.totalPostponedDays}d slip)
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>View Details</span>
+                    <ChevronRight size={16} style={{ color: "var(--primary)" }} />
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -8366,7 +8637,25 @@ export function VendorDetailModal({
 
   // Calculate Metrics
   const metrics = calculateVendorMetrics(vendor, requests || []);
-  const { score, scorePending, completedCount, otdRate, avgDelay, totalOrders, delayedOrders, categoryData, statusData, delays } = metrics;
+  const { 
+    score, 
+    scorePending, 
+    completedCount, 
+    otdRate, 
+    avgDelay, 
+    totalOrders, 
+    delayedOrders, 
+    totalRevisionCount,
+    totalPostponedDays,
+    badImpactScore,
+    badImpactLevel,
+    badImpactColor,
+    badImpactDesc,
+    eddRevisions = [],
+    categoryData, 
+    statusData, 
+    delays 
+  } = metrics;
 
   // Score styling
   let scoreColor = "var(--success)";
@@ -8431,29 +8720,35 @@ export function VendorDetailModal({
         {success && <div className="alert-strip alert-success" style={{ marginBottom: "14px" }}>{success}</div>}
 
         {/* KPI Scorecard Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "14px", marginBottom: "20px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "12px", marginBottom: "20px" }}>
           <div className="glass-panel" style={{ padding: "14px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", border: `1.5px solid ${scoreColor}`, boxShadow: `0 0 12px ${scoreGlow}` }}>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Performance Rating</span>
-            <span style={{ fontSize: "1.8rem", fontWeight: "extrabold", color: scoreColor, margin: "6px 0" }}>{scorePending ? "Pending" : `${score}/100`}</span>
-            <span style={{ fontSize: "0.7rem", opacity: 0.8 }}>{scorePending ? `Progress: ${completedCount}/5 deliveries` : "Overall Vendor Rating"}</span>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Performance Rating</span>
+            <span style={{ fontSize: "1.7rem", fontWeight: "extrabold", color: scoreColor, margin: "6px 0" }}>{scorePending ? "Pending" : `${score}/100`}</span>
+            <span style={{ fontSize: "0.68rem", opacity: 0.8 }}>{scorePending ? `Progress: ${completedCount}/5 deliveries` : "Overall Vendor Rating"}</span>
           </div>
 
           <div className="glass-panel" style={{ padding: "14px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>On-Time Fulfillment Rate</span>
-            <span style={{ fontSize: "2rem", fontWeight: "extrabold", color: scorePending ? "var(--text-muted)" : (otdRate >= 85 ? "var(--success)" : otdRate >= 70 ? "var(--warning)" : "var(--danger)"), margin: "6px 0" }}>{scorePending ? "N/A" : `${otdRate}%`}</span>
-            <span style={{ fontSize: "0.7rem", opacity: 0.8 }}>Target KPI: &ge; 85%</span>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>On-Time Rate</span>
+            <span style={{ fontSize: "1.8rem", fontWeight: "extrabold", color: scorePending ? "var(--text-muted)" : (otdRate >= 85 ? "var(--success)" : otdRate >= 70 ? "var(--warning)" : "var(--danger)"), margin: "6px 0" }}>{scorePending ? "N/A" : `${otdRate}%`}</span>
+            <span style={{ fontSize: "0.68rem", opacity: 0.8 }}>Target KPI: &ge; 85%</span>
           </div>
 
           <div className="glass-panel" style={{ padding: "14px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Average Fulfillment Delay</span>
-            <span style={{ fontSize: "2rem", fontWeight: "extrabold", color: scorePending ? "var(--text-muted)" : (avgDelay === 0 ? "var(--success)" : avgDelay <= 3 ? "var(--warning)" : "var(--danger)"), margin: "6px 0" }}>{scorePending ? "N/A" : `${avgDelay}d`}</span>
-            <span style={{ fontSize: "0.7rem", opacity: 0.8 }}>Overdue days per order</span>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Avg Fulfillment Delay</span>
+            <span style={{ fontSize: "1.8rem", fontWeight: "extrabold", color: scorePending ? "var(--text-muted)" : (avgDelay === 0 ? "var(--success)" : avgDelay <= 3 ? "var(--warning)" : "var(--danger)"), margin: "6px 0" }}>{scorePending ? "N/A" : `${avgDelay}d`}</span>
+            <span style={{ fontSize: "0.68rem", opacity: 0.8 }}>Overdue days per order</span>
+          </div>
+
+          <div className="glass-panel" style={{ padding: "14px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", border: `1.5px solid ${badImpactColor}`, boxShadow: `0 0 12px ${badImpactColor === "var(--danger)" ? "rgba(239,68,68,0.2)" : "rgba(245,158,11,0.2)"}` }}>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Bad Impact &amp; Slippage</span>
+            <span style={{ fontSize: "1.2rem", fontWeight: "extrabold", color: badImpactColor, margin: "6px 0" }}>{badImpactLevel}</span>
+            <span style={{ fontSize: "0.68rem", opacity: 0.85 }}>{totalRevisionCount} changes (+{totalPostponedDays}d slip)</span>
           </div>
 
           <div className="glass-panel" style={{ padding: "14px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Fulfillment Transactions</span>
-            <span style={{ fontSize: "2rem", fontWeight: "extrabold", color: "var(--secondary)", margin: "6px 0" }}>{totalOrders}</span>
-            <span style={{ fontSize: "0.7rem", opacity: 0.8 }}>With EDD populated</span>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Fulfillment Orders</span>
+            <span style={{ fontSize: "1.8rem", fontWeight: "extrabold", color: "var(--secondary)", margin: "6px 0" }}>{totalOrders}</span>
+            <span style={{ fontSize: "0.68rem", opacity: 0.8 }}>With EDD populated</span>
           </div>
         </div>
 
@@ -8648,6 +8943,72 @@ export function VendorDetailModal({
           )}
         </div>
 
+        {/* EDD Postponement & Revision History (Bad Impact Log) */}
+        <div style={{ borderTop: "1px solid var(--border-glass)", paddingTop: "16px", marginBottom: "20px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+            <h4 style={{ fontSize: "1.1rem", margin: 0, color: badImpactColor, display: "flex", alignItems: "center", gap: "8px" }}>
+              <Clock size={18} /> EDD Postponement &amp; Bad Impact Log ({eddRevisions.length})
+            </h4>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "0.75rem", padding: "2px 8px", borderRadius: "12px", background: badImpactColor === "var(--danger)" ? "rgba(239,68,68,0.15)" : "rgba(245,158,11,0.15)", color: badImpactColor, border: `1px solid ${badImpactColor}`, fontWeight: 700 }}>
+                {badImpactLevel}
+              </span>
+              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                Total Slipped: <strong>+{totalPostponedDays} days</strong>
+              </span>
+            </div>
+          </div>
+          {badImpactDesc && (
+            <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "12px", fontStyle: "italic" }}>
+              {badImpactDesc}
+            </p>
+          )}
+          {eddRevisions.length === 0 ? (
+            <div style={{ color: "var(--success)", fontSize: "0.85rem", padding: "12px", background: "rgba(16, 185, 129, 0.05)", borderRadius: "6px", border: "1px solid rgba(16, 185, 129, 0.1)" }}>
+              ✓ No EDD reschedules recorded. Vendor delivered or committed on original timelines without postponement.
+            </div>
+          ) : (
+            <div className="table-container" style={{ maxHeight: "220px", overflowY: "auto" }}>
+              <table className="custom-table" style={{ fontSize: "0.8rem" }}>
+                <thead>
+                  <tr>
+                    <th>Item / PO</th>
+                    <th>Rev #</th>
+                    <th>Previous EDD</th>
+                    <th>Rescheduled EDD</th>
+                    <th>Slippage</th>
+                    <th>Reason / Explanation</th>
+                    <th>Logged By &amp; Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {eddRevisions.map((rev, idx) => (
+                    <tr key={idx}>
+                      <td style={{ fontWeight: 600 }}>{rev.model}</td>
+                      <td><span className="badge badge-pending" style={{ fontSize: "0.7rem", padding: "1px 6px" }}>#{rev.revisionNo}</span></td>
+                      <td style={{ color: "var(--text-muted)" }}>{rev.previousEdd}</td>
+                      <td style={{ fontWeight: 600 }}>{rev.newEdd}</td>
+                      <td>
+                        {rev.slipDays > 0 ? (
+                          <span style={{ color: "var(--danger)", fontWeight: 700 }}>+{rev.slipDays}d (Delayed)</span>
+                        ) : rev.slipDays < 0 ? (
+                          <span style={{ color: "var(--success)", fontWeight: 700 }}>{rev.slipDays}d (Earlier)</span>
+                        ) : (
+                          <span style={{ color: "var(--text-muted)" }}>0d</span>
+                        )}
+                      </td>
+                      <td style={{ maxWidth: "200px" }}>{rev.reason}</td>
+                      <td style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                        {rev.changedBy} • {rev.changedAt}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
         {/* Purchase Orders History */}
         <div style={{ borderTop: "1px solid var(--border-glass)", paddingTop: "16px" }}>
           <h4 style={{ fontSize: "1.1rem", marginBottom: "12px", color: "var(--secondary)" }}>Transaction History ({vendorRequests.length} Orders)</h4>
@@ -8733,7 +9094,24 @@ export function CargoCompanyDetailModal({
 
   // Calculate metrics
   const metrics = calculateCargoCompanyMetrics(company, cargos, requests);
-  const { score, scorePending, completedCount, otaRate, avgDelay, totalCargos, delayedCargos, modeData, delays } = metrics;
+  const { 
+    score, 
+    scorePending, 
+    completedCount, 
+    otaRate, 
+    avgDelay, 
+    totalCargos, 
+    delayedCargos, 
+    totalRevisionCount,
+    totalPostponedDays,
+    badImpactScore,
+    badImpactLevel,
+    badImpactColor,
+    badImpactDesc,
+    etaRevisions = [],
+    modeData, 
+    delays 
+  } = metrics;
 
   // Score styling
   let scoreColor = "var(--success)";
@@ -8797,29 +9175,35 @@ export function CargoCompanyDetailModal({
         {success && <div className="alert-strip alert-success" style={{ marginBottom: "14px" }}>{success}</div>}
 
         {/* KPI Scorecard Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "14px", marginBottom: "20px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "12px", marginBottom: "20px" }}>
           <div className="glass-panel" style={{ padding: "14px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", border: `1.5px solid ${scoreColor}`, boxShadow: `0 0 12px ${scoreGlow}` }}>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Logistics Rating</span>
-            <span style={{ fontSize: "1.8rem", fontWeight: "extrabold", color: scoreColor, margin: "6px 0" }}>{scorePending ? "Pending" : `${score}/100`}</span>
-            <span style={{ fontSize: "0.7rem", opacity: 0.8 }}>{scorePending ? `Progress: ${completedCount}/5 shipments` : "Logistics Performance Rating"}</span>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Logistics Rating</span>
+            <span style={{ fontSize: "1.7rem", fontWeight: "extrabold", color: scoreColor, margin: "6px 0" }}>{scorePending ? "Pending" : `${score}/100`}</span>
+            <span style={{ fontSize: "0.68rem", opacity: 0.8 }}>{scorePending ? `Progress: ${completedCount}/5 shipments` : "Logistics Performance Rating"}</span>
           </div>
 
           <div className="glass-panel" style={{ padding: "14px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>On-Time Arrival Rate (OTA)</span>
-            <span style={{ fontSize: "2rem", fontWeight: "extrabold", color: scorePending ? "var(--text-muted)" : (otaRate >= 85 ? "var(--success)" : otaRate >= 70 ? "var(--warning)" : "var(--danger)"), margin: "6px 0" }}>{scorePending ? "N/A" : `${otaRate}%`}</span>
-            <span style={{ fontSize: "0.7rem", opacity: 0.8 }}>Target KPI: &ge; 85%</span>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>OTA Arrival Rate</span>
+            <span style={{ fontSize: "1.8rem", fontWeight: "extrabold", color: scorePending ? "var(--text-muted)" : (otaRate >= 85 ? "var(--success)" : otaRate >= 70 ? "var(--warning)" : "var(--danger)"), margin: "6px 0" }}>{scorePending ? "N/A" : `${otaRate}%`}</span>
+            <span style={{ fontSize: "0.68rem", opacity: 0.8 }}>Target KPI: &ge; 85%</span>
           </div>
 
           <div className="glass-panel" style={{ padding: "14px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Average Transit Delay</span>
-            <span style={{ fontSize: "2rem", fontWeight: "extrabold", color: scorePending ? "var(--text-muted)" : (avgDelay === 0 ? "var(--success)" : avgDelay <= 3 ? "var(--warning)" : "var(--danger)"), margin: "6px 0" }}>{scorePending ? "N/A" : `${avgDelay}d`}</span>
-            <span style={{ fontSize: "0.7rem", opacity: 0.8 }}>Days per shipment</span>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Avg Transit Delay</span>
+            <span style={{ fontSize: "1.8rem", fontWeight: "extrabold", color: scorePending ? "var(--text-muted)" : (avgDelay === 0 ? "var(--success)" : avgDelay <= 3 ? "var(--warning)" : "var(--danger)"), margin: "6px 0" }}>{scorePending ? "N/A" : `${avgDelay}d`}</span>
+            <span style={{ fontSize: "0.68rem", opacity: 0.8 }}>Days per shipment</span>
+          </div>
+
+          <div className="glass-panel" style={{ padding: "14px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", border: `1.5px solid ${badImpactColor}`, boxShadow: `0 0 12px ${badImpactColor === "var(--danger)" ? "rgba(239,68,68,0.2)" : "rgba(245,158,11,0.2)"}` }}>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Bad Impact &amp; Slippage</span>
+            <span style={{ fontSize: "1.2rem", fontWeight: "extrabold", color: badImpactColor, margin: "6px 0" }}>{badImpactLevel}</span>
+            <span style={{ fontSize: "0.68rem", opacity: 0.85 }}>{totalRevisionCount} changes (+{totalPostponedDays}d slip)</span>
           </div>
 
           <div className="glass-panel" style={{ padding: "14px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Logistics Shipments</span>
-            <span style={{ fontSize: "2rem", fontWeight: "extrabold", color: "var(--secondary)", margin: "6px 0" }}>{totalCargos}</span>
-            <span style={{ fontSize: "0.7rem", opacity: 0.8 }}>Total registered cargos</span>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Logistics Shipments</span>
+            <span style={{ fontSize: "1.8rem", fontWeight: "extrabold", color: "var(--secondary)", margin: "6px 0" }}>{totalCargos}</span>
+            <span style={{ fontSize: "0.68rem", opacity: 0.8 }}>Total registered cargos</span>
           </div>
         </div>
 
@@ -8972,6 +9356,72 @@ export function CargoCompanyDetailModal({
                         <span className={`badge ${d.status === "Overdue" ? "badge-rejected" : "badge-pending"}`} style={{ fontSize: "0.7rem", padding: "2px 6px" }}>
                           {d.status}
                         </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Cargo ETA Postponement & Revision History (Bad Impact Log) */}
+        <div style={{ borderTop: "1px solid var(--border-glass)", paddingTop: "16px", marginBottom: "20px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+            <h4 style={{ fontSize: "1.1rem", margin: 0, color: badImpactColor, display: "flex", alignItems: "center", gap: "8px" }}>
+              <Clock size={18} /> Cargo ETA Postponement &amp; Bad Impact Log ({etaRevisions.length})
+            </h4>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "0.75rem", padding: "2px 8px", borderRadius: "12px", background: badImpactColor === "var(--danger)" ? "rgba(239,68,68,0.15)" : "rgba(245,158,11,0.15)", color: badImpactColor, border: `1px solid ${badImpactColor}`, fontWeight: 700 }}>
+                {badImpactLevel}
+              </span>
+              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                Total Slipped: <strong>+{totalPostponedDays} days</strong>
+              </span>
+            </div>
+          </div>
+          {badImpactDesc && (
+            <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "12px", fontStyle: "italic" }}>
+              {badImpactDesc}
+            </p>
+          )}
+          {etaRevisions.length === 0 ? (
+            <div style={{ color: "var(--success)", fontSize: "0.85rem", padding: "12px", background: "rgba(16, 185, 129, 0.05)", borderRadius: "6px", border: "1px solid rgba(16, 185, 129, 0.1)" }}>
+              ✓ No transit ETA reschedules recorded. Shipper met or tracked commits without postponement.
+            </div>
+          ) : (
+            <div className="table-container" style={{ maxHeight: "220px", overflowY: "auto" }}>
+              <table className="custom-table" style={{ fontSize: "0.8rem" }}>
+                <thead>
+                  <tr>
+                    <th>Cargo Code</th>
+                    <th>Rev #</th>
+                    <th>Previous ETA</th>
+                    <th>Rescheduled ETA</th>
+                    <th>Slippage</th>
+                    <th>Reason / Explanation</th>
+                    <th>Logged By &amp; Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {etaRevisions.map((rev, idx) => (
+                    <tr key={idx}>
+                      <td style={{ fontWeight: 600 }}>{rev.cargoDetail || rev.cargoId}</td>
+                      <td><span className="badge badge-pending" style={{ fontSize: "0.7rem", padding: "1px 6px" }}>#{rev.revisionNo}</span></td>
+                      <td style={{ color: "var(--text-muted)" }}>{rev.previousEta}</td>
+                      <td style={{ fontWeight: 600 }}>{rev.newEta}</td>
+                      <td>
+                        {rev.slipDays > 0 ? (
+                          <span style={{ color: "var(--danger)", fontWeight: 700 }}>+{rev.slipDays}d (Delayed)</span>
+                        ) : rev.slipDays < 0 ? (
+                          <span style={{ color: "var(--success)", fontWeight: 700 }}>{rev.slipDays}d (Earlier)</span>
+                        ) : (
+                          <span style={{ color: "var(--text-muted)" }}>0d</span>
+                        )}
+                      </td>
+                      <td style={{ maxWidth: "200px" }}>{rev.reason}</td>
+                      <td style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                        {rev.changedBy} • {rev.changedAt}
                       </td>
                     </tr>
                   ))}

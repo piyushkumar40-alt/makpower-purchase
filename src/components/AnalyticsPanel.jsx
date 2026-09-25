@@ -48,6 +48,36 @@ export default function AnalyticsPanel({ requests = [], vendors = [], cargos = [
     }
   });
 
+  // Delivery reschedules & Bad Impact calculation
+  let totalEddReschedules = 0;
+  let totalSlippedDays = 0;
+  const vendorsWithBadImpact = new Set();
+  const cargosWithBadImpact = new Set();
+
+  requests.forEach(r => {
+    const hist = Array.isArray(r.vendorEddHistory) ? r.vendorEddHistory : (typeof r.vendorEddHistory === "string" ? JSON.parse(r.vendorEddHistory || "[]") : []);
+    if (hist.length > 0) {
+      totalEddReschedules += hist.length;
+      if (r.vendorId) vendorsWithBadImpact.add(r.vendorId);
+      hist.forEach(h => {
+        const slip = parseInt(h.postponedDays || 0);
+        if (slip > 0) totalSlippedDays += slip;
+      });
+    }
+  });
+
+  cargos.forEach(c => {
+    const hist = Array.isArray(c.cargoEtaHistory) ? c.cargoEtaHistory : (typeof c.cargoEtaHistory === "string" ? JSON.parse(c.cargoEtaHistory || "[]") : []);
+    if (hist.length > 0) {
+      totalEddReschedules += hist.length;
+      if (c.cargoCompanyId) cargosWithBadImpact.add(c.cargoCompanyId);
+      hist.forEach(h => {
+        const slip = parseInt(h.postponedDays || 0);
+        if (slip > 0) totalSlippedDays += slip;
+      });
+    }
+  });
+
   return (
     <div className="card-fade-in" style={{ marginBottom: "24px" }}>
       
@@ -146,6 +176,48 @@ export default function AnalyticsPanel({ requests = [], vendors = [], cargos = [
         </div>
 
       </div>
+
+      {/* Slippage & Bad Impact Alert Strip */}
+      {totalEddReschedules > 0 && (
+        <div style={{
+          marginTop: "16px",
+          padding: "12px 18px",
+          background: "rgba(245, 158, 11, 0.08)",
+          border: "1px solid rgba(245, 158, 11, 0.25)",
+          borderRadius: "10px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: "12px",
+          fontSize: "0.85rem"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "#fbbf24", fontWeight: 600 }}>
+            <Clock size={18} />
+            <span>
+              <strong>Delivery Timeline Slippage Log:</strong> {totalEddReschedules} delivery reschedules logged across {vendorsWithBadImpact.size} vendor(s) and {cargosWithBadImpact.size} carrier(s) resulting in <strong>+{totalSlippedDays} cumulative days postponed</strong>.
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button 
+              type="button"
+              onClick={() => onSelectTab && onSelectTab("vendors")} 
+              className="btn btn-secondary btn-sm"
+              style={{ fontSize: "0.75rem", padding: "4px 10px", color: "#fbbf24", borderColor: "rgba(245, 158, 11, 0.3)" }}
+            >
+              Vendor Bad Impact →
+            </button>
+            <button 
+              type="button"
+              onClick={() => onSelectTab && onSelectTab("cargocompanies")} 
+              className="btn btn-secondary btn-sm"
+              style={{ fontSize: "0.75rem", padding: "4px 10px", color: "#fbbf24", borderColor: "rgba(245, 158, 11, 0.3)" }}
+            >
+              Carrier Bad Impact →
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );

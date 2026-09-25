@@ -1174,6 +1174,12 @@ export default function MasterOrderTracker({
                             {r._cargo?.modeOfTransport && (
                               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>
                                 Mode: {r._cargo.modeOfTransport} {r._cargo.cargoEta ? `| ETA: ${r._cargo.cargoEta}` : ""}
+                                {(() => {
+                                  const cHist = Array.isArray(r._cargo?.cargoEtaHistory) ? r._cargo.cargoEtaHistory : (typeof r._cargo?.cargoEtaHistory === "string" ? JSON.parse(r._cargo?.cargoEtaHistory || "[]") : []);
+                                  return cHist.length > 0 ? (
+                                    <span style={{ marginLeft: "4px", color: "#f87171", fontWeight: 700 }} title={`${cHist.length} ETA reschedule(s) logged`}>({cHist.length} revs)</span>
+                                  ) : null;
+                                })()}
                               </div>
                             )}
                           </div>
@@ -1186,7 +1192,15 @@ export default function MasterOrderTracker({
 
                       <td style={{ fontSize: "0.76rem" }}>
                         {r.vendorEdd && (
-                          <div><span style={{ color: "var(--text-muted)" }}>Vendor EDD:</span> <strong>{r.vendorEdd}</strong></div>
+                          <div>
+                            <span style={{ color: "var(--text-muted)" }}>Vendor EDD:</span> <strong>{r.vendorEdd}</strong>
+                            {(() => {
+                              const hist = Array.isArray(r.vendorEddHistory) ? r.vendorEddHistory : (typeof r.vendorEddHistory === "string" ? JSON.parse(r.vendorEddHistory || "[]") : []);
+                              return hist.length > 0 ? (
+                                <span style={{ marginLeft: "4px", color: "#f87171", fontWeight: 700 }} title={`${hist.length} EDD reschedule(s) logged`}>({hist.length} revs)</span>
+                              ) : null;
+                            })()}
+                          </div>
                         )}
                         {r.vendorReadyDate && (
                           <div style={{ color: "var(--success)" }}>

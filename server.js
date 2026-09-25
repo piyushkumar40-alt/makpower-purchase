@@ -249,7 +249,14 @@ function readLocalJson() {
       data.requests = data.requests.map(r => ({
         ...r,
         purchaseUpdated: r.purchaseUpdated || "No",
-        timestamp: r.timestamp || r.orderDate || ""
+        timestamp: r.timestamp || r.orderDate || "",
+        vendorEddHistory: safeJsonParse(r.vendorEddHistory, [])
+      }));
+    }
+    if (Array.isArray(data.cargos)) {
+      data.cargos = data.cargos.map(c => ({
+        ...c,
+        cargoEtaHistory: safeJsonParse(c.cargoEtaHistory, [])
       }));
     }
     if (!Array.isArray(data.schemes) || data.schemes.length === 0) {
@@ -688,6 +695,7 @@ async function setupPgDatabase() {
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "invoiceData" TEXT;
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoReceiptFile" TEXT;
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoReceiptData" TEXT;
+      ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoEtaHistory" TEXT;
     `);
 
     await pool.query(`
@@ -726,7 +734,8 @@ async function setupPgDatabase() {
         "parentRequestId" TEXT,
         "vendorReadyDate" TEXT,
         "currency" TEXT,
-        "timestamp" TEXT
+        "timestamp" TEXT,
+        "vendorEddHistory" TEXT
       );
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "vendorOrderQuantity" INTEGER;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "cargoPickedQty" INTEGER;
@@ -736,6 +745,7 @@ async function setupPgDatabase() {
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "vendorReadyDate" TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "currency" TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "timestamp" TEXT;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "vendorEddHistory" TEXT;
       UPDATE requests SET "timestamp" = "orderDate" WHERE ("timestamp" IS NULL OR "timestamp" = '') AND "orderDate" IS NOT NULL;
     `);
 
@@ -2410,14 +2420,16 @@ app.get("/api/state", async (req, res) => {
           priceRmb: r.priceRmb ? parseFloat(r.priceRmb) : "",
           totalRmb: r.totalRmb ? parseFloat(r.totalRmb) : "",
           advancePayment: r.advancePayment ? parseFloat(r.advancePayment) : "",
-          balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : ""
+          balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : "",
+          vendorEddHistory: safeJsonParse(r.vendorEddHistory, [])
         }));
 
         const cargos = cargosRes.rows.map(c => ({
           ...c,
           cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
           cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
-          totalCargoPrice: c.totalCargoPrice ? parseFloat(c.totalCargoPrice) : ""
+          totalCargoPrice: c.totalCargoPrice ? parseFloat(c.totalCargoPrice) : "",
+          cargoEtaHistory: safeJsonParse(c.cargoEtaHistory, [])
         }));
 
         const settings = {};
@@ -3140,8 +3152,8 @@ app.post("/api/requests", async (req, res) => {
           "cargoId", "isMaterialRec", "actualReceivedDate", "notes", "itemNature", "category",
           "requiredByDate", "entryBy", "packingOrderedByNitin", "purchaseUpdated", "status",
             "cancellationReason", "cancelledAt", "cargoAssignedAt",
-            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency", "timestamp"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
+            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency", "timestamp", "vendorEddHistory"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
           ON CONFLICT ("id") DO UPDATE SET
             "purchaserId" = EXCLUDED."purchaserId",
             "vendorId" = EXCLUDED."vendorId",
@@ -3176,7 +3188,8 @@ app.post("/api/requests", async (req, res) => {
             "parentRequestId" = EXCLUDED."parentRequestId",
             "vendorReadyDate" = EXCLUDED."vendorReadyDate",
             "currency" = EXCLUDED."currency",
-            "timestamp" = COALESCE(EXCLUDED."timestamp", requests."timestamp")
+            "timestamp" = COALESCE(EXCLUDED."timestamp", requests."timestamp"),
+            "vendorEddHistory" = COALESCE(NULLIF(EXCLUDED."vendorEddHistory", ''), requests."vendorEddHistory")
         `;
         const values = [
           r.id, r.purchaserId, r.vendorId, r.orderDate, r.type, r.model, parseInt(r.orderQuantity || 0),
@@ -3193,7 +3206,8 @@ app.post("/api/requests", async (req, res) => {
           r.parentRequestId || "",
           r.vendorReadyDate || "",
           r.currency || "RMB",
-          r.timestamp || r.orderDate || new Date().toISOString()
+          r.timestamp || r.orderDate || new Date().toISOString(),
+          Array.isArray(r.vendorEddHistory) ? JSON.stringify(r.vendorEddHistory) : (r.vendorEddHistory || "[]")
         ];
         await pool.query(query, values);
         markAppActivity();
@@ -3205,6 +3219,7 @@ app.post("/api/requests", async (req, res) => {
   } else {
     const data = readLocalJson();
     r.timestamp = r.timestamp || r.orderDate || new Date().toISOString();
+    r.vendorEddHistory = safeJsonParse(r.vendorEddHistory, []);
     const index = data.requests.findIndex(x => x.id === r.id);
     if (index !== -1) {
       data.requests[index] = r;
@@ -3214,6 +3229,85 @@ app.post("/api/requests", async (req, res) => {
     writeLocalJson(data);
     markAppActivity();
     res.json({ success: true });
+  }
+});
+
+// 2.1 POST /api/requests/:id/edd - Dedicated endpoint to append revised vendor EDD with impact logging
+app.post("/api/requests/:id/edd", async (req, res) => {
+  const { id } = req.params;
+  const { newEdd, reason, changedBy } = req.body;
+  if (!newEdd) {
+    return res.status(400).json({ error: "newEdd is required." });
+  }
+  invalidateStateCache();
+
+  if (isPg) {
+    try {
+      const existing = await pool.query('SELECT "vendorEdd", "vendorEddHistory" FROM requests WHERE "id" = $1', [id]);
+      if (existing.rows.length === 0) {
+        return res.status(404).json({ error: "Request not found." });
+      }
+      const prevEdd = existing.rows[0].vendorEdd || "";
+      const history = safeJsonParse(existing.rows[0].vendorEddHistory, []);
+      let delayDays = 0;
+      if (prevEdd && newEdd) {
+        const d1 = new Date(prevEdd);
+        const d2 = new Date(newEdd);
+        if (!isNaN(d1) && !isNaN(d2)) {
+          delayDays = Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24));
+        }
+      }
+      const newEntry = {
+        edd: newEdd,
+        previousEdd: prevEdd || null,
+        postponedDays: delayDays > 0 ? delayDays : 0,
+        reason: (reason || "").trim() || "Vendor delivery date revised",
+        changedBy: changedBy || "Staff",
+        changedAt: new Date().toISOString()
+      };
+      history.push(newEntry);
+
+      await pool.query(
+        'UPDATE requests SET "vendorEdd" = $1, "vendorEddHistory" = $2 WHERE "id" = $3',
+        [newEdd, JSON.stringify(history), id]
+      );
+      markAppActivity();
+      return res.json({ success: true, vendorEdd: newEdd, vendorEddHistory: history });
+    } catch (err) {
+      console.error("POST /api/requests/:id/edd error:", err.message);
+      return res.status(500).json({ error: "Failed to update vendor EDD." });
+    }
+  } else {
+    const data = readLocalJson();
+    const idx = (data.requests || []).findIndex(x => x.id === id);
+    if (idx === -1) {
+      return res.status(404).json({ error: "Request not found." });
+    }
+    const target = data.requests[idx];
+    const prevEdd = target.vendorEdd || "";
+    const history = safeJsonParse(target.vendorEddHistory, []);
+    let delayDays = 0;
+    if (prevEdd && newEdd) {
+      const d1 = new Date(prevEdd);
+      const d2 = new Date(newEdd);
+      if (!isNaN(d1) && !isNaN(d2)) {
+        delayDays = Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24));
+      }
+    }
+    const newEntry = {
+      edd: newEdd,
+      previousEdd: prevEdd || null,
+      postponedDays: delayDays > 0 ? delayDays : 0,
+      reason: (reason || "").trim() || "Vendor delivery date revised",
+      changedBy: changedBy || "Staff",
+      changedAt: new Date().toISOString()
+    };
+    history.push(newEntry);
+    target.vendorEdd = newEdd;
+    target.vendorEddHistory = history;
+    writeLocalJson(data);
+    markAppActivity();
+    return res.json({ success: true, vendorEdd: newEdd, vendorEddHistory: history });
   }
 });
 
@@ -3416,8 +3510,8 @@ app.post("/api/cargos", async (req, res) => {
         INSERT INTO cargos (
           "id", "vendorId", "cargoOrderDate", "cargoDetail", "cargoPrice", "cargoPriceUom",
           "cbmPackingList", "totalCargoPrice", "modeOfTransport", "cargoShippingDate", "cargoEta",
-          "packingListFile", "packingListData", "invoiceFile", "invoiceData", "cargoReceiptFile", "cargoReceiptData", "isMaterialRec", "receivedDate", "currency"
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+          "packingListFile", "packingListData", "invoiceFile", "invoiceData", "cargoReceiptFile", "cargoReceiptData", "isMaterialRec", "receivedDate", "currency", "cargoEtaHistory"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
         ON CONFLICT ("id") DO UPDATE SET
           "vendorId" = EXCLUDED."vendorId",
           "cargoOrderDate" = EXCLUDED."cargoOrderDate",
@@ -3437,7 +3531,8 @@ app.post("/api/cargos", async (req, res) => {
           "cargoReceiptData" = COALESCE(NULLIF(EXCLUDED."cargoReceiptData", ''), cargos."cargoReceiptData"),
           "isMaterialRec" = EXCLUDED."isMaterialRec",
           "receivedDate" = EXCLUDED."receivedDate",
-          "currency" = EXCLUDED."currency"
+          "currency" = EXCLUDED."currency",
+          "cargoEtaHistory" = COALESCE(NULLIF(EXCLUDED."cargoEtaHistory", ''), cargos."cargoEtaHistory")
       `;
       const values = [
         c.id, c.vendorId, c.cargoOrderDate, c.cargoDetail,
@@ -3445,7 +3540,8 @@ app.post("/api/cargos", async (req, res) => {
         c.cbmPackingList === "" ? null : parseFloat(c.cbmPackingList),
         c.totalCargoPrice === "" ? null : parseFloat(c.totalCargoPrice),
         c.modeOfTransport || "", c.cargoShippingDate || "", c.cargoEta || "",
-        c.packingListFile || "", c.packingListData || "", c.invoiceFile || "", c.invoiceData || "", c.cargoReceiptFile || "", c.cargoReceiptData || "", c.isMaterialRec || "No", c.receivedDate || "", c.currency || "RMB"
+        c.packingListFile || "", c.packingListData || "", c.invoiceFile || "", c.invoiceData || "", c.cargoReceiptFile || "", c.cargoReceiptData || "", c.isMaterialRec || "No", c.receivedDate || "", c.currency || "RMB",
+        Array.isArray(c.cargoEtaHistory) ? JSON.stringify(c.cargoEtaHistory) : (c.cargoEtaHistory || "[]")
       ];
       await pool.query(query, values);
       res.json({ success: true });
@@ -3455,6 +3551,7 @@ app.post("/api/cargos", async (req, res) => {
     }
   } else {
     const data = readLocalJson();
+    c.cargoEtaHistory = safeJsonParse(c.cargoEtaHistory, []);
     const index = data.cargos.findIndex(x => x.id === c.id);
     if (index !== -1) {
       data.cargos[index] = c;
@@ -3463,6 +3560,85 @@ app.post("/api/cargos", async (req, res) => {
     }
     writeLocalJson(data);
     res.json({ success: true });
+  }
+});
+
+// 4.1 POST /api/cargos/:id/edd - Dedicated endpoint to append revised cargo ETA with impact logging
+app.post("/api/cargos/:id/edd", async (req, res) => {
+  const { id } = req.params;
+  const { newEta, reason, changedBy } = req.body;
+  if (!newEta) {
+    return res.status(400).json({ error: "newEta is required." });
+  }
+  invalidateStateCache();
+
+  if (isPg) {
+    try {
+      const existing = await pool.query('SELECT "cargoEta", "cargoEtaHistory" FROM cargos WHERE "id" = $1', [id]);
+      if (existing.rows.length === 0) {
+        return res.status(404).json({ error: "Cargo shipment not found." });
+      }
+      const prevEta = existing.rows[0].cargoEta || "";
+      const history = safeJsonParse(existing.rows[0].cargoEtaHistory, []);
+      let delayDays = 0;
+      if (prevEta && newEta) {
+        const d1 = new Date(prevEta);
+        const d2 = new Date(newEta);
+        if (!isNaN(d1) && !isNaN(d2)) {
+          delayDays = Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24));
+        }
+      }
+      const newEntry = {
+        eta: newEta,
+        previousEta: prevEta || null,
+        postponedDays: delayDays > 0 ? delayDays : 0,
+        reason: (reason || "").trim() || "Cargo ETA arrival date revised",
+        changedBy: changedBy || "Staff",
+        changedAt: new Date().toISOString()
+      };
+      history.push(newEntry);
+
+      await pool.query(
+        'UPDATE cargos SET "cargoEta" = $1, "cargoEtaHistory" = $2 WHERE "id" = $3',
+        [newEta, JSON.stringify(history), id]
+      );
+      markAppActivity();
+      return res.json({ success: true, cargoEta: newEta, cargoEtaHistory: history });
+    } catch (err) {
+      console.error("POST /api/cargos/:id/edd error:", err.message);
+      return res.status(500).json({ error: "Failed to update cargo ETA." });
+    }
+  } else {
+    const data = readLocalJson();
+    const idx = (data.cargos || []).findIndex(x => x.id === id);
+    if (idx === -1) {
+      return res.status(404).json({ error: "Cargo shipment not found." });
+    }
+    const target = data.cargos[idx];
+    const prevEta = target.cargoEta || "";
+    const history = safeJsonParse(target.cargoEtaHistory, []);
+    let delayDays = 0;
+    if (prevEta && newEta) {
+      const d1 = new Date(prevEta);
+      const d2 = new Date(newEta);
+      if (!isNaN(d1) && !isNaN(d2)) {
+        delayDays = Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24));
+      }
+    }
+    const newEntry = {
+      eta: newEta,
+      previousEta: prevEta || null,
+      postponedDays: delayDays > 0 ? delayDays : 0,
+      reason: (reason || "").trim() || "Cargo ETA arrival date revised",
+      changedBy: changedBy || "Staff",
+      changedAt: new Date().toISOString()
+    };
+    history.push(newEntry);
+    target.cargoEta = newEta;
+    target.cargoEtaHistory = history;
+    writeLocalJson(data);
+    markAppActivity();
+    return res.json({ success: true, cargoEta: newEta, cargoEtaHistory: history });
   }
 });
 
