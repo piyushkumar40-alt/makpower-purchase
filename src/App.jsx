@@ -1372,6 +1372,40 @@ export default function App() {
 
     const staffName = changedBy || currentUser?.name || "Staff";
 
+    if (isVendor && ids.length > 1) {
+      try {
+        const bulkRes = await postData("/api/requests/bulk-edd", {
+          ids,
+          newEdd: newDate,
+          reason,
+          changedBy: staffName
+        });
+        if (bulkRes && bulkRes.success && Array.isArray(bulkRes.updated)) {
+          const updatedMap = new Map(bulkRes.updated.map(u => [u.id, u]));
+          setRequests(prev => prev.map(r => {
+            const match = updatedMap.get(r.id);
+            if (match) {
+              return {
+                ...r,
+                vendorEdd: match.vendorEdd,
+                vendorEddHistory: match.vendorEddHistory
+              };
+            }
+            return r;
+          }));
+          logSystemActivity(
+            "REVISE_VENDOR_EDD",
+            `Bulk revised Vendor EDD for ${bulkRes.updated.length} order(s) to ${newDate} (Reason: ${reason})`,
+            "Requisition",
+            ids[0]
+          );
+          return { success: true };
+        }
+      } catch (err) {
+        console.warn("Bulk EDD endpoint failed, falling back to per-item update:", err);
+      }
+    }
+
     const results = await Promise.all(
       ids.map(async (id) => {
         const url = isVendor ? `/api/requests/${id}/edd` : `/api/cargos/${id}/edd`;

@@ -2368,6 +2368,35 @@ export default function PurchaserDashboard({
                     >
                       <FileSpreadsheet size={15} /> Update from Excel File
                     </button>
+                    <button 
+                      type="button"
+                      disabled={step3FilteredRequests.length === 0}
+                      onClick={() => {
+                        const targets = checkedRequestIds.length > 0 
+                          ? readyRequests.filter(r => checkedRequestIds.includes(r.id))
+                          : step3FilteredRequests;
+                        if (targets.length === 1) {
+                          setEddModalConfig({ isOpen: true, type: "vendor", item: targets[0] });
+                        } else if (targets.length > 1) {
+                          setEddModalConfig({ isOpen: true, type: "vendor", items: targets });
+                        }
+                      }}
+                      className="btn btn-secondary btn-sm"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        fontSize: "0.82rem",
+                        padding: "6px 12px",
+                        fontWeight: 600,
+                        borderColor: (checkedRequestIds.length > 0 || step3FilteredRequests.length > 0) ? "#38bdf8" : undefined,
+                        color: (checkedRequestIds.length > 0 || step3FilteredRequests.length > 0) ? "#38bdf8" : undefined,
+                        background: (checkedRequestIds.length > 0 || step3FilteredRequests.length > 0) ? "rgba(56, 189, 248, 0.12)" : undefined
+                      }}
+                      title="Add or update Vendor EDD in bulk for selected or all filtered orders"
+                    >
+                      <Calendar size={14} /> Update Vendor EDD ({checkedRequestIds.length > 0 ? checkedRequestIds.length : step3FilteredRequests.length})
+                    </button>
                   </div>
                 </div>
 
@@ -2404,14 +2433,6 @@ export default function PurchaserDashboard({
                         </option>
                       ))}
                     </select>
-                    <input 
-                      type="date"
-                      className="form-control"
-                      style={{ width: "130px", padding: "3px 6px", fontSize: "0.78rem" }}
-                      value={step3SelectedOrderDate}
-                      onChange={e => setStep3SelectedOrderDate(e.target.value)}
-                      title="Pick exact date to filter table"
-                    />
                     {step3SelectedOrderDate && (
                       <>
                         <button
@@ -2584,6 +2605,36 @@ export default function PurchaserDashboard({
                       title="Select all currently visible filtered items"
                     >
                       Select All Filtered ({step3FilteredRequests.length})
+                    </button>
+                    <button
+                      type="button"
+                      disabled={step3FilteredRequests.length === 0}
+                      onClick={() => {
+                        const targets = checkedRequestIds.length > 0 
+                          ? readyRequests.filter(r => checkedRequestIds.includes(r.id))
+                          : step3FilteredRequests;
+                        if (targets.length === 1) {
+                          setEddModalConfig({ isOpen: true, type: "vendor", item: targets[0] });
+                        } else if (targets.length > 1) {
+                          setEddModalConfig({ isOpen: true, type: "vendor", items: targets });
+                        }
+                      }}
+                      className="btn btn-secondary btn-sm"
+                      style={{
+                        padding: "4px 10px",
+                        fontSize: "0.76rem",
+                        whiteSpace: "nowrap",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "5px",
+                        fontWeight: 600,
+                        borderColor: (checkedRequestIds.length > 0 || step3FilteredRequests.length > 0) ? "#38bdf8" : undefined,
+                        color: (checkedRequestIds.length > 0 || step3FilteredRequests.length > 0) ? "#38bdf8" : undefined,
+                        background: (checkedRequestIds.length > 0 || step3FilteredRequests.length > 0) ? "rgba(56, 189, 248, 0.12)" : undefined
+                      }}
+                      title="Add or update Vendor EDD in bulk for selected or all filtered items"
+                    >
+                      <Calendar size={13} /> Update Vendor EDD ({checkedRequestIds.length > 0 ? checkedRequestIds.length : step3FilteredRequests.length})
                     </button>
                     {checkedRequestIds.length > 0 && (
                       <button
@@ -3354,27 +3405,6 @@ export default function PurchaserDashboard({
                       </option>
                     ))}
                   </select>
-                  <input
-                    type="date"
-                    className="form-control"
-                    style={{ width: "130px", padding: "3px 6px", fontSize: "0.78rem" }}
-                    value={vrSelectedOrderDate}
-                    onChange={e => {
-                      const newDate = e.target.value;
-                      setVrSelectedOrderDate(newDate);
-                      if (newDate) {
-                        const matchingIds = vrCandidatePool.filter(r => {
-                          const rDateClean = parseFlexibleDate(r.orderDate);
-                          const selDateClean = parseFlexibleDate(newDate);
-                          return r.orderDate === newDate || (rDateClean && selDateClean && rDateClean === selDateClean);
-                        }).map(r => r.id);
-                        setVrChecked(matchingIds);
-                      } else {
-                        setVrChecked([]);
-                      }
-                    }}
-                    title="Pick exact calendar date"
-                  />
                   {vrSelectedOrderDate && (
                     <button
                       type="button"
@@ -3494,13 +3524,15 @@ export default function PurchaserDashboard({
               </button>
               <button
                 type="button"
-                disabled={vrChecked.length === 0}
+                disabled={rawVrItems.length === 0}
                 onClick={() => {
-                  const selectedItems = myRequests.filter(r => vrChecked.includes(r.id));
-                  if (selectedItems.length === 1) {
-                    setEddModalConfig({ isOpen: true, type: "vendor", item: selectedItems[0] });
-                  } else if (selectedItems.length > 1) {
-                    setEddModalConfig({ isOpen: true, type: "vendor", items: selectedItems });
+                  const targets = vrChecked.length > 0 
+                    ? myRequests.filter(r => vrChecked.includes(r.id))
+                    : rawVrItems;
+                  if (targets.length === 1) {
+                    setEddModalConfig({ isOpen: true, type: "vendor", item: targets[0] });
+                  } else if (targets.length > 1) {
+                    setEddModalConfig({ isOpen: true, type: "vendor", items: targets });
                   }
                 }}
                 className="btn btn-secondary"
@@ -3510,13 +3542,13 @@ export default function PurchaserDashboard({
                   alignItems: "center",
                   gap: "6px",
                   fontWeight: 600,
-                  borderColor: vrChecked.length > 0 ? "#38bdf8" : undefined,
-                  color: vrChecked.length > 0 ? "#38bdf8" : undefined,
-                  background: vrChecked.length > 0 ? "rgba(56, 189, 248, 0.12)" : undefined
+                  borderColor: (vrChecked.length > 0 || rawVrItems.length > 0) ? "#38bdf8" : undefined,
+                  color: (vrChecked.length > 0 || rawVrItems.length > 0) ? "#38bdf8" : undefined,
+                  background: (vrChecked.length > 0 || rawVrItems.length > 0) ? "rgba(56, 189, 248, 0.12)" : undefined
                 }}
-                title="Add or update Vendor EDD for selected order(s)"
+                title="Add or update Vendor EDD in bulk for selected or all filtered orders"
               >
-                <Calendar size={15} /> Update Vendor EDD {vrChecked.length > 0 ? `(${vrChecked.length})` : ""}
+                <Calendar size={15} /> Update Vendor EDD ({vrChecked.length > 0 ? vrChecked.length : rawVrItems.length})
               </button>
 
               <div style={{ marginLeft: "auto", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
@@ -3737,6 +3769,32 @@ export default function PurchaserDashboard({
                         </span>
                       </div>
                       <div style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const selectedItems = myRequests.filter(r => vrChecked.includes(r.id));
+                            if (selectedItems.length === 1) {
+                              setEddModalConfig({ isOpen: true, type: "vendor", item: selectedItems[0] });
+                            } else if (selectedItems.length > 1) {
+                              setEddModalConfig({ isOpen: true, type: "vendor", items: selectedItems });
+                            }
+                          }}
+                          className="btn btn-secondary btn-sm"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                            fontWeight: 600,
+                            fontSize: "0.78rem",
+                            padding: "4px 10px",
+                            background: "rgba(56, 189, 248, 0.15)",
+                            borderColor: "#38bdf8",
+                            color: "#38bdf8"
+                          }}
+                          title="Add or update Vendor EDD in bulk for selected orders"
+                        >
+                          <Calendar size={13} /> Update Vendor EDD ({vrSelectedCount})
+                        </button>
                         <button
                           type="button"
                           onClick={() => setVrChecked([])}

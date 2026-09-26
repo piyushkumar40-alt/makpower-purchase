@@ -56,7 +56,9 @@ export default function AddEddModal({
 
   const hasExistingDate = Boolean(currentDate);
 
-  const vendorPresets = hasExistingDate ? [
+  const vendorPresets = [
+    "Vendor confirmed production timeline",
+    "Initial vendor delivery commitment",
     "Vendor postponed commitment",
     "Factory production delay",
     "Raw material shortage",
@@ -65,12 +67,6 @@ export default function AddEddModal({
     "Mold / tooling maintenance",
     "Packaging delay",
     "Advance delivery / ready early",
-    "Other custom reason"
-  ] : [
-    "Initial vendor delivery commitment",
-    "Vendor confirmed production timeline",
-    "Order placed with confirmed dispatch date",
-    "Standard factory lead time estimation",
     "Vendor revised readiness date",
     "Other custom reason"
   ];

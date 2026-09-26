@@ -3311,7 +3311,87 @@ app.post("/api/requests/:id/edd", async (req, res) => {
   }
 });
 
-// 3. POST /api/requests/batch - Batch inserts/updates requests
+// 2.2 POST /api/requests/bulk-edd - Bulk update vendor EDD for multiple requests
+app.post("/api/requests/bulk-edd", async (req, res) => {
+  const { ids, newEdd, reason, changedBy } = req.body;
+  if (!ids || !Array.isArray(ids) || ids.length === 0 || !newEdd) {
+    return res.status(400).json({ error: "ids array and newEdd are required." });
+  }
+  invalidateStateCache();
+
+  if (isPg) {
+    try {
+      const updatedList = [];
+      for (const id of ids) {
+        const existing = await pool.query('SELECT "vendorEdd", "vendorEddHistory" FROM requests WHERE "id" = $1', [id]);
+        if (existing.rows.length === 0) continue;
+        const prevEdd = existing.rows[0].vendorEdd || "";
+        const history = safeJsonParse(existing.rows[0].vendorEddHistory, []);
+        let delayDays = 0;
+        if (prevEdd && newEdd) {
+          const d1 = new Date(prevEdd);
+          const d2 = new Date(newEdd);
+          if (!isNaN(d1) && !isNaN(d2)) {
+            delayDays = Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24));
+          }
+        }
+        const newEntry = {
+          edd: newEdd,
+          previousEdd: prevEdd || null,
+          postponedDays: delayDays > 0 ? delayDays : 0,
+          reason: (reason || "").trim() || "Vendor delivery date revised",
+          changedBy: changedBy || "Staff",
+          changedAt: new Date().toISOString()
+        };
+        history.push(newEntry);
+
+        await pool.query(
+          'UPDATE requests SET "vendorEdd" = $1, "vendorEddHistory" = $2 WHERE "id" = $3',
+          [newEdd, JSON.stringify(history), id]
+        );
+        updatedList.push({ id, vendorEdd: newEdd, vendorEddHistory: history });
+      }
+      markAppActivity();
+      return res.json({ success: true, updated: updatedList });
+    } catch (err) {
+      console.error("POST /api/requests/bulk-edd error:", err.message);
+      return res.status(500).json({ error: "Failed to bulk update vendor EDD." });
+    }
+  } else {
+    const data = readLocalJson();
+    const updatedList = [];
+    const idSet = new Set(ids);
+    (data.requests || []).forEach(target => {
+      if (idSet.has(target.id)) {
+        const prevEdd = target.vendorEdd || "";
+        const history = safeJsonParse(target.vendorEddHistory, []);
+        let delayDays = 0;
+        if (prevEdd && newEdd) {
+          const d1 = new Date(prevEdd);
+          const d2 = new Date(newEdd);
+          if (!isNaN(d1) && !isNaN(d2)) {
+            delayDays = Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24));
+          }
+        }
+        const newEntry = {
+          edd: newEdd,
+          previousEdd: prevEdd || null,
+          postponedDays: delayDays > 0 ? delayDays : 0,
+          reason: (reason || "").trim() || "Vendor delivery date revised",
+          changedBy: changedBy || "Staff",
+          changedAt: new Date().toISOString()
+        };
+        history.push(newEntry);
+        target.vendorEdd = newEdd;
+        target.vendorEddHistory = history;
+        updatedList.push({ id: target.id, vendorEdd: newEdd, vendorEddHistory: history });
+      }
+    });
+    writeLocalJson(data);
+    markAppActivity();
+    return res.json({ success: true, updated: updatedList });
+  }
+});
 app.post("/api/requests/batch", async (req, res) => {
   const reqs = req.body; // Array
   if (!Array.isArray(reqs)) {
