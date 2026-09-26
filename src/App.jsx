@@ -1365,25 +1365,67 @@ export default function App() {
     }
   };
 
-  const handleUpdateEdd = async ({ itemId, newDate, reason, changedBy, type = "vendor" }) => {
+  const handleUpdateEdd = async ({ itemId, itemIds, newDate, reason, changedBy, type = "vendor" }) => {
     const isVendor = type === "vendor";
-    const url = isVendor ? `/api/requests/${itemId}/edd` : `/api/cargos/${itemId}/edd`;
-    const body = isVendor
-      ? { newEdd: newDate, reason, changedBy: changedBy || currentUser?.name || "Staff" }
-      : { newEta: newDate, reason, changedBy: changedBy || currentUser?.name || "Staff" };
+    const ids = Array.isArray(itemIds) && itemIds.length > 0 ? itemIds : (itemId ? [itemId] : []);
+    if (ids.length === 0) return { success: false };
 
-    const res = await postData(url, body);
-    if (res && res.success) {
-      if (isVendor) {
-        setRequests(prev => prev.map(r => r.id === itemId ? { ...r, vendorEdd: res.vendorEdd, vendorEddHistory: res.vendorEddHistory } : r));
-        logSystemActivity("REVISE_VENDOR_EDD", `Revised Vendor EDD for order #${itemId} to ${newDate} (Reason: ${reason})`, "Requisition", itemId);
-      } else {
-        setCargos(prev => prev.map(c => c.id === itemId ? { ...c, cargoEta: res.cargoEta, cargoEtaHistory: res.cargoEtaHistory } : c));
-        logSystemActivity("REVISE_CARGO_ETA", `Revised Cargo ETA for shipment #${itemId} to ${newDate} (Reason: ${reason})`, "Cargo", itemId);
-      }
-      return res;
+    const staffName = changedBy || currentUser?.name || "Staff";
+
+    const results = await Promise.all(
+      ids.map(async (id) => {
+        const url = isVendor ? `/api/requests/${id}/edd` : `/api/cargos/${id}/edd`;
+        const body = isVendor
+          ? { newEdd: newDate, reason, changedBy: staffName }
+          : { newEta: newDate, reason, changedBy: staffName };
+        const res = await postData(url, body);
+        return { id, res };
+      })
+    );
+
+    const successful = results.filter(r => r.res && r.res.success);
+    if (successful.length === 0) {
+      throw new Error(results[0]?.res?.error || "Failed to update date.");
     }
-    throw new Error(res?.error || "Failed to update date.");
+
+    if (isVendor) {
+      setRequests(prev => prev.map(r => {
+        const match = successful.find(x => x.id === r.id);
+        if (match && match.res) {
+          return {
+            ...r,
+            vendorEdd: match.res.vendorEdd,
+            vendorEddHistory: match.res.vendorEddHistory
+          };
+        }
+        return r;
+      }));
+      logSystemActivity(
+        "REVISE_VENDOR_EDD",
+        `Revised Vendor EDD for ${successful.length} order(s) to ${newDate} (Reason: ${reason})`,
+        "Requisition",
+        successful[0]?.id
+      );
+    } else {
+      setCargos(prev => prev.map(c => {
+        const match = successful.find(x => x.id === c.id);
+        if (match && match.res) {
+          return {
+            ...c,
+            cargoEta: match.res.cargoEta,
+            cargoEtaHistory: match.res.cargoEtaHistory
+          };
+        }
+        return c;
+      }));
+      logSystemActivity(
+        "REVISE_CARGO_ETA",
+        `Revised Cargo ETA for ${successful.length} shipment(s) to ${newDate} (Reason: ${reason})`,
+        "Cargo",
+        successful[0]?.id
+      );
+    }
+    return { success: true };
   };
 
   const addPurchaser = async (name, email, password, designation = "Purchaser", explicitRole = null, phone = "", territory = "", parentCrmId = "") => {

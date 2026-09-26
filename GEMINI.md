@@ -2,6 +2,7 @@
 
 ## Autonomous Execution & Decision Making
 - **Full Autonomous Rights Granted:** Do not pause to ask for permission or approval on standard edits, code fixes, file creations, routine refactors, dependency additions, or testing in this project.
+- **Autonomous Searching (Standing Permission):** Full permission granted for web searches, documentation lookups, and codebase searches. Never pause to ask for permission before searching.
 - **Execute Directly:** Proceed directly with implementation without asking "Shall I proceed?", "Do you want me to do this?", or waiting for approval on routine work.
 
 ## When to Ask Before Implementation

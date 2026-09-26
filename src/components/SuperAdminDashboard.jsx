@@ -2345,6 +2345,8 @@ export default function SuperAdminDashboard({
               <h2 style={{ fontSize: "1.8rem", marginBottom: "20px" }}>Cargo Companies</h2>
               <CargoCompaniesPanel 
                 cargoCompanies={cargoCompanies}
+                cargos={cargos}
+                requests={requests}
                 onAddCargoCompany={onAddCargoCompany}
                 onUpdateCargoCompany={onUpdateCargoCompany}
                 onRemoveCargoCompany={onRemoveCargoCompany}

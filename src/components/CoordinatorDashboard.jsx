@@ -3,7 +3,7 @@ import { LogOut, Filter, ShieldAlert, Clock, AlertTriangle, CheckCircle, Search,
 import ItemMasterView from "./ItemMasterView";
 import { useSortableData } from "../utils/useSortableData";
 
-export default function CoordinatorDashboard({ currentUser, requests, vendors, cargos, users, onLogout }) {
+export default function CoordinatorDashboard({ currentUser = {}, requests = [], vendors = [], cargos = [], users = [], onLogout }) {
   const [activeTab, setActiveTab] = useState("pending"); // "pending" | "delayed"
   const [filterAssignee, setFilterAssignee] = useState("");
   const [filterType, setFilterType] = useState("");

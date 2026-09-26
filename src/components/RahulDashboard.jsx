@@ -4,7 +4,7 @@ import ItemMasterView from "./ItemMasterView";
 import { useSortableData } from "../utils/useSortableData";
 import { getPurchaserDisplayName, downloadOrOpenBlob } from "../utils/formatters";
 
-export default function RahulDashboard({ currentUser, requests, vendors, cargos, purchasers = [], onBatchUpdateRequests, onLogout }) {
+export default function RahulDashboard({ currentUser = {}, requests = [], vendors = [], cargos = [], purchasers = [], onBatchUpdateRequests, onLogout }) {
   const getPurchaserName = (r) => getPurchaserDisplayName(r, purchasers);
 
   const [activeTab, setActiveTab] = useState(() => {

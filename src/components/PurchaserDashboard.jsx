@@ -279,8 +279,10 @@ export const calculateVendorMetrics = (vendor, requests = []) => {
   };
 };
 
-export const calculateCargoCompanyMetrics = (company, cargos, requests) => {
-  const companyCargos = cargos.filter(c => c.cargoCompanyId === company.id);
+export const calculateCargoCompanyMetrics = (company, cargos = [], requests = []) => {
+  const safeCargos = Array.isArray(cargos) ? cargos : [];
+  const safeRequests = Array.isArray(requests) ? requests : [];
+  const companyCargos = safeCargos.filter(c => c && c.cargoCompanyId === company?.id);
   const totalCargos = companyCargos.length;
   const completedCount = companyCargos.filter(c => c.isMaterialRec === "Yes").length;
   const scorePending = completedCount < 5;
@@ -2768,14 +2770,42 @@ export default function PurchaserDashboard({
                         Total Price: <strong style={{ fontWeight: 800, fontSize: "1.02rem" }}>{getCurrencySymbol(selectedCurrency)}{Number(selectedTotalPrice.toFixed(2)).toLocaleString()}</strong>
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setCheckedRequestIds([])}
-                      className="btn btn-secondary btn-sm"
-                      style={{ fontSize: "0.75rem", padding: "3px 8px", opacity: 0.85 }}
-                    >
-                      Deselect All
-                    </button>
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const selectedItems = readyRequests.filter(r => checkedRequestIds.includes(r.id));
+                          if (selectedItems.length === 1) {
+                            setEddModalConfig({ isOpen: true, type: "vendor", item: selectedItems[0] });
+                          } else if (selectedItems.length > 1) {
+                            setEddModalConfig({ isOpen: true, type: "vendor", items: selectedItems });
+                          }
+                        }}
+                        className="btn btn-secondary btn-sm"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          fontWeight: 600,
+                          fontSize: "0.78rem",
+                          padding: "4px 10px",
+                          background: "rgba(56, 189, 248, 0.15)",
+                          borderColor: "#38bdf8",
+                          color: "#38bdf8"
+                        }}
+                        title="Add or update Vendor EDD for selected items"
+                      >
+                        <Calendar size={13} /> Update Vendor EDD ({selectedCount})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCheckedRequestIds([])}
+                        className="btn btn-secondary btn-sm"
+                        style={{ fontSize: "0.75rem", padding: "3px 8px", opacity: 0.85 }}
+                      >
+                        Deselect All
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -3042,7 +3072,28 @@ export default function PurchaserDashboard({
                                 )}
                               </td>
 
-                              <td>{r.vendorEdd}</td>
+                              <td>
+                                <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                  <span style={{ fontWeight: r.vendorEdd ? 600 : 400, color: r.vendorEdd ? "var(--text-main)" : "var(--text-muted)" }}>
+                                    {r.vendorEdd || "—"}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEddModalConfig({ isOpen: true, type: "vendor", item: r })}
+                                    className="btn btn-secondary btn-sm"
+                                    style={{ padding: "1px 6px", height: "24px", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "3px" }}
+                                    title="Add / Revise Vendor EDD with Revision History"
+                                  >
+                                    <Clock size={11} /> +EDD
+                                    {(() => {
+                                      const hist = Array.isArray(r.vendorEddHistory) ? r.vendorEddHistory : (typeof r.vendorEddHistory === "string" ? JSON.parse(r.vendorEddHistory || "[]") : []);
+                                      return hist.length > 0 ? (
+                                        <span style={{ fontSize: "0.68rem", color: "#f87171", fontWeight: "bold" }}>({hist.length})</span>
+                                      ) : null;
+                                    })()}
+                                  </button>
+                                </div>
+                              </td>
                               <td style={{ color: r.vendorReadyDate ? "var(--success)" : "var(--text-muted)", fontSize: "0.8rem" }}>
                                 {r.vendorReadyDate || "Not Ready"}
                               </td>
@@ -3193,6 +3244,31 @@ export default function PurchaserDashboard({
                         <CheckCircle2 size={16} style={{ color: "#10b981" }} /> Save New Quantities & Prices
                       </button>
                     )}
+                    <button
+                      type="button"
+                      disabled={checkedRequestIds.length === 0}
+                      onClick={() => {
+                        const selectedItems = readyRequests.filter(r => checkedRequestIds.includes(r.id));
+                        if (selectedItems.length === 1) {
+                          setEddModalConfig({ isOpen: true, type: "vendor", item: selectedItems[0] });
+                        } else if (selectedItems.length > 1) {
+                          setEddModalConfig({ isOpen: true, type: "vendor", items: selectedItems });
+                        }
+                      }}
+                      className="btn btn-secondary"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        fontSize: "0.85rem",
+                        borderColor: checkedRequestIds.length > 0 ? "#38bdf8" : undefined,
+                        color: checkedRequestIds.length > 0 ? "#38bdf8" : undefined,
+                        background: checkedRequestIds.length > 0 ? "rgba(56, 189, 248, 0.12)" : undefined
+                      }}
+                      title="Add or update Vendor EDD for selected orders"
+                    >
+                      <Calendar size={15} /> Update Vendor EDD {checkedRequestIds.length > 0 ? `(${checkedRequestIds.length})` : ""}
+                    </button>
                     <button 
                       disabled={checkedRequestIds.length === 0}
                       onClick={() => setCreatingCargo(true)}
@@ -3415,6 +3491,32 @@ export default function PurchaserDashboard({
                 style={{ alignSelf: "flex-end" }}
               >
                 <Check size={15} /> Mark {vrChecked.length || ""} Selected as Vendor Ready
+              </button>
+              <button
+                type="button"
+                disabled={vrChecked.length === 0}
+                onClick={() => {
+                  const selectedItems = myRequests.filter(r => vrChecked.includes(r.id));
+                  if (selectedItems.length === 1) {
+                    setEddModalConfig({ isOpen: true, type: "vendor", item: selectedItems[0] });
+                  } else if (selectedItems.length > 1) {
+                    setEddModalConfig({ isOpen: true, type: "vendor", items: selectedItems });
+                  }
+                }}
+                className="btn btn-secondary"
+                style={{
+                  alignSelf: "flex-end",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontWeight: 600,
+                  borderColor: vrChecked.length > 0 ? "#38bdf8" : undefined,
+                  color: vrChecked.length > 0 ? "#38bdf8" : undefined,
+                  background: vrChecked.length > 0 ? "rgba(56, 189, 248, 0.12)" : undefined
+                }}
+                title="Add or update Vendor EDD for selected order(s)"
+              >
+                <Calendar size={15} /> Update Vendor EDD {vrChecked.length > 0 ? `(${vrChecked.length})` : ""}
               </button>
 
               <div style={{ marginLeft: "auto", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
@@ -5060,6 +5162,7 @@ export default function PurchaserDashboard({
           onSave={onUpdateEdd}
           type={eddModalConfig.type || "vendor"}
           item={eddModalConfig.item}
+          items={eddModalConfig.items}
           currentUser={currentUser}
         />
       )}
@@ -5276,6 +5379,31 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
       advancePayment: advanceNum,
       balancePayment: totalCalc - advanceNum,
       vendorEdd: edd,
+      vendorEddHistory: (() => {
+        if (!edd || edd === request.vendorEdd) return request.vendorEddHistory;
+        const prevHist = Array.isArray(request.vendorEddHistory)
+          ? request.vendorEddHistory
+          : (() => { try { return JSON.parse(request.vendorEddHistory || "[]"); } catch (e) { return []; } })();
+        let delayDays = 0;
+        if (request.vendorEdd && edd) {
+          const d1 = new Date(request.vendorEdd);
+          const d2 = new Date(edd);
+          if (!isNaN(d1) && !isNaN(d2)) {
+            delayDays = Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24));
+          }
+        }
+        return [
+          ...prevHist,
+          {
+            edd,
+            previousEdd: request.vendorEdd || null,
+            postponedDays: delayDays > 0 ? delayDays : 0,
+            reason: "Updated via Order Edit modal",
+            changedBy: currentUser?.name || currentUser?.id || "Staff",
+            changedAt: new Date().toISOString()
+          }
+        ];
+      })(),
       vendorReadyDate: vendorReadyDate || (cargoId ? (cargos.find(c => c.id === cargoId)?.cargoShippingDate || new Date().toISOString().split("T")[0]) : ""),
       isMaterialRec: isMaterialRec,
       actualReceivedDate: isMaterialRec === "Yes" ? (actualReceivedDate || new Date().toISOString().split("T")[0]) : "",
@@ -5685,8 +5813,21 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
               <div className="details-term">Advance Payment:</div><div className="details-def">{request.advancePayment ? `${getCurrencySymbol(request.currency)}${Number(request.advancePayment).toLocaleString()}` : "—"}</div>
               <div className="details-term">Balance Payment:</div><div className="details-def">{request.balancePayment ? `${getCurrencySymbol(request.currency)}${Number(request.balancePayment).toLocaleString()}` : "—"}</div>
               <div className="details-term">Vendor EDD:</div>
-              <div className="details-def">
+              <div className="details-def" style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                 <span>{request.vendorEdd || "—"}</span>
+                {request.isMaterialRec !== "Yes" && request.status !== "Cancelled" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEddModalConfig({ isOpen: true, type: "vendor", item: request });
+                    }}
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: "1px 8px", height: "24px", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                    title="Add / Revise Vendor EDD"
+                  >
+                    <Clock size={11} /> +EDD
+                  </button>
+                )}
                 {(() => {
                   const history = Array.isArray(request.vendorEddHistory)
                     ? request.vendorEddHistory
@@ -5696,7 +5837,7 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
                   if (!history || history.length === 0) return null;
                   const totalSlip = history.reduce((acc, h) => acc + (parseInt(h.postponedDays || 0) || 0), 0);
                   return (
-                    <span style={{ marginLeft: "8px", fontSize: "0.74rem", color: totalSlip > 0 ? "var(--danger)" : "var(--primary)", fontWeight: 600 }}>
+                    <span style={{ marginLeft: "4px", fontSize: "0.74rem", color: totalSlip > 0 ? "var(--danger)" : "var(--primary)", fontWeight: 600 }}>
                       (⚠️ Rescheduled {history.length} time{history.length > 1 ? "s" : ""}, {totalSlip > 0 ? `+${totalSlip}d delayed` : `${totalSlip}d`})
                     </span>
                   );
@@ -9074,9 +9215,9 @@ export function VendorDetailModal({
 // 8. CARGO COMPANY DETAIL MODAL WITH HISTORY & PROFILE EDITS
 export function CargoCompanyDetailModal({
   company,
-  cargos,
-  requests,
-  currentUser,
+  cargos = [],
+  requests = [],
+  currentUser = {},
   onUpdateCargoCompany,
   onRemoveCargoCompany,
   onClose
@@ -9455,7 +9596,7 @@ export function CargoCompanyDetailModal({
                 </thead>
                 <tbody>
                   {companyCargos.map(c => {
-                    const cargoItems = requests.filter(r => r.cargoId === c.id);
+                    const cargoItems = (requests || []).filter(r => r && r.cargoId === c.id);
                     return (
                       <tr key={c.id}>
                         <td style={{ fontWeight: 600 }}>{c.id}</td>

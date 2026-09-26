@@ -7,14 +7,28 @@ export default function AddEddModal({
   onClose,
   type = "vendor", // "vendor" or "cargo"
   item,
+  items = [],
   currentUser,
   onSave
 }) {
   useModalEscape(onClose, isOpen);
 
+  const effectiveItems = Array.isArray(items) && items.length > 0 
+    ? items 
+    : (item ? [item] : []);
+  const isBatch = effectiveItems.length > 1;
+  const primaryItem = effectiveItems[0] || null;
+
   const isVendor = type === "vendor";
-  const currentDate = isVendor ? (item?.vendorEdd || "") : (item?.cargoEta || "");
-  const historyList = isVendor ? (item?.vendorEddHistory || []) : (item?.cargoEtaHistory || []);
+  const allSameDate = effectiveItems.length > 0 && effectiveItems.every(x => 
+    (isVendor ? (x?.vendorEdd || "") : (x?.cargoEta || "")) === 
+    (isVendor ? (primaryItem?.vendorEdd || "") : (primaryItem?.cargoEta || ""))
+  );
+  const currentDate = allSameDate 
+    ? (isVendor ? (primaryItem?.vendorEdd || "") : (primaryItem?.cargoEta || ""))
+    : "";
+
+  const historyList = isVendor ? (primaryItem?.vendorEddHistory || []) : (primaryItem?.cargoEtaHistory || []);
   const safeHistory = Array.isArray(historyList)
     ? historyList
     : (() => {
@@ -25,6 +39,12 @@ export default function AddEddModal({
         }
       })();
 
+  const totalBatchRevs = effectiveItems.reduce((acc, itm) => {
+    const h = isVendor ? (itm?.vendorEddHistory || []) : (itm?.cargoEtaHistory || []);
+    const list = Array.isArray(h) ? h : (() => { try { return JSON.parse(h || "[]"); } catch (e) { return []; } })();
+    return acc + list.length;
+  }, 0);
+
   const [newDate, setNewDate] = useState("");
   const [reasonPreset, setReasonPreset] = useState("");
   const [reasonCustom, setReasonCustom] = useState("");
@@ -32,16 +52,26 @@ export default function AddEddModal({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  if (!isOpen || !item) return null;
+  if (!isOpen || effectiveItems.length === 0) return null;
 
-  const vendorPresets = [
+  const hasExistingDate = Boolean(currentDate);
+
+  const vendorPresets = hasExistingDate ? [
+    "Vendor postponed commitment",
     "Factory production delay",
     "Raw material shortage",
     "Supplier component backlog",
     "Quality test / re-inspection required",
     "Mold / tooling maintenance",
     "Packaging delay",
-    "Vendor postponed commitment",
+    "Advance delivery / ready early",
+    "Other custom reason"
+  ] : [
+    "Initial vendor delivery commitment",
+    "Vendor confirmed production timeline",
+    "Order placed with confirmed dispatch date",
+    "Standard factory lead time estimation",
+    "Vendor revised readiness date",
     "Other custom reason"
   ];
 
@@ -81,7 +111,7 @@ export default function AddEddModal({
       return;
     }
 
-    if (newDate === currentDate) {
+    if (!isBatch && currentDate && newDate === currentDate) {
       setError("The selected date is the same as the current date.");
       return;
     }
@@ -93,14 +123,28 @@ export default function AddEddModal({
 
     setIsSubmitting(true);
     try {
-      await onSave({
-        itemId: item.id,
-        newDate,
-        reason: effectiveReason,
-        diffDays: diffDays > 0 ? diffDays : 0,
-        changedBy: currentUser?.name || currentUser?.id || "Staff"
-      });
-      setSuccess("New EDD saved and impact recorded successfully!");
+      if (isBatch) {
+        await onSave({
+          itemIds: effectiveItems.map(x => x.id),
+          itemId: primaryItem.id,
+          newDate,
+          reason: effectiveReason,
+          diffDays: diffDays > 0 ? diffDays : 0,
+          changedBy: currentUser?.name || currentUser?.id || "Staff",
+          type
+        });
+        setSuccess(`New EDD saved and impact recorded successfully for ${effectiveItems.length} orders!`);
+      } else {
+        await onSave({
+          itemId: primaryItem.id,
+          newDate,
+          reason: effectiveReason,
+          diffDays: diffDays > 0 ? diffDays : 0,
+          changedBy: currentUser?.name || currentUser?.id || "Staff",
+          type
+        });
+        setSuccess("New EDD saved and impact recorded successfully!");
+      }
       setTimeout(() => {
         setIsSubmitting(false);
         onClose();
@@ -130,12 +174,16 @@ export default function AddEddModal({
           <div>
             <h3 style={{ margin: 0, fontSize: "1.25rem", color: "#38bdf8", display: "flex", alignItems: "center", gap: "8px" }}>
               <Calendar size={20} />
-              {isVendor ? "Add / Revise Vendor EDD" : "Add / Revise Cargo ETA"}
+              {isBatch 
+                ? (isVendor ? `Update Vendor EDD (${effectiveItems.length} Orders Selected)` : `Update Cargo ETA (${effectiveItems.length} Shipments)`)
+                : (isVendor ? "Add / Revise Vendor EDD" : "Add / Revise Cargo ETA")}
             </h3>
             <p style={{ margin: "4px 0 0 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-              {isVendor 
-                ? `Item: ${item.model || "PO Item"} (#${item.id})`
-                : `Shipment: ${item.cargoDetail || "Cargo Shipment"} (#${item.id})`}
+              {isBatch 
+                ? `Selected: ${effectiveItems.map(x => x.model || x.cargoDetail || "Item").slice(0, 4).join(", ")}${effectiveItems.length > 4 ? ` + ${effectiveItems.length - 4} more` : ""}`
+                : (isVendor 
+                    ? `Item: ${primaryItem?.model || "PO Item"} (#${primaryItem?.id})`
+                    : `Shipment: ${primaryItem?.cargoDetail || "Cargo Shipment"} (#${primaryItem?.id})`)}
             </p>
           </div>
           <button onClick={onClose} className="btn btn-secondary btn-sm" style={{ padding: "4px 8px" }} aria-label="Close">
@@ -150,10 +198,12 @@ export default function AddEddModal({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "18px" }}>
           <div className="glass-panel" style={{ padding: "12px", background: "rgba(255,255,255,0.02)", textAlign: "center" }}>
             <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>
-              Current Committed Date
+              {isBatch && !allSameDate ? "Current Status" : "Current Committed Date"}
             </span>
-            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: currentDate ? "#fff" : "var(--text-muted)", marginTop: "4px" }}>
-              {currentDate || "Not Set"}
+            <div style={{ fontSize: isBatch && !allSameDate ? "0.95rem" : "1.2rem", fontWeight: 800, color: currentDate ? "#fff" : "var(--text-muted)", marginTop: "4px" }}>
+              {isBatch && !allSameDate
+                ? `Various Dates (${effectiveItems.filter(x => isVendor ? x.vendorEdd : x.cargoEta).length} set)`
+                : (currentDate || "Not Set")}
             </div>
           </div>
 
@@ -161,8 +211,10 @@ export default function AddEddModal({
             <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>
               Revision History
             </span>
-            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: safeHistory.length > 0 ? "#f59e0b" : "var(--success)", marginTop: "4px" }}>
-              {safeHistory.length === 0 ? "0 Revisions (Original)" : `${safeHistory.length} Revision(s)`}
+            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: (isBatch ? totalBatchRevs : safeHistory.length) > 0 ? "#f59e0b" : "var(--success)", marginTop: "4px" }}>
+              {isBatch 
+                ? (totalBatchRevs === 0 ? "0 Prior Revisions" : `${totalBatchRevs} Prior Revisions`)
+                : (safeHistory.length === 0 ? "0 Revisions (Original)" : `${safeHistory.length} Revision(s)`)}
             </div>
           </div>
         </div>
@@ -256,8 +308,42 @@ export default function AddEddModal({
           </div>
         </form>
 
-        {/* Existing Revision History Timeline */}
-        {safeHistory.length > 0 && (
+        {/* Batch Selected Items List */}
+        {isBatch && (
+          <div style={{ marginTop: "20px", borderTop: "1px solid var(--border-glass)", paddingTop: "14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", color: "#38bdf8", fontSize: "0.88rem", fontWeight: 700 }}>
+              <Calendar size={15} />
+              <span>Target Orders to Update ({effectiveItems.length})</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "140px", overflowY: "auto" }}>
+              {effectiveItems.map((itm, idx) => (
+                <div 
+                  key={itm.id || idx}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "6px 10px",
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid var(--border-glass)",
+                    borderRadius: "6px",
+                    fontSize: "0.78rem"
+                  }}
+                >
+                  <span style={{ fontWeight: 600 }}>
+                    {itm.model || itm.cargoDetail || "Item"} <span style={{ color: "var(--text-muted)", fontSize: "0.72rem" }}>(#{itm.id})</span>
+                  </span>
+                  <span style={{ color: "var(--text-muted)" }}>
+                    Current: <strong style={{ color: (isVendor ? itm.vendorEdd : itm.cargoEta) ? "#38bdf8" : "var(--text-muted)" }}>{(isVendor ? itm.vendorEdd : itm.cargoEta) || "Not Set"}</strong>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Existing Revision History Timeline for Single Item */}
+        {!isBatch && safeHistory.length > 0 && (
           <div style={{ marginTop: "24px", borderTop: "1px solid var(--border-glass)", paddingTop: "16px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "12px", color: "#38bdf8", fontSize: "0.9rem", fontWeight: 700 }}>
               <History size={16} />

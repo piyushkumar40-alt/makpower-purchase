@@ -5,7 +5,7 @@ import { getEffectivePhoto } from "./PurchaserDashboard";
 import { useSortableData } from "../utils/useSortableData";
 import { getPurchaserDisplayName } from "../utils/formatters";
 
-export default function NitinDashboard({ currentUser, requests, vendors, cargos, items = [], purchasers = [], onBatchUpdateRequests, onLogout }) {
+export default function NitinDashboard({ currentUser = {}, requests = [], vendors = [], cargos = [], items = [], purchasers = [], onBatchUpdateRequests, onLogout }) {
   const getPurchaserName = (r) => getPurchaserDisplayName(r, purchasers);
 
   const [activeTab, setActiveTab] = useState(() => {
