@@ -192,22 +192,40 @@ export default function AddEddModal({
 
         {/* Current State Indicator */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "18px" }}>
-          <div className="glass-panel" style={{ padding: "12px", background: "rgba(255,255,255,0.02)", textAlign: "center" }}>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>
+          <div 
+            className="glass-panel" 
+            style={{ 
+              padding: "14px 12px", 
+              background: "rgba(56, 189, 248, 0.06)", 
+              border: "1px solid rgba(56, 189, 248, 0.2)",
+              borderRadius: "8px",
+              textAlign: "center" 
+            }}
+          >
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.5px" }}>
               {isBatch && !allSameDate ? "Current Status" : "Current Committed Date"}
             </span>
-            <div style={{ fontSize: isBatch && !allSameDate ? "0.95rem" : "1.2rem", fontWeight: 800, color: currentDate ? "#fff" : "var(--text-muted)", marginTop: "4px" }}>
+            <div style={{ fontSize: isBatch && !allSameDate ? "1rem" : "1.25rem", fontWeight: 800, color: currentDate ? "var(--primary, #0284c7)" : "var(--text-muted)", marginTop: "4px" }}>
               {isBatch && !allSameDate
                 ? `Various Dates (${effectiveItems.filter(x => isVendor ? x.vendorEdd : x.cargoEta).length} set)`
                 : (currentDate || "Not Set")}
             </div>
           </div>
 
-          <div className="glass-panel" style={{ padding: "12px", background: "rgba(255,255,255,0.02)", textAlign: "center" }}>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>
+          <div 
+            className="glass-panel" 
+            style={{ 
+              padding: "14px 12px", 
+              background: (isBatch ? totalBatchRevs : safeHistory.length) > 0 ? "rgba(245, 158, 11, 0.06)" : "rgba(34, 197, 94, 0.06)", 
+              border: (isBatch ? totalBatchRevs : safeHistory.length) > 0 ? "1px solid rgba(245, 158, 11, 0.25)" : "1px solid rgba(34, 197, 94, 0.25)",
+              borderRadius: "8px",
+              textAlign: "center" 
+            }}
+          >
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.5px" }}>
               Revision History
             </span>
-            <div style={{ fontSize: "1.2rem", fontWeight: 800, color: (isBatch ? totalBatchRevs : safeHistory.length) > 0 ? "#f59e0b" : "var(--success)", marginTop: "4px" }}>
+            <div style={{ fontSize: "1.25rem", fontWeight: 800, color: (isBatch ? totalBatchRevs : safeHistory.length) > 0 ? "var(--warning, #d97706)" : "var(--success, #16a34a)", marginTop: "4px" }}>
               {isBatch 
                 ? (totalBatchRevs === 0 ? "0 Prior Revisions" : `${totalBatchRevs} Prior Revisions`)
                 : (safeHistory.length === 0 ? "0 Revisions (Original)" : `${safeHistory.length} Revision(s)`)}
