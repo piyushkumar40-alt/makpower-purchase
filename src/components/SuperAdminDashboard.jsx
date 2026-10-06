@@ -983,13 +983,13 @@ export default function SuperAdminDashboard({
       if (onAddDesignation) onAddDesignation(finalDesignation);
     }
 
-    let roleVal = "purchaser";
+    let roleVal = pRole || "purchaser";
     const dLower = finalDesignation.toLowerCase();
     if (dLower.includes("owner")) roleVal = "owner";
     else if (dLower.includes("admin") || dLower.includes("superadmin")) roleVal = "superadmin";
     else if (dLower.includes("logistics") || dLower.includes("coordinator")) roleVal = "coordinator";
-    else if (dLower === "nitin" || dLower.includes("packing manager")) roleVal = "nitin";
-    else if (dLower === "rahul" || dLower.includes("accounts update") || dLower.includes("purchase updater")) roleVal = "rahul";
+    else if (dLower === "nitin" || dLower.includes("packing manager") || dLower.includes("packing")) roleVal = "nitin";
+    else if (dLower === "rahul" || dLower.includes("mark purchase") || dLower.includes("purchase mark") || dLower.includes("accounts update") || dLower.includes("purchase updater")) roleVal = "rahul";
     else if (dLower.includes("crm")) roleVal = "crm";
     else if (dLower.includes("asm") || dLower.includes("area sales")) roleVal = "asm";
     else if (dLower.includes("tsm") || dLower.includes("territory sales")) roleVal = "tsm";
@@ -1460,6 +1460,14 @@ export default function SuperAdminDashboard({
                   >
                     🛒 Purchasers ({effectiveUsers.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status !== "inactive" && u.status !== "disabled").length})
                   </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setStaffFilterTab("ops")}
+                    className={`btn btn-sm ${staffFilterTab === "ops" ? "btn-primary" : "btn-secondary"}`}
+                    style={{ fontSize: "0.78rem" }}
+                  >
+                    📦 Operations & Updates ({effectiveUsers.filter(u => (u.role === "rahul" || u.role === "nitin" || u.role === "coordinator") && u.status !== "inactive" && u.status !== "disabled").length})
+                  </button>
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -1468,12 +1476,13 @@ export default function SuperAdminDashboard({
                     if (staffFilterTab === "crm") return u.role === "crm";
                     if (staffFilterTab === "sales") return u.role === "asm" || u.role === "tsm" || u.role === "rsm";
                     if (staffFilterTab === "purchaser") return u.role === "purchaser" || u.role === "purchase_manager";
+                    if (staffFilterTab === "ops") return u.role === "rahul" || u.role === "nitin" || u.role === "coordinator";
                     return true;
                   }).map(staff => {
                     const getRoleLabel = (role) => {
                       if (role === "purchase_manager") return "Purchase Manager";
                       if (role === "nitin") return "Packing";
-                      if (role === "rahul") return "Updates";
+                      if (role === "rahul") return "Mark Purchases";
                       if (role === "coordinator") return "Coordinator";
                       if (role === "crm") return "CRM Executive";
                       if (role === "asm") return "Area Sales Manager";
@@ -1481,8 +1490,10 @@ export default function SuperAdminDashboard({
                       if (role === "rsm") return "Regional Sales Manager";
                       return "Purchaser";
                     };
-                    const isPurchaser = staff.role === "purchaser" || staff.role === "purchase_manager";
+                    const isPurchaser = (staff.role === "purchaser" || staff.role === "purchase_manager") && staff.role !== "rahul";
                     const isCrmStaff = staff.role === "crm" || staff.role === "asm" || staff.role === "tsm" || staff.role === "rsm";
+                    const isRahul = staff.role === "rahul";
+                    const isNitin = staff.role === "nitin";
                     const activeRequests = isPurchaser ? requests.filter(r => isRequestForUser(r, staff, effectiveUsers) && r.isMaterialRec !== "Yes").length : 0;
                     return (
                       <div key={staff.id} className="glass-panel" style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: "10px", background: "rgba(255, 255, 255, 0.01)" }}>
@@ -1490,7 +1501,14 @@ export default function SuperAdminDashboard({
                           <div>
                             <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
                               {staff.name}
-                              <span className="badge" style={{ fontSize: "0.65rem", padding: "2px 8px", background: isCrmStaff ? "rgba(99, 102, 241, 0.15)" : "rgba(56, 189, 248, 0.12)", color: isCrmStaff ? "#a5b4fc" : "#38bdf8", border: isCrmStaff ? "1px solid rgba(99, 102, 241, 0.3)" : "1px solid rgba(56, 189, 248, 0.3)", fontWeight: 700 }}>
+                              <span className="badge" style={{ 
+                                fontSize: "0.65rem", 
+                                padding: "2px 8px", 
+                                background: isCrmStaff ? "rgba(99, 102, 241, 0.15)" : isRahul ? "rgba(16, 185, 129, 0.15)" : isNitin ? "rgba(236, 72, 153, 0.15)" : "rgba(56, 189, 248, 0.12)", 
+                                color: isCrmStaff ? "#a5b4fc" : isRahul ? "#10b981" : isNitin ? "#ec4899" : "#38bdf8", 
+                                border: isCrmStaff ? "1px solid rgba(99, 102, 241, 0.3)" : isRahul ? "1px solid rgba(16, 185, 129, 0.3)" : isNitin ? "1px solid rgba(236, 72, 153, 0.3)" : "1px solid rgba(56, 189, 248, 0.3)", 
+                                fontWeight: 700 
+                              }}>
                                 {staff.designation || getRoleLabel(staff.role)}
                               </span>
                               {(staff.role === "asm" || staff.role === "tsm" || staff.role === "rsm") && (
@@ -1584,6 +1602,11 @@ export default function SuperAdminDashboard({
                             {isPurchaser && (
                               <div style={{ fontSize: "0.75rem", color: "var(--primary)", marginTop: "4px" }}>{activeRequests} active purchases in tracking</div>
                             )}
+                            {staff.role === "rahul" && (
+                              <div style={{ fontSize: "0.75rem", color: "#10b981", marginTop: "4px", fontWeight: 600 }}>
+                                {requests.filter(r => r.priceRmb && r.vendorId && r.purchaseUpdated !== "Yes" && r.status !== "Cancelled").length} purchases pending to be marked
+                              </div>
+                            )}
                           </div>
                           
                           <div style={{ display: "flex", gap: "6px" }}>
@@ -1600,8 +1623,8 @@ export default function SuperAdminDashboard({
                                 setEditSalutationVal(sal);
                                 setEditNameVal(nm);
                                 setEditPasswordVal("");
-                                setEditDesignationVal(staff.designation || "Purchaser");
-                                setEditRoleVal(staff.role || "purchaser");
+                                setEditDesignationVal(staff.designation || (staff.role === "rahul" ? "Mark Purchases" : staff.role === "nitin" ? "Packing" : "Purchaser"));
+                                setEditRoleVal(staff.role || (staff.name?.toLowerCase().includes("rahul") ? "rahul" : "purchaser"));
                                 const defaultPid = staff.parentCrmId || ((staff.name || "").toLowerCase().includes("ashutosh") ? "u-ankita" : "u-ankita");
                                 setEditParentCrmIdVal(defaultPid);
                                 setEditSuccessMsg("");
@@ -1719,7 +1742,7 @@ export default function SuperAdminDashboard({
                                   else if (r === "purchase_manager") setEditDesignationVal("Purchase Manager");
                                   else if (r === "purchaser") setEditDesignationVal("Purchaser");
                                   else if (r === "nitin") setEditDesignationVal("Packing");
-                                  else if (r === "rahul") setEditDesignationVal("Accounts and Updates");
+                                  else if (r === "rahul") setEditDesignationVal("Mark Purchases");
                                   else if (r === "coordinator") setEditDesignationVal("Logistics");
                                   else if (r === "crm") setEditDesignationVal("CRM Executive");
                                   else if (r === "asm") setEditDesignationVal("Area Sales Manager (ASM)");
@@ -1735,7 +1758,7 @@ export default function SuperAdminDashboard({
                                 <option value="purchase_manager">🎖️ Purchase Manager (Cross-Cargo Logistics)</option>
                                 <option value="purchaser">🛒 Purchaser (Order Processing)</option>
                                 <option value="nitin">📦 Packing</option>
-                                <option value="rahul">💰 Accounts & Updates</option>
+                                <option value="rahul">📝 Mark Purchases (Rahul)</option>
                                 <option value="coordinator">🚚 Logistics Coordinator</option>
                                 <option value="superadmin">⚡ System Admin</option>
                               </select>
@@ -1755,6 +1778,7 @@ export default function SuperAdminDashboard({
                                 <option value="Area Sales Manager (ASM)">Area Sales Manager (ASM)</option>
                                 <option value="Territory Sales Manager (TSM)">Territory Sales Manager (TSM)</option>
                                 <option value="Purchaser">Purchaser</option>
+                                <option value="Mark Purchases">Mark Purchases</option>
                                 <option value="Packing">Packing</option>
                                 <option value="Accounts and Updates">Accounts and Updates</option>
                                 <option value="Accounts">Accounts</option>
@@ -1928,7 +1952,7 @@ export default function SuperAdminDashboard({
                         else if (r === "tsm") setPDesignation("Territory Sales Manager (TSM)");
                         else if (r === "purchaser") setPDesignation("Purchaser");
                         else if (r === "nitin") setPDesignation("Packing");
-                        else if (r === "rahul") setPDesignation("Accounts and Updates");
+                        else if (r === "rahul") setPDesignation("Mark Purchases");
                         else if (r === "coordinator") setPDesignation("Logistics");
                         else if (r === "owner") setPDesignation("Owner");
                       }}
@@ -1941,7 +1965,7 @@ export default function SuperAdminDashboard({
                       <option value="purchase_manager">🎖️ Purchase Manager (Cross-Cargo Logistics)</option>
                       <option value="purchaser">🛒 Purchaser</option>
                       <option value="nitin">📦 Packing (Nitin)</option>
-                      <option value="rahul">💰 Accounts & Updates (Rahul)</option>
+                      <option value="rahul">📝 Mark Purchases (Rahul)</option>
                       <option value="coordinator">🚚 Logistics PC</option>
                       <option value="owner">👑 Owner (Executive Dashboard)</option>
                     </select>
@@ -2000,6 +2024,7 @@ export default function SuperAdminDashboard({
                       <option value="Area Sales Manager (ASM)">🟢 Area Sales Manager (ASM)</option>
                       <option value="Territory Sales Manager (TSM)">🟡 Territory Sales Manager (TSM)</option>
                       <option value="Purchaser">🛒 Purchaser</option>
+                      <option value="Mark Purchases">📝 Mark Purchases</option>
                       <option value="Packing">📦 Packing</option>
                       <option value="Accounts and Updates">💰 Accounts and Updates</option>
                       <option value="Accounts">Accounts</option>

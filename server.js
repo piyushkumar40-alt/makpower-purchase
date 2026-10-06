@@ -237,13 +237,32 @@ function readLocalJson() {
         if (initU.id === "u-anees") {
           data.users[idx].role = "purchase_manager";
           data.users[idx].designation = "Purchase Manager";
+        } else if (initU.id === "u-rahul" || (initU.email && initU.email.toLowerCase().includes("rahul"))) {
+          data.users[idx].role = "rahul";
+          data.users[idx].designation = "Mark Purchases";
+        } else if (initU.id === "u-nitin" || (initU.email && initU.email.toLowerCase().includes("nitin"))) {
+          data.users[idx].role = "nitin";
+          data.users[idx].designation = "Packing";
         } else {
           data.users[idx].designation = data.users[idx].designation || initU.designation;
           data.users[idx].role = data.users[idx].role || initU.role;
         }
       }
     });
-    data.users = data.users.map(u => ({ ...u, status: u.status || "active" }));
+    data.users = data.users.map(u => {
+      const emailLower = String(u.email || "").toLowerCase();
+      const nameLower = String(u.name || "").toLowerCase();
+      const isRahul = u.id === "u-rahul" || emailLower === "rahul@makpowerindia.com" || emailLower === "rahul@demo.com" || emailLower.includes("rahul") || nameLower.includes("rahul");
+      if (isRahul) {
+        return {
+          ...u,
+          role: "rahul",
+          designation: "Mark Purchases",
+          status: u.status || "active"
+        };
+      }
+      return { ...u, status: u.status || "active" };
+    });
 
     if (Array.isArray(data.requests)) {
       data.requests = data.requests.map(r => ({
@@ -494,7 +513,7 @@ async function setupPgDatabase() {
            ON CONFLICT ("id") DO UPDATE SET
              "role" = EXCLUDED."role",
              "designation" = EXCLUDED."designation"
-           WHERE users.id = 'u-anees' OR users.role IS NULL`,
+           WHERE users.id = 'u-anees' OR users.id = 'u-rahul' OR users.role IS NULL`,
           [u.id, u.name, u.email, u.password, u.role, u.designation || "Staff", u.status, u.phone || "", u.territory || "", u.parentCrmId || ""]
         );
       }
@@ -502,6 +521,11 @@ async function setupPgDatabase() {
         await pool.query(`UPDATE users SET "role" = 'purchase_manager', "designation" = 'Purchase Manager' WHERE "id" = 'u-anees' OR LOWER("email") = 'anees@demo.com'`);
       } catch (e) {
         console.warn("Could not run Anees role update query in PG:", e.message);
+      }
+      try {
+        await pool.query(`UPDATE users SET "role" = 'rahul', "designation" = 'Mark Purchases' WHERE "id" = 'u-rahul' OR LOWER("email") = 'rahul@makpowerindia.com' OR LOWER("email") = 'rahul@demo.com' OR LOWER("email") LIKE '%rahul%' OR LOWER("name") LIKE '%rahul%'`);
+      } catch (e) {
+        console.warn("Could not run Rahul role update query in PG:", e.message);
       }
 
       // Seed IMS Transactions

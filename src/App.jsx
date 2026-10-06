@@ -101,8 +101,31 @@ export default function App() {
         parentCrmId = "u-ankita";
       }
     }
+
+    let role = u.role;
+    let designation = u.designation;
+    const emailLower = String(u.email || "").toLowerCase();
+    const nameLower = String(u.name || "").toLowerCase();
+    const isRahul = u.id === "u-rahul" || emailLower === "rahul@makpowerindia.com" || emailLower === "rahul@demo.com" || emailLower.includes("rahul") || nameLower.includes("rahul");
+    if (isRahul) {
+      role = "rahul";
+      if (!designation || designation === "Purchaser" || designation === "Accounts and Updates" || designation === "Updates") {
+        designation = "Mark Purchases";
+      }
+    }
+
+    const isNitin = u.id === "u-nitin" || emailLower === "nitin@demo.com" || emailLower === "nitin@makpowerindia.com" || nameLower.includes("nitin");
+    if (isNitin && (role === "purchaser" || !role)) {
+      role = "nitin";
+      if (!designation || designation === "Purchaser") {
+        designation = "Packing";
+      }
+    }
+
     return {
       ...u,
+      role,
+      designation,
       name: sanitizeUserName(u.name),
       parentCrmId
     };
@@ -978,7 +1001,7 @@ export default function App() {
         pullModuleData(TRACKABLE_MODULES.CRM_PARTIES, true);
       } else if (user.id === "u-nitin" || cleanEmail === "nitin@demo.com" || cleanEmail === "nitin@makpowerindia.com" || roleLower === "nitin") {
         setActiveView("nitin");
-      } else if (user.id === "u-rahul" || cleanEmail === "rahul@demo.com" || cleanEmail === "rahul@makpowerindia.com") {
+      } else if (user.id === "u-rahul" || cleanEmail === "rahul@demo.com" || cleanEmail === "rahul@makpowerindia.com" || roleLower === "rahul" || desigLower.includes("mark purchase") || desigLower.includes("purchase mark")) {
         setActiveView("rahul");
       } else if (user.id === "u-coordinator" || cleanEmail === "pc@demo.com" || cleanEmail === "pc@makpowerindia.com" || roleLower === "coordinator") {
         setActiveView("coordinator");
@@ -1478,8 +1501,8 @@ export default function App() {
       else if (dLower.includes("admin") || dLower.includes("superadmin")) role = "superadmin";
       else if (dLower.includes("purchase manager") || dLower === "purchase_manager") role = "purchase_manager";
       else if (dLower.includes("logistics") || dLower.includes("coordinator")) role = "coordinator";
-      else if (dLower === "nitin" || dLower.includes("packing manager")) role = "nitin";
-      else if (dLower === "rahul" || dLower.includes("accounts update") || dLower.includes("purchase updater")) role = "rahul";
+      else if (dLower === "nitin" || dLower.includes("packing manager") || dLower.includes("packing")) role = "nitin";
+      else if (dLower === "rahul" || dLower.includes("mark purchase") || dLower.includes("purchase mark") || dLower.includes("accounts update") || dLower.includes("purchase updater")) role = "rahul";
     }
 
     const newUser = normalizeUserData({
@@ -1488,7 +1511,7 @@ export default function App() {
       email,
       password,
       role,
-      designation: designation || "Purchaser",
+      designation: designation || (role === "rahul" ? "Mark Purchases" : role === "nitin" ? "Packing" : "Purchaser"),
       phone: phone || "",
       territory: territory || "",
       parentCrmId: parentCrmId || "",
@@ -2826,7 +2849,9 @@ export default function App() {
                   <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-main)", whiteSpace: "nowrap" }}>
                     {currentUser.role === "superadmin" ? "Admin" : currentUser.name}
                   </span>
-                  <span style={{ fontSize: "0.66rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>({currentUser.role?.toUpperCase() || "STAFF"})</span>
+                  <span style={{ fontSize: "0.66rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                    ({currentUser.role === "rahul" ? "MARK PURCHASES" : currentUser.role === "nitin" ? "PACKING" : (currentUser.role?.toUpperCase() || "STAFF")})
+                  </span>
                 </div>
                 <button 
                   onClick={() => {
@@ -2904,7 +2929,7 @@ export default function App() {
                 <div className="mobile-user-details">
                   <span className="mobile-user-name">{currentUser.name}</span>
                   <span className="mobile-user-role">
-                    {currentUser.role === "superadmin" ? "Super Admin" : currentUser.role === "crm" ? "CRM Executive" : currentUser.role === "asm" ? "Area Sales Manager" : currentUser.role === "tsm" ? "Territory Sales Manager" : currentUser.role === "rsm" ? "Regional Sales Manager" : currentUser.role === "nitin" ? "Nitin Manager" : currentUser.role === "rahul" ? "Rahul Manager" : "Purchaser"}
+                    {currentUser.role === "superadmin" ? "Super Admin" : currentUser.role === "crm" ? "CRM Executive" : currentUser.role === "asm" ? "Area Sales Manager" : currentUser.role === "tsm" ? "Territory Sales Manager" : currentUser.role === "rsm" ? "Regional Sales Manager" : currentUser.role === "nitin" ? "Packing" : currentUser.role === "rahul" ? (currentUser.designation || "Mark Purchases") : (currentUser.designation || "Purchaser")}
                   </span>
                 </div>
               </div>
@@ -3119,6 +3144,9 @@ export default function App() {
             requests={requests}
             vendors={vendors}
             cargos={cargos}
+            cargoCompanies={cargoCompanies}
+            users={users}
+            items={items}
             purchasers={users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active")}
             onBatchUpdateRequests={batchUpdateRequests}
             onLogout={handleLogout}

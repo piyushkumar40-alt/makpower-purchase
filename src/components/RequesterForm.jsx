@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Trash2, CheckCircle2, Clipboard, ShieldAlert, Sparkles, X, Package, Copy, Check } from "lucide-react";
+import { Plus, Trash2, CheckCircle2, Clipboard, ShieldAlert, Sparkles, X, Package, Copy, Check, Eye } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
 import { QuickCreateItemModal, QuickCreateUserModal } from "./QuickCreateModals";
 import { cleanCategoryName, parseFlexibleDate } from "../utils/formatters";
@@ -15,8 +15,10 @@ export default function RequesterForm({
   items = [], 
   onAddItem, 
   onAddPurchaser,
-  onPullModuleData 
+  onPullModuleData,
+  isViewOnly: propIsViewOnly = false
 }) {
+  const isViewOnly = Boolean(propIsViewOnly || currentUser?.role === "rahul");
   const [localItems, setLocalItems] = useState([]);
 
   // Fetch freshest catalog items on mount
@@ -875,22 +877,45 @@ export default function RequesterForm({
         <ItemMasterView requests={requests} vendors={vendors} cargos={cargos} cargoCompanies={cargoCompanies} purchasers={purchasers} />
       ) : (
         <>
+      {/* Accounts View-Only Notice */}
+      {isViewOnly && (
+        <div style={{
+          marginBottom: "18px",
+          padding: "12px 18px",
+          borderRadius: "10px",
+          background: "rgba(56, 189, 248, 0.12)",
+          border: "1px solid rgba(56, 189, 248, 0.35)",
+          display: "flex",
+          alignItems: "center",
+          gap: "12px"
+        }}>
+          <Eye size={20} style={{ color: "#38bdf8", flexShrink: 0 }} />
+          <div style={{ fontSize: "0.86rem", color: "var(--text-main)" }}>
+            <strong style={{ color: "#38bdf8" }}>Accounts / Mark Purchases View-Only Mode:</strong> You have read-only access to view master order requisition structures and templates. Placing new orders or modifying rows is restricted.
+          </div>
+        </div>
+      )}
+
       {/* Header Info */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-glass)", paddingBottom: "16px", marginBottom: "20px", flexWrap: "wrap", gap: "15px" }}>
         <div>
-          <h2 style={{ fontSize: "1.6rem" }}>Purchase Requisition Portal</h2>
+          <h2 style={{ fontSize: "1.6rem" }}>
+            Purchase Requisition Portal {isViewOnly && <span className="badge badge-secondary" style={{ fontSize: "0.75rem", verticalAlign: "middle", marginLeft: "8px" }}>View Only</span>}
+          </h2>
           <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "2px" }}>
-            Enter multiple purchase items below or copy-paste directly from your tracking Excel sheets.
+            {isViewOnly ? "View-only preview of purchase orders and requisition items." : "Enter multiple purchase items below or copy-paste directly from your tracking Excel sheets."}
           </p>
         </div>
 
         {/* Action Controls */}
         <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-          <button onClick={() => setShowPasteModal(true)} className="btn btn-secondary btn-sm" style={{ color: "var(--primary)", borderColor: "var(--primary-glow)" }}>
-            <Clipboard size={14} /> Paste from Excel / Sheets
-          </button>
+          {!isViewOnly && (
+            <button onClick={() => setShowPasteModal(true)} className="btn btn-secondary btn-sm" style={{ color: "var(--primary)", borderColor: "var(--primary-glow)" }}>
+              <Clipboard size={14} /> Paste from Excel / Sheets
+            </button>
+          )}
 
-          {currentUser ? (
+          {!isViewOnly && (currentUser ? (
             <button 
               onClick={() => openQuickItemModal(null)} 
               className="btn btn-secondary btn-sm" 
@@ -909,11 +934,13 @@ export default function RequesterForm({
             >
               <Plus size={14} /> Create New Item (Login Required)
             </button>
-          )}
+          ))}
 
-          <span className="requester-hint-pill">
-            <Sparkles size={14} /> Shift+Click to select range & press Ctrl+D to Fill Down
-          </span>
+          {!isViewOnly && (
+            <span className="requester-hint-pill">
+              <Sparkles size={14} /> Shift+Click to select range & press Ctrl+D to Fill Down
+            </span>
+          )}
           
           <div className="requester-qty-badge-pcs">
             <Package size={16} /> Total Qty: <strong>{totalQty.toLocaleString()} Pcs</strong>
@@ -1653,14 +1680,18 @@ export default function RequesterForm({
 
                   {/* Actions (Delete) */}
                   <td style={{ textAlign: "center" }}>
-                    <button 
-                      type="button" 
-                      onClick={() => removeRow(row.id)}
-                      className="btn btn-danger btn-sm"
-                      style={{ padding: "4px", background: "transparent", border: "none" }}
-                    >
-                      <Trash2 size={14} style={{ color: "var(--danger)" }} />
-                    </button>
+                    {!isViewOnly ? (
+                      <button 
+                        type="button" 
+                        onClick={() => removeRow(row.id)}
+                        className="btn btn-danger btn-sm"
+                        style={{ padding: "4px", background: "transparent", border: "none" }}
+                      >
+                        <Trash2 size={14} style={{ color: "var(--danger)" }} />
+                      </button>
+                    ) : (
+                      <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>—</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -1688,15 +1719,19 @@ export default function RequesterForm({
         
         {/* Add row options */}
         <div style={{ display: "flex", gap: "10px" }}>
-          <button onClick={addRow} className="btn btn-secondary btn-sm">
-            <Plus size={14} /> Add Row
-          </button>
-          <button onClick={() => addMultipleRows(10)} className="btn btn-secondary btn-sm">
-            + Add 10 Rows
-          </button>
-          <button onClick={() => addMultipleRows(50)} className="btn btn-secondary btn-sm">
-            + Add 50 Rows
-          </button>
+          {!isViewOnly && (
+            <>
+              <button onClick={addRow} className="btn btn-secondary btn-sm">
+                <Plus size={14} /> Add Row
+              </button>
+              <button onClick={() => addMultipleRows(10)} className="btn btn-secondary btn-sm">
+                + Add 10 Rows
+              </button>
+              <button onClick={() => addMultipleRows(50)} className="btn btn-secondary btn-sm">
+                + Add 50 Rows
+              </button>
+            </>
+          )}
         </div>
 
         {/* Submit action block */}
@@ -1706,41 +1741,63 @@ export default function RequesterForm({
             Total Qty: <strong>{totalQty.toLocaleString()} Units</strong>
           </div>
 
-          {/* Status bar resembling the "Good to Go" Excel bar */}
-          <div 
-            style={{ 
-              padding: "10px 24px", 
-              borderRadius: "8px", 
-              fontWeight: "bold",
-              fontSize: "0.9rem",
-              textAlign: "center",
-              transition: "0.3s all",
-              minWidth: "160px",
-              background: goodToGo ? "var(--success)" : hasInvalidModel ? "rgba(239, 68, 68, 0.2)" : "rgba(255, 255, 255, 0.03)",
-              color: goodToGo ? "var(--text-dark)" : hasInvalidModel ? "#fca5a5" : "var(--text-muted)",
-              boxShadow: goodToGo ? "0 0 15px var(--success-glow)" : "none",
-              border: goodToGo ? "1.5px solid transparent" : hasInvalidModel ? "1.5px solid rgba(239, 68, 68, 0.4)" : "1.5px dashed var(--border-glass)"
-            }}
-          >
-            {goodToGo ? "Good to Go" : hasInvalidModel ? "Invalid Item Model" : "Fill All Cells"}
-          </div>
+          {isViewOnly ? (
+            <div 
+              style={{ 
+                padding: "10px 20px", 
+                borderRadius: "8px", 
+                fontWeight: "bold",
+                fontSize: "0.9rem",
+                textAlign: "center",
+                background: "rgba(56, 189, 248, 0.1)",
+                color: "#38bdf8",
+                border: "1px solid rgba(56, 189, 248, 0.3)",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px"
+              }}
+            >
+              <Eye size={16} /> View-Only Mode (Accounts cannot place orders)
+            </div>
+          ) : (
+            <>
+              {/* Status bar resembling the "Good to Go" Excel bar */}
+              <div 
+                style={{ 
+                  padding: "10px 24px", 
+                  borderRadius: "8px", 
+                  fontWeight: "bold",
+                  fontSize: "0.9rem",
+                  textAlign: "center",
+                  transition: "0.3s all",
+                  minWidth: "160px",
+                  background: goodToGo ? "var(--success)" : hasInvalidModel ? "rgba(239, 68, 68, 0.2)" : "rgba(255, 255, 255, 0.03)",
+                  color: goodToGo ? "var(--text-dark)" : hasInvalidModel ? "#fca5a5" : "var(--text-muted)",
+                  boxShadow: goodToGo ? "0 0 15px var(--success-glow)" : "none",
+                  border: goodToGo ? "1.5px solid transparent" : hasInvalidModel ? "1.5px solid rgba(239, 68, 68, 0.4)" : "1.5px dashed var(--border-glass)"
+                }}
+              >
+                {goodToGo ? "Good to Go" : hasInvalidModel ? "Invalid Item Model" : "Fill All Cells"}
+              </div>
 
-          <button 
-            disabled={!goodToGo}
-            onClick={handleSubmitAll}
-            className="btn btn-primary"
-            style={{ 
-              padding: "12px 30px", 
-              fontSize: "1rem", 
-              background: goodToGo ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)" : "rgba(255, 255, 255, 0.05)",
-              color: goodToGo ? "var(--text-dark)" : "var(--text-muted)",
-              borderColor: goodToGo ? "rgba(255, 255, 255, 0.15)" : "var(--border-glass)",
-              boxShadow: goodToGo ? "0 4px 15px rgba(245, 158, 11, 0.25)" : "none",
-              fontWeight: 700
-            }}
-          >
-            Place Order ({rows.length} Items | {totalQty.toLocaleString()} Pcs)
-          </button>
+              <button 
+                disabled={!goodToGo}
+                onClick={handleSubmitAll}
+                className="btn btn-primary"
+                style={{ 
+                  padding: "12px 30px", 
+                  fontSize: "1rem", 
+                  background: goodToGo ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)" : "rgba(255, 255, 255, 0.05)",
+                  color: goodToGo ? "var(--text-dark)" : "var(--text-muted)",
+                  borderColor: goodToGo ? "rgba(255, 255, 255, 0.15)" : "var(--border-glass)",
+                  boxShadow: goodToGo ? "0 4px 15px rgba(245, 158, 11, 0.25)" : "none",
+                  fontWeight: 700
+                }}
+              >
+                Place Order ({rows.length} Items | {totalQty.toLocaleString()} Pcs)
+              </button>
+            </>
+          )}
         </div>
 
       </div>

@@ -97,22 +97,23 @@ export default function CoordinatorDashboard({ currentUser = {}, requests = [], 
       });
     }
 
-    // 4. RAHUL: Awaiting Purchase Update
+    // 4. RAHUL: Awaiting Purchase Marking / Update
     if (r.priceRmb && r.vendorId && r.purchaseUpdated !== "Yes" && r.status !== "Cancelled") {
       const delayDate = r.vendorReadyDate || r.vendorEdd;
       const isDelayed = delayDate && new Date(delayDate) < today;
       const daysOverdue = isDelayed ? getDaysOverdue(delayDate) : 0;
+      const rahulUser = (users || []).find(u => u.role === "rahul" || (u.email && u.email.toLowerCase().includes("rahul")) || (u.name && u.name.toLowerCase().includes("rahul")));
       allTasks.push({
         id: `update-${r.id}`,
         reqId: r.id,
-        assigneeId: "u-rahul",
-        assigneeName: "Rahul Dev",
-        assigneeRole: "Purchase Updater",
+        assigneeId: rahulUser?.id || "u-rahul",
+        assigneeName: rahulUser?.name || "Mr. Rahul Mann",
+        assigneeRole: "Mark Purchases",
         taskType: "Purchase Update",
-        taskName: "Submit Purchase Ledger Update",
+        taskName: "Mark Purchase in Ledger",
         itemDesc: `${r.model} (${r.orderQuantity} qty)`,
         vendor: vendorName,
-        stage: "Rahul Checklist",
+        stage: "Purchase Marking Checklist",
         targetDate: delayDate || "—",
         isDelayed,
         daysOverdue,
@@ -273,7 +274,7 @@ export default function CoordinatorDashboard({ currentUser = {}, requests = [], 
               <option value="">All Task Types</option>
               <option value="Pricing">Pricing</option>
               <option value="Packing">Nitin Packing</option>
-              <option value="Purchase Update">Rahul Ledger Update</option>
+              <option value="Purchase Update">Purchase Marking (Rahul)</option>
               <option value="Cargo Assignment">Cargo Planner</option>
               <option value="Transit Tracking">Transit Tracking</option>
             </select>

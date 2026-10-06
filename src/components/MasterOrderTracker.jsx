@@ -23,6 +23,7 @@ import {
   CheckSquare
 } from "lucide-react";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
+import { OrderInspectionModal } from "./BundledUpcomingShipments";
 import { isRequestForUser, getPurchaserDisplayName } from "../utils/formatters";
 
 export function getOrderStage(r, cargo) {
@@ -120,16 +121,20 @@ export default function MasterOrderTracker({
   isPurchaseManager = false,
   isSearchAdmin = false,
   isAdmin: propIsAdmin,
+  isViewOnly: propIsViewOnly = false,
   onEditRequest,
   onNavigateStep,
   onDeleteRequests
 }) {
+  const isViewOnly = Boolean(propIsViewOnly || currentUser?.role === "rahul");
   const isAdmin = Boolean(
-    propIsAdmin ||
-    isSearchAdmin ||
-    currentUser?.role === "superadmin" ||
-    currentUser?.role === "owner" ||
-    currentUser?.role === "admin"
+    !isViewOnly && (
+      propIsAdmin ||
+      isSearchAdmin ||
+      currentUser?.role === "superadmin" ||
+      currentUser?.role === "owner" ||
+      currentUser?.role === "admin"
+    )
   );
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -146,13 +151,14 @@ export default function MasterOrderTracker({
   // Selection & Admin Delete state
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
   const [adminDeleteConfirm, setAdminDeleteConfirm] = useState(null);
+  const [inspectedOrder, setInspectedOrder] = useState(null);
 
   const accessibleRequests = useMemo(() => {
-    if (isAdmin || isPurchaseManager) {
+    if (isAdmin || isPurchaseManager || isViewOnly || currentUser?.role === "rahul") {
       return requests || [];
     }
     return (requests || []).filter(r => isRequestForUser(r, currentUser, purchasers));
-  }, [requests, isAdmin, isPurchaseManager, currentUser, purchasers]);
+  }, [requests, isAdmin, isPurchaseManager, isViewOnly, currentUser, purchasers]);
 
   const vendorMap = useMemo(() => {
     const map = {};
@@ -605,8 +611,13 @@ export default function MasterOrderTracker({
     <div className="card-fade-in" style={{ paddingBottom: "40px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px", marginBottom: "20px" }}>
         <div>
-          <h3 style={{ fontSize: "1.5rem", fontWeight: 800, margin: 0, display: "flex", alignItems: "center", gap: "10px" }}>
+          <h3 style={{ fontSize: "1.5rem", fontWeight: 800, margin: 0, display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
             <Layers size={24} style={{ color: "#38bdf8" }} /> Master Order Tracker
+            {isViewOnly && (
+              <span className="badge" style={{ fontSize: "0.72rem", background: "rgba(16, 185, 129, 0.15)", color: "#10b981", border: "1px solid rgba(16, 185, 129, 0.3)", padding: "4px 8px" }}>
+                🔒 View Only (Accounts Audit)
+              </span>
+            )}
           </h3>
           <p style={{ color: "var(--text-muted)", fontSize: "0.88rem", marginTop: "4px", marginBottom: 0 }}>
             Track every purchase order item-wise from initial placement, vendor readiness, cargo consolidation, to warehouse receipt.
@@ -841,7 +852,7 @@ export default function MasterOrderTracker({
             </select>
           </div>
 
-          {(isAdmin || isPurchaseManager) && (
+          {(isAdmin || isPurchaseManager || isViewOnly || currentUser?.role === "rahul") && (
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <User size={14} /> Filter by Purchaser
@@ -1086,7 +1097,7 @@ export default function MasterOrderTracker({
                       <td style={{ fontWeight: 600 }}>
                         <button
                           type="button"
-                          onClick={() => onEditRequest && onEditRequest(r)}
+                          onClick={() => (isViewOnly || !onEditRequest) ? setInspectedOrder(r) : onEditRequest(r)}
                           style={{
                             background: "none",
                             border: "none",
@@ -1237,7 +1248,7 @@ export default function MasterOrderTracker({
                         )}
                       </td>
 
-                      {(isPurchaseManager || isSearchAdmin) && (
+                      {(isPurchaseManager || isSearchAdmin || isViewOnly || currentUser?.role === "rahul") && (
                         <td>
                           <span 
                             className="badge" 
@@ -1256,10 +1267,10 @@ export default function MasterOrderTracker({
                         <div style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
                           <button
                             type="button"
-                            onClick={() => onEditRequest && onEditRequest(r)}
+                            onClick={() => (isViewOnly || !onEditRequest) ? setInspectedOrder(r) : onEditRequest(r)}
                             className="btn btn-secondary btn-sm"
                             style={{ padding: "4px 8px", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "4px" }}
-                            title="Open order edit modal"
+                            title="Open order details"
                           >
                             <Eye size={12} /> View
                           </button>
@@ -1297,6 +1308,17 @@ export default function MasterOrderTracker({
           confirmData={adminDeleteConfirm}
           onClose={() => setAdminDeleteConfirm(null)}
           onConfirm={handleConfirmDelete}
+        />
+      )}
+
+      {inspectedOrder && (
+        <OrderInspectionModal
+          order={inspectedOrder}
+          cargos={cargos}
+          vendors={vendors}
+          purchasers={purchasers}
+          cargoCompanies={cargoCompanies}
+          onClose={() => setInspectedOrder(null)}
         />
       )}
     </div>

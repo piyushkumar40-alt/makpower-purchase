@@ -1,55 +1,276 @@
-import React, { useState } from "react";
-import { LogOut, Filter, CheckSquare, Square, CheckCircle, PackageOpen, Download, RotateCcw } from "lucide-react";
+import React, { useState, useMemo, useEffect } from "react";
+import { 
+  LogOut, 
+  Filter, 
+  CheckSquare, 
+  Square, 
+  CheckCircle, 
+  PackageOpen, 
+  Download, 
+  RotateCcw,
+  Eye,
+  Ship,
+  Layers,
+  Search,
+  Calendar,
+  FileText,
+  CheckCircle2,
+  Clock,
+  AlertTriangle,
+  Truck,
+  ArrowRight,
+  DollarSign,
+  RefreshCw,
+  X,
+  ShoppingCart,
+  Package,
+  Building2,
+  User,
+  ExternalLink,
+  ChevronRight
+} from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
+import BundledUpcomingShipments, { OrderInspectionModal } from "./BundledUpcomingShipments";
+import MasterOrderTracker, { getOrderStage } from "./MasterOrderTracker";
+import RequesterForm from "./RequesterForm";
 import { useSortableData } from "../utils/useSortableData";
 import { getPurchaserDisplayName, downloadOrOpenBlob } from "../utils/formatters";
 
-export default function RahulDashboard({ currentUser = {}, requests = [], vendors = [], cargos = [], purchasers = [], onBatchUpdateRequests, onLogout }) {
+export default function RahulDashboard({ 
+  currentUser = {}, 
+  requests = [], 
+  vendors = [], 
+  cargos = [], 
+  cargoCompanies = [],
+  purchasers = [], 
+  users = [],
+  items = [],
+  onBatchUpdateRequests, 
+  onLogout 
+}) {
   const getPurchaserName = (r) => getPurchaserDisplayName(r, purchasers);
 
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem("makpower_rahul_tab") || "pending";
   });
 
-  React.useEffect(() => {
+  useEffect(() => {
     localStorage.setItem("makpower_rahul_tab", activeTab);
   }, [activeTab]);
-  
-  // Filters state
+
+  // Inspection modal state
+  const [inspectedOrder, setInspectedOrder] = useState(null);
+
+  // Multi-Level Filtration States
+  const [quickStatus, setQuickStatus] = useState("all"); // "all" | "coming" | "pipeline" | "delivered" | "pending_mark" | "marked"
+  const [filterStage, setFilterStage] = useState("all");
   const [filterVendor, setFilterVendor] = useState("");
+  const [filterPurchaser, setFilterPurchaser] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
   const [filterCargo, setFilterCargo] = useState("");
-  
-  // Selection check
+  const [filterTransport, setFilterTransport] = useState("");
+  const [filterType, setFilterType] = useState("all"); // "all" | "Import" | "Local"
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateField, setDateField] = useState("orderDate");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  // Selection check for marking purchases
   const [checkedIds, setCheckedIds] = useState([]);
 
-  // Filter requests: priced, vendor assigned (all items, not just Import)
-  const eligibleRequests = requests.filter(r => r.priceRmb && r.vendorId);
+  // Active non-cancelled requests
+  const activeRequests = useMemo(() => requests.filter(r => r.status !== "Cancelled"), [requests]);
 
-  // Partitioned requests
-  const pendingRequests = eligibleRequests.filter(r => r.purchaseUpdated !== "Yes" && r.status !== "Cancelled");
-  const submittedRequests = eligibleRequests.filter(r => r.purchaseUpdated === "Yes" && r.status !== "Cancelled");
+  // Financial & Operational Accounts Executive Metrics
+  const kpiStats = useMemo(() => {
+    let totalPcs = 0;
+    let totalRmbValue = 0;
+    let comingCount = 0;
+    let comingRmbValue = 0;
+    let deliveredCount = 0;
+    let deliveredRmbValue = 0;
+    let inTransitCount = 0;
+    let readyVendorCount = 0;
+
+    activeRequests.forEach(r => {
+      const qty = parseInt(r.orderQuantity, 10) || 0;
+      const price = parseFloat(r.priceRmb) || 0;
+      const val = qty * price;
+
+      totalPcs += qty;
+      if (price > 0) totalRmbValue += val;
+
+      const cargo = cargos.find(c => c.id === r.cargoId);
+      const isDelivered = r.isMaterialRec === "Yes";
+      const isInTransit = !isDelivered && Boolean(r.cargoPickupDate || cargo?.cargoShippingDate);
+      const isReadyVendor = !isDelivered && !isInTransit && Boolean(r.vendorEdd);
+
+      if (isDelivered) {
+        deliveredCount++;
+        deliveredRmbValue += val;
+      } else if (isInTransit || isReadyVendor) {
+        comingCount++;
+        comingRmbValue += val;
+        if (isInTransit) inTransitCount++;
+        else readyVendorCount++;
+      }
+    });
+
+    // Eligible for purchase update: priced and assigned vendor
+    const eligiblePriced = activeRequests.filter(r => r.priceRmb && r.vendorId);
+    const pendingMarkCount = eligiblePriced.filter(r => r.purchaseUpdated !== "Yes").length;
+    const markedCount = eligiblePriced.filter(r => r.purchaseUpdated === "Yes").length;
+
+    // Upcoming bundled shipments count
+    const upcomingShipmentsCount = cargos.filter(c => c.status !== "Delivered" && c.isDelivered !== "Yes").length;
+
+    return {
+      totalOrders: activeRequests.length,
+      totalPcs,
+      totalRmbValue,
+      comingCount,
+      comingRmbValue,
+      inTransitCount,
+      readyVendorCount,
+      deliveredCount,
+      deliveredRmbValue,
+      pendingMarkCount,
+      markedCount,
+      upcomingShipmentsCount
+    };
+  }, [activeRequests, cargos]);
+
+  // Filter requests: priced, vendor assigned (all items, not just Import)
+  const eligibleRequests = useMemo(() => requests.filter(r => r.priceRmb && r.vendorId), [requests]);
+
+  // Partitioned requests for Mark Purchases
+  const pendingRequests = useMemo(() => eligibleRequests.filter(r => r.purchaseUpdated !== "Yes" && r.status !== "Cancelled"), [eligibleRequests]);
+  const submittedRequests = useMemo(() => eligibleRequests.filter(r => r.purchaseUpdated === "Yes" && r.status !== "Cancelled"), [eligibleRequests]);
 
   // Active requests for the current tab
   const currentTabRequests = activeTab === "pending" ? pendingRequests : submittedRequests;
 
-  // Filtered requests
-  const filteredRequests = currentTabRequests.filter(r => {
-    const cargoIdMatch = filterCargo === "" || r.cargoId === filterCargo;
-    const vendorMatch = filterVendor === "" || r.vendorId === filterVendor;
-    const categoryMatch = filterCategory === "" || (r.category && r.category.toLowerCase().includes(filterCategory.toLowerCase()));
-    return cargoIdMatch && vendorMatch && categoryMatch;
-  });
+  // Multi-Level Filtered Requests
+  const filteredRequests = useMemo(() => {
+    return currentTabRequests.filter(r => {
+      const cargo = cargos.find(c => c.id === r.cargoId);
+      const stage = getOrderStage(r, cargo);
+
+      // 1. Quick Status Chip Filter
+      if (quickStatus === "coming") {
+        const isComing = stage.key === "pickedup" || stage.key === "vendorready";
+        if (!isComing) return false;
+      } else if (quickStatus === "pipeline") {
+        const inPipeline = r.isMaterialRec !== "Yes" && r.status !== "Cancelled";
+        if (!inPipeline) return false;
+      } else if (quickStatus === "delivered") {
+        if (r.isMaterialRec !== "Yes") return false;
+      } else if (quickStatus === "pending_mark") {
+        if (r.purchaseUpdated === "Yes") return false;
+      } else if (quickStatus === "marked") {
+        if (r.purchaseUpdated !== "Yes") return false;
+      }
+
+      // 2. Stage Filter ("Where Item Is Now")
+      if (filterStage !== "all" && stage.key !== filterStage) {
+        return false;
+      }
+
+      // 3. Vendor Filter
+      if (filterVendor && r.vendorId !== filterVendor) {
+        return false;
+      }
+
+      // 4. Purchaser Filter
+      if (filterPurchaser) {
+        const pName = getPurchaserName(r).toLowerCase();
+        if (!pName.includes(filterPurchaser.toLowerCase()) && r.purchaserId !== filterPurchaser) {
+          return false;
+        }
+      }
+
+      // 5. Cargo Filter
+      if (filterCargo && r.cargoId !== filterCargo) {
+        return false;
+      }
+
+      // 6. Transport Mode Filter
+      if (filterTransport && cargo?.modeOfTransport !== filterTransport) {
+        return false;
+      }
+
+      // 7. Category Filter
+      if (filterCategory && (!r.category || !r.category.toLowerCase().includes(filterCategory.toLowerCase()))) {
+        return false;
+      }
+
+      // 8. Purchase Type Filter
+      if (filterType !== "all" && r.type !== filterType) {
+        return false;
+      }
+
+      // 9. Date Range Filter
+      if (fromDate || toDate) {
+        let targetDate = "";
+        if (dateField === "orderDate") targetDate = r.orderDate;
+        else if (dateField === "vendorEdd") targetDate = r.vendorEdd;
+        else if (dateField === "cargoShippingDate") targetDate = cargo?.cargoShippingDate;
+        else if (dateField === "receivedDate") targetDate = r.receivedDate || cargo?.receivedDate;
+
+        if (targetDate) {
+          if (fromDate && targetDate < fromDate) return false;
+          if (toDate && targetDate > toDate) return false;
+        } else if (fromDate || toDate) {
+          return false;
+        }
+      }
+
+      // 10. Global Search Query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const v = vendors.find(v => v.id === r.vendorId)?.name || "";
+        const p = getPurchaserName(r);
+        const cCode = cargo?.cargoDetail || r.cargoId || "";
+        const match = (
+          (r.model && r.model.toLowerCase().includes(q)) ||
+          (r.id && String(r.id).toLowerCase().includes(q)) ||
+          (r.category && r.category.toLowerCase().includes(q)) ||
+          v.toLowerCase().includes(q) ||
+          p.toLowerCase().includes(q) ||
+          cCode.toLowerCase().includes(q) ||
+          (cargo?.modeOfTransport && cargo.modeOfTransport.toLowerCase().includes(q)) ||
+          (r.entryBy && r.entryBy.toLowerCase().includes(q)) ||
+          (r.requestedBy && r.requestedBy.toLowerCase().includes(q))
+        );
+        if (!match) return false;
+      }
+
+      return true;
+    });
+  }, [currentTabRequests, quickStatus, filterStage, filterVendor, filterPurchaser, filterCargo, filterTransport, filterCategory, filterType, dateField, fromDate, toDate, searchQuery, cargos, vendors, purchasers]);
 
   const { items: sortedDisplayRequests, RenderSortHeader } = useSortableData(filteredRequests);
 
   // Extract filter options dynamically
-  const uniqueVendors = Array.from(new Set(eligibleRequests.map(r => r.vendorId)))
-    .map(id => vendors.find(v => v.id === id))
-    .filter(Boolean);
+  const uniqueVendors = useMemo(() => {
+    return Array.from(new Set(eligibleRequests.map(r => r.vendorId)))
+      .map(id => vendors.find(v => v.id === id))
+      .filter(Boolean);
+  }, [eligibleRequests, vendors]);
 
-  const uniqueCategories = Array.from(new Set(eligibleRequests.map(r => r.category).filter(Boolean)));
-  const uniqueCargos = Array.from(new Set(eligibleRequests.map(r => r.cargoId).filter(Boolean)));
+  const uniqueCategories = useMemo(() => {
+    return Array.from(new Set(eligibleRequests.map(r => r.category).filter(Boolean)));
+  }, [eligibleRequests]);
+
+  const uniqueCargos = useMemo(() => {
+    return Array.from(new Set(eligibleRequests.map(r => r.cargoId).filter(Boolean)));
+  }, [eligibleRequests]);
+
+  const uniquePurchasers = useMemo(() => {
+    return purchasers && purchasers.length > 0 
+      ? purchasers 
+      : Array.from(new Set(eligibleRequests.map(r => getPurchaserName(r)).filter(Boolean))).map(name => ({ id: name, name }));
+  }, [purchasers, eligibleRequests]);
 
   const handleSelectAll = (e) => {
     if (e.target.checked) {
@@ -85,308 +306,850 @@ export default function RahulDashboard({ currentUser = {}, requests = [], vendor
     setCheckedIds([]);
   };
 
+  const resetFilters = () => {
+    setQuickStatus("all");
+    setFilterStage("all");
+    setFilterVendor("");
+    setFilterPurchaser("");
+    setFilterCategory("");
+    setFilterCargo("");
+    setFilterTransport("");
+    setFilterType("all");
+    setSearchQuery("");
+    setFromDate("");
+    setToDate("");
+  };
+
+  const hasActiveFilters = quickStatus !== "all" || filterStage !== "all" || filterVendor || filterPurchaser || filterCategory || filterCargo || filterTransport || filterType !== "all" || searchQuery || fromDate || toDate;
+
   return (
-    <div style={{ padding: "24px", maxWidth: "1600px", margin: "0 auto", width: "100%" }}>
-      {/* Header Panel */}
-      <div className="glass-panel" style={{ padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px", flexWrap: "wrap", gap: "14px" }}>
+    <div style={{ padding: "24px", maxWidth: "1680px", margin: "0 auto", width: "100%" }}>
+      
+      {/* ==================== TOP HEADER PANEL ==================== */}
+      <div className="glass-panel" style={{ padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "16px" }}>
         <div>
-          <h2 style={{ fontSize: "1.6rem", color: "var(--primary)", textShadow: "0 0 10px var(--primary-glow)" }}>Rahul's Purchase Update Panel</h2>
-          <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "2px" }}>Financial Audit & Ledger Confirmation Updates</p>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+            <h2 style={{ fontSize: "1.65rem", color: "var(--primary)", textShadow: "0 0 10px var(--primary-glow)", margin: 0 }}>
+              Accounts & Purchase Marking Panel
+            </h2>
+            <span className="user-badge" style={{ padding: "5px 12px", background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)", color: "var(--success)", fontWeight: 700, fontSize: "0.82rem" }}>
+              Mr. Rahul Mann (Accounts)
+            </span>
+          </div>
+          <p style={{ color: "var(--text-muted)", fontSize: "0.86rem", marginTop: "4px", marginBottom: 0 }}>
+            360° Order Visibility, Bundled Upcoming Shipments, Financial Audit & Ledger Marking Confirmation
+          </p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          <span className="user-badge" style={{ padding: "6px 14px", background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", color: "var(--success)" }}>
-            Role: Rahul
-          </span>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 12px", borderRadius: "8px", background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.2)", fontSize: "0.78rem", color: "#38bdf8" }}>
+            <Eye size={14} /> Master Orders: View Only
+          </div>
           <button onClick={onLogout} className="btn btn-secondary btn-sm" style={{ padding: "8px 14px" }}>
             <LogOut size={14} /> Logout
           </button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "10px" }}>
+      {/* ==================== ACCOUNTS EXECUTIVE KPI BAR ==================== */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "14px", marginBottom: "24px" }}>
+        
+        {/* KPI 1: What's Coming (In Transit & Ready) */}
+        <div 
+          onClick={() => { setActiveTab("shipments"); }}
+          className="glass-panel card-fade-in" 
+          style={{ padding: "16px 18px", cursor: "pointer", border: activeTab === "shipments" ? "1px solid #38bdf8" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>🚚 What's Coming</span>
+            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Ship size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: "1.45rem", fontWeight: 800, color: "#38bdf8" }}>
+            {kpiStats.comingCount} <span style={{ fontSize: "0.85rem", fontWeight: 500, color: "var(--text-muted)" }}>Items</span>
+          </div>
+          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px", display: "flex", justifyContent: "space-between" }}>
+            <span>In Transit: <strong>{kpiStats.inTransitCount}</strong></span>
+            <span>Ready: <strong>{kpiStats.readyVendorCount}</strong></span>
+          </div>
+        </div>
+
+        {/* KPI 2: Total Order Value RMB */}
+        <div 
+          onClick={() => { setActiveTab("masterorder"); }}
+          className="glass-panel card-fade-in" 
+          style={{ padding: "16px 18px", cursor: "pointer", border: activeTab === "masterorder" ? "1px solid #f59e0b" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>💰 Total RMB Committed</span>
+            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <DollarSign size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: "1.45rem", fontWeight: 800, color: "#f59e0b" }}>
+            ¥{Math.round(kpiStats.totalRmbValue).toLocaleString()}
+          </div>
+          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px" }}>
+            Across {kpiStats.totalOrders} Requisitions ({kpiStats.totalPcs.toLocaleString()} Pcs)
+          </div>
+        </div>
+
+        {/* KPI 3: Where Items Are Now (Active Pipeline) */}
+        <div 
+          onClick={() => { setActiveTab("masterorder"); }}
+          className="glass-panel card-fade-in" 
+          style={{ padding: "16px 18px", cursor: "pointer", transition: "all 0.2s" }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>📍 Where Item Is Now</span>
+            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "rgba(99, 102, 241, 0.15)", color: "#818cf8", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Layers size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: "1.45rem", fontWeight: 800, color: "#818cf8" }}>
+            {kpiStats.totalOrders - kpiStats.deliveredCount} <span style={{ fontSize: "0.85rem", fontWeight: 500, color: "var(--text-muted)" }}>In Pipeline</span>
+          </div>
+          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px" }}>
+            ¥{Math.round(kpiStats.comingRmbValue).toLocaleString()} committed on the way
+          </div>
+        </div>
+
+        {/* KPI 4: Delivered (Warehouse Receipts) */}
+        <div 
+          onClick={() => { setActiveTab("masterorder"); }}
+          className="glass-panel card-fade-in" 
+          style={{ padding: "16px 18px", cursor: "pointer", transition: "all 0.2s" }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>✅ What is Delivered</span>
+            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "rgba(16, 185, 129, 0.15)", color: "#10b981", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <CheckCircle2 size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: "1.45rem", fontWeight: 800, color: "#10b981" }}>
+            {kpiStats.deliveredCount} <span style={{ fontSize: "0.85rem", fontWeight: 500, color: "var(--text-muted)" }}>Orders</span>
+          </div>
+          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px" }}>
+            Delivered Value: ¥{Math.round(kpiStats.deliveredRmbValue).toLocaleString()}
+          </div>
+        </div>
+
+        {/* KPI 5: Pending Ledger Mark Purchases (His Primary Duty) */}
+        <div 
+          onClick={() => { setActiveTab("pending"); setCheckedIds([]); }}
+          className="glass-panel card-fade-in" 
+          style={{ padding: "16px 18px", cursor: "pointer", border: activeTab === "pending" ? "1px solid #ec4899" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>📝 Pending Mark Purchases</span>
+            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "rgba(236, 72, 153, 0.15)", color: "#ec4899", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Clock size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: "1.45rem", fontWeight: 800, color: "#ec4899" }}>
+            {kpiStats.pendingMarkCount} <span style={{ fontSize: "0.85rem", fontWeight: 500, color: "var(--text-muted)" }}>To Confirm</span>
+          </div>
+          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px" }}>
+            Marked in Ledger: <strong>{kpiStats.markedCount}</strong>
+          </div>
+        </div>
+
+      </div>
+
+      {/* ==================== MAIN TAB BAR ==================== */}
+      <div style={{ display: "flex", gap: "8px", marginBottom: "20px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "10px", flexWrap: "wrap" }}>
+        
+        {/* Core Duty 1: Pending Purchases */}
         <button 
           onClick={() => { setActiveTab("pending"); setCheckedIds([]); }} 
           className={`tab-btn ${activeTab === "pending" ? "active" : ""}`}
+          style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
         >
-          Pending Purchase Updates ({pendingRequests.length})
+          <Clock size={15} /> Pending Mark Purchases ({pendingRequests.length})
         </button>
+
+        {/* Core Duty 2: Submitted Purchases Archive */}
         <button 
           onClick={() => { setActiveTab("submitted"); setCheckedIds([]); }} 
           className={`tab-btn ${activeTab === "submitted" ? "active" : ""}`}
+          style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
         >
-          Submitted Updates Archive ({submittedRequests.length})
+          <CheckCircle size={15} /> Marked in Ledger Archive ({submittedRequests.length})
         </button>
+
+        {/* Feature 1: Bundled Upcoming Shipments */}
+        <button 
+          onClick={() => { setActiveTab("shipments"); setCheckedIds([]); }} 
+          className={`tab-btn ${activeTab === "shipments" ? "active" : ""}`}
+          style={{ color: "#38bdf8", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
+        >
+          <Ship size={15} /> Bundled Upcoming Shipments ({cargos.length})
+        </button>
+
+        {/* Feature 2: Master Order Tracker */}
+        <button 
+          onClick={() => { setActiveTab("masterorder"); setCheckedIds([]); }} 
+          className={`tab-btn ${activeTab === "masterorder" ? "active" : ""}`}
+          style={{ color: "#f59e0b", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
+        >
+          <Layers size={15} /> Master Order Tracker (All Stages)
+        </button>
+
+        {/* Feature 3: Create Master Order (View-Only) */}
+        <button 
+          onClick={() => { setActiveTab("create_order"); setCheckedIds([]); }} 
+          className={`tab-btn ${activeTab === "create_order" ? "active" : ""}`}
+          style={{ color: "#818cf8", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
+        >
+          <ShoppingCart size={15} /> Master Requisitions (View-Only)
+        </button>
+
+        {/* Feature 4: Item Catalog & Stock */}
         <button 
           onClick={() => { setActiveTab("itemmaster"); setCheckedIds([]); }} 
           className={`tab-btn ${activeTab === "itemmaster" ? "active" : ""}`}
-          style={{ color: "#38bdf8", fontWeight: 700 }}
+          style={{ color: "#a855f7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
         >
-          Item Catalog & Stock
+          <Package size={15} /> Item Catalog & Stock
         </button>
       </div>
 
-      {activeTab === "itemmaster" ? (
-        <ItemMasterView requests={requests} vendors={vendors} cargos={cargos} />
-      ) : (
+      {/* ==================== TAB CONTENT: BUNDLED UPCOMING SHIPMENTS ==================== */}
+      {activeTab === "shipments" && (
+        <div className="card-fade-in">
+          <BundledUpcomingShipments 
+            cargos={cargos}
+            requests={requests}
+            vendors={vendors}
+            cargoCompanies={cargoCompanies}
+            purchasers={purchasers}
+            currentUser={currentUser}
+            isViewOnly={true}
+          />
+        </div>
+      )}
+
+      {/* ==================== TAB CONTENT: MASTER ORDER TRACKER ==================== */}
+      {activeTab === "masterorder" && (
+        <div className="card-fade-in">
+          <div style={{ marginBottom: "14px", padding: "10px 16px", borderRadius: "8px", background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.25)", display: "flex", alignItems: "center", gap: "10px" }}>
+            <Eye size={18} style={{ color: "#f59e0b" }} />
+            <div style={{ fontSize: "0.85rem", color: "var(--text-main)" }}>
+              <strong>Accounts Read-Only Master Tracker:</strong> You have 360° visibility over every order in the company across all 6 stages. Deletion and editing are locked.
+            </div>
+          </div>
+          <MasterOrderTracker 
+            requests={requests}
+            vendors={vendors}
+            cargos={cargos}
+            cargoCompanies={cargoCompanies}
+            purchasers={purchasers}
+            currentUser={currentUser}
+            isViewOnly={true}
+          />
+        </div>
+      )}
+
+      {/* ==================== TAB CONTENT: CREATE MASTER ORDER (VIEW ONLY) ==================== */}
+      {activeTab === "create_order" && (
+        <div className="card-fade-in">
+          <RequesterForm 
+            onAddRequests={() => {}} 
+            purchasers={purchasers} 
+            vendors={vendors} 
+            requests={requests}
+            cargos={cargos}
+            cargoCompanies={cargoCompanies}
+            currentUser={currentUser}
+            items={items}
+            onAddItem={() => {}}
+            onAddPurchaser={() => {}}
+            isViewOnly={true}
+          />
+        </div>
+      )}
+
+      {/* ==================== TAB CONTENT: ITEM CATALOG & STOCK ==================== */}
+      {activeTab === "itemmaster" && (
+        <div className="card-fade-in">
+          <ItemMasterView requests={requests} vendors={vendors} cargos={cargos} cargoCompanies={cargoCompanies} purchasers={purchasers} />
+        </div>
+      )}
+
+      {/* ==================== TAB CONTENT: MARK PURCHASES WORKBOARD (PENDING / SUBMITTED) ==================== */}
+      {(activeTab === "pending" || activeTab === "submitted") && (
         <>
+          {/* ==================== MULTI-LEVEL FILTRATION PANEL ==================== */}
+          <div className="glass-panel" style={{ padding: "18px 22px", marginBottom: "20px" }}>
+            
+            {/* Header with Quick Presets */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "0.95rem", fontWeight: 700, color: "var(--primary)" }}>
+                <Filter size={18} /> Accounts Multi-Level Filtration System
+              </div>
 
-      {/* Filters Panel */}
-      <div className="glass-panel" style={{ padding: "18px 24px", marginBottom: "20px" }}>
-        <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "14px", fontSize: "0.9rem", fontWeight: 600, color: "var(--primary)" }}>
-          <Filter size={16} /> Filter Requisitions
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
-          {/* Vendor filter */}
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Vendor</label>
-            <input 
-              type="text" 
-              list="rahul-vendor-list"
-              className="form-control" 
-              placeholder="Type or Select Vendor..." 
-              value={vendors.find(v => v.id === filterVendor)?.name || ""}
-              onChange={e => {
-                const val = e.target.value;
-                const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
-                setFilterVendor(matched ? matched.id : "");
-              }}
-            />
-            <datalist id="rahul-vendor-list">
-              {uniqueVendors.map(v => (
-                <option key={v.id} value={v.name}>{v.name}</option>
-              ))}
-            </datalist>
-          </div>
+              {hasActiveFilters && (
+                <button 
+                  onClick={resetFilters} 
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: "0.76rem", padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                >
+                  <RotateCcw size={12} /> Reset All Filters
+                </button>
+              )}
+            </div>
 
-          {/* Category filter */}
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Category</label>
-            <input 
-              type="text" 
-              list="rahul-cat-list"
-              className="form-control" 
-              placeholder="Type or Select Category..." 
-              value={filterCategory}
-              onChange={e => setFilterCategory(e.target.value)}
-            />
-            <datalist id="rahul-cat-list">
-              {uniqueCategories.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </datalist>
-          </div>
+            {/* Level 1: Quick Status Filter Chips */}
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
+              <button 
+                onClick={() => setQuickStatus("all")}
+                className={`btn btn-sm ${quickStatus === "all" ? "btn-primary" : "btn-secondary"}`}
+                style={{ fontSize: "0.78rem", padding: "5px 12px" }}
+              >
+                All Items ({currentTabRequests.length})
+              </button>
+              
+              <button 
+                onClick={() => setQuickStatus("coming")}
+                className={`btn btn-sm ${quickStatus === "coming" ? "btn-primary" : "btn-secondary"}`}
+                style={{ fontSize: "0.78rem", padding: "5px 12px", color: quickStatus === "coming" ? "#fff" : "#38bdf8", borderColor: "rgba(56, 189, 248, 0.4)" }}
+              >
+                🚚 What's Coming (In Transit & Ready)
+              </button>
 
-          {/* Cargo filter */}
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Cargo Code</label>
-            <input 
-              type="text" 
-              list="rahul-cargo-list"
-              className="form-control" 
-              placeholder="Type or Select Cargo..." 
-              value={filterCargo}
-              onChange={e => setFilterCargo(e.target.value)}
-            />
-            <datalist id="rahul-cargo-list">
-              {uniqueCargos.map(cid => {
-                const cObj = cargos.find(c => c.id === cid);
-                return (
-                  <option key={cid} value={cid}>
-                    {cObj?.cargoDetail || cid}
-                  </option>
-                );
-              })}
-            </datalist>
-          </div>
-        </div>
-      </div>
+              <button 
+                onClick={() => setQuickStatus("pipeline")}
+                className={`btn btn-sm ${quickStatus === "pipeline" ? "btn-primary" : "btn-secondary"}`}
+                style={{ fontSize: "0.78rem", padding: "5px 12px", color: quickStatus === "pipeline" ? "#fff" : "#818cf8", borderColor: "rgba(129, 140, 248, 0.4)" }}
+              >
+                📍 Where Item Is Now (Active Pipeline)
+              </button>
 
-      {/* Action Row */}
-      {activeTab === "pending" && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-          <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-            Checked: <strong>{checkedIds.length}</strong> of {filteredRequests.length} items
-          </span>
-          <button 
-            onClick={handleSubmitUpdate}
-            disabled={checkedIds.length === 0}
-            className="btn btn-primary"
-            style={{ padding: "10px 20px" }}
-          >
-            <CheckCircle size={16} /> Submit {checkedIds.length || ""} Purchase Updates
-          </button>
-        </div>
-      )}
+              <button 
+                onClick={() => setQuickStatus("delivered")}
+                className={`btn btn-sm ${quickStatus === "delivered" ? "btn-primary" : "btn-secondary"}`}
+                style={{ fontSize: "0.78rem", padding: "5px 12px", color: quickStatus === "delivered" ? "#fff" : "#10b981", borderColor: "rgba(16, 185, 129, 0.4)" }}
+              >
+                ✅ Delivered (Warehouse Received)
+              </button>
 
-      {activeTab === "submitted" && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-          <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-            Checked: <strong>{checkedIds.length}</strong> of {filteredRequests.length} submitted items
-          </span>
-          <button 
-            onClick={handleUnsubmitUpdate}
-            disabled={checkedIds.length === 0}
-            className="btn btn-secondary"
-            style={{ 
-              padding: "10px 20px", 
-              color: "#ef4444", 
-              borderColor: "rgba(239, 68, 68, 0.4)", 
-              background: "rgba(239, 68, 68, 0.1)",
-              fontWeight: 600
-            }}
-          >
-            <RotateCcw size={16} /> Mark {checkedIds.length || ""} Selected as Unsubmitted (Bulk Undo)
-          </button>
-        </div>
-      )}
+              <button 
+                onClick={() => setQuickStatus("pending_mark")}
+                className={`btn btn-sm ${quickStatus === "pending_mark" ? "btn-primary" : "btn-secondary"}`}
+                style={{ fontSize: "0.78rem", padding: "5px 12px", color: quickStatus === "pending_mark" ? "#fff" : "#ec4899", borderColor: "rgba(236, 72, 153, 0.4)" }}
+              >
+                ⏳ Pending Mark in Ledger
+              </button>
 
-      {/* Requisitions List Table */}
-      {filteredRequests.length === 0 ? (
-        <div className="glass-panel" style={{ padding: "50px", textAlign: "center", color: "var(--text-muted)" }}>
-          <PackageOpen size={36} style={{ color: "var(--primary)", marginBottom: "12px", display: "inline" }} /><br />
-          No requests match the selected filters.
-        </div>
-      ) : (
-        <div className="glass-panel" style={{ padding: "4px" }}>
-          <div className="table-container">
-            <table className="custom-table">
-              <thead>
-                <tr>
-                  {(activeTab === "pending" || activeTab === "submitted") && (
-                    <th style={{ width: "45px" }}>
-                      <input 
-                        type="checkbox" 
-                        className="checkbox-input"
-                        checked={checkedIds.length > 0 && checkedIds.length === filteredRequests.length}
-                        onChange={handleSelectAll}
-                      />
-                    </th>
+              <button 
+                onClick={() => setQuickStatus("marked")}
+                className={`btn btn-sm ${quickStatus === "marked" ? "btn-primary" : "btn-secondary"}`}
+                style={{ fontSize: "0.78rem", padding: "5px 12px", color: quickStatus === "marked" ? "#fff" : "#a855f7", borderColor: "rgba(168, 85, 247, 0.4)" }}
+              >
+                ✓ Marked in Ledger
+              </button>
+            </div>
+
+            {/* Level 2 & 3: Filter Dropdowns Grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", marginBottom: "14px" }}>
+              
+              {/* Stage Filter */}
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.76rem" }}>Stage (Where Item Is Now)</label>
+                <select 
+                  className="form-control"
+                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                  value={filterStage}
+                  onChange={e => setFilterStage(e.target.value)}
+                >
+                  <option value="all">All Stages</option>
+                  <option value="step1">Step 1: Starting (Unpriced)</option>
+                  <option value="priced">Step 2: Priced / In Production</option>
+                  <option value="consolidated">Step 3: Cargo Consolidated</option>
+                  <option value="pickedup">Step 4: In Freight Transit</option>
+                  <option value="received">Step 5: Warehouse Received</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+
+              {/* Vendor filter */}
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.76rem" }}>Vendor</label>
+                <input 
+                  type="text" 
+                  list="rahul-vendor-list"
+                  className="form-control" 
+                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                  placeholder="Select Vendor..." 
+                  value={vendors.find(v => v.id === filterVendor)?.name || ""}
+                  onChange={e => {
+                    const val = e.target.value;
+                    const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
+                    setFilterVendor(matched ? matched.id : "");
+                  }}
+                />
+                <datalist id="rahul-vendor-list">
+                  {uniqueVendors.map(v => (
+                    <option key={v.id} value={v.name}>{v.name}</option>
+                  ))}
+                </datalist>
+              </div>
+
+              {/* Purchaser Filter */}
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.76rem" }}>Purchaser</label>
+                <select 
+                  className="form-control"
+                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                  value={filterPurchaser}
+                  onChange={e => setFilterPurchaser(e.target.value)}
+                >
+                  <option value="">All Purchasers</option>
+                  {uniquePurchasers.map(p => (
+                    <option key={p.id} value={p.name}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Category filter */}
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.76rem" }}>Category</label>
+                <input 
+                  type="text" 
+                  list="rahul-cat-list"
+                  className="form-control" 
+                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                  placeholder="Select Category..." 
+                  value={filterCategory}
+                  onChange={e => setFilterCategory(e.target.value)}
+                >
+                </input>
+                <datalist id="rahul-cat-list">
+                  {uniqueCategories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </datalist>
+              </div>
+
+              {/* Cargo filter */}
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.76rem" }}>Cargo Code</label>
+                <input 
+                  type="text" 
+                  list="rahul-cargo-list"
+                  className="form-control" 
+                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                  placeholder="Select Cargo..." 
+                  value={filterCargo}
+                  onChange={e => setFilterCargo(e.target.value)}
+                />
+                <datalist id="rahul-cargo-list">
+                  {uniqueCargos.map(cid => {
+                    const cObj = cargos.find(c => c.id === cid);
+                    return (
+                      <option key={cid} value={cid}>
+                        {cObj?.cargoDetail || cid}
+                      </option>
+                    );
+                  })}
+                </datalist>
+              </div>
+
+              {/* Transport Mode filter */}
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.76rem" }}>Transport Mode</label>
+                <select 
+                  className="form-control"
+                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                  value={filterTransport}
+                  onChange={e => setFilterTransport(e.target.value)}
+                >
+                  <option value="">All Modes</option>
+                  <option value="Sea Freight">Sea Freight</option>
+                  <option value="Air Express">Air Express</option>
+                  <option value="Road Freight">Road Freight</option>
+                  <option value="Courier">Courier</option>
+                </select>
+              </div>
+
+              {/* Type filter */}
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.76rem" }}>Order Type</label>
+                <select 
+                  className="form-control"
+                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                  value={filterType}
+                  onChange={e => setFilterType(e.target.value)}
+                >
+                  <option value="all">All Types</option>
+                  <option value="Import">Import</option>
+                  <option value="Local">Local</option>
+                </select>
+              </div>
+
+            </div>
+
+            {/* Level 4: Search & Date Range Row */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px", alignItems: "flex-end" }}>
+              
+              {/* Keyword Search */}
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.76rem" }}>Search Keyword</label>
+                <div style={{ position: "relative" }}>
+                  <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+                  <input 
+                    type="text" 
+                    className="form-control" 
+                    style={{ fontSize: "0.82rem", padding: "6px 10px 6px 30px" }}
+                    placeholder="Search Model, ID, Vendor, Cargo..." 
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                  />
+                  {searchQuery && (
+                    <X size={14} onClick={() => setSearchQuery("")} style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", cursor: "pointer", color: "var(--text-muted)" }} />
                   )}
-                  <RenderSortHeader colKey="purchaser" title="Purchaser" getValue={r => getPurchaserName(r)} />
-                  <RenderSortHeader colKey="entryBy" title="Required By" getValue={r => r.entryBy || r.requestedBy || "Requester"} />
-                  <RenderSortHeader colKey="vendor" title="Vendor" getValue={r => vendors.find(v => v.id === r.vendorId)?.name || ""} />
-                  <RenderSortHeader colKey="orderDate" title="Order Date" />
-                  <RenderSortHeader colKey="type" title="Type" />
-                  <RenderSortHeader colKey="model" title="Model" />
-                  <RenderSortHeader colKey="orderQuantity" title="Qty" />
-                  <RenderSortHeader colKey="vendorEdd" title="EDD" />
-                  <RenderSortHeader colKey="cargoDate" title="Cargo Date" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoOrderDate || ""} />
-                  <RenderSortHeader colKey="cargoDetail" title="Cargo Detail" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoDetail || ""} />
-                  <RenderSortHeader colKey="modeOfTransport" title="Transport" getValue={r => cargos.find(c => c.id === r.cargoId)?.modeOfTransport || ""} />
-                  <RenderSortHeader colKey="cargoShippingDate" title="Ship Date" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoShippingDate || ""} />
-                  <RenderSortHeader colKey="cargoEta" title="ETA" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoEta || ""} />
-                  <RenderSortHeader colKey="purchaseUpdated" title="Purchase Updated" />
-                  <RenderSortHeader colKey="isMaterialRec" title="Material Rec" />
-                  <th>Cargo Slip</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedDisplayRequests.map(r => {
-                  const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
-                  const cargo = cargos.find(c => c.id === r.cargoId);
-                  const isChecked = checkedIds.includes(r.id);
+                </div>
+              </div>
 
-                  return (
-                    <tr key={r.id} className={isChecked ? "planner-row-selected" : ""}>
-                      {(activeTab === "pending" || activeTab === "submitted") && (
-                        <td>
-                          <input 
-                            type="checkbox" 
-                            className="checkbox-input"
-                            checked={isChecked}
-                            onChange={() => handleToggleSelect(r.id)}
-                          />
-                        </td>
-                      )}
-                      <td style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary)" }}>{getPurchaserName(r)}</td>
-                      <td style={{ fontSize: "0.85rem", color: "#c084fc", fontWeight: 600 }}>{r.entryBy || r.requestedBy || "Requester"}</td>
-                      <td style={{ fontWeight: 500 }}>{vName}</td>
-                      <td>{r.orderDate}</td>
-                      <td>
-                        <span className="badge badge-cargo" style={{ fontSize: "0.78rem" }}>{r.type}</span>
-                      </td>
-                      <td style={{ fontWeight: 600 }}>{r.model}</td>
-                      <td style={{ fontWeight: 600 }}>{r.orderQuantity}</td>
-                      <td>{r.vendorEdd || "—"}</td>
-                      
-                      {/* Cargo columns */}
-                      <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{cargo?.cargoOrderDate || "—"}</td>
-                      <td style={{ fontSize: "0.8rem", color: "var(--text-muted)", maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={cargo?.cargoDetail}>{cargo?.cargoDetail || "—"}</td>
-                      <td>
-                        {cargo?.modeOfTransport ? (
-                          <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--primary)" }}>{cargo.modeOfTransport}</span>
-                        ) : "—"}
-                      </td>
-                      <td style={{ fontSize: "0.8rem" }}>{cargo?.cargoShippingDate || "—"}</td>
-                      <td style={{ fontSize: "0.8rem" }}>{cargo?.cargoEta || "—"}</td>
-                      
-                      {/* Purchase Updated badge */}
-                      <td>
-                        <span className={`badge ${r.purchaseUpdated === "Yes" ? "badge-received" : "badge-pending"}`} style={{ fontSize: "0.72rem", padding: "2px 8px" }}>
-                          {r.purchaseUpdated === "Yes" ? "Yes" : "No"}
-                        </span>
-                      </td>
+              {/* Date Field Selector */}
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.76rem" }}>Filter by Date Field</label>
+                <select 
+                  className="form-control"
+                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                  value={dateField}
+                  onChange={e => setDateField(e.target.value)}
+                >
+                  <option value="orderDate">Order Date</option>
+                  <option value="vendorEdd">Vendor EDD</option>
+                  <option value="cargoShippingDate">Cargo Ship Date</option>
+                  <option value="receivedDate">Received Date</option>
+                </select>
+              </div>
 
-                      {/* Material Rec */}
-                      <td>
-                        <span style={{ fontWeight: 600, color: r.isMaterialRec === "Yes" ? "var(--success)" : "var(--danger)" }}>
-                          {r.isMaterialRec}
-                        </span>
-                      </td>
+              {/* From Date */}
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.76rem" }}>From Date</label>
+                <input 
+                  type="date" 
+                  className="form-control" 
+                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                  value={fromDate}
+                  onChange={e => setFromDate(e.target.value)}
+                />
+              </div>
 
-                      {/* Cargo Slip (Documents) */}
-                      <td>
-                        {cargo && (cargo.packingListFile || cargo.invoiceFile || cargo.cargoReceiptFile) ? (
-                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                            {cargo.packingListFile && (
-                              <button
-                                type="button"
-                                onClick={() => downloadOrOpenBlob(cargo.packingListData, cargo.packingListFile)}
-                                className="doc-link"
-                                style={{ background: "none", border: "none", padding: 0, cursor: cargo.packingListData ? "pointer" : "default", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "2px", color: "var(--primary)", textDecoration: cargo.packingListData ? "underline" : "none" }}
-                                title={cargo.packingListData ? `Open ${cargo.packingListFile}` : cargo.packingListFile}
-                              >
-                                📄 PL: {cargo.packingListFile.length > 12 ? `${cargo.packingListFile.substring(0, 10)}...` : cargo.packingListFile}
-                              </button>
-                            )}
-                            {cargo.invoiceFile && (
-                              <button
-                                type="button"
-                                onClick={() => downloadOrOpenBlob(cargo.invoiceData, cargo.invoiceFile)}
-                                className="doc-link"
-                                style={{ background: "none", border: "none", padding: 0, cursor: cargo.invoiceData ? "pointer" : "default", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "2px", color: "var(--primary)", textDecoration: cargo.invoiceData ? "underline" : "none" }}
-                                title={cargo.invoiceData ? `Open ${cargo.invoiceFile}` : cargo.invoiceFile}
-                              >
-                                📄 INV: {cargo.invoiceFile.length > 12 ? `${cargo.invoiceFile.substring(0, 10)}...` : cargo.invoiceFile}
-                              </button>
-                            )}
-                            {cargo.cargoReceiptFile && (
-                              <button
-                                type="button"
-                                onClick={() => downloadOrOpenBlob(cargo.cargoReceiptData, cargo.cargoReceiptFile)}
-                                className="doc-link"
-                                style={{ background: "none", border: "none", padding: 0, cursor: cargo.cargoReceiptData ? "pointer" : "default", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "2px", color: "var(--primary)", textDecoration: cargo.cargoReceiptData ? "underline" : "none" }}
-                                title={cargo.cargoReceiptData ? `Open ${cargo.cargoReceiptFile}` : cargo.cargoReceiptFile}
-                              >
-                                📄 CR: {cargo.cargoReceiptFile.length > 12 ? `${cargo.cargoReceiptFile.substring(0, 10)}...` : cargo.cargoReceiptFile}
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+              {/* To Date */}
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.76rem" }}>To Date</label>
+                <input 
+                  type="date" 
+                  className="form-control" 
+                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                  value={toDate}
+                  onChange={e => setToDate(e.target.value)}
+                />
+              </div>
+
+            </div>
+
           </div>
-        </div>
+
+          {/* ==================== ACTION ROW FOR MARKING PURCHASES ==================== */}
+          {activeTab === "pending" && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <span style={{ fontSize: "0.88rem", color: "var(--text-muted)" }}>
+                  Selected: <strong style={{ color: "var(--primary)" }}>{checkedIds.length}</strong> of {filteredRequests.length} pending items
+                </span>
+                {checkedIds.length > 0 && (
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                    (Total RMB: ¥{Math.round(pendingRequests.filter(r => checkedIds.includes(r.id)).reduce((sum, r) => sum + ((r.orderQuantity || 0) * (r.priceRmb || 0)), 0)).toLocaleString()})
+                  </span>
+                )}
+              </div>
+              <button 
+                onClick={handleSubmitUpdate}
+                disabled={checkedIds.length === 0}
+                className="btn btn-primary"
+                style={{ padding: "10px 22px", display: "inline-flex", alignItems: "center", gap: "8px", fontWeight: 700 }}
+              >
+                <CheckCircle size={17} /> Confirm & Mark {checkedIds.length || ""} Purchases as Updated
+              </button>
+            </div>
+          )}
+
+          {activeTab === "submitted" && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
+              <span style={{ fontSize: "0.88rem", color: "var(--text-muted)" }}>
+                Selected: <strong style={{ color: "#38bdf8" }}>{checkedIds.length}</strong> of {filteredRequests.length} marked items
+              </span>
+              <button 
+                onClick={handleUnsubmitUpdate}
+                disabled={checkedIds.length === 0}
+                className="btn btn-secondary"
+                style={{ 
+                  padding: "10px 20px", 
+                  color: "#ef4444", 
+                  borderColor: "rgba(239, 68, 68, 0.4)", 
+                  background: "rgba(239, 68, 68, 0.1)",
+                  fontWeight: 600,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px"
+                }}
+              >
+                <RotateCcw size={16} /> Mark {checkedIds.length || ""} Selected as Unsubmitted (Bulk Undo)
+              </button>
+            </div>
+          )}
+
+          {/* ==================== WORKBOARD TABLE ==================== */}
+          {filteredRequests.length === 0 ? (
+            <div className="glass-panel" style={{ padding: "60px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+              <PackageOpen size={42} style={{ color: "var(--primary)", marginBottom: "14px", display: "inline" }} />
+              <h4 style={{ fontSize: "1.1rem", color: "var(--text-main)", marginBottom: "6px" }}>No Requisitions Match Filters</h4>
+              <p style={{ fontSize: "0.85rem", maxWidth: "460px", margin: "0 auto 16px" }}>
+                Try adjusting your search query, status chip, or clearing specific dropdown filters.
+              </p>
+              {hasActiveFilters && (
+                <button onClick={resetFilters} className="btn btn-secondary btn-sm">
+                  Reset All Filters
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="glass-panel" style={{ padding: "4px" }}>
+              <div className="table-container" style={{ maxHeight: "680px", overflowY: "auto" }}>
+                <table className="custom-table" style={{ fontSize: "0.84rem" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: "42px", textAlign: "center" }}>
+                        <input 
+                          type="checkbox" 
+                          className="checkbox-input"
+                          checked={checkedIds.length > 0 && checkedIds.length === filteredRequests.length}
+                          onChange={handleSelectAll}
+                        />
+                      </th>
+                      <th style={{ width: "65px", textAlign: "center" }}>Inspect</th>
+                      <RenderSortHeader colKey="stage" title="Where Item Is Now" getValue={r => getOrderStage(r, cargos.find(c => c.id === r.cargoId)).label} />
+                      <RenderSortHeader colKey="purchaser" title="Purchaser" getValue={r => getPurchaserName(r)} />
+                      <RenderSortHeader colKey="entryBy" title="Required By" getValue={r => r.entryBy || r.requestedBy || "Requester"} />
+                      <RenderSortHeader colKey="vendor" title="Vendor" getValue={r => vendors.find(v => v.id === r.vendorId)?.name || ""} />
+                      <RenderSortHeader colKey="orderDate" title="Order Date" />
+                      <RenderSortHeader colKey="type" title="Type" />
+                      <RenderSortHeader colKey="model" title="Model / Item" />
+                      <RenderSortHeader colKey="orderQuantity" title="Qty" />
+                      <RenderSortHeader colKey="priceRmb" title="Price (¥)" getValue={r => parseFloat(r.priceRmb) || 0} />
+                      <RenderSortHeader colKey="totalRmb" title="Total RMB (¥)" getValue={r => (parseInt(r.orderQuantity, 10) || 0) * (parseFloat(r.priceRmb) || 0)} />
+                      <RenderSortHeader colKey="vendorEdd" title="EDD" />
+                      <RenderSortHeader colKey="cargoDate" title="Cargo Date" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoOrderDate || ""} />
+                      <RenderSortHeader colKey="cargoDetail" title="Cargo Detail / Code" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoDetail || ""} />
+                      <RenderSortHeader colKey="modeOfTransport" title="Transport" getValue={r => cargos.find(c => c.id === r.cargoId)?.modeOfTransport || ""} />
+                      <RenderSortHeader colKey="cargoShippingDate" title="Ship Date" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoShippingDate || ""} />
+                      <RenderSortHeader colKey="cargoEta" title="ETA" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoEta || ""} />
+                      <RenderSortHeader colKey="purchaseUpdated" title="Purchase Updated" />
+                      <RenderSortHeader colKey="isMaterialRec" title="Material Rec" />
+                      <th>Cargo Documents</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedDisplayRequests.map(r => {
+                      const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
+                      const cargo = cargos.find(c => c.id === r.cargoId);
+                      const isChecked = checkedIds.includes(r.id);
+                      const stage = getOrderStage(r, cargo);
+                      const qty = parseInt(r.orderQuantity, 10) || 0;
+                      const price = parseFloat(r.priceRmb) || 0;
+                      const totalRmb = qty * price;
+
+                      return (
+                        <tr key={r.id} className={isChecked ? "planner-row-selected" : ""}>
+                          {/* Checkbox */}
+                          <td style={{ textAlign: "center" }}>
+                            <input 
+                              type="checkbox" 
+                              className="checkbox-input"
+                              checked={isChecked}
+                              onChange={() => handleToggleSelect(r.id)}
+                            />
+                          </td>
+
+                          {/* Inspection Action */}
+                          <td style={{ textAlign: "center" }}>
+                            <button
+                              type="button"
+                              onClick={() => setInspectedOrder(r)}
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: "3px 7px", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "3px" }}
+                              title="Inspect full order, financials & cargo documents"
+                            >
+                              <Eye size={12} /> View
+                            </button>
+                          </td>
+
+                          {/* Stage Badge ("Where Item Is Now") */}
+                          <td>
+                            <span 
+                              style={{ 
+                                padding: "3px 8px", 
+                                borderRadius: "6px", 
+                                fontSize: "0.72rem", 
+                                fontWeight: 700, 
+                                background: stage.bgColor, 
+                                color: stage.badgeColor, 
+                                border: `1px solid ${stage.borderColor}`,
+                                whiteSpace: "nowrap",
+                                display: "inline-block"
+                              }}
+                            >
+                              {stage.label}
+                            </span>
+                          </td>
+
+                          {/* Purchaser */}
+                          <td style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary)", whiteSpace: "nowrap" }}>
+                            {getPurchaserName(r)}
+                          </td>
+
+                          {/* Required By */}
+                          <td style={{ fontSize: "0.82rem", color: "#c084fc", fontWeight: 600 }}>
+                            {r.entryBy || r.requestedBy || "Requester"}
+                          </td>
+
+                          {/* Vendor */}
+                          <td style={{ fontWeight: 500, whiteSpace: "nowrap" }}>{vName}</td>
+
+                          {/* Order Date */}
+                          <td style={{ whiteSpace: "nowrap" }}>{r.orderDate}</td>
+
+                          {/* Type */}
+                          <td>
+                            <span className="badge badge-cargo" style={{ fontSize: "0.74rem" }}>{r.type}</span>
+                          </td>
+
+                          {/* Model */}
+                          <td style={{ fontWeight: 700, color: "var(--text-main)", maxWidth: "220px" }}>
+                            <div style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }} title={r.model}>
+                              {r.model}
+                            </div>
+                            {r.category && (
+                              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{r.category}</div>
+                            )}
+                          </td>
+
+                          {/* Qty */}
+                          <td style={{ fontWeight: 700 }}>{qty.toLocaleString()}</td>
+
+                          {/* Price RMB */}
+                          <td style={{ fontWeight: 600, color: "#f59e0b" }}>
+                            {price > 0 ? `¥${price.toFixed(2)}` : "—"}
+                          </td>
+
+                          {/* Total RMB */}
+                          <td style={{ fontWeight: 800, color: "#f59e0b" }}>
+                            {totalRmb > 0 ? `¥${Math.round(totalRmb).toLocaleString()}` : "—"}
+                          </td>
+
+                          {/* Vendor EDD */}
+                          <td style={{ whiteSpace: "nowrap" }}>{r.vendorEdd || "—"}</td>
+                          
+                          {/* Cargo Columns */}
+                          <td style={{ fontSize: "0.78rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                            {cargo?.cargoOrderDate || "—"}
+                          </td>
+                          <td style={{ fontSize: "0.78rem", color: "var(--text-muted)", maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={cargo?.cargoDetail}>
+                            {cargo?.cargoDetail || r.cargoId || "—"}
+                          </td>
+                          <td>
+                            {cargo?.modeOfTransport ? (
+                              <span style={{ fontSize: "0.76rem", fontWeight: 600, color: "var(--primary)" }}>{cargo.modeOfTransport}</span>
+                            ) : "—"}
+                          </td>
+                          <td style={{ fontSize: "0.78rem", whiteSpace: "nowrap" }}>{cargo?.cargoShippingDate || "—"}</td>
+                          <td style={{ fontSize: "0.78rem", whiteSpace: "nowrap" }}>{cargo?.cargoEta || "—"}</td>
+                          
+                          {/* Purchase Updated badge */}
+                          <td>
+                            <span className={`badge ${r.purchaseUpdated === "Yes" ? "badge-received" : "badge-pending"}`} style={{ fontSize: "0.72rem", padding: "2px 8px" }}>
+                              {r.purchaseUpdated === "Yes" ? "Yes" : "No"}
+                            </span>
+                          </td>
+
+                          {/* Material Rec */}
+                          <td>
+                            <span style={{ fontWeight: 700, fontSize: "0.78rem", color: r.isMaterialRec === "Yes" ? "var(--success)" : "var(--danger)" }}>
+                              {r.isMaterialRec}
+                            </span>
+                          </td>
+
+                          {/* Cargo Documents */}
+                          <td>
+                            {cargo && (cargo.packingListFile || cargo.invoiceFile || cargo.cargoReceiptFile) ? (
+                              <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                                {cargo.packingListFile && (
+                                  <button
+                                    type="button"
+                                    onClick={() => downloadOrOpenBlob(cargo.packingListData, cargo.packingListFile)}
+                                    className="doc-link"
+                                    style={{ background: "none", border: "none", padding: 0, cursor: cargo.packingListData ? "pointer" : "default", fontSize: "0.7rem", display: "inline-flex", alignItems: "center", gap: "2px", color: "var(--primary)", textDecoration: cargo.packingListData ? "underline" : "none" }}
+                                    title={cargo.packingListData ? `Open ${cargo.packingListFile}` : cargo.packingListFile}
+                                  >
+                                    📄 PL: {cargo.packingListFile.length > 11 ? `${cargo.packingListFile.substring(0, 9)}...` : cargo.packingListFile}
+                                  </button>
+                                )}
+                                {cargo.invoiceFile && (
+                                  <button
+                                    type="button"
+                                    onClick={() => downloadOrOpenBlob(cargo.invoiceData, cargo.invoiceFile)}
+                                    className="doc-link"
+                                    style={{ background: "none", border: "none", padding: 0, cursor: cargo.invoiceData ? "pointer" : "default", fontSize: "0.7rem", display: "inline-flex", alignItems: "center", gap: "2px", color: "var(--primary)", textDecoration: cargo.invoiceData ? "underline" : "none" }}
+                                    title={cargo.invoiceData ? `Open ${cargo.invoiceFile}` : cargo.invoiceFile}
+                                  >
+                                    📄 INV: {cargo.invoiceFile.length > 11 ? `${cargo.invoiceFile.substring(0, 9)}...` : cargo.invoiceFile}
+                                  </button>
+                                )}
+                                {cargo.cargoReceiptFile && (
+                                  <button
+                                    type="button"
+                                    onClick={() => downloadOrOpenBlob(cargo.cargoReceiptData, cargo.cargoReceiptFile)}
+                                    className="doc-link"
+                                    style={{ background: "none", border: "none", padding: 0, cursor: cargo.cargoReceiptData ? "pointer" : "default", fontSize: "0.7rem", display: "inline-flex", alignItems: "center", gap: "2px", color: "var(--primary)", textDecoration: cargo.cargoReceiptData ? "underline" : "none" }}
+                                    title={cargo.cargoReceiptData ? `Open ${cargo.cargoReceiptFile}` : cargo.cargoReceiptFile}
+                                  >
+                                    📄 CR: {cargo.cargoReceiptFile.length > 11 ? `${cargo.cargoReceiptFile.substring(0, 9)}...` : cargo.cargoReceiptFile}
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
       )}
-      </>
+
+      {/* ==================== GLOBAL ORDER INSPECTION MODAL ==================== */}
+      {inspectedOrder && (
+        <OrderInspectionModal
+          order={inspectedOrder}
+          cargos={cargos}
+          vendors={vendors}
+          purchasers={purchasers}
+          cargoCompanies={cargoCompanies}
+          onClose={() => setInspectedOrder(null)}
+        />
       )}
+
     </div>
   );
 }
