@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
 import { OrderInspectionModal } from "./BundledUpcomingShipments";
+import CustomSelect from "./CustomSelect";
 import { isRequestForUser, getPurchaserDisplayName } from "../utils/formatters";
 
 export function getOrderStage(r, cargo) {
@@ -432,6 +433,38 @@ export default function MasterOrderTracker({
     }
   }, [relevantVendors, vendorFilter]);
 
+  // Memoized options for beautiful dark CustomSelect dropdowns
+  const stageOptions = useMemo(() => [
+    { value: "all", label: `All Stages (${stageCounts.total})` },
+    { value: "in_progress", label: `All Active / In Progress (${stageCounts.total - stageCounts.received - stageCounts.cancelled})` },
+    { value: "step1", label: `Step 1: Starting (Unpriced) (${stageCounts.step1})` },
+    { value: "priced", label: `Priced (Production Pending) (${stageCounts.priced})` },
+    { value: "vendorready", label: `Step 2: Ready at Vendor (${stageCounts.vendorready})` },
+    { value: "cargo", label: `Step 3: Cargo Consolidated (${stageCounts.cargo})` },
+    { value: "pickedup", label: `Step 4: Picked Up / In Transit (${stageCounts.pickedup})` },
+    { value: "received", label: `Step 5: Received in Warehouse (${stageCounts.received})` },
+    { value: "cancelled", label: `Cancelled Orders (${stageCounts.cancelled})` }
+  ], [stageCounts]);
+
+  const vendorOptions = useMemo(() => [
+    { value: "", label: `All Vendors (${relevantVendors.length})` },
+    ...relevantVendors.map(v => ({ value: v.id, label: `${v.name} (${v.count} items)` }))
+  ], [relevantVendors]);
+
+  const cargoOptions = useMemo(() => [
+    { value: "", label: `All Cargo Batches (${relevantCargos.length})` },
+    ...(noCargoCount > 0 ? [{ value: "no_cargo", label: `Orders Not Yet in Any Cargo (${noCargoCount} items)` }] : []),
+    ...relevantCargos.map(c => {
+      const vName = vendorMap[c.vendorId]?.name || "Vendor";
+      return { value: c.id, label: `${c.id} (${vName}, ${c.count} items)` };
+    })
+  ], [relevantCargos, noCargoCount, vendorMap]);
+
+  const purchaserOptions = useMemo(() => [
+    { value: "all", label: `All Purchasers (${candidateForPurchaser.length} items)` },
+    ...relevantPurchasers.map(p => ({ value: p.id, label: `${p.name} (${p.count} items)` }))
+  ], [relevantPurchasers, candidateForPurchaser.length]);
+
   // 5. Final filtered requests (all active filters applied)
   const filteredRequests = useMemo(() => {
     return enrichedRequests.filter(r => matchesFilter(r));
@@ -790,66 +823,41 @@ export default function MasterOrderTracker({
 
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Filter by Stage</label>
-            <select
-              className="form-control"
+            <CustomSelect
               value={stageFilter}
-              onChange={e => setStageFilter(e.target.value)}
-              style={{ fontWeight: 600, borderColor: stageFilter !== "all" ? "var(--primary)" : undefined }}
-            >
-              <option value="all">🌐 All Stages ({stageCounts.total})</option>
-              <option value="in_progress">⏳ All Active / In Progress ({stageCounts.total - stageCounts.received - stageCounts.cancelled})</option>
-              <option value="step1">📝 Step 1: Starting (Unpriced) ({stageCounts.step1})</option>
-              <option value="priced">💰 Priced (Production Pending) ({stageCounts.priced})</option>
-              <option value="vendorready">🏭 Step 2: Ready at Vendor ({stageCounts.vendorready})</option>
-              <option value="cargo">📦 Step 3: Cargo Consolidated ({stageCounts.cargo})</option>
-              <option value="pickedup">🚚 Step 4: Picked Up / In Transit ({stageCounts.pickedup})</option>
-              <option value="received">✅ Step 5: Received in Warehouse ({stageCounts.received})</option>
-              <option value="cancelled">🚫 Cancelled Orders ({stageCounts.cancelled})</option>
-            </select>
+              onChange={val => setStageFilter(val)}
+              options={stageOptions}
+              placeholder="All Stages"
+              clearable={true}
+            />
           </div>
 
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <Building2 size={14} /> Filter by Vendor
             </label>
-            <select
-              className="form-control"
+            <CustomSelect
               value={vendorFilter}
-              onChange={e => setVendorFilter(e.target.value)}
-              style={{ fontWeight: 500, borderColor: vendorFilter ? "var(--primary)" : undefined }}
-            >
-              <option value="">All Vendors ({relevantVendors.length})</option>
-              {relevantVendors.map(v => (
-                <option key={v.id} value={v.id}>
-                  {v.name} ({v.count} items)
-                </option>
-              ))}
-            </select>
+              onChange={val => setVendorFilter(val)}
+              options={vendorOptions}
+              placeholder="All Vendors"
+              searchable={true}
+              clearable={true}
+            />
           </div>
 
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <Package size={14} /> Filter by Cargo Batch
             </label>
-            <select
-              className="form-control"
+            <CustomSelect
               value={cargoFilter}
-              onChange={e => setCargoFilter(e.target.value)}
-              style={{ fontWeight: 500, borderColor: cargoFilter ? "var(--primary)" : undefined }}
-            >
-              <option value="">All Cargo Batches ({relevantCargos.length})</option>
-              {noCargoCount > 0 && (
-                <option value="no_cargo">⚠️ Orders Not Yet in Any Cargo ({noCargoCount} items)</option>
-              )}
-              {relevantCargos.map(c => {
-                const vName = vendorMap[c.vendorId]?.name || "Vendor";
-                return (
-                  <option key={c.id} value={c.id}>
-                    📦 {c.id} ({vName}, {c.count} items)
-                  </option>
-                );
-              })}
-            </select>
+              onChange={val => setCargoFilter(val)}
+              options={cargoOptions}
+              placeholder="All Cargo Batches"
+              searchable={true}
+              clearable={true}
+            />
           </div>
 
           {(isAdmin || isPurchaseManager || isViewOnly || currentUser?.role === "rahul") && (
@@ -857,19 +865,14 @@ export default function MasterOrderTracker({
               <label className="form-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <User size={14} /> Filter by Purchaser
               </label>
-              <select
-                className="form-control"
+              <CustomSelect
                 value={purchaserFilter}
-                onChange={e => setPurchaserFilter(e.target.value)}
-                style={{ fontWeight: 600, borderColor: purchaserFilter !== "all" ? "var(--primary)" : undefined }}
-              >
-                <option value="all">👥 All Purchasers ({candidateForPurchaser.length} items)</option>
-                {relevantPurchasers.map(p => (
-                  <option key={p.id} value={p.id}>
-                    👤 {p.name} ({p.count} items)
-                  </option>
-                ))}
-              </select>
+                onChange={val => setPurchaserFilter(val)}
+                options={purchaserOptions}
+                placeholder="All Purchasers"
+                searchable={true}
+                clearable={true}
+              />
             </div>
           )}
 

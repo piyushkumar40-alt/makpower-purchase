@@ -33,6 +33,7 @@ import ItemMasterView from "./ItemMasterView";
 import BundledUpcomingShipments, { OrderInspectionModal } from "./BundledUpcomingShipments";
 import MasterOrderTracker, { getOrderStage } from "./MasterOrderTracker";
 import RequesterForm from "./RequesterForm";
+import CustomSelect from "./CustomSelect";
 import { useSortableData } from "../utils/useSortableData";
 import { getPurchaserDisplayName, downloadOrOpenBlob } from "../utils/formatters";
 
@@ -271,6 +272,60 @@ export default function RahulDashboard({
       ? purchasers 
       : Array.from(new Set(eligibleRequests.map(r => getPurchaserName(r)).filter(Boolean))).map(name => ({ id: name, name }));
   }, [purchasers, eligibleRequests]);
+
+  const stageOptions = [
+    { value: "all", label: "All Stages" },
+    { value: "step1", label: "Step 1: Starting (Unpriced)" },
+    { value: "priced", label: "Step 2: Priced / In Production" },
+    { value: "consolidated", label: "Step 3: Cargo Consolidated" },
+    { value: "pickedup", label: "Step 4: In Freight Transit" },
+    { value: "received", label: "Step 5: Warehouse Received" },
+    { value: "cancelled", label: "Cancelled" }
+  ];
+
+  const vendorOptions = useMemo(() => [
+    { value: "", label: "All Vendors" },
+    ...uniqueVendors.map(v => ({ value: v.id, label: v.name }))
+  ], [uniqueVendors]);
+
+  const purchaserOptions = useMemo(() => [
+    { value: "", label: "All Purchasers" },
+    ...uniquePurchasers.map(p => ({ value: p.name, label: p.name }))
+  ], [uniquePurchasers]);
+
+  const categoryOptions = useMemo(() => [
+    { value: "", label: "All Categories" },
+    ...uniqueCategories.map(cat => ({ value: cat, label: cat }))
+  ], [uniqueCategories]);
+
+  const cargoOptions = useMemo(() => [
+    { value: "", label: "All Cargo Batches" },
+    ...uniqueCargos.map(cid => {
+      const cObj = cargos.find(c => c.id === cid);
+      return { value: cid, label: cObj?.cargoDetail || cid };
+    })
+  ], [uniqueCargos, cargos]);
+
+  const transportOptions = [
+    { value: "", label: "All Modes" },
+    { value: "Sea Freight", label: "Sea Freight" },
+    { value: "Air Express", label: "Air Express" },
+    { value: "Road Freight", label: "Road Freight" },
+    { value: "Courier", label: "Courier" }
+  ];
+
+  const typeOptions = [
+    { value: "all", label: "All Types" },
+    { value: "Import", label: "Import" },
+    { value: "Local", label: "Local" }
+  ];
+
+  const dateFieldOptions = [
+    { value: "orderDate", label: "Order Date" },
+    { value: "vendorEdd", label: "Vendor EDD" },
+    { value: "cargoShippingDate", label: "Cargo Ship Date" },
+    { value: "receivedDate", label: "Received Date" }
+  ];
 
   const handleSelectAll = (e) => {
     if (e.target.checked) {
@@ -657,135 +712,89 @@ export default function RahulDashboard({
               {/* Stage Filter */}
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.76rem" }}>Stage (Where Item Is Now)</label>
-                <select 
-                  className="form-control"
-                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                <CustomSelect 
                   value={filterStage}
-                  onChange={e => setFilterStage(e.target.value)}
-                >
-                  <option value="all">All Stages</option>
-                  <option value="step1">Step 1: Starting (Unpriced)</option>
-                  <option value="priced">Step 2: Priced / In Production</option>
-                  <option value="consolidated">Step 3: Cargo Consolidated</option>
-                  <option value="pickedup">Step 4: In Freight Transit</option>
-                  <option value="received">Step 5: Warehouse Received</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
+                  onChange={val => setFilterStage(val)}
+                  options={stageOptions}
+                  placeholder="All Stages"
+                  clearable={true}
+                />
               </div>
 
               {/* Vendor filter */}
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.76rem" }}>Vendor</label>
-                <input 
-                  type="text" 
-                  list="rahul-vendor-list"
-                  className="form-control" 
-                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
-                  placeholder="Select Vendor..." 
-                  value={vendors.find(v => v.id === filterVendor)?.name || ""}
-                  onChange={e => {
-                    const val = e.target.value;
-                    const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
-                    setFilterVendor(matched ? matched.id : "");
-                  }}
+                <CustomSelect 
+                  value={filterVendor}
+                  onChange={val => setFilterVendor(val)}
+                  options={vendorOptions}
+                  placeholder="Select Vendor..."
+                  searchable={true}
+                  clearable={true}
                 />
-                <datalist id="rahul-vendor-list">
-                  {uniqueVendors.map(v => (
-                    <option key={v.id} value={v.name}>{v.name}</option>
-                  ))}
-                </datalist>
               </div>
 
               {/* Purchaser Filter */}
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.76rem" }}>Purchaser</label>
-                <select 
-                  className="form-control"
-                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                <CustomSelect 
                   value={filterPurchaser}
-                  onChange={e => setFilterPurchaser(e.target.value)}
-                >
-                  <option value="">All Purchasers</option>
-                  {uniquePurchasers.map(p => (
-                    <option key={p.id} value={p.name}>{p.name}</option>
-                  ))}
-                </select>
+                  onChange={val => setFilterPurchaser(val)}
+                  options={purchaserOptions}
+                  placeholder="All Purchasers"
+                  searchable={true}
+                  clearable={true}
+                />
               </div>
 
               {/* Category filter */}
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.76rem" }}>Category</label>
-                <input 
-                  type="text" 
-                  list="rahul-cat-list"
-                  className="form-control" 
-                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
-                  placeholder="Select Category..." 
+                <CustomSelect 
                   value={filterCategory}
-                  onChange={e => setFilterCategory(e.target.value)}
-                >
-                </input>
-                <datalist id="rahul-cat-list">
-                  {uniqueCategories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </datalist>
+                  onChange={val => setFilterCategory(val)}
+                  options={categoryOptions}
+                  placeholder="Select Category..."
+                  searchable={true}
+                  clearable={true}
+                />
               </div>
 
               {/* Cargo filter */}
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.76rem" }}>Cargo Code</label>
-                <input 
-                  type="text" 
-                  list="rahul-cargo-list"
-                  className="form-control" 
-                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
-                  placeholder="Select Cargo..." 
+                <CustomSelect 
                   value={filterCargo}
-                  onChange={e => setFilterCargo(e.target.value)}
+                  onChange={val => setFilterCargo(val)}
+                  options={cargoOptions}
+                  placeholder="Select Cargo..."
+                  searchable={true}
+                  clearable={true}
                 />
-                <datalist id="rahul-cargo-list">
-                  {uniqueCargos.map(cid => {
-                    const cObj = cargos.find(c => c.id === cid);
-                    return (
-                      <option key={cid} value={cid}>
-                        {cObj?.cargoDetail || cid}
-                      </option>
-                    );
-                  })}
-                </datalist>
               </div>
 
               {/* Transport Mode filter */}
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.76rem" }}>Transport Mode</label>
-                <select 
-                  className="form-control"
-                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                <CustomSelect 
                   value={filterTransport}
-                  onChange={e => setFilterTransport(e.target.value)}
-                >
-                  <option value="">All Modes</option>
-                  <option value="Sea Freight">Sea Freight</option>
-                  <option value="Air Express">Air Express</option>
-                  <option value="Road Freight">Road Freight</option>
-                  <option value="Courier">Courier</option>
-                </select>
+                  onChange={val => setFilterTransport(val)}
+                  options={transportOptions}
+                  placeholder="All Modes"
+                  clearable={true}
+                />
               </div>
 
               {/* Type filter */}
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.76rem" }}>Order Type</label>
-                <select 
-                  className="form-control"
-                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                <CustomSelect 
                   value={filterType}
-                  onChange={e => setFilterType(e.target.value)}
-                >
-                  <option value="all">All Types</option>
-                  <option value="Import">Import</option>
-                  <option value="Local">Local</option>
-                </select>
+                  onChange={val => setFilterType(val)}
+                  options={typeOptions}
+                  placeholder="All Types"
+                  clearable={true}
+                />
               </div>
 
             </div>
@@ -815,17 +824,12 @@ export default function RahulDashboard({
               {/* Date Field Selector */}
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.76rem" }}>Filter by Date Field</label>
-                <select 
-                  className="form-control"
-                  style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                <CustomSelect 
                   value={dateField}
-                  onChange={e => setDateField(e.target.value)}
-                >
-                  <option value="orderDate">Order Date</option>
-                  <option value="vendorEdd">Vendor EDD</option>
-                  <option value="cargoShippingDate">Cargo Ship Date</option>
-                  <option value="receivedDate">Received Date</option>
-                </select>
+                  onChange={val => setDateField(val)}
+                  options={dateFieldOptions}
+                  placeholder="Select Date Field"
+                />
               </div>
 
               {/* From Date */}

@@ -3,6 +3,7 @@ import { Package, Search, Filter, Truck, CheckCircle2, Clock, Building, ArrowLef
 import { uploadToCloudinary } from "../utils/upload";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 import Pagination from "./Pagination";
+import CustomSelect from "./CustomSelect";
 import { cleanCategoryName } from "../utils/formatters";
 
 export default function ItemMasterView({ requests = [], vendors = [], cargos = [], cargoCompanies = [], purchasers = [], settings = {}, onUpdateSettings, onBatchUpdateRequests }) {
@@ -532,43 +533,41 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
           onClear={() => { setStartDate(""); setEndDate(""); }}
         />
 
-        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-          <div>
-            <input 
-              type="text" 
-              list="im-cat-list"
-              className="form-control" 
-              placeholder="Type or Select Category..." 
-              value={categoryFilter === "All" ? "" : categoryFilter}
-              onChange={e => setCategoryFilter(e.target.value || "All")}
-              style={{ fontSize: "0.85rem", minWidth: "180px" }}
+        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ minWidth: "190px" }}>
+            <CustomSelect
+              value={categoryFilter}
+              onChange={val => setCategoryFilter(val || "All")}
+              options={[{ value: "All", label: "All Categories" }, ...categories.filter(c => c !== "All").map(c => ({ value: c, label: c }))]}
+              placeholder="All Categories"
+              searchable={true}
+              clearable={true}
             />
-            <datalist id="im-cat-list">
-              {categories.filter(c => c !== "All").map(c => <option key={c} value={c}>{c}</option>)}
-            </datalist>
           </div>
 
-          <div>
-            <input 
-              type="text" 
-              list="im-vendor-list"
-              className="form-control" 
-              placeholder="Type or Select Vendor..." 
-              value={vendorFilter === "All" ? "" : vendorFilter}
-              onChange={e => setVendorFilter(e.target.value || "All")}
-              style={{ fontSize: "0.85rem", minWidth: "180px" }}
+          <div style={{ minWidth: "190px" }}>
+            <CustomSelect
+              value={vendorFilter}
+              onChange={val => setVendorFilter(val || "All")}
+              options={[{ value: "All", label: "All Vendors" }, ...vendorNames.filter(v => v !== "All").map(v => ({ value: v, label: v }))]}
+              placeholder="All Vendors"
+              searchable={true}
+              clearable={true}
             />
-            <datalist id="im-vendor-list">
-              {vendorNames.filter(v => v !== "All").map(v => <option key={v} value={v}>{v}</option>)}
-            </datalist>
           </div>
 
-          <div>
-            <select className="form-control" value={stageFilter} onChange={e => setStageFilter(e.target.value)} style={{ fontSize: "0.85rem" }}>
-              <option value="All">All Transit Stages</option>
-              <option value="In-Transit">In-Transit / Active Orders</option>
-              <option value="Delivered">Delivered Warehouse Stock</option>
-            </select>
+          <div style={{ minWidth: "190px" }}>
+            <CustomSelect
+              value={stageFilter}
+              onChange={val => setStageFilter(val || "All")}
+              options={[
+                { value: "All", label: "All Transit Stages" },
+                { value: "In-Transit", label: "In-Transit / Active Orders" },
+                { value: "Delivered", label: "Delivered Warehouse Stock" }
+              ]}
+              placeholder="All Transit Stages"
+              clearable={true}
+            />
           </div>
         </div>
       </div>

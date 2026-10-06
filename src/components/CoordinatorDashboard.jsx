@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { LogOut, Filter, ShieldAlert, Clock, AlertTriangle, CheckCircle, Search, User } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
+import CustomSelect from "./CustomSelect";
 import { useSortableData } from "../utils/useSortableData";
 
 export default function CoordinatorDashboard({ currentUser = {}, requests = [], vendors = [], cargos = [], users = [], onLogout }) {
@@ -259,25 +260,33 @@ export default function CoordinatorDashboard({ currentUser = {}, requests = [], 
           {/* Staff / Name Filter */}
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Assignee Name (Purchaser/Nitin/Rahul)</label>
-            <select className="form-control" value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)}>
-              <option value="">All Staff Members</option>
-              {activeStaffList.map(u => (
-                <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-              ))}
-            </select>
+            <CustomSelect
+              value={filterAssignee}
+              onChange={val => setFilterAssignee(val)}
+              options={[{ value: "", label: "All Staff Members" }, ...activeStaffList.map(u => ({ value: u.id, label: `${u.name} (${u.role})` }))]}
+              placeholder="All Staff Members"
+              searchable={true}
+              clearable={true}
+            />
           </div>
 
           {/* Task Type Filter */}
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Workflow Task Type</label>
-            <select className="form-control" value={filterType} onChange={e => setFilterType(e.target.value)}>
-              <option value="">All Task Types</option>
-              <option value="Pricing">Pricing</option>
-              <option value="Packing">Nitin Packing</option>
-              <option value="Purchase Update">Purchase Marking (Rahul)</option>
-              <option value="Cargo Assignment">Cargo Planner</option>
-              <option value="Transit Tracking">Transit Tracking</option>
-            </select>
+            <CustomSelect
+              value={filterType}
+              onChange={val => setFilterType(val)}
+              options={[
+                { value: "", label: "All Task Types" },
+                { value: "Pricing", label: "Pricing" },
+                { value: "Packing", label: "Nitin Packing" },
+                { value: "Purchase Update", label: "Purchase Marking (Rahul)" },
+                { value: "Cargo Assignment", label: "Cargo Planner" },
+                { value: "Transit Tracking", label: "Transit Tracking" }
+              ]}
+              placeholder="All Task Types"
+              clearable={true}
+            />
           </div>
 
           {/* Search box */}

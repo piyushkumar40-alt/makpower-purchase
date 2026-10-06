@@ -24,6 +24,7 @@ import {
   Edit3
 } from "lucide-react";
 import { downloadOrOpenBlob, getPurchaserDisplayName } from "../utils/formatters";
+import CustomSelect from "./CustomSelect";
 
 export default function BundledUpcomingShipments({
   cargos = [],
@@ -174,6 +175,24 @@ export default function BundledUpcomingShipments({
     setToDate("");
     setSearchQuery("");
   };
+
+  const vendorOptions = useMemo(() => [
+    { value: "", label: "All Vendors" },
+    ...vendors.map(v => ({ value: v.id, label: v.name }))
+  ], [vendors]);
+
+  const carrierOptions = useMemo(() => [
+    { value: "", label: "All Carriers" },
+    ...cargoCompanies.map(cc => ({ value: cc.id, label: cc.name }))
+  ], [cargoCompanies]);
+
+  const modeOptions = [
+    { value: "", label: "All Modes" },
+    { value: "Air", label: "Air" },
+    { value: "Sea", label: "Sea" },
+    { value: "Land", label: "Land" },
+    { value: "Courier", label: "Courier" }
+  ];
 
   return (
     <div className="card-fade-in" style={{ paddingBottom: "40px" }}>
@@ -327,50 +346,39 @@ export default function BundledUpcomingShipments({
           {/* Vendor Filter */}
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label" style={{ fontSize: "0.72rem", fontWeight: 600 }}>Vendor</label>
-            <select
-              className="form-control"
+            <CustomSelect
               value={vendorFilter}
-              onChange={e => setVendorFilter(e.target.value)}
-              style={{ fontSize: "0.82rem", height: "34px", fontWeight: 600 }}
-            >
-              <option value="">🏢 All Vendors</option>
-              {vendors.map(v => (
-                <option key={v.id} value={v.id}>{v.name}</option>
-              ))}
-            </select>
+              onChange={val => setVendorFilter(val)}
+              options={vendorOptions}
+              placeholder="All Vendors"
+              searchable={true}
+              clearable={true}
+            />
           </div>
 
           {/* Cargo Carrier Filter */}
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label" style={{ fontSize: "0.72rem", fontWeight: 600 }}>Logistics Carrier</label>
-            <select
-              className="form-control"
+            <CustomSelect
               value={carrierFilter}
-              onChange={e => setCarrierFilter(e.target.value)}
-              style={{ fontSize: "0.82rem", height: "34px", fontWeight: 600 }}
-            >
-              <option value="">🚚 All Carriers</option>
-              {cargoCompanies.map(cc => (
-                <option key={cc.id} value={cc.id}>{cc.name}</option>
-              ))}
-            </select>
+              onChange={val => setCarrierFilter(val)}
+              options={carrierOptions}
+              placeholder="All Carriers"
+              searchable={true}
+              clearable={true}
+            />
           </div>
 
           {/* Transport Mode */}
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label" style={{ fontSize: "0.72rem", fontWeight: 600 }}>Transport Mode</label>
-            <select
-              className="form-control"
+            <CustomSelect
               value={modeFilter}
-              onChange={e => setModeFilter(e.target.value)}
-              style={{ fontSize: "0.82rem", height: "34px", fontWeight: 600 }}
-            >
-              <option value="">All Modes</option>
-              <option value="Air">✈️ Air</option>
-              <option value="Sea">🚢 Sea</option>
-              <option value="Land">🚚 Land</option>
-              <option value="Courier">📦 Courier</option>
-            </select>
+              onChange={val => setModeFilter(val)}
+              options={modeOptions}
+              placeholder="All Modes"
+              clearable={true}
+            />
           </div>
 
           {/* From Date */}

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { LogOut, Filter, CheckSquare, Square, CheckCircle, PackageOpen, Eye, X } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
 import { getEffectivePhoto } from "./PurchaserDashboard";
+import CustomSelect from "./CustomSelect";
 import { useSortableData } from "../utils/useSortableData";
 import { getPurchaserDisplayName } from "../utils/formatters";
 
@@ -138,64 +139,43 @@ export default function NitinDashboard({ currentUser = {}, requests = [], vendor
           {/* Vendor filter */}
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Vendor</label>
-            <input 
-              type="text" 
-              list="nitin-vendor-list"
-              className="form-control" 
-              placeholder="Type or Select Vendor..." 
-              value={vendors.find(v => v.id === filterVendor)?.name || ""}
-              onChange={e => {
-                const val = e.target.value;
-                const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
-                setFilterVendor(matched ? matched.id : "");
-              }}
+            <CustomSelect
+              value={filterVendor}
+              onChange={val => setFilterVendor(val)}
+              options={[{ value: "", label: "All Vendors" }, ...uniqueVendors.map(v => ({ value: v.id, label: v.name }))]}
+              placeholder="Select Vendor..."
+              searchable={true}
+              clearable={true}
             />
-            <datalist id="nitin-vendor-list">
-              {uniqueVendors.map(v => (
-                <option key={v.id} value={v.name}>{v.name}</option>
-              ))}
-            </datalist>
           </div>
 
           {/* Category filter */}
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Category</label>
-            <input 
-              type="text" 
-              list="nitin-cat-list"
-              className="form-control" 
-              placeholder="Type or Select Category..." 
+            <CustomSelect
               value={filterCategory}
-              onChange={e => setFilterCategory(e.target.value)}
+              onChange={val => setFilterCategory(val)}
+              options={[{ value: "", label: "All Categories" }, ...uniqueCategories.map(cat => ({ value: cat, label: cat }))]}
+              placeholder="Select Category..."
+              searchable={true}
+              clearable={true}
             />
-            <datalist id="nitin-cat-list">
-              {uniqueCategories.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </datalist>
           </div>
 
           {/* Cargo filter */}
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Cargo Code</label>
-            <input 
-              type="text" 
-              list="nitin-cargo-list"
-              className="form-control" 
-              placeholder="Type or Select Cargo..." 
+            <CustomSelect
               value={filterCargo}
-              onChange={e => setFilterCargo(e.target.value)}
-            />
-            <datalist id="nitin-cargo-list">
-              {uniqueCargos.map(cid => {
+              onChange={val => setFilterCargo(val)}
+              options={[{ value: "", label: "All Cargo Batches" }, ...uniqueCargos.map(cid => {
                 const cObj = cargos.find(c => c.id === cid);
-                return (
-                  <option key={cid} value={cid}>
-                    {cObj?.cargoDetail || cid}
-                  </option>
-                );
-              })}
-            </datalist>
+                return { value: cid, label: cObj?.cargoDetail || cid };
+              })]}
+              placeholder="Select Cargo..."
+              searchable={true}
+              clearable={true}
+            />
           </div>
         </div>
       </div>

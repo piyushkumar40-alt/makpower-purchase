@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 import { History, User, Filter, Search, Download, Clock, ShieldCheck, Tag, FileText, ChevronRight, X, AlertCircle } from "lucide-react";
 import { useSortableData } from "../utils/useSortableData";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
+import CustomSelect from "./CustomSelect";
 import { downloadCsv } from "../utils/formatters";
 
 export default function AuditLogsPanel({ auditLogs = [], users = [], requests = [], vendors = [] }) {
@@ -166,30 +167,36 @@ export default function AuditLogsPanel({ auditLogs = [], users = [], requests = 
         </div>
 
         {/* User Filter */}
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <User size={15} style={{ color: "var(--primary)" }} />
-          <select className="form-control" value={selectedUser} onChange={e => setSelectedUser(e.target.value)} style={{ minWidth: "160px" }}>
-            <option value="all">All Staff Users ({users.length})</option>
-            {users.map(u => (
-              <option key={u.id} value={u.id}>
-                {u.name} ({u.role})
-              </option>
-            ))}
-          </select>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: "200px" }}>
+          <User size={15} style={{ color: "var(--primary)", flexShrink: 0 }} />
+          <CustomSelect 
+            value={selectedUser} 
+            onChange={val => setSelectedUser(val || "all")}
+            options={[{ value: "all", label: `All Staff Users (${users.length})` }, ...users.map(u => ({ value: u.id, label: `${u.name} (${u.role})` }))]}
+            placeholder="All Staff Users"
+            searchable={true}
+            clearable={true}
+          />
         </div>
 
         {/* Action Category Filter */}
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <Filter size={15} style={{ color: "var(--secondary)" }} />
-          <select className="form-control" value={selectedAction} onChange={e => setSelectedAction(e.target.value)} style={{ minWidth: "160px" }}>
-            <option value="all">All Action Types</option>
-            <option value="PRICING">Pricing & Commercials</option>
-            <option value="CARGO">Cargo & Logistics</option>
-            <option value="REQUEST">Requisitions & Orders</option>
-            <option value="VENDOR">Vendor Operations</option>
-            <option value="ITEM">Master Item Catalog</option>
-            <option value="USER">User Sessions & Security</option>
-          </select>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: "200px" }}>
+          <Filter size={15} style={{ color: "var(--secondary)", flexShrink: 0 }} />
+          <CustomSelect 
+            value={selectedAction} 
+            onChange={val => setSelectedAction(val || "all")}
+            options={[
+              { value: "all", label: "All Action Types" },
+              { value: "PRICING", label: "Pricing & Commercials" },
+              { value: "CARGO", label: "Cargo & Logistics" },
+              { value: "REQUEST", label: "Requisitions & Orders" },
+              { value: "VENDOR", label: "Vendor Operations" },
+              { value: "ITEM", label: "Master Item Catalog" },
+              { value: "USER", label: "User Sessions & Security" }
+            ]}
+            placeholder="All Action Types"
+            clearable={true}
+          />
         </div>
 
         {/* Looker Studio Style Date Range Filter */}
