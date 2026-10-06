@@ -1624,7 +1624,7 @@ export default function SuperAdminDashboard({
                                 setEditNameVal(nm);
                                 setEditPasswordVal("");
                                 setEditDesignationVal(staff.designation || (staff.role === "rahul" ? "Mark Purchases" : staff.role === "nitin" ? "Packing" : "Purchaser"));
-                                setEditRoleVal(staff.role || (staff.name?.toLowerCase().includes("rahul") ? "rahul" : "purchaser"));
+                                setEditRoleVal(staff.role || ((staff.name?.toLowerCase().includes("rahul") && staff.name?.toLowerCase().includes("mann")) ? "rahul" : "purchaser"));
                                 const defaultPid = staff.parentCrmId || ((staff.name || "").toLowerCase().includes("ashutosh") ? "u-ankita" : "u-ankita");
                                 setEditParentCrmIdVal(defaultPid);
                                 setEditSuccessMsg("");
@@ -4111,7 +4111,7 @@ export default function SuperAdminDashboard({
           vendor={selectedVendorForDetail}
           requests={requests}
           cargos={cargos}
-          purchasers={users.filter(u => u.role === "purchaser" && u.status === "active")}
+          purchasers={users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active")}
           currentUser={{ role: "superadmin" }}
           onUpdateVendor={onUpdateVendor}
           onRemoveVendor={onRemoveVendor}

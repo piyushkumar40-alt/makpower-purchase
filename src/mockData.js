@@ -19,7 +19,7 @@ export const initialUsers = [
   },
   {
     id: "u-anees",
-    name: "Anees",
+    name: "Mr. Anees",
     email: "anees@demo.com",
     password: "Demo#Anees2026!",
     role: "purchase_manager",
@@ -28,9 +28,18 @@ export const initialUsers = [
   },
   {
     id: "u-himanshi",
-    name: "Himanshi Wadhwa",
+    name: "Mrs. Himanshi Wadhwa",
     email: "himanshi@demo.com",
     password: "Demo#Himanshi2026!",
+    role: "purchaser",
+    designation: "Purchaser",
+    status: "active"
+  },
+  {
+    id: "u-rahul-kumar",
+    name: "Mr. Rahul Kumar",
+    email: "rahulkumar@makpowerindia.com",
+    password: "Demo#RahulK2026!",
     role: "purchaser",
     designation: "Purchaser",
     status: "active"

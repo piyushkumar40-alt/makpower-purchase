@@ -670,6 +670,10 @@ export default function RequesterForm({
     const match = purchasers.find(p => p?.name && (p.name.toLowerCase().includes(cleanName) || cleanName.includes(p.name.toLowerCase())));
     if (match) return match.id;
     if (cleanName.includes("himanshi")) return himanshiPurchaser?.id || "u-himanshi";
+    if (cleanName.includes("rahul")) {
+      const rk = purchasers.find(p => p.id === "u-rahul-kumar" || (p.name && p.name.toLowerCase().includes("rahul") && !p.name.toLowerCase().includes("mann")));
+      if (rk) return rk.id;
+    }
     return defaultPurchaserId;
   };
 

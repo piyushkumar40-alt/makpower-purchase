@@ -258,6 +258,23 @@ export const isRequestForUser = (r, user, purchasers = []) => {
   // 1. Direct ID match
   if (rPurchaserId && userId && rPurchaserId === userId) return true;
 
+  // Rahul Kumar special aliases (legacy u-rahul was used before separation from Rahul Mann in Accounts)
+  const isRahulKumar = userId === "u-rahul-kumar" || 
+    (userName.includes("rahul") && !userName.includes("mann")) || 
+    userEmail.includes("rahulkumar");
+
+  if (isRahulKumar) {
+    if (
+      rPurchaserId === "u-rahul-kumar" || 
+      rPurchaserId === "u-rahul" || 
+      rPurchaserId === "rahul" ||
+      rPurchaserId.includes("rahul") ||
+      (rPurchaserName.includes("rahul") && !rPurchaserName.includes("mann"))
+    ) {
+      return true;
+    }
+  }
+
   // 2. Direct Name match in r.purchaserId (e.g. "himanshi", "nitin", "rahul", "anees")
   if (rPurchaserId && userName && (rPurchaserId === userName || rPurchaserId.includes(userName) || userName.includes(rPurchaserId))) {
     return true;
@@ -271,11 +288,18 @@ export const isRequestForUser = (r, user, purchasers = []) => {
     if (userId && (rPurchaserName === userId || rPurchaserName.includes(userId))) return true;
   }
 
-  // 4. Check if explicitly assigned to ANOTHER active purchaser (e.g. Anees, Nitin, Rahul)
+  // 4. Check if explicitly assigned to ANOTHER active purchaser (e.g. Anees, Himanshi, Rahul Kumar)
   const isAssignedToOther = (purchasers || []).some(p => {
     const pId = String(p.id || "").trim().toLowerCase();
     const pName = String(p.name || "").trim().toLowerCase();
     if (!pId || pId === userId || (userName && pName === userName)) return false;
+
+    // If checking against Rahul Kumar, also treat u-rahul / rahul as his ID
+    const isOtherRahulKumar = pId === "u-rahul-kumar" || (pName.includes("rahul") && !pName.includes("mann"));
+    if (isOtherRahulKumar && (rPurchaserId === "u-rahul" || rPurchaserId === "rahul" || rPurchaserId.includes("rahul") || (rPurchaserName.includes("rahul") && !rPurchaserName.includes("mann")))) {
+      return true;
+    }
+
     return (rPurchaserId && (rPurchaserId === pId || rPurchaserId === pName || (pName && rPurchaserId.includes(pName)))) ||
            (rPurchaserName && (rPurchaserName === pId || rPurchaserName === pName || (pName && rPurchaserName.includes(pName))));
   });
@@ -355,12 +379,20 @@ export const isVendorForUser = (v, user, requests = []) => {
     return true;
   }
 
-  // 4. Has existing orders for this vendor related to this purchaser
+  // 4. Rahul Kumar match in purchaserIds (supports legacy u-rahul / rahul)
+  const isRahulKumar = userId === "u-rahul-kumar" || 
+    (userName.includes("rahul") && !userName.includes("mann")) || 
+    userEmail.includes("rahulkumar");
+  if (isRahulKumar && pIds.some(pid => pid.includes("rahul") || pid === "u-rahul" || pid === "u-rahul-kumar")) {
+    return true;
+  }
+
+  // 5. Has existing orders for this vendor related to this purchaser
   if (Array.isArray(requests) && requests.some(r => r && r.vendorId === v.id && isRequestForUser(r, user))) {
     return true;
   }
 
-  // 5. Unassigned vendors are accessible to all purchasers
+  // 6. Unassigned vendors are accessible to all purchasers
   if (pIds.length === 0) {
     return true;
   }
@@ -372,23 +404,56 @@ export const isVendorForUser = (v, user, requests = []) => {
  * Gets a clean display name for the purchaser of a request.
  */
 export const getPurchaserDisplayName = (r, purchasers = []) => {
-  if (!r) return "Himanshi Wadhwa";
+  if (!r) return "Mrs. Himanshi Wadhwa";
   if (r.purchaserId) {
     const found = (purchasers || []).find(p => p.id === r.purchaserId || (p.name && p.name.toLowerCase() === String(r.purchaserId).toLowerCase()));
     if (found) return found.name;
+    // Map legacy u-rahul / rahul to Rahul Kumar
+    if (r.purchaserId === "u-rahul" || String(r.purchaserId).toLowerCase() === "rahul" || String(r.purchaserId).toLowerCase().includes("rahul")) {
+      const rk = (purchasers || []).find(p => p.id === "u-rahul-kumar" || (p.name && p.name.toLowerCase().includes("rahul") && !p.name.toLowerCase().includes("mann")));
+      if (rk) return rk.name;
+      return "Mr. Rahul Kumar";
+    }
   }
-  if (r.purchaserName) return r.purchaserName;
-  if (r.assignedPurchaser) return r.assignedPurchaser;
-  if (r.purchaser) return r.purchaser;
+  if (r.purchaserName) {
+    const pNameLower = String(r.purchaserName).toLowerCase();
+    if (pNameLower.includes("rahul") && !pNameLower.includes("mann")) {
+      const rk = (purchasers || []).find(p => p.id === "u-rahul-kumar" || (p.name && p.name.toLowerCase().includes("rahul") && !p.name.toLowerCase().includes("mann")));
+      if (rk) return rk.name;
+      return "Mr. Rahul Kumar";
+    }
+    return r.purchaserName;
+  }
+  if (r.assignedPurchaser) {
+    const aLower = String(r.assignedPurchaser).toLowerCase();
+    if (aLower.includes("rahul") && !aLower.includes("mann")) {
+      const rk = (purchasers || []).find(p => p.id === "u-rahul-kumar" || (p.name && p.name.toLowerCase().includes("rahul") && !p.name.toLowerCase().includes("mann")));
+      if (rk) return rk.name;
+      return "Mr. Rahul Kumar";
+    }
+    return r.assignedPurchaser;
+  }
+  if (r.purchaser) {
+    const prLower = String(r.purchaser).toLowerCase();
+    if (prLower.includes("rahul") && !prLower.includes("mann")) {
+      const rk = (purchasers || []).find(p => p.id === "u-rahul-kumar" || (p.name && p.name.toLowerCase().includes("rahul") && !p.name.toLowerCase().includes("mann")));
+      if (rk) return rk.name;
+      return "Mr. Rahul Kumar";
+    }
+    return r.purchaser;
+  }
   if (r.purchaserId) {
     const clean = String(r.purchaserId).trim();
-    if (clean.toLowerCase().includes("himanshi")) return "Himanshi Wadhwa";
-    if (clean.toLowerCase().includes("anees")) return "Anees";
+    if (clean.toLowerCase().includes("himanshi")) return "Mrs. Himanshi Wadhwa";
+    if (clean.toLowerCase().includes("anees")) return "Mr. Anees";
     if (clean.toLowerCase().includes("nitin")) return "Nitin Kumar";
-    if (clean.toLowerCase().includes("rahul")) return "Rahul";
+    if (clean.toLowerCase().includes("rahul")) {
+      const rk = (purchasers || []).find(p => p.id === "u-rahul-kumar" || (p.name && p.name.toLowerCase().includes("rahul") && !p.name.toLowerCase().includes("mann")));
+      return rk ? rk.name : "Mr. Rahul Kumar";
+    }
     return clean;
   }
-  return "Himanshi Wadhwa";
+  return "Mrs. Himanshi Wadhwa";
 };
 
 /**

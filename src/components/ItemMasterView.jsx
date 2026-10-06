@@ -4,7 +4,7 @@ import { uploadToCloudinary } from "../utils/upload";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 import Pagination from "./Pagination";
 import CustomSelect from "./CustomSelect";
-import { cleanCategoryName } from "../utils/formatters";
+import { cleanCategoryName, getPurchaserDisplayName } from "../utils/formatters";
 
 export default function ItemMasterView({ requests = [], vendors = [], cargos = [], cargoCompanies = [], purchasers = [], settings = {}, onUpdateSettings, onBatchUpdateRequests }) {
   const [selectedModel, setSelectedModel] = useState(null);
@@ -420,7 +420,7 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
               </thead>
               <tbody>
                 {item.requests.map(r => {
-                  const purchaser = purchasers.find(p => p.id === r.purchaserId)?.name || r.purchaserId || "Himanshu / Requester";
+                  const purchaser = getPurchaserDisplayName(r, purchasers);
                   const vendor = vendors.find(v => v.id === r.vendorId)?.name || "Pending Vendor Selection";
                   const cargo = cargos.find(c => c.id === r.cargoId);
 

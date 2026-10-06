@@ -175,7 +175,13 @@ export default function MasterOrderTracker({
 
   const purchaserMap = useMemo(() => {
     const map = {};
-    (purchasers || []).forEach(p => { map[p.id] = p; });
+    (purchasers || []).forEach(p => { 
+      map[p.id] = p; 
+      if (p.id === "u-rahul-kumar" || (p.name && p.name.toLowerCase().includes("rahul") && !p.name.toLowerCase().includes("mann"))) {
+        map["u-rahul"] = p;
+        map["rahul"] = p;
+      }
+    });
     return map;
   }, [purchasers]);
 
@@ -207,7 +213,8 @@ export default function MasterOrderTracker({
   // Helper to test if a request matches current filters (allowing one filter key to be excluded for calculating facet options)
   const matchesFilter = (r, excludeKey = "") => {
     // 1. Purchaser Filter
-    if (excludeKey !== "purchaser" && (isAdmin || isPurchaseManager) && purchaserFilter !== "all") {
+    const canFilterPurchasers = isAdmin || isPurchaseManager || isViewOnly || currentUser?.role === "rahul";
+    if (excludeKey !== "purchaser" && canFilterPurchasers && purchaserFilter !== "all") {
       const targetPurchaser = (purchasers || []).find(p => p.id === purchaserFilter) || { id: purchaserFilter };
       if (!isRequestForUser(r, targetPurchaser, purchasers)) return false;
     }
@@ -262,7 +269,7 @@ export default function MasterOrderTracker({
   // 1. Stage facet candidate requests & counts (interlocked with vendor, cargo, purchaser, dates, search)
   const candidateForStage = useMemo(() => {
     return enrichedRequests.filter(r => matchesFilter(r, "stage"));
-  }, [enrichedRequests, vendorFilter, cargoFilter, purchaserFilter, fromDate, toDate, searchQuery, isAdmin, isPurchaseManager]);
+  }, [enrichedRequests, vendorFilter, cargoFilter, purchaserFilter, fromDate, toDate, searchQuery, isAdmin, isPurchaseManager, isViewOnly, currentUser]);
 
   const stageCounts = useMemo(() => {
     const counts = {
@@ -290,7 +297,7 @@ export default function MasterOrderTracker({
   // 2. Vendor facet candidate requests & relevant vendors (interlocked with stage, cargo, purchaser, dates, search)
   const candidateForVendor = useMemo(() => {
     return enrichedRequests.filter(r => matchesFilter(r, "vendor"));
-  }, [enrichedRequests, stageFilter, cargoFilter, purchaserFilter, fromDate, toDate, searchQuery, isAdmin, isPurchaseManager]);
+  }, [enrichedRequests, stageFilter, cargoFilter, purchaserFilter, fromDate, toDate, searchQuery, isAdmin, isPurchaseManager, isViewOnly, currentUser]);
 
   const relevantVendors = useMemo(() => {
     const vendorCountMap = {};
@@ -328,7 +335,7 @@ export default function MasterOrderTracker({
   // 3. Cargo facet candidate requests & relevant cargos (interlocked with stage, vendor, purchaser, dates, search)
   const candidateForCargo = useMemo(() => {
     return enrichedRequests.filter(r => matchesFilter(r, "cargo"));
-  }, [enrichedRequests, stageFilter, vendorFilter, purchaserFilter, fromDate, toDate, searchQuery, isAdmin, isPurchaseManager]);
+  }, [enrichedRequests, stageFilter, vendorFilter, purchaserFilter, fromDate, toDate, searchQuery, isAdmin, isPurchaseManager, isViewOnly, currentUser]);
 
   const noCargoCount = useMemo(() => {
     return candidateForCargo.filter(r => !r.cargoId).length;
@@ -368,18 +375,22 @@ export default function MasterOrderTracker({
   // 4. Purchaser facet candidate requests & relevant purchasers (interlocked with stage, vendor, cargo, dates, search)
   const candidateForPurchaser = useMemo(() => {
     return enrichedRequests.filter(r => matchesFilter(r, "purchaser"));
-  }, [enrichedRequests, stageFilter, vendorFilter, cargoFilter, fromDate, toDate, searchQuery, isAdmin, isPurchaseManager]);
+  }, [enrichedRequests, stageFilter, vendorFilter, cargoFilter, fromDate, toDate, searchQuery, isAdmin, isPurchaseManager, isViewOnly, currentUser]);
 
   const relevantPurchasers = useMemo(() => {
     const purchaserCountMap = {};
     candidateForPurchaser.forEach(r => {
-      if (r.purchaserId) {
-        purchaserCountMap[r.purchaserId] = (purchaserCountMap[r.purchaserId] || 0) + 1;
+      let pid = r.purchaserId;
+      if (pid === "u-rahul" || pid === "rahul") {
+        const rk = (purchasers || []).find(p => p.id === "u-rahul-kumar" || (p.name && p.name.toLowerCase().includes("rahul") && !p.name.toLowerCase().includes("mann")));
+        if (rk) pid = rk.id;
+      }
+      if (pid) {
+        purchaserCountMap[pid] = (purchaserCountMap[pid] || 0) + 1;
       }
     });
 
     const list = (purchasers || [])
-      .filter(p => (purchaserCountMap[p.id] || 0) > 0)
       .map(p => ({
         ...p,
         count: purchaserCountMap[p.id] || 0
@@ -468,7 +479,7 @@ export default function MasterOrderTracker({
   // 5. Final filtered requests (all active filters applied)
   const filteredRequests = useMemo(() => {
     return enrichedRequests.filter(r => matchesFilter(r));
-  }, [enrichedRequests, stageFilter, vendorFilter, cargoFilter, purchaserFilter, fromDate, toDate, searchQuery, isAdmin, isPurchaseManager]);
+  }, [enrichedRequests, stageFilter, vendorFilter, cargoFilter, purchaserFilter, fromDate, toDate, searchQuery, isAdmin, isPurchaseManager, isViewOnly, currentUser]);
 
   const sortedRequests = useMemo(() => {
     const list = [...filteredRequests];

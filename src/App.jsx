@@ -106,8 +106,15 @@ export default function App() {
     let designation = u.designation;
     const emailLower = String(u.email || "").toLowerCase();
     const nameLower = String(u.name || "").toLowerCase();
-    const isRahul = u.id === "u-rahul" || emailLower === "rahul@makpowerindia.com" || emailLower === "rahul@demo.com" || emailLower.includes("rahul") || nameLower.includes("rahul");
-    if (isRahul) {
+    const isRahulKumar = u.id === "u-rahul-kumar" || emailLower === "rahulkumar@makpowerindia.com" || emailLower.includes("rahulkumar") || (nameLower.includes("rahul") && nameLower.includes("kumar"));
+    const isRahulMann = !isRahulKumar && (u.id === "u-rahul" || emailLower === "rahul@makpowerindia.com" || emailLower === "rahul@demo.com" || (nameLower.includes("rahul") && nameLower.includes("mann")) || (nameLower === "rahul" && u.id === "u-rahul"));
+
+    if (isRahulKumar) {
+      role = "purchaser";
+      if (!designation || designation === "Mark Purchases") {
+        designation = "Purchaser";
+      }
+    } else if (isRahulMann) {
       role = "rahul";
       if (!designation || designation === "Purchaser" || designation === "Accounts and Updates" || designation === "Updates") {
         designation = "Mark Purchases";
@@ -144,7 +151,14 @@ export default function App() {
 
   const [users, setUsers] = useState(() => {
     if (cachedState?.users && Array.isArray(cachedState.users) && cachedState.users.length > 0) {
-      return cachedState.users.map(normalizeUserData);
+      const loaded = cachedState.users.map(normalizeUserData);
+      // Ensure all initial essential purchasers exist in cached state
+      initialUsers.forEach(initU => {
+        if (!loaded.some(u => u.id === initU.id || (u.email && u.email.toLowerCase() === initU.email.toLowerCase()))) {
+          loaded.push(normalizeUserData(initU));
+        }
+      });
+      return loaded;
     }
     return initialUsers.map(normalizeUserData);
   });
@@ -293,7 +307,13 @@ export default function App() {
           const res = await fetch("/api/users");
           const data = await res.json();
           if (Array.isArray(data) && data.length > 0) {
-            setUsers(data.map(normalizeUserData));
+            const loaded = data.map(normalizeUserData);
+            initialUsers.forEach(initU => {
+              if (!loaded.some(u => u.id === initU.id || (u.email && u.email.toLowerCase() === initU.email.toLowerCase()))) {
+                loaded.push(normalizeUserData(initU));
+              }
+            });
+            setUsers(loaded);
           } else {
             setUsers(initialUsers.map(normalizeUserData));
           }
@@ -663,6 +683,13 @@ export default function App() {
         if (!isMounted) return;
 
         let effectiveUsers = (Array.isArray(data.users) && data.users.length > 0) ? data.users.map(normalizeUserData) : null;
+        if (effectiveUsers) {
+          initialUsers.forEach(initU => {
+            if (!effectiveUsers.some(u => u.id === initU.id || (u.email && u.email.toLowerCase() === initU.email.toLowerCase()))) {
+              effectiveUsers.push(normalizeUserData(initU));
+            }
+          });
+        }
         let effectiveVendors = Array.isArray(data.vendors) ? data.vendors : [];
         let effectiveRequests = Array.isArray(data.requests) ? data.requests.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })) : [];
         let effectiveCargos = Array.isArray(data.cargos) ? data.cargos : [];

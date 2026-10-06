@@ -38,6 +38,7 @@ export default function BundledUpcomingShipments({
   const [statusFilter, setStatusFilter] = useState("upcoming"); // "upcoming" | "delivered" | "all"
   const [vendorFilter, setVendorFilter] = useState("");
   const [carrierFilter, setCarrierFilter] = useState("");
+  const [purchaserFilter, setPurchaserFilter] = useState("");
   const [modeFilter, setModeFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -134,15 +135,26 @@ export default function BundledUpcomingShipments({
       // 3. Carrier Filter
       if (carrierFilter && cargo.cargoCompanyId !== carrierFilter) return false;
 
-      // 4. Mode Filter
+      // 4. Purchaser Filter
+      if (purchaserFilter) {
+        const hasPurchaser = cargo.items.some(it => {
+          const pName = getPurchaserDisplayName(it, purchasers).toLowerCase();
+          const pId = String(it.purchaserId || "").toLowerCase();
+          const fLower = purchaserFilter.toLowerCase();
+          return pName.includes(fLower) || pId === fLower || (fLower.includes("rahul") && (pId === "u-rahul" || pId === "u-rahul-kumar" || pId === "rahul" || pName.includes("rahul")));
+        });
+        if (!hasPurchaser) return false;
+      }
+
+      // 5. Mode Filter
       if (modeFilter && (cargo.modeOfTransport || "").toLowerCase() !== modeFilter.toLowerCase()) return false;
 
-      // 5. Date Range (Shipping Date or ETA)
+      // 6. Date Range (Shipping Date or ETA)
       const targetDate = cargo.cargoEta || cargo.cargoShippingDate || cargo.cargoOrderDate || "";
       if (fromDate && targetDate && targetDate < fromDate) return false;
       if (toDate && targetDate && targetDate > toDate) return false;
 
-      // 6. Search Query
+      // 7. Search Query
       if (searchQuery.trim()) {
         const q = searchQuery.trim().toLowerCase();
         const codeMatch = String(cargo.id || "").toLowerCase().includes(q);
@@ -160,16 +172,17 @@ export default function BundledUpcomingShipments({
 
       return true;
     });
-  }, [enrichedCargos, statusFilter, vendorFilter, carrierFilter, modeFilter, fromDate, toDate, searchQuery]);
+  }, [enrichedCargos, statusFilter, vendorFilter, carrierFilter, purchaserFilter, modeFilter, fromDate, toDate, searchQuery, purchasers]);
 
   const hasActiveFilters = Boolean(
-    vendorFilter || carrierFilter || modeFilter || fromDate || toDate || searchQuery.trim() || statusFilter !== "upcoming"
+    vendorFilter || carrierFilter || purchaserFilter || modeFilter || fromDate || toDate || searchQuery.trim() || statusFilter !== "upcoming"
   );
 
   const resetFilters = () => {
     setStatusFilter("upcoming");
     setVendorFilter("");
     setCarrierFilter("");
+    setPurchaserFilter("");
     setModeFilter("");
     setFromDate("");
     setToDate("");
@@ -185,6 +198,11 @@ export default function BundledUpcomingShipments({
     { value: "", label: "All Carriers" },
     ...cargoCompanies.map(cc => ({ value: cc.id, label: cc.name }))
   ], [cargoCompanies]);
+
+  const purchaserOptions = useMemo(() => [
+    { value: "", label: "All Purchasers" },
+    ...(purchasers || []).map(p => ({ value: p.id, label: p.name }))
+  ], [purchasers]);
 
   const modeOptions = [
     { value: "", label: "All Modes" },
@@ -351,6 +369,19 @@ export default function BundledUpcomingShipments({
               onChange={val => setVendorFilter(val)}
               options={vendorOptions}
               placeholder="All Vendors"
+              searchable={true}
+              clearable={true}
+            />
+          </div>
+
+          {/* Purchaser Filter */}
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label" style={{ fontSize: "0.72rem", fontWeight: 600 }}>Purchaser</label>
+            <CustomSelect
+              value={purchaserFilter}
+              onChange={val => setPurchaserFilter(val)}
+              options={purchaserOptions}
+              placeholder="All Purchasers"
               searchable={true}
               clearable={true}
             />

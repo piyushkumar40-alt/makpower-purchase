@@ -237,7 +237,10 @@ function readLocalJson() {
         if (initU.id === "u-anees") {
           data.users[idx].role = "purchase_manager";
           data.users[idx].designation = "Purchase Manager";
-        } else if (initU.id === "u-rahul" || (initU.email && initU.email.toLowerCase().includes("rahul"))) {
+        } else if (initU.id === "u-rahul-kumar") {
+          data.users[idx].role = "purchaser";
+          data.users[idx].designation = "Purchaser";
+        } else if (initU.id === "u-rahul") {
           data.users[idx].role = "rahul";
           data.users[idx].designation = "Mark Purchases";
         } else if (initU.id === "u-nitin" || (initU.email && initU.email.toLowerCase().includes("nitin"))) {
@@ -252,8 +255,17 @@ function readLocalJson() {
     data.users = data.users.map(u => {
       const emailLower = String(u.email || "").toLowerCase();
       const nameLower = String(u.name || "").toLowerCase();
-      const isRahul = u.id === "u-rahul" || emailLower === "rahul@makpowerindia.com" || emailLower === "rahul@demo.com" || emailLower.includes("rahul") || nameLower.includes("rahul");
-      if (isRahul) {
+      const isRahulKumar = u.id === "u-rahul-kumar" || emailLower === "rahulkumar@makpowerindia.com" || emailLower.includes("rahulkumar") || (nameLower.includes("rahul") && nameLower.includes("kumar"));
+      const isRahulMann = !isRahulKumar && (u.id === "u-rahul" || emailLower === "rahul@makpowerindia.com" || emailLower === "rahul@demo.com" || (nameLower.includes("rahul") && nameLower.includes("mann")) || (nameLower === "rahul" && u.id === "u-rahul"));
+      if (isRahulKumar) {
+        return {
+          ...u,
+          role: "purchaser",
+          designation: "Purchaser",
+          status: u.status || "active"
+        };
+      }
+      if (isRahulMann) {
         return {
           ...u,
           role: "rahul",
@@ -513,7 +525,7 @@ async function setupPgDatabase() {
            ON CONFLICT ("id") DO UPDATE SET
              "role" = EXCLUDED."role",
              "designation" = EXCLUDED."designation"
-           WHERE users.id = 'u-anees' OR users.id = 'u-rahul' OR users.role IS NULL`,
+           WHERE users.id = 'u-anees' OR users.id = 'u-rahul' OR users.id = 'u-rahul-kumar' OR users.role IS NULL`,
           [u.id, u.name, u.email, u.password, u.role, u.designation || "Staff", u.status, u.phone || "", u.territory || "", u.parentCrmId || ""]
         );
       }
@@ -523,9 +535,14 @@ async function setupPgDatabase() {
         console.warn("Could not run Anees role update query in PG:", e.message);
       }
       try {
-        await pool.query(`UPDATE users SET "role" = 'rahul', "designation" = 'Mark Purchases' WHERE "id" = 'u-rahul' OR LOWER("email") = 'rahul@makpowerindia.com' OR LOWER("email") = 'rahul@demo.com' OR LOWER("email") LIKE '%rahul%' OR LOWER("name") LIKE '%rahul%'`);
+        await pool.query(`UPDATE users SET "role" = 'rahul', "designation" = 'Mark Purchases' WHERE "id" = 'u-rahul' OR LOWER("email") = 'rahul@makpowerindia.com' OR LOWER("name") LIKE '%rahul mann%'`);
       } catch (e) {
-        console.warn("Could not run Rahul role update query in PG:", e.message);
+        console.warn("Could not run Rahul Mann role update query in PG:", e.message);
+      }
+      try {
+        await pool.query(`UPDATE users SET "role" = 'purchaser', "designation" = 'Purchaser' WHERE ("id" = 'u-rahul-kumar' OR LOWER("name") LIKE '%rahul kumar%' OR LOWER("email") LIKE '%rahulkumar%') AND "id" != 'u-rahul'`);
+      } catch (e) {
+        console.warn("Could not run Rahul Kumar purchaser role update query in PG:", e.message);
       }
 
       // Seed IMS Transactions
@@ -1027,12 +1044,30 @@ async function setupPgDatabase() {
       if (himanshiCheck.rows.length === 0) {
         await pool.query(
           `INSERT INTO users ("id", "name", "email", "password", "role", "designation", "status") VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          ["u-himanshi", "Himanshi Wadhwa", "himanshi@demo.com", "Demo#Himanshi2026!", "purchaser", "Purchaser", "active"]
+          ["u-himanshi", "Mrs. Himanshi Wadhwa", "himanshi@demo.com", "Demo#Himanshi2026!", "purchaser", "Purchaser", "active"]
         );
         console.log("Himanshi Wadhwa purchaser account seeded in PG database.");
       }
     } catch (uErr) {
       console.warn("Himanshi user check notice:", uErr.message);
+    }
+
+    // Ensure Mr. Rahul Kumar purchaser account exists in PostgreSQL
+    try {
+      const rkCheck = await pool.query("SELECT id FROM users WHERE id = 'u-rahul-kumar' OR LOWER(email) = 'rahulkumar@makpowerindia.com' OR (LOWER(name) LIKE '%rahul%' AND LOWER(name) LIKE '%kumar%')");
+      if (rkCheck.rows.length === 0) {
+        await pool.query(
+          `INSERT INTO users ("id", "name", "email", "password", "role", "designation", "status") VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          ["u-rahul-kumar", "Mr. Rahul Kumar", "rahulkumar@makpowerindia.com", "Demo#RahulK2026!", "purchaser", "Purchaser", "active"]
+        );
+        console.log("Rahul Kumar purchaser account seeded in PG database.");
+      } else {
+        await pool.query(
+          `UPDATE users SET "role" = 'purchaser', "designation" = 'Purchaser' WHERE id = 'u-rahul-kumar' OR (LOWER(name) LIKE '%rahul%' AND LOWER(name) LIKE '%kumar%') OR LOWER(email) = 'rahulkumar@makpowerindia.com'`
+        );
+      }
+    } catch (uErr) {
+      console.warn("Rahul Kumar user check notice:", uErr.message);
     }
 
     // Set default 'No' only for NULL or empty purchaseUpdated records

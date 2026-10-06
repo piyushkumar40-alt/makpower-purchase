@@ -185,7 +185,11 @@ export default function RahulDashboard({
       // 4. Purchaser Filter
       if (filterPurchaser) {
         const pName = getPurchaserName(r).toLowerCase();
-        if (!pName.includes(filterPurchaser.toLowerCase()) && r.purchaserId !== filterPurchaser) {
+        const fLower = filterPurchaser.toLowerCase();
+        const pId = String(r.purchaserId || "").toLowerCase();
+        const isMatch = pName.includes(fLower) || r.purchaserId === filterPurchaser ||
+          (fLower.includes("rahul") && (pId === "u-rahul" || pId === "u-rahul-kumar" || pId === "rahul" || pName.includes("rahul")));
+        if (!isMatch) {
           return false;
         }
       }
