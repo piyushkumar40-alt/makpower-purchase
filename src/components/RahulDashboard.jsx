@@ -35,7 +35,7 @@ import MasterOrderTracker, { getOrderStage } from "./MasterOrderTracker";
 import RequesterForm from "./RequesterForm";
 import CustomSelect from "./CustomSelect";
 import { useSortableData } from "../utils/useSortableData";
-import { getPurchaserDisplayName, downloadOrOpenBlob } from "../utils/formatters";
+import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol } from "../utils/formatters";
 
 export default function RahulDashboard({ 
   currentUser = {}, 
@@ -958,7 +958,14 @@ export default function RahulDashboard({
                       <RenderSortHeader colKey="modeOfTransport" title="Transport" getValue={r => cargos.find(c => c.id === r.cargoId)?.modeOfTransport || ""} />
                       <RenderSortHeader colKey="cargoShippingDate" title="Ship Date" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoShippingDate || ""} />
                       <RenderSortHeader colKey="cargoEta" title="ETA" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoEta || ""} />
-                      <RenderSortHeader colKey="purchaseUpdated" title="Purchase Updated" />
+                      <RenderSortHeader 
+                        colKey="cargoFreightPrice" 
+                        title="Cargo Price" 
+                        getValue={r => { 
+                          const c = cargos.find(x => x.id === r.cargoId); 
+                          return parseFloat(c?.totalCargoPrice || c?.cargoPrice || 0); 
+                        }} 
+                      />
                       <RenderSortHeader colKey="isMaterialRec" title="Material Rec" />
                       <th>Cargo Documents</th>
                     </tr>
@@ -1079,11 +1086,24 @@ export default function RahulDashboard({
                           <td style={{ fontSize: "0.78rem", whiteSpace: "nowrap" }}>{cargo?.cargoShippingDate || "—"}</td>
                           <td style={{ fontSize: "0.78rem", whiteSpace: "nowrap" }}>{cargo?.cargoEta || "—"}</td>
                           
-                          {/* Purchase Updated badge */}
-                          <td>
-                            <span className={`badge ${r.purchaseUpdated === "Yes" ? "badge-received" : "badge-pending"}`} style={{ fontSize: "0.72rem", padding: "2px 8px" }}>
-                              {r.purchaseUpdated === "Yes" ? "Yes" : "No"}
-                            </span>
+                          {/* Cargo Freight Price */}
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            {cargo && (cargo.cargoPrice || cargo.totalCargoPrice) ? (
+                              <div>
+                                <div style={{ fontWeight: 700, color: "#10b981", fontSize: "0.82rem" }}>
+                                  {cargo.totalCargoPrice 
+                                    ? `${getCurrencySymbol(cargo.currency)}${Number(cargo.totalCargoPrice).toLocaleString()}` 
+                                    : `${getCurrencySymbol(cargo.currency)}${cargo.cargoPrice}`}
+                                </div>
+                                {cargo.cargoPrice && (
+                                  <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                                    Rate: {getCurrencySymbol(cargo.currency)}{cargo.cargoPrice} {cargo.cargoPriceUom ? `(${cargo.cargoPriceUom})` : ""}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>—</span>
+                            )}
                           </td>
 
                           {/* Material Rec */}

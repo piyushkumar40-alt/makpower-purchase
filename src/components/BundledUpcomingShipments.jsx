@@ -23,7 +23,7 @@ import {
   Check,
   Edit3
 } from "lucide-react";
-import { downloadOrOpenBlob, getPurchaserDisplayName } from "../utils/formatters";
+import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol } from "../utils/formatters";
 import CustomSelect from "./CustomSelect";
 
 export default function BundledUpcomingShipments({
@@ -107,7 +107,7 @@ export default function BundledUpcomingShipments({
 
     const upcomingUnits = upcoming.reduce((sum, c) => sum + c.totalUnits, 0);
     const upcomingValue = upcoming.reduce((sum, c) => sum + c.totalValueRmb, 0);
-    const upcomingFreight = upcoming.reduce((sum, c) => sum + (Number(c.cargoPrice) || 0), 0);
+    const upcomingFreight = upcoming.reduce((sum, c) => sum + (Number(c.totalCargoPrice) || Number(c.cargoPrice) || 0), 0);
     const upcomingCbm = upcoming.reduce((sum, c) => sum + (Number(c.cbm) || 0), 0);
 
     return {
@@ -567,7 +567,8 @@ export default function BundledUpcomingShipments({
                   <div>
                     <div style={{ color: "var(--text-muted)" }}>Cargo Cost:</div>
                     <div style={{ fontWeight: 500 }}>
-                      ₹{cargo.cargoPrice || "10"} ({cargo.cargoPriceUom || "per Pc"})
+                      {cargo.cargoPrice ? `${getCurrencySymbol(cargo.currency)}${cargo.cargoPrice} (${cargo.cargoPriceUom || "Total"})` : "—"}
+                      {cargo.totalCargoPrice ? ` | Total: ${getCurrencySymbol(cargo.currency)}${Number(cargo.totalCargoPrice).toLocaleString()}` : ""}
                     </div>
                   </div>
                   <div>
@@ -901,6 +902,14 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
               <div style={{ fontSize: "0.95rem", fontWeight: 700, marginTop: "2px" }}>{order.balancePayment ? `¥${order.balancePayment}` : "—"}</div>
             </div>
             <div>
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Cargo Freight Cost</div>
+              <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#10b981", marginTop: "2px" }}>
+                {cargo?.totalCargoPrice 
+                  ? `${getCurrencySymbol(cargo.currency)}${Number(cargo.totalCargoPrice).toLocaleString()}` 
+                  : (cargo?.cargoPrice ? `${getCurrencySymbol(cargo.currency)}${cargo.cargoPrice}` : "—")}
+              </div>
+            </div>
+            <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Purchase Updated?</div>
               <div style={{ fontSize: "0.95rem", fontWeight: 700, marginTop: "2px" }}>
                 <span className={`badge ${order.purchaseUpdated === "Yes" ? "badge-received" : "badge-pending"}`}>
@@ -963,12 +972,76 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
               <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#38bdf8", marginTop: "2px" }}>{cargo?.cargoEta || "—"}</div>
             </div>
             <div>
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Cargo Freight Rate</div>
+              <div style={{ fontSize: "0.9rem", fontWeight: 700, marginTop: "2px" }}>
+                {cargo?.cargoPrice ? `${getCurrencySymbol(cargo.currency)}${cargo.cargoPrice} (${cargo.cargoPriceUom || "Total"})` : "—"}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                {cargo?.cargoPriceUom === "per Pc" ? "Cargo Measurement" : cargo?.cargoPriceUom === "per KG" ? "Cargo Weight" : "Cargo Volume"}
+              </div>
+              <div style={{ fontSize: "0.9rem", fontWeight: 600, marginTop: "2px" }}>
+                {cargo?.cbmPackingList 
+                  ? `${cargo.cbmPackingList} ${cargo.cargoPriceUom === "per Pc" ? "Pcs" : cargo.cargoPriceUom === "per KG" ? "KG" : "CBM"}` 
+                  : "—"}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Total Cargo Freight Price</div>
+              <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#10b981", marginTop: "2px" }}>
+                {cargo?.totalCargoPrice 
+                  ? `${getCurrencySymbol(cargo.currency)}${Number(cargo.totalCargoPrice).toLocaleString()}` 
+                  : (cargo?.cargoPrice ? `${getCurrencySymbol(cargo.currency)}${cargo.cargoPrice}` : "—")}
+              </div>
+            </div>
+            <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Material Received?</div>
               <div style={{ fontSize: "0.9rem", fontWeight: 700, color: order.isMaterialRec === "Yes" ? "var(--success)" : "var(--danger)", marginTop: "2px" }}>
                 {order.isMaterialRec === "Yes" ? `Yes (${order.receivedDate || cargo?.receivedDate || "Received"})` : "No (In Freight Transit)"}
               </div>
             </div>
           </div>
+
+          {/* Cargo Associated Documents if available */}
+          {cargo && (cargo.packingListFile || cargo.invoiceFile || cargo.cargoReceiptFile) && (
+            <div style={{ marginTop: "12px", padding: "10px 14px", borderRadius: "8px", background: "rgba(255, 255, 255, 0.02)", border: "1px dashed var(--border-glass)", display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--primary)", textTransform: "uppercase" }}>Cargo Documents:</div>
+              {cargo.packingListFile && (
+                <button
+                  type="button"
+                  onClick={() => downloadOrOpenBlob(cargo.packingListData, cargo.packingListFile)}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: "0.72rem", padding: "3px 9px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                  title={`Open ${cargo.packingListFile}`}
+                >
+                  <FileText size={12} /> PL: {cargo.packingListFile}
+                </button>
+              )}
+              {cargo.invoiceFile && (
+                <button
+                  type="button"
+                  onClick={() => downloadOrOpenBlob(cargo.invoiceData, cargo.invoiceFile)}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: "0.72rem", padding: "3px 9px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                  title={`Open ${cargo.invoiceFile}`}
+                >
+                  <FileText size={12} /> INV: {cargo.invoiceFile}
+                </button>
+              )}
+              {cargo.cargoReceiptFile && (
+                <button
+                  type="button"
+                  onClick={() => downloadOrOpenBlob(cargo.cargoReceiptData, cargo.cargoReceiptFile)}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: "0.72rem", padding: "3px 9px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                  title={`Open ${cargo.cargoReceiptFile}`}
+                >
+                  <FileText size={12} /> CR: {cargo.cargoReceiptFile}
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Remarks */}

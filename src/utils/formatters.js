@@ -538,3 +538,10 @@ export const downloadOrOpenBlob = (fileData, fileName = "document") => {
 
   return false;
 };
+
+export const getCurrencySymbol = (cur) => {
+  const c = (cur || "").toString().toUpperCase().trim();
+  if (c === "USD" || c === "$") return "$";
+  if (c === "INR" || c === "RS" || c === "₹") return "₹";
+  return "¥";
+};
