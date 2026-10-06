@@ -478,13 +478,13 @@ export default function RahulDashboard({
           <CheckCircle size={15} /> Marked in Ledger Archive ({submittedRequests.length})
         </button>
 
-        {/* Feature 1: Bundled Upcoming Shipments */}
+        {/* Feature 1: Bundled Upcoming Shipments (Step 5) */}
         <button 
           onClick={() => { setActiveTab("shipments"); setCheckedIds([]); }} 
           className={`tab-btn ${activeTab === "shipments" ? "active" : ""}`}
           style={{ color: "#38bdf8", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
         >
-          <Ship size={15} /> Bundled Upcoming Shipments ({cargos.length})
+          <Ship size={15} /> Step 5: Transit Tracking ({cargos.length})
         </button>
 
         {/* Feature 2: Master Order Tracker */}
