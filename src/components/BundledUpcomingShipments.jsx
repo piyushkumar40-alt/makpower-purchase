@@ -836,7 +836,7 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
   if (!order) return null;
 
   const vendor = vendors.find(v => v.id === order.vendorId);
-  const cargo = cargos.find(c => c.id === order.cargoId);
+  const cargo = cargos.find(c => c.id === order.cargoId || (order.cargoId && c.cargoDetail === order.cargoId));
   const carrier = cargoCompanies.find(cc => cc.id === cargo?.cargoCompanyId);
   const purchaserName = getPurchaserDisplayName(order, purchasers);
 
@@ -904,9 +904,9 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Cargo Freight Cost</div>
               <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#10b981", marginTop: "2px" }}>
-                {cargo?.totalCargoPrice 
-                  ? `${getCurrencySymbol(cargo.currency)}${Number(cargo.totalCargoPrice).toLocaleString()}` 
-                  : (cargo?.cargoPrice ? `${getCurrencySymbol(cargo.currency)}${cargo.cargoPrice}` : "—")}
+                {(cargo?.totalCargoPrice || order.totalCargoPrice)
+                  ? `${getCurrencySymbol(cargo?.currency || order.currency)}${Number(cargo?.totalCargoPrice || order.totalCargoPrice).toLocaleString()}` 
+                  : ((cargo?.cargoPrice || order.cargoPrice) ? `${getCurrencySymbol(cargo?.currency || order.currency)}${cargo?.cargoPrice || order.cargoPrice}` : "—")}
               </div>
             </div>
             <div>
@@ -974,25 +974,25 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Cargo Freight Rate</div>
               <div style={{ fontSize: "0.9rem", fontWeight: 700, marginTop: "2px" }}>
-                {cargo?.cargoPrice ? `${getCurrencySymbol(cargo.currency)}${cargo.cargoPrice} (${cargo.cargoPriceUom || "Total"})` : "—"}
+                {(cargo?.cargoPrice || order.cargoPrice) ? `${getCurrencySymbol(cargo?.currency || order.currency)}${cargo?.cargoPrice || order.cargoPrice} (${cargo?.cargoPriceUom || order.cargoPriceUom || "Total"})` : "—"}
               </div>
             </div>
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
-                {cargo?.cargoPriceUom === "per Pc" ? "Cargo Measurement" : cargo?.cargoPriceUom === "per KG" ? "Cargo Weight" : "Cargo Volume"}
+                {(cargo?.cargoPriceUom || order.cargoPriceUom) === "per Pc" ? "Cargo Measurement" : (cargo?.cargoPriceUom || order.cargoPriceUom) === "per KG" ? "Cargo Weight" : "Cargo Volume"}
               </div>
               <div style={{ fontSize: "0.9rem", fontWeight: 600, marginTop: "2px" }}>
-                {cargo?.cbmPackingList 
-                  ? `${cargo.cbmPackingList} ${cargo.cargoPriceUom === "per Pc" ? "Pcs" : cargo.cargoPriceUom === "per KG" ? "KG" : "CBM"}` 
+                {(cargo?.cbmPackingList || order.cbmPackingList) 
+                  ? `${cargo?.cbmPackingList || order.cbmPackingList} ${(cargo?.cargoPriceUom || order.cargoPriceUom) === "per Pc" ? "Pcs" : (cargo?.cargoPriceUom || order.cargoPriceUom) === "per KG" ? "KG" : "CBM"}` 
                   : "—"}
               </div>
             </div>
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Total Cargo Freight Price</div>
               <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#10b981", marginTop: "2px" }}>
-                {cargo?.totalCargoPrice 
-                  ? `${getCurrencySymbol(cargo.currency)}${Number(cargo.totalCargoPrice).toLocaleString()}` 
-                  : (cargo?.cargoPrice ? `${getCurrencySymbol(cargo.currency)}${cargo.cargoPrice}` : "—")}
+                {(cargo?.totalCargoPrice || order.totalCargoPrice) 
+                  ? `${getCurrencySymbol(cargo?.currency || order.currency)}${Number(cargo?.totalCargoPrice || order.totalCargoPrice).toLocaleString()}` 
+                  : ((cargo?.cargoPrice || order.cargoPrice) ? `${getCurrencySymbol(cargo?.currency || order.currency)}${cargo?.cargoPrice || order.cargoPrice}` : "—")}
               </div>
             </div>
             <div>

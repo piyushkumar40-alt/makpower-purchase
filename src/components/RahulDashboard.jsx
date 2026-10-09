@@ -119,8 +119,22 @@ export default function RahulDashboard({
 
     // Eligible for purchase update: priced and assigned vendor
     const eligiblePriced = activeRequests.filter(r => r.priceRmb && r.vendorId);
-    const pendingMarkCount = eligiblePriced.filter(r => r.purchaseUpdated !== "Yes").length;
+    const pendingPriced = eligiblePriced.filter(r => r.purchaseUpdated !== "Yes");
+    const pendingMarkCount = pendingPriced.length;
     const markedCount = eligiblePriced.filter(r => r.purchaseUpdated === "Yes").length;
+
+    // Calculate total cargo freight committed for pending mark purchases
+    const pendingCargoSeen = new Set();
+    let pendingCargoPriceTotal = 0;
+    pendingPriced.forEach(r => {
+      const c = cargos.find(x => x.id === r.cargoId || (r.cargoId && x.cargoDetail === r.cargoId));
+      if (c && !pendingCargoSeen.has(c.id)) {
+        pendingCargoSeen.add(c.id);
+        pendingCargoPriceTotal += parseFloat(c.totalCargoPrice || c.cargoPrice || 0);
+      } else if (!c && (r.totalCargoPrice || r.cargoPrice)) {
+        pendingCargoPriceTotal += parseFloat(r.totalCargoPrice || r.cargoPrice || 0);
+      }
+    });
 
     // Upcoming bundled shipments count
     const upcomingShipmentsCount = cargos.filter(c => c.status !== "Delivered" && c.isDelivered !== "Yes").length;
@@ -137,6 +151,7 @@ export default function RahulDashboard({
       deliveredRmbValue,
       pendingMarkCount,
       markedCount,
+      pendingCargoPriceTotal,
       upcomingShipmentsCount
     };
   }, [activeRequests, cargos]);
@@ -509,8 +524,13 @@ export default function RahulDashboard({
           <div style={{ fontSize: "1.45rem", fontWeight: 800, color: "#ec4899" }}>
             {kpiStats.pendingMarkCount} <span style={{ fontSize: "0.85rem", fontWeight: 500, color: "var(--text-muted)" }}>To Confirm</span>
           </div>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px" }}>
-            Marked in Ledger: <strong>{kpiStats.markedCount}</strong>
+          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
+            <span>Marked: <strong>{kpiStats.markedCount}</strong></span>
+            {kpiStats.pendingCargoPriceTotal > 0 && (
+              <span style={{ color: "#10b981", fontWeight: 700 }} title="Total Cargo Freight Cost for Pending Mark Purchases">
+                Cargo: ¥{Math.round(kpiStats.pendingCargoPriceTotal).toLocaleString()}
+              </span>
+            )}
           </div>
         </div>
 
@@ -872,8 +892,26 @@ export default function RahulDashboard({
                   Selected: <strong style={{ color: "var(--primary)" }}>{checkedIds.length}</strong> of {filteredRequests.length} pending items
                 </span>
                 {checkedIds.length > 0 && (
-                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                    (Total RMB: ¥{Math.round(pendingRequests.filter(r => checkedIds.includes(r.id)).reduce((sum, r) => sum + ((r.orderQuantity || 0) * (r.priceRmb || 0)), 0)).toLocaleString()})
+                  <span style={{ fontSize: "0.82rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                    <span>(Total Goods: <strong style={{ color: "#f59e0b" }}>¥{Math.round(pendingRequests.filter(r => checkedIds.includes(r.id)).reduce((sum, r) => sum + ((r.orderQuantity || 0) * (r.priceRmb || 0)), 0)).toLocaleString()}</strong></span>
+                    {(() => {
+                      const selectedReqs = pendingRequests.filter(r => checkedIds.includes(r.id));
+                      const seenCargoIds = new Set();
+                      let cargoSum = 0;
+                      selectedReqs.forEach(r => {
+                        const c = cargos.find(x => x.id === r.cargoId || (r.cargoId && x.cargoDetail === r.cargoId));
+                        if (c && !seenCargoIds.has(c.id)) {
+                          seenCargoIds.add(c.id);
+                          cargoSum += parseFloat(c.totalCargoPrice || c.cargoPrice || 0);
+                        } else if (!c && (r.totalCargoPrice || r.cargoPrice)) {
+                          cargoSum += parseFloat(r.totalCargoPrice || r.cargoPrice || 0);
+                        }
+                      });
+                      return cargoSum > 0 ? (
+                        <span>| Cargo Price: <strong style={{ color: "#10b981" }}>¥{Math.round(cargoSum).toLocaleString()}</strong></span>
+                      ) : null;
+                    })()}
+                    <span>)</span>
                   </span>
                 )}
               </div>
@@ -962,8 +1000,8 @@ export default function RahulDashboard({
                         colKey="cargoFreightPrice" 
                         title="Cargo Price" 
                         getValue={r => { 
-                          const c = cargos.find(x => x.id === r.cargoId); 
-                          return parseFloat(c?.totalCargoPrice || c?.cargoPrice || 0); 
+                          const c = cargos.find(x => x.id === r.cargoId || (r.cargoId && x.cargoDetail === r.cargoId)); 
+                          return parseFloat(c?.totalCargoPrice || c?.cargoPrice || r.totalCargoPrice || r.cargoPrice || 0); 
                         }} 
                       />
                       <RenderSortHeader colKey="isMaterialRec" title="Material Rec" />
@@ -1088,22 +1126,31 @@ export default function RahulDashboard({
                           
                           {/* Cargo Freight Price */}
                           <td style={{ whiteSpace: "nowrap" }}>
-                            {cargo && (cargo.cargoPrice || cargo.totalCargoPrice) ? (
-                              <div>
-                                <div style={{ fontWeight: 700, color: "#10b981", fontSize: "0.82rem" }}>
-                                  {cargo.totalCargoPrice 
-                                    ? `${getCurrencySymbol(cargo.currency)}${Number(cargo.totalCargoPrice).toLocaleString()}` 
-                                    : `${getCurrencySymbol(cargo.currency)}${cargo.cargoPrice}`}
-                                </div>
-                                {cargo.cargoPrice && (
-                                  <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
-                                    Rate: {getCurrencySymbol(cargo.currency)}{cargo.cargoPrice} {cargo.cargoPriceUom ? `(${cargo.cargoPriceUom})` : ""}
+                            {(() => {
+                              const c = cargo || cargos.find(x => r.cargoId && x.cargoDetail === r.cargoId);
+                              const total = c?.totalCargoPrice || r.totalCargoPrice;
+                              const rate = c?.cargoPrice || r.cargoPrice;
+                              const cur = c?.currency || r.currency || "RMB";
+                              const uom = c?.cargoPriceUom || r.cargoPriceUom;
+                              
+                              if (total || rate) {
+                                return (
+                                  <div>
+                                    <div style={{ fontWeight: 700, color: "#10b981", fontSize: "0.82rem" }}>
+                                      {total 
+                                        ? `${getCurrencySymbol(cur)}${Number(total).toLocaleString()}` 
+                                        : `${getCurrencySymbol(cur)}${rate}`}
+                                    </div>
+                                    {rate && (
+                                      <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                                        Rate: {getCurrencySymbol(cur)}{rate} {uom ? `(${uom})` : ""}
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </div>
-                            ) : (
-                              <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>—</span>
-                            )}
+                                );
+                              }
+                              return <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>—</span>;
+                            })()}
                           </td>
 
                           {/* Material Rec */}
