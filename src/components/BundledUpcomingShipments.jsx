@@ -836,8 +836,13 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
   if (!order) return null;
 
   const vendor = vendors.find(v => v.id === order.vendorId);
-  const cargo = cargos.find(c => c.id === order.cargoId || (order.cargoId && c.cargoDetail === order.cargoId));
-  const carrier = cargoCompanies.find(cc => cc.id === cargo?.cargoCompanyId);
+  const cargo = cargos.find(c => c.id === order.cargoId || String(c.id) === String(order.cargoId) || (order.cargoId && c.cargoDetail === order.cargoId));
+  const cargoDetail = cargo?.cargoDetail || order.cargoDetail || "";
+  const carrierObj = cargoCompanies.find(cc => cc.id === cargo?.cargoCompanyId);
+  const carrierName = carrierObj?.name || (cargo?.carrierName && cargo.carrierName !== "Direct Logistics Carrier" ? cargo.carrierName : "") || "";
+  const carrierDisplay = carrierName 
+    ? (cargoDetail && cargoDetail !== carrierName ? `${cargoDetail} (${carrierName})` : carrierName) 
+    : (cargoDetail || "—");
   const purchaserName = getPurchaserDisplayName(order, purchasers);
 
   const unitPrice = Number(order.priceRmb) || 0;
@@ -956,12 +961,16 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
               <div style={{ fontSize: "0.9rem", fontWeight: 700, marginTop: "2px" }}>{order.cargoId || "Not Consolidated"}</div>
             </div>
             <div>
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Cargo Detail (Cargo Name)</div>
+              <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--primary)", marginTop: "2px" }}>{cargoDetail || "—"}</div>
+            </div>
+            <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Mode of Transport</div>
               <div style={{ fontSize: "0.9rem", fontWeight: 600, marginTop: "2px" }}>{cargo?.modeOfTransport || "—"}</div>
             </div>
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Logistics Carrier</div>
-              <div style={{ fontSize: "0.9rem", fontWeight: 600, marginTop: "2px" }}>{carrier?.name || "—"}</div>
+              <div style={{ fontSize: "0.9rem", fontWeight: 600, marginTop: "2px" }}>{carrierDisplay}</div>
             </div>
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Shipping Date</div>

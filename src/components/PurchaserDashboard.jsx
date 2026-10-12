@@ -5934,7 +5934,7 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
                 <div className="details-term">{cargo.cargoPriceUom === "per Pc" ? "Total Pieces:" : cargo.cargoPriceUom === "per KG" ? "Weight (KG):" : "Volume (CBM):"}</div><div className="details-def">{cargo.cbmPackingList ? `${cargo.cbmPackingList} ${cargo.cargoPriceUom === "per Pc" ? "Pcs" : cargo.cargoPriceUom === "per KG" ? "KG" : "CBM"}` : "—"}</div>
                 <div className="details-term">Total Cargo Price:</div><div className="details-def">{cargo.totalCargoPrice ? `${getCurrencySymbol(cargo.currency)}${Number(cargo.totalCargoPrice).toLocaleString()}` : "—"}</div>
                 <div className="details-term">Transport Mode:</div><div className="details-def" style={{ fontWeight: 600 }}>{cargo.modeOfTransport || "—"}</div>
-                <div className="details-term">Cargo Company:</div><div className="details-def">{cargoCompanies.find(cc => cc.id === cargo.cargoCompanyId)?.name || "—"}</div>
+                <div className="details-term">Cargo Company:</div><div className="details-def">{cargoCompanies.find(cc => cc.id === cargo.cargoCompanyId)?.name || cargo.cargoDetail || "—"}</div>
                 <div className="details-term">Shipping Date:</div><div className="details-def">{cargo.cargoShippingDate || "—"}</div>
                 <div className="details-term">Cargo ETA:</div>
                 <div className="details-def">
