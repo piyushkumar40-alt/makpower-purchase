@@ -476,7 +476,7 @@ export default function BundledUpcomingShipments({
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                       <h4 style={{ fontSize: "1.2rem", fontWeight: 700, margin: 0 }}>
-                        Cargo Code: {cargo.id}
+                        Cargo Code: {cargo.id} {cargo.cargoDetail && cargo.cargoDetail !== cargo.id ? <span style={{ color: "var(--primary)", fontSize: "1rem", fontWeight: 700 }}>({cargo.cargoDetail})</span> : null}
                       </h4>
                       <span className={`badge ${isDelivered ? "badge-received" : "badge-cargo"}`} style={{ fontSize: "0.75rem", padding: "3px 10px", fontWeight: 700 }}>
                         {isDelivered ? "Received" : "In Transit"}

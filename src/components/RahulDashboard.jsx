@@ -321,7 +321,8 @@ export default function RahulDashboard({
     { value: "", label: "All Cargo Batches" },
     ...uniqueCargos.map(cid => {
       const cObj = cargos.find(c => c.id === cid);
-      return { value: cid, label: cObj?.cargoDetail || cid };
+      const nameStr = cObj?.cargoDetail && cObj.cargoDetail !== cid ? ` [${cObj.cargoDetail}]` : "";
+      return { value: cid, label: `${cid}${nameStr}` };
     })
   ], [uniqueCargos, cargos]);
 
@@ -786,7 +787,7 @@ export default function RahulDashboard({
 
               {/* Cargo filter */}
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: "0.76rem" }}>Cargo Code</label>
+                <label className="form-label" style={{ fontSize: "0.76rem" }}>Cargo Batch / Name</label>
                 <CustomSelect 
                   value={filterCargo}
                   onChange={val => setFilterCargo(val)}
@@ -992,7 +993,7 @@ export default function RahulDashboard({
                       <RenderSortHeader colKey="totalRmb" title="Total RMB (¥)" getValue={r => (parseInt(r.orderQuantity, 10) || 0) * (parseFloat(r.priceRmb) || 0)} />
                       <RenderSortHeader colKey="vendorEdd" title="EDD" />
                       <RenderSortHeader colKey="cargoDate" title="Cargo Date" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoOrderDate || ""} />
-                      <RenderSortHeader colKey="cargoDetail" title="Cargo Detail / Code" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoDetail || ""} />
+                      <RenderSortHeader colKey="cargoDetail" title="Cargo Name / Code" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoDetail || r.cargoId || ""} />
                       <RenderSortHeader colKey="modeOfTransport" title="Transport" getValue={r => cargos.find(c => c.id === r.cargoId)?.modeOfTransport || ""} />
                       <RenderSortHeader colKey="cargoShippingDate" title="Ship Date" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoShippingDate || ""} />
                       <RenderSortHeader colKey="cargoEta" title="ETA" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoEta || ""} />
@@ -1113,8 +1114,17 @@ export default function RahulDashboard({
                           <td style={{ fontSize: "0.78rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
                             {cargo?.cargoOrderDate || "—"}
                           </td>
-                          <td style={{ fontSize: "0.78rem", color: "var(--text-muted)", maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={cargo?.cargoDetail}>
-                            {cargo?.cargoDetail || r.cargoId || "—"}
+                          <td style={{ fontSize: "0.78rem", maxWidth: "160px" }} title={`Cargo Name: ${cargo?.cargoDetail || "—"} | Code: ${r.cargoId || "—"}`}>
+                            {cargo?.cargoDetail ? (
+                              <div>
+                                <div style={{ fontWeight: 700, color: "var(--primary)" }}>{cargo.cargoDetail}</div>
+                                {r.cargoId && r.cargoId !== cargo.cargoDetail && (
+                                  <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "1px" }}>#{r.cargoId}</div>
+                                )}
+                              </div>
+                            ) : (
+                              <span style={{ color: "var(--text-muted)" }}>{r.cargoId || "—"}</span>
+                            )}
                           </td>
                           <td>
                             {cargo?.modeOfTransport ? (

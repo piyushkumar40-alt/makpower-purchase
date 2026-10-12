@@ -413,7 +413,7 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
                   <th>Made By (Vendor)</th>
                   <th>Order Qty</th>
                   <th>Price & Currency</th>
-                  <th>Cargo Tracking</th>
+                  <th>Cargo Name & Tracking</th>
                   <th>Where is Item Now?</th>
                   <th>Receipt Status</th>
                 </tr>
@@ -422,7 +422,7 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
                 {item.requests.map(r => {
                   const purchaser = getPurchaserDisplayName(r, purchasers);
                   const vendor = vendors.find(v => v.id === r.vendorId)?.name || "Pending Vendor Selection";
-                  const cargo = cargos.find(c => c.id === r.cargoId);
+                  const cargo = cargos.find(c => c.id === r.cargoId || String(c.id) === String(r.cargoId) || (r.cargoId && c.cargoDetail === r.cargoId));
 
                   let itemStage = "Order Placed (Step 1)";
                   if (r.isMaterialRec === "Yes") {
@@ -451,7 +451,16 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
                       </td>
                       <td>
                         {r.cargoId ? (
-                          <span className="badge badge-info"><Truck size={12} style={{ marginRight: "4px" }} /> {cargo?.cargoDetail || "Cargo Shipment"}</span>
+                          <div>
+                            <span className="badge badge-info" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                              <Truck size={12} /> {cargo?.cargoDetail || r.cargoId}
+                            </span>
+                            {r.cargoId && r.cargoId !== cargo?.cargoDetail && (
+                              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                                #{r.cargoId}
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>Not in Cargo</span>
                         )}

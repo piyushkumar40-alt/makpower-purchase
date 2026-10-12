@@ -169,7 +169,11 @@ export default function MasterOrderTracker({
 
   const cargoMap = useMemo(() => {
     const map = {};
-    (cargos || []).forEach(c => { map[c.id] = c; });
+    (cargos || []).forEach(c => { 
+      map[c.id] = c; 
+      map[String(c.id)] = c;
+      if (c.cargoDetail) map[c.cargoDetail] = c;
+    });
     return map;
   }, [cargos]);
 
@@ -187,7 +191,7 @@ export default function MasterOrderTracker({
 
   const enrichedRequests = useMemo(() => {
     return accessibleRequests.map(r => {
-      const cargo = r.cargoId ? cargoMap[r.cargoId] : null;
+      const cargo = r.cargoId ? (cargoMap[r.cargoId] || (cargos || []).find(c => c.id === r.cargoId || String(c.id) === String(r.cargoId) || (r.cargoId && c.cargoDetail === r.cargoId))) : null;
       const vendor = r.vendorId ? vendorMap[r.vendorId] : null;
       const purchaser = (r.purchaserId && purchaserMap[r.purchaserId]) ? purchaserMap[r.purchaserId] : { id: r.purchaserId || "u-himanshi", name: getPurchaserDisplayName(r, purchasers) };
       const stage = getOrderStage(r, cargo);
@@ -254,7 +258,7 @@ export default function MasterOrderTracker({
       const modelMatch = (r.model || "").toLowerCase().includes(q);
       const idMatch = (r.id || "").toLowerCase().includes(q);
       const vendorMatch = (r._vendor?.name || "").toLowerCase().includes(q);
-      const cargoMatch = (r.cargoId || "").toLowerCase().includes(q);
+      const cargoMatch = (r.cargoId || "").toLowerCase().includes(q) || (r._cargo?.cargoDetail || "").toLowerCase().includes(q) || (r.cargoDetail || "").toLowerCase().includes(q);
       const purchaserMatch = (r._purchaser?.name || "").toLowerCase().includes(q);
       const remarksMatch = (r.remarks || "").toLowerCase().includes(q);
 
@@ -467,7 +471,8 @@ export default function MasterOrderTracker({
     ...(noCargoCount > 0 ? [{ value: "no_cargo", label: `Orders Not Yet in Any Cargo (${noCargoCount} items)` }] : []),
     ...relevantCargos.map(c => {
       const vName = vendorMap[c.vendorId]?.name || "Vendor";
-      return { value: c.id, label: `${c.id} (${vName}, ${c.count} items)` };
+      const nameStr = c.cargoDetail && c.cargoDetail !== c.id ? ` [${c.cargoDetail}]` : "";
+      return { value: c.id, label: `${c.id}${nameStr} (${vName}, ${c.count} items)` };
     })
   ], [relevantCargos, noCargoCount, vendorMap]);
 
@@ -503,8 +508,8 @@ export default function MasterOrderTracker({
         valA = a._unitPrice;
         valB = b._unitPrice;
       } else if (sortField === "cargo") {
-        valA = a.cargoId || "";
-        valB = b.cargoId || "";
+        valA = a._cargo?.cargoDetail ? `${a._cargo.cargoDetail} ${a.cargoId || ""}` : (a.cargoId || "");
+        valB = b._cargo?.cargoDetail ? `${b._cargo.cargoDetail} ${b.cargoId || ""}` : (b.cargoId || "");
       }
 
       if (valA < valB) return sortDirection === "asc" ? -1 : 1;
@@ -1061,9 +1066,9 @@ export default function MasterOrderTracker({
                       Vendor <ArrowUpDown size={12} />
                     </div>
                   </th>
-                  <th onClick={() => handleSort("cargo")} style={{ cursor: "pointer", minWidth: "140px" }}>
+                  <th onClick={() => handleSort("cargo")} style={{ cursor: "pointer", minWidth: "150px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                      Cargo Batch <ArrowUpDown size={12} />
+                      Cargo Batch & Name <ArrowUpDown size={12} />
                     </div>
                   </th>
                   <th style={{ minWidth: "170px" }}>Milestone Dates</th>
@@ -1196,6 +1201,11 @@ export default function MasterOrderTracker({
                             >
                               📦 {r.cargoId}
                             </span>
+                            {(r._cargo?.cargoDetail || r.cargoDetail) && (
+                              <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--primary)", marginTop: "2px" }} title="Cargo Name / Detail">
+                                Cargo: <span>{r._cargo?.cargoDetail || r.cargoDetail}</span>
+                              </div>
+                            )}
                             {r._cargo?.modeOfTransport && (
                               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>
                                 Mode: {r._cargo.modeOfTransport} {r._cargo.cargoEta ? `| ETA: ${r._cargo.cargoEta}` : ""}
