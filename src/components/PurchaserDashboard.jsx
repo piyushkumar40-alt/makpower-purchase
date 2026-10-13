@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download, FileSpreadsheet, UploadCloud, CheckSquare, Calendar, Trash2, Search, ArrowUpDown, Filter, Building2, Package, Lock, X, ExternalLink } from "lucide-react";
+import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download, FileSpreadsheet, UploadCloud, CheckSquare, Calendar, Trash2, Search, ArrowUpDown, Filter, Building2, Package, Lock, X, ExternalLink, ShieldAlert, ShieldCheck } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import { uploadToCloudinary } from "../utils/upload";
 import ItemMasterView from "./ItemMasterView";
@@ -451,6 +451,7 @@ export default function PurchaserDashboard({
 
   // Admin and Purchase Manager role flags (Only manager/admin can see all orders)
   const isAdmin = currentUser?.role === "superadmin" || currentUser?.role === "owner" || currentUser?.role === "admin";
+  const isSuperAdmin = currentUser?.role === "superadmin" || currentUser?.role === "owner";
   const isPurchaseManager = currentUser?.role === "purchase_manager" || 
     currentUser?.role === "purchase-manager" || 
     (currentUser?.designation && currentUser.designation.toLowerCase().trim().includes("purchase manager")) ||
@@ -4559,7 +4560,13 @@ export default function PurchaserDashboard({
                                   <div>
                                     <button 
                                       type="button"
-                                      onClick={() => setViewingRequest(item)}
+                                      onClick={() => {
+                                        if (isSuperAdmin) {
+                                          setEditingRequest(item);
+                                        } else {
+                                          setViewingRequest(item);
+                                        }
+                                      }}
                                       style={{
                                         background: "none",
                                         border: "none",
@@ -4571,7 +4578,7 @@ export default function PurchaserDashboard({
                                         textDecoration: "underline",
                                         fontSize: "inherit"
                                       }}
-                                      title="Click to view full order details (Locked while in transit)"
+                                      title={isSuperAdmin ? "Click to edit order details (Super Admin Override)" : "Click to view full order details (Locked while in transit)"}
                                     >
                                       {item.model}
                                     </button> — Quantity: {item.vendorOrderQuantity || item.orderQuantity} units
@@ -4590,6 +4597,17 @@ export default function PurchaserDashboard({
                                     >
                                       <Eye size={12} /> Order Details
                                     </button>
+                                    {isSuperAdmin && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingRequest(item)}
+                                        className="btn btn-primary btn-sm"
+                                        style={{ marginLeft: "6px", padding: "2px 8px", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                                        title="Edit Vendor or Price (Super Admin Override)"
+                                      >
+                                        <Edit3 size={12} /> Edit
+                                      </button>
+                                    )}
                                     {item.cargoAssignedByName && item.cargoAssignedBy !== item.purchaserId && (
                                       <span className="badge" style={{ marginLeft: "6px", fontSize: "0.68rem", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)" }}>
                                         📦 Assigned by {item.cargoAssignedByName}
@@ -4965,6 +4983,10 @@ export default function PurchaserDashboard({
           items={items}
           requests={requests}
           onClose={() => setViewingRequest(null)}
+          onEditOrder={(req) => {
+            setViewingRequest(null);
+            setEditingRequest(req);
+          }}
           onCancelOrder={viewingRequest.status !== "Cancelled" && viewingRequest.isMaterialRec !== "Yes" ? (req) => { setViewingRequest(null); setCancellingRequest(req); } : null}
           isAdmin={isAdmin}
           onDeleteOrder={(req) => {
@@ -5354,8 +5376,9 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
   const [category, setCategory] = useState(cleanCategoryName(request.category) || "");
   const [showQuickVendorModal, setShowQuickVendorModal] = useState(false);
 
-  // Lock order parameters if goods are currently in transit till received
+  // Lock order parameters if goods are currently in transit till received (Super Admin can override Vendor & Price)
   const isInTransit = Boolean(request.cargoId && request.isMaterialRec !== "Yes");
+  const isSuperAdmin = currentUser?.role === "superadmin" || currentUser?.role === "owner";
 
   // Auto-calculated totals
   const effectiveQty = vendorOrderQuantity ? parseFloat(vendorOrderQuantity) : parseFloat(orderQuantity || request.orderQuantity || 1);
@@ -5411,7 +5434,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (isInTransit) return;
+    if (isInTransit && !isSuperAdmin) return;
     const matched = vendors.find(v => v.id === vendorId || v.name.toLowerCase() === vendorSearchText.trim().toLowerCase());
     const finalVendorId = matched ? matched.id : vendorId;
     const origQty = parseInt(orderQuantity || request.orderQuantity || 1, 10);
@@ -5456,7 +5479,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
             edd,
             previousEdd: request.vendorEdd || null,
             postponedDays: delayDays > 0 ? delayDays : 0,
-            reason: "Updated via Order Edit modal",
+            reason: isInTransit && isSuperAdmin ? "Super Admin Override (In Transit)" : "Updated via Order Edit modal",
             changedBy: currentUser?.name || currentUser?.id || "Staff",
             changedAt: new Date().toISOString()
           }
@@ -5482,7 +5505,15 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
           <div>
             <h3 style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--primary)", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
               Edit Order Details — {request.model}
-              {isInTransit && <span className="badge badge-cargo" style={{ fontSize: "0.72rem" }}><Lock size={12} /> In Transit (Locked)</span>}
+              {isInTransit && (
+                isSuperAdmin ? (
+                  <span className="badge badge-warning" style={{ fontSize: "0.72rem", background: "rgba(245, 158, 11, 0.2)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.4)", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <ShieldAlert size={12} /> Dispatched (Super Admin Override Active)
+                  </span>
+                ) : (
+                  <span className="badge badge-cargo" style={{ fontSize: "0.72rem" }}><Lock size={12} /> In Transit (Locked)</span>
+                )
+              )}
             </h3>
             <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "4px", margin: 0 }}>
               Update all order parameters for any workflow step (Requisition, Pricing, Vendor Ready, Cargo & Receipt).
@@ -5492,10 +5523,17 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
         </div>
 
         {isInTransit && (
-          <div style={{ background: "rgba(245, 158, 11, 0.12)", border: "1px solid rgba(245, 158, 11, 0.35)", borderRadius: "8px", padding: "12px 16px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "10px", color: "#f59e0b", fontSize: "0.88rem", fontWeight: 600 }}>
-            <Lock size={18} />
-            <span>This order is currently In Transit in Cargo <strong>{request.cargoId}</strong>. Order parameters are locked and cannot be modified until received at the warehouse.</span>
-          </div>
+          isSuperAdmin ? (
+            <div style={{ background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.35)", borderRadius: "8px", padding: "12px 16px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "10px", color: "#38bdf8", fontSize: "0.88rem", fontWeight: 600 }}>
+              <ShieldCheck size={18} />
+              <span>This order is currently In Transit in Cargo <strong>{request.cargoId}</strong>. As Super Admin, you are permitted to edit the <strong>Vendor</strong> and <strong>Commercial Price</strong> after dispatch.</span>
+            </div>
+          ) : (
+            <div style={{ background: "rgba(245, 158, 11, 0.12)", border: "1px solid rgba(245, 158, 11, 0.35)", borderRadius: "8px", padding: "12px 16px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "10px", color: "#f59e0b", fontSize: "0.88rem", fontWeight: 600 }}>
+              <Lock size={18} />
+              <span>This order is currently In Transit in Cargo <strong>{request.cargoId}</strong>. Order parameters are locked and cannot be modified until received at the warehouse.</span>
+            </div>
+          )
         )}
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -5589,7 +5627,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
             <div className="form-group" style={{ marginBottom: "12px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
                 <label className="form-label" style={{ margin: 0 }}>Vendor / Supplier</label>
-                {onAddVendor && !isInTransit && (
+                {onAddVendor && (!isInTransit || isSuperAdmin) && (
                   <button type="button" onClick={() => setShowQuickVendorModal(true)} style={{ color: "#38bdf8", background: "none", border: "none", cursor: "pointer", fontSize: "0.8rem", fontWeight: 600 }}>
                     + Create New Vendor
                   </button>
@@ -5601,7 +5639,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
                 className="form-control"
                 placeholder="Type or Select Vendor..."
                 value={vendorSearchText}
-                disabled={isInTransit}
+                disabled={isInTransit && !isSuperAdmin}
                 onChange={e => {
                   const val = e.target.value;
                   setVendorSearchText(val);
@@ -5633,7 +5671,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
 
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>Currency</label>
-                <select className="form-control" value={currency} onChange={e => setCurrency(e.target.value)} disabled={isInTransit}>
+                <select className="form-control" value={currency} onChange={e => setCurrency(e.target.value)} disabled={isInTransit && !isSuperAdmin}>
                   <option value="RMB">RMB (¥)</option>
                   <option value="USD">USD ($)</option>
                   <option value="INR">INR (₹)</option>
@@ -5648,7 +5686,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
                   placeholder="Price..." 
                   value={price} 
                   onChange={e => setPrice(e.target.value)} 
-                  disabled={isInTransit}
+                  disabled={isInTransit && !isSuperAdmin}
                   step="any"
                 />
               </div>
@@ -5660,7 +5698,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
 
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>Advance Payment ({currency})</label>
-                <input type="number" className="form-control" value={advance} onChange={e => setAdvance(e.target.value)} disabled={isInTransit} min="0" step="any" />
+                <input type="number" className="form-control" value={advance} onChange={e => setAdvance(e.target.value)} disabled={isInTransit && !isSuperAdmin} min="0" step="any" />
               </div>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
@@ -5740,15 +5778,15 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
 
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" style={{ fontSize: "0.78rem" }}>Purchaser Internal Notes</label>
-              <textarea className="form-control" rows="2" value={notes} onChange={e => setNotes(e.target.value)} disabled={isInTransit} placeholder="Internal notes, wire payment details, production tracking comments..." />
+              <textarea className="form-control" rows="2" value={notes} onChange={e => setNotes(e.target.value)} disabled={isInTransit && !isSuperAdmin} placeholder="Internal notes, wire payment details, production tracking comments..." />
             </div>
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
             <button type="button" onClick={onClose} className="btn btn-secondary">Close</button>
-            {!isInTransit ? (
+            {(!isInTransit || isSuperAdmin) ? (
               <button type="submit" className="btn btn-primary" style={{ padding: "8px 24px", fontWeight: 700 }}>
-                Save All Changes
+                {isInTransit && isSuperAdmin ? "Save Changes (Super Admin Override)" : "Save All Changes"}
               </button>
             ) : (
               <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "#f59e0b", fontSize: "0.85rem", fontWeight: 600, padding: "8px 14px", background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.25)", borderRadius: "6px" }}>
@@ -5776,7 +5814,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
 }
 
 // 2. DETAILED READ-ONLY VIEW MODAL (ALL 27 FIELDS)
-function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purchasers, items = [], requests = [], onClose, onCancelOrder, onDeleteOrder, isAdmin }) {
+function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purchasers, items = [], requests = [], onClose, onEditOrder, onCancelOrder, onDeleteOrder, isAdmin }) {
   useModalEscape(onClose);
   const pName = purchasers.find(p => p.id === request.purchaserId)?.name || "Unknown";
   const vName = vendors.find(v => v.id === request.vendorId)?.name || "Unknown";
@@ -5806,6 +5844,17 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
           <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
             {request.status === "Cancelled" && (
               <span className="badge badge-rejected" style={{ fontSize: "0.8rem", padding: "6px 12px" }}>CANCELLED</span>
+            )}
+            {onEditOrder && (
+              <button 
+                type="button" 
+                onClick={() => onEditOrder(request)} 
+                className="btn btn-primary btn-sm"
+                style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
+                title="Edit Order Details"
+              >
+                <Edit3 size={14} /> Edit Order
+              </button>
             )}
             {onCancelOrder && (
               <button onClick={() => onCancelOrder(request)} className="btn btn-danger btn-sm">

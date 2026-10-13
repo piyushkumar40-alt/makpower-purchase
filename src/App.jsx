@@ -1139,7 +1139,10 @@ export default function App() {
     const vName = vendors.find(v => v.id === newReq.vendorId)?.name || "N/A";
     let actionLabel = "UPDATE_REQUEST";
     let detailText = `Updated requisition details for ${newReq.model} (#${newReq.id})`;
-    if (!oldReq?.priceRmb && newReq.priceRmb) {
+    if (oldReq?.cargoId && oldReq?.isMaterialRec !== "Yes" && (oldReq?.vendorId !== newReq.vendorId || oldReq?.priceRmb !== newReq.priceRmb)) {
+      actionLabel = "SUPER_ADMIN_OVERRIDE";
+      detailText = `Super Admin updated dispatched order ${newReq.model} (#${newReq.id}) in Cargo ${newReq.cargoId}: Vendor set to "${vName}", Price set to ¥${newReq.priceRmb}`;
+    } else if (!oldReq?.priceRmb && newReq.priceRmb) {
       actionLabel = "PRICE_REQUEST";
       detailText = `Priced ${newReq.model} (#${newReq.id}): ¥${newReq.priceRmb} RMB | EDD: ${newReq.vendorEdd} | Vendor: ${vName}`;
     } else if (!oldReq?.vendorReadyDate && newReq.vendorReadyDate) {

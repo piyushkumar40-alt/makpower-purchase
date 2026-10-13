@@ -26,6 +26,8 @@ export default function ItemDetailModal({
   const [photoMsg, setPhotoMsg] = useState("");
   const [savingPhoto, setSavingPhoto] = useState(false);
   const [copiedModel, setCopiedModel] = useState(false);
+  const [headerImgError, setHeaderImgError] = useState(false);
+  const [overviewImgError, setOverviewImgError] = useState(false);
 
   const handleCopyModel = (name) => {
     if (!name) return;
@@ -204,27 +206,18 @@ export default function ItemDetailModal({
       >
         
         {/* Modal Top Header Bar with Prominent Back Button */}
-        <div style={{ 
-          padding: "18px 24px", 
-          background: "rgba(15, 23, 42, 0.9)", 
-          borderBottom: "1px solid var(--border-color)",
-          display: "flex",
-          justify: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "12px"
-        }}>
+        <div className="item-detail-modal-header">
           <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
             {handleGoBack && (
               <button 
                 onClick={handleGoBack}
-                className="btn btn-secondary btn-sm"
-                style={{ borderRadius: "8px", padding: "8px 16px", display: "inline-flex", alignItems: "center", gap: "8px", fontWeight: 700, borderColor: "#38bdf8", color: "#38bdf8" }}
+                className="btn btn-secondary btn-sm item-detail-back-btn"
+                style={{ borderRadius: "8px", padding: "8px 16px", display: "inline-flex", alignItems: "center", gap: "8px", fontWeight: 700 }}
               >
                 <ArrowLeft size={18} /> Back
               </button>
             )}
-            {item.photo ? (
+            {item.photo && !headerImgError ? (
               <div 
                 onClick={() => setEnlargedImage(true)}
                 style={{ 
@@ -232,14 +225,18 @@ export default function ItemDetailModal({
                   cursor: "zoom-in",
                   borderRadius: "10px",
                   overflow: "hidden",
-                  border: "2px solid var(--primary)"
+                  border: "2px solid var(--primary)",
+                  width: "52px",
+                  height: "52px",
+                  flexShrink: 0
                 }}
                 title="Click to Enlarge Image"
               >
                 <img 
                   src={item.photo} 
                   alt={item.name} 
-                  style={{ width: "52px", height: "52px", objectFit: "cover" }} 
+                  onError={() => setHeaderImgError(true)}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }} 
                 />
                 <div style={{
                   position: "absolute",
@@ -263,7 +260,8 @@ export default function ItemDetailModal({
                 border: "1px solid rgba(99, 102, 241, 0.3)",
                 display: "flex", 
                 alignItems: "center", 
-                justifyContent: "center" 
+                justifyContent: "center",
+                flexShrink: 0
               }}>
                 <Package size={26} style={{ color: "var(--primary)" }} />
               </div>
@@ -278,19 +276,7 @@ export default function ItemDetailModal({
                   type="button"
                   title="Copy Model Name to Clipboard"
                   onClick={() => handleCopyModel(item.name)}
-                  style={{
-                    background: "rgba(56, 189, 248, 0.15)",
-                    border: "1px solid rgba(56, 189, 248, 0.3)",
-                    color: copiedModel ? "var(--success)" : "var(--primary)",
-                    borderRadius: "6px",
-                    padding: "3px 8px",
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "5px",
-                    fontSize: "0.78rem",
-                    fontWeight: 600
-                  }}
+                  className="btn-copy-model"
                 >
                   {copiedModel ? <Check size={13} /> : <Copy size={13} />}
                   {copiedModel ? "Copied Model!" : "Copy Model"}
@@ -298,18 +284,12 @@ export default function ItemDetailModal({
                 <span className="badge badge-primary" style={{ fontSize: "0.85rem", fontWeight: 800 }}>
                   Master Specification
                 </span>
-                <span className="badge" style={{ 
-                  fontSize: "0.78rem", 
-                  fontWeight: 700, 
-                  background: isFG ? "rgba(16, 185, 129, 0.2)" : "rgba(99, 102, 241, 0.2)", 
-                  color: isFG ? "#34d399" : "#a5b4fc",
-                  border: `1px solid ${isFG ? "rgba(16, 185, 129, 0.4)" : "rgba(99, 102, 241, 0.4)"}`
-                }}>
+                <span className={`badge ${isFG ? "badge-fg" : "badge-rm"}`}>
                   {isFG ? "FG (Finished Goods)" : "RM (Raw Material)"}
                 </span>
               </div>
 
-              <div style={{ display: "flex", gap: "12px", fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "4px" }}>
+              <div style={{ display: "flex", gap: "12px", fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "4px", flexWrap: "wrap" }}>
                 <span>Category: <strong style={{ color: "var(--text-main)" }}>{item.category || "General"}</strong></span>
                 <span>•</span>
                 <span>Nature: <strong style={{ color: "var(--text-main)" }}>{item.itemNature || "Non Consumables"}</strong></span>
@@ -323,17 +303,17 @@ export default function ItemDetailModal({
             {currentUser && (
               <button 
                 onClick={() => { setShowPhotoModal(true); setInputPhotoUrl(""); setPhotoMsg(""); }}
-                className="btn btn-secondary btn-sm"
-                style={{ borderColor: "#10b981", color: "#a7f3d0", fontSize: "0.82rem" }}
+                className="btn btn-secondary btn-sm btn-upload-image"
               >
-                <Camera size={14} style={{ color: "#10b981" }} /> Upload / Replace Image
+                <Camera size={14} /> Upload / Replace Image
               </button>
             )}
 
             <button 
               onClick={onClose}
-              className="btn btn-secondary btn-sm"
+              className="btn btn-secondary btn-sm item-detail-close-btn"
               style={{ borderRadius: "50%", width: "36px", height: "36px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+              title="Close"
             >
               <X size={20} />
             </button>
@@ -343,9 +323,9 @@ export default function ItemDetailModal({
         {/* Upload / Replace Photo Modal Dialog */}
         {showPhotoModal && (
           <div className="modal-backdrop" style={{ zIndex: 1400, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
-            <div className="glass-panel" style={{ maxWidth: "500px", width: "100%", padding: "24px", borderRadius: "16px", border: "1px solid #10b981" }}>
+            <div className="glass-panel" style={{ maxWidth: "500px", width: "100%", padding: "24px", borderRadius: "16px", border: "1px solid var(--primary)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                <h3 style={{ fontSize: "1.1rem", color: "#a7f3d0", display: "flex", alignItems: "center", gap: "8px" }}>
+                <h3 style={{ fontSize: "1.1rem", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px" }}>
                   <Camera size={18} /> Upload / Replace Item Image
                 </h3>
                 <button onClick={() => setShowPhotoModal(false)} className="btn btn-secondary btn-sm">Close</button>
@@ -408,16 +388,16 @@ export default function ItemDetailModal({
         )}
 
         {/* Live Status Banners ("Now Item is Where") */}
-        <div style={{ padding: "16px 24px", background: "rgba(0, 0, 0, 0.2)", borderBottom: "1px solid var(--border-color)" }}>
+        <div className="item-detail-tracking-strip">
           <div style={{ fontSize: "0.78rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--primary)", marginBottom: "10px", display: "flex", alignItems: "center", gap: "6px" }}>
             <MapPin size={14} /> Real-Time Item Location & Stock Tracking
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
             {/* Warehouse Stock / Received */}
-            <div className="glass-panel" style={{ padding: "12px 16px", background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.2)" }}>
-              <div style={{ fontSize: "0.75rem", color: "#6ee7b7", fontWeight: 600 }}>🏭 In Warehouse / Received</div>
-              <div style={{ fontSize: "1.3rem", fontWeight: 800, color: "#10b981", marginTop: "2px" }}>
+            <div className="stock-metric-card stock-card-received">
+              <div className="stock-card-label">🏭 In Warehouse / Received</div>
+              <div className="stock-card-value" style={{ marginTop: "2px" }}>
                 {totalReceivedQty.toLocaleString()} {item.unit || "Pcs"}
               </div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>
@@ -426,9 +406,9 @@ export default function ItemDetailModal({
             </div>
 
             {/* In Transit on Cargo */}
-            <div className="glass-panel" style={{ padding: "12px 16px", background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.2)" }}>
-              <div style={{ fontSize: "0.75rem", color: "#7dd3fc", fontWeight: 600 }}>🚢 In-Transit (On Cargo)</div>
-              <div style={{ fontSize: "1.3rem", fontWeight: 800, color: "#38bdf8", marginTop: "2px" }}>
+            <div className="stock-metric-card stock-card-transit">
+              <div className="stock-card-label">🚢 In-Transit (On Cargo)</div>
+              <div className="stock-card-value" style={{ marginTop: "2px" }}>
                 {totalInTransitQty.toLocaleString()} {item.unit || "Pcs"}
               </div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>
@@ -437,9 +417,9 @@ export default function ItemDetailModal({
             </div>
 
             {/* Purchaser Processing */}
-            <div className="glass-panel" style={{ padding: "12px 16px", background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.2)" }}>
-              <div style={{ fontSize: "0.75rem", color: "#fcd34d", fontWeight: 600 }}>📝 Purchaser Processing</div>
-              <div style={{ fontSize: "1.3rem", fontWeight: 800, color: "#f59e0b", marginTop: "2px" }}>
+            <div className="stock-metric-card stock-card-pending">
+              <div className="stock-card-label">📝 Purchaser Processing</div>
+              <div className="stock-card-value" style={{ marginTop: "2px" }}>
                 {totalPendingQty.toLocaleString()} {item.unit || "Pcs"}
               </div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>
@@ -448,9 +428,9 @@ export default function ItemDetailModal({
             </div>
 
             {/* Total Lifetime Ordered */}
-            <div className="glass-panel" style={{ padding: "12px 16px", background: "rgba(99, 102, 241, 0.08)", border: "1px solid rgba(99, 102, 241, 0.2)" }}>
-              <div style={{ fontSize: "0.75rem", color: "#a5b4fc", fontWeight: 600 }}>📊 Total Lifetime Ordered</div>
-              <div style={{ fontSize: "1.3rem", fontWeight: 800, color: "#818cf8", marginTop: "2px" }}>
+            <div className="stock-metric-card stock-card-total">
+              <div className="stock-card-label">📊 Total Lifetime Ordered</div>
+              <div className="stock-card-value" style={{ marginTop: "2px" }}>
                 {totalOrderedQty.toLocaleString()} {item.unit || "Pcs"}
               </div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>
@@ -461,7 +441,7 @@ export default function ItemDetailModal({
         </div>
 
         {/* Sub-Navigation Tabs */}
-        <div style={{ display: "flex", gap: "8px", padding: "12px 24px 0", borderBottom: "1px solid var(--border-color)", background: "rgba(0,0,0,0.1)", flexWrap: "wrap" }}>
+        <div className="item-detail-tabs-strip">
           <button 
             onClick={() => setActiveSubTab("overview")}
             className={`btn btn-sm ${activeSubTab === "overview" ? "btn-primary" : "btn-secondary"}`}
@@ -497,8 +477,8 @@ export default function ItemDetailModal({
           {isSuperAdmin && (
             <button 
               onClick={() => setActiveSubTab("photoHistory")}
-              className={`btn btn-sm ${activeSubTab === "photoHistory" ? "btn-primary" : "btn-secondary"}`}
-              style={{ borderRadius: "8px 8px 0 0", padding: "8px 16px", fontSize: "0.85rem", borderColor: "#f59e0b", color: activeSubTab === "photoHistory" ? "#fff" : "#fcd34d" }}
+              className={`btn btn-sm ${activeSubTab === "photoHistory" ? "btn-primary" : "btn-secondary"} item-detail-photo-tab-btn`}
+              style={{ borderRadius: "8px 8px 0 0", padding: "8px 16px", fontSize: "0.85rem" }}
             >
               <Camera size={14} /> Photo Log (6 Months) ({validPhotoHistory.length})
             </button>
@@ -518,12 +498,13 @@ export default function ItemDetailModal({
                   <Package size={16} /> Item Master Image & Description
                 </h4>
 
-                {item.photo ? (
+                {item.photo && !overviewImgError ? (
                   <div style={{ textAlign: "center", marginBottom: "16px" }}>
                     <img 
                       src={item.photo} 
                       alt={item.name} 
                       onClick={() => setEnlargedImage(true)}
+                      onError={() => setOverviewImgError(true)}
                       style={{ 
                         maxWidth: "100%", 
                         maxHeight: "220px", 
@@ -571,7 +552,7 @@ export default function ItemDetailModal({
 
                   <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed var(--border-color)", paddingBottom: "8px" }}>
                     <span style={{ color: "var(--text-muted)" }}>Classification Type:</span>
-                    <strong style={{ color: isFG ? "#34d399" : "#a5b4fc" }}>{isFG ? "Finished Goods (FG)" : "Raw Material (RM)"}</strong>
+                    <strong className={isFG ? "text-fg" : "text-rm"}>{isFG ? "Finished Goods (FG)" : "Raw Material (RM)"}</strong>
                   </div>
 
                   <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed var(--border-color)", paddingBottom: "8px" }}>
@@ -794,8 +775,7 @@ export default function ItemDetailModal({
                               }
                             }
                           }}
-                          className="btn btn-sm btn-secondary"
-                          style={{ width: "100%", fontSize: "0.75rem", borderColor: "#f59e0b", color: "#fcd34d" }}
+                          className="btn btn-sm btn-secondary photo-restore-btn"
                         >
                           <RotateCcw size={12} /> Restore Picture
                         </button>
@@ -810,7 +790,7 @@ export default function ItemDetailModal({
         </div>
 
         {/* Modal Bottom Footer */}
-        <div style={{ padding: "16px 24px", background: "rgba(15, 23, 42, 0.9)", borderTop: "1px solid var(--border-color)", display: "flex", justifyContent: "flex-end" }}>
+        <div className="item-detail-modal-footer">
           <button onClick={onClose} className="btn btn-secondary">
             Close Item Details
           </button>

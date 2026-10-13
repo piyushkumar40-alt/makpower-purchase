@@ -239,7 +239,7 @@ export default function CustomSelect({
       <div
         tabIndex={disabled ? -1 : 0}
         onClick={handleToggle}
-        className={`custom-select-trigger ${isOpen ? "open" : ""} ${disabled ? "disabled" : ""}`}
+        className={`custom-select-trigger ${isOpen ? "open" : ""} ${hasValue ? "has-value" : ""} ${disabled ? "disabled" : ""}`}
         style={{
           display: "flex",
           alignItems: "center",
@@ -250,10 +250,6 @@ export default function CustomSelect({
           padding: sizeStyles.padding,
           fontSize: sizeStyles.fontSize,
           borderRadius: "8px",
-          background: isOpen ? "#0f172a" : "rgba(11, 17, 32, 0.85)",
-          color: selectedOption ? "var(--text-main, #f8fafc)" : "var(--text-muted, #94a3b8)",
-          border: isOpen ? "1px solid #38bdf8" : (hasValue ? "1px solid rgba(56, 189, 248, 0.35)" : "1px solid rgba(255, 255, 255, 0.12)"),
-          boxShadow: isOpen ? "0 0 0 3px rgba(56, 189, 248, 0.18)" : "none",
           cursor: disabled ? "not-allowed" : "pointer",
           userSelect: "none",
           transition: "all 0.18s cubic-bezier(0.4, 0, 0.2, 1)",
@@ -262,20 +258,23 @@ export default function CustomSelect({
       >
         <div style={{ display: "flex", alignItems: "center", gap: "7px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
           {icon && (
-            <span style={{ display: "inline-flex", alignItems: "center", color: hasValue ? "#38bdf8" : "var(--text-muted, #94a3b8)", flexShrink: 0 }}>
+            <span className="custom-select-trigger-icon" style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
               {icon}
             </span>
           )}
           {selectedOption?.icon && (
-            <span style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
+            <span className="custom-select-trigger-icon" style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
               {selectedOption.icon}
             </span>
           )}
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: hasValue ? 600 : 400, color: selectedOption ? "#f8fafc" : "#94a3b8" }}>
+          <span 
+            className="custom-select-value-text"
+            style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: hasValue ? 600 : 400 }}
+          >
             {selectedOption ? selectedOption.label : placeholder}
           </span>
           {selectedOption?.count !== undefined && (
-            <span style={{ fontSize: "0.72rem", padding: "1px 6px", borderRadius: "99px", background: "rgba(56, 189, 248, 0.12)", color: "#38bdf8", fontWeight: 700, flexShrink: 0 }}>
+            <span className="custom-select-trigger-badge">
               {selectedOption.count}
             </span>
           )}
@@ -286,20 +285,18 @@ export default function CustomSelect({
             <button
               type="button"
               onClick={handleClear}
+              className="custom-select-clear-btn"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
                 background: "transparent",
                 border: "none",
-                color: "var(--text-muted, #94a3b8)",
                 padding: "2px",
                 borderRadius: "4px",
                 cursor: "pointer",
                 transition: "color 0.15s"
               }}
-              onMouseEnter={e => e.currentTarget.style.color = "#ef4444"}
-              onMouseLeave={e => e.currentTarget.style.color = "var(--text-muted, #94a3b8)"}
               title="Clear selection"
             >
               <X size={12} />
@@ -308,8 +305,8 @@ export default function CustomSelect({
 
           <ChevronDown
             size={sizeStyles.iconSize}
+            className="custom-select-chevron"
             style={{
-              color: isOpen ? "#38bdf8" : "var(--text-muted, #94a3b8)",
               transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
               transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.15s ease"
             }}
@@ -317,7 +314,7 @@ export default function CustomSelect({
         </div>
       </div>
 
-      {/* Beautiful Dark Glassmorphic Dropdown Menu */}
+      {/* Beautiful Glassmorphic Dropdown Menu */}
       {isOpen && (
         <div
           ref={menuRef}
@@ -331,12 +328,7 @@ export default function CustomSelect({
             width: menuWidth,
             minWidth: "100%",
             zIndex: 9999,
-            background: "#080c16",
-            backdropFilter: "blur(20px)",
-            WebkitBackdropFilter: "blur(20px)",
-            border: "1px solid rgba(56, 189, 248, 0.28)",
             borderRadius: "10px",
-            boxShadow: "0 18px 40px -6px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.06)",
             padding: "6px",
             display: "flex",
             flexDirection: "column",
@@ -346,9 +338,9 @@ export default function CustomSelect({
         >
           {/* Pinned Search Input if Searchable */}
           {isSearchable && (
-            <div style={{ padding: "4px 4px 6px 4px", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", marginBottom: "4px" }}>
+            <div className="custom-select-search-container" style={{ padding: "4px 4px 6px 4px", marginBottom: "4px" }}>
               <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                <Search size={13} style={{ position: "absolute", left: "9px", color: "var(--text-muted, #64748b)" }} />
+                <Search size={13} className="custom-select-search-icon" style={{ position: "absolute", left: "9px" }} />
                 <input
                   ref={searchInputRef}
                   type="text"
@@ -359,30 +351,26 @@ export default function CustomSelect({
                     setHighlightedIndex(0);
                   }}
                   onKeyDown={handleKeyDown}
+                  className="custom-select-search-input"
                   style={{
                     width: "100%",
                     height: "29px",
                     padding: "4px 8px 4px 28px",
                     fontSize: "0.78rem",
-                    color: "#f8fafc",
-                    background: "rgba(15, 23, 42, 0.8)",
-                    border: "1px solid rgba(255, 255, 255, 0.1)",
                     borderRadius: "6px",
                     outline: "none"
                   }}
-                  onFocus={e => e.currentTarget.style.borderColor = "#38bdf8"}
-                  onBlur={e => e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.1)"}
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery("")}
+                    className="custom-select-search-clear"
                     style={{
                       position: "absolute",
                       right: "6px",
                       background: "transparent",
                       border: "none",
-                      color: "#64748b",
                       cursor: "pointer",
                       padding: "2px",
                       display: "flex"
@@ -402,12 +390,11 @@ export default function CustomSelect({
             style={{
               maxHeight: "240px",
               overflowY: "auto",
-              scrollbarWidth: "thin",
-              scrollbarColor: "rgba(56, 189, 248, 0.3) transparent"
+              scrollbarWidth: "thin"
             }}
           >
             {filteredOptions.length === 0 ? (
-              <div style={{ padding: "12px", textAlign: "center", color: "#64748b", fontSize: "0.78rem" }}>
+              <div className="custom-select-empty" style={{ padding: "12px", textAlign: "center", fontSize: "0.78rem" }}>
                 No options found
               </div>
             ) : (
@@ -421,6 +408,7 @@ export default function CustomSelect({
                     data-option-index={idx}
                     onClick={() => handleSelectOption(opt)}
                     onMouseEnter={() => setHighlightedIndex(idx)}
+                    className={`custom-select-option ${isSelected ? "selected" : ""} ${isHighlighted ? "highlighted" : ""} ${opt.disabled ? "disabled" : ""}`}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -432,13 +420,6 @@ export default function CustomSelect({
                       fontSize: sizeStyles.fontSize,
                       cursor: opt.disabled ? "not-allowed" : "pointer",
                       opacity: opt.disabled ? 0.45 : 1,
-                      background: isSelected 
-                        ? "rgba(56, 189, 248, 0.18)" 
-                        : (isHighlighted ? "rgba(255, 255, 255, 0.07)" : "transparent"),
-                      color: isSelected 
-                        ? "#38bdf8" 
-                        : (isHighlighted ? "#ffffff" : "#e2e8f0"),
-                      fontWeight: isSelected ? 600 : 400,
                       transition: "background 0.12s ease, color 0.12s ease"
                     }}
                   >
@@ -453,7 +434,7 @@ export default function CustomSelect({
                           {opt.label}
                         </div>
                         {opt.sublabel && (
-                          <div style={{ fontSize: "0.7rem", color: "#64748b", marginTop: "1px" }}>
+                          <div className="custom-select-option-sublabel" style={{ fontSize: "0.7rem", marginTop: "1px" }}>
                             {opt.sublabel}
                           </div>
                         )}
@@ -463,12 +444,11 @@ export default function CustomSelect({
                     <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
                       {opt.count !== undefined && (
                         <span 
+                          className={`custom-select-option-count ${isSelected ? "selected" : ""}`}
                           style={{ 
                             fontSize: "0.7rem", 
                             padding: "1px 6px", 
                             borderRadius: "99px", 
-                            background: isSelected ? "rgba(56, 189, 248, 0.25)" : "rgba(255, 255, 255, 0.07)", 
-                            color: isSelected ? "#38bdf8" : "#94a3b8", 
                             fontWeight: 600 
                           }}
                         >
@@ -476,7 +456,7 @@ export default function CustomSelect({
                         </span>
                       )}
                       {isSelected && (
-                        <Check size={13} style={{ color: "#38bdf8" }} />
+                        <Check size={13} className="custom-select-option-check" />
                       )}
                     </div>
                   </div>
