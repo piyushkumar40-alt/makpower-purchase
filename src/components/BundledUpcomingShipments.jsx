@@ -23,7 +23,7 @@ import {
   Check,
   Edit3
 } from "lucide-react";
-import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol } from "../utils/formatters";
+import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol, calculateTotalCargoPrice } from "../utils/formatters";
 import CustomSelect from "./CustomSelect";
 
 export default function BundledUpcomingShipments({
@@ -107,7 +107,7 @@ export default function BundledUpcomingShipments({
 
     const upcomingUnits = upcoming.reduce((sum, c) => sum + c.totalUnits, 0);
     const upcomingValue = upcoming.reduce((sum, c) => sum + c.totalValueRmb, 0);
-    const upcomingFreight = upcoming.reduce((sum, c) => sum + (Number(c.totalCargoPrice) || Number(c.cargoPrice) || 0), 0);
+    const upcomingFreight = upcoming.reduce((sum, c) => sum + (calculateTotalCargoPrice(c) || 0), 0);
     const upcomingCbm = upcoming.reduce((sum, c) => sum + (Number(c.cbm) || 0), 0);
 
     return {
@@ -568,7 +568,7 @@ export default function BundledUpcomingShipments({
                     <div style={{ color: "var(--text-muted)" }}>Cargo Cost:</div>
                     <div style={{ fontWeight: 500 }}>
                       {cargo.cargoPrice ? `${getCurrencySymbol(cargo.currency)}${cargo.cargoPrice} (${cargo.cargoPriceUom || "Total"})` : "—"}
-                      {cargo.totalCargoPrice ? ` | Total: ${getCurrencySymbol(cargo.currency)}${Number(cargo.totalCargoPrice).toLocaleString()}` : ""}
+                      {calculateTotalCargoPrice(cargo) ? ` | Total: ${getCurrencySymbol(cargo.currency)}${Number(calculateTotalCargoPrice(cargo)).toLocaleString()}` : ""}
                     </div>
                   </div>
                   <div>
@@ -909,8 +909,8 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Cargo Freight Cost</div>
               <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#10b981", marginTop: "2px" }}>
-                {(cargo?.totalCargoPrice || order.totalCargoPrice)
-                  ? `${getCurrencySymbol(cargo?.currency || order.currency)}${Number(cargo?.totalCargoPrice || order.totalCargoPrice).toLocaleString()}` 
+                {calculateTotalCargoPrice(cargo, order) > 0
+                  ? `${getCurrencySymbol(cargo?.currency || order.currency)}${Number(calculateTotalCargoPrice(cargo, order)).toLocaleString()}` 
                   : ((cargo?.cargoPrice || order.cargoPrice) ? `${getCurrencySymbol(cargo?.currency || order.currency)}${cargo?.cargoPrice || order.cargoPrice}` : "—")}
               </div>
             </div>
@@ -999,8 +999,8 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Total Cargo Freight Price</div>
               <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#10b981", marginTop: "2px" }}>
-                {(cargo?.totalCargoPrice || order.totalCargoPrice) 
-                  ? `${getCurrencySymbol(cargo?.currency || order.currency)}${Number(cargo?.totalCargoPrice || order.totalCargoPrice).toLocaleString()}` 
+                {calculateTotalCargoPrice(cargo, order) > 0 
+                  ? `${getCurrencySymbol(cargo?.currency || order.currency)}${Number(calculateTotalCargoPrice(cargo, order)).toLocaleString()}` 
                   : ((cargo?.cargoPrice || order.cargoPrice) ? `${getCurrencySymbol(cargo?.currency || order.currency)}${cargo?.cargoPrice || order.cargoPrice}` : "—")}
               </div>
             </div>

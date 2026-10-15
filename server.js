@@ -60,6 +60,25 @@ function safeJsonParse(val, fallback = []) {
   }
 }
 
+function getEffectiveTotalCargoPrice(c) {
+  if (!c) return "";
+  const price = c.cargoPrice != null && c.cargoPrice !== "" ? parseFloat(c.cargoPrice) : 0;
+  const cbm = c.cbmPackingList != null && c.cbmPackingList !== "" ? parseFloat(c.cbmPackingList) : 0;
+  let total = c.totalCargoPrice != null && c.totalCargoPrice !== "" ? parseFloat(c.totalCargoPrice) : 0;
+  const uom = c.cargoPriceUom || "";
+
+  if ((uom === "per KG" || uom === "per CBM") && price > 0 && cbm > 0) {
+    if (!total || total === price) {
+      total = price * cbm;
+    }
+  } else if (uom === "per Pc" && price > 0 && cbm > 0) {
+    if (!total || total === price) {
+      total = price * cbm;
+    }
+  }
+  return total ? total : (c.totalCargoPrice != null && c.totalCargoPrice !== "" ? parseFloat(c.totalCargoPrice) : "");
+}
+
 // Automatically invalidate full-state cache on any mutating request
 app.use((req, res, next) => {
   if (req.method !== "GET" && req.path.startsWith("/api") && !req.path.startsWith("/api/audit-logs") && !req.path.startsWith("/api/auth")) {
@@ -1498,7 +1517,7 @@ async function formatAllRequestsForGoogleSheets() {
       cargoPrice: cargo.cargoPrice != null ? String(cargo.cargoPrice) : "",
       cargoPriceUom: cargo.cargoPriceUom || "",
       cbmPackingList: cargo.cbmPackingList != null ? String(cargo.cbmPackingList) : "",
-      totalCargoPrice: cargo.totalCargoPrice != null ? String(cargo.totalCargoPrice) : "",
+      totalCargoPrice: cargo ? String(getEffectiveTotalCargoPrice(cargo)) : "",
       modeOfTransport: cargo.modeOfTransport || "",
       cargoShippingDate: cargo.cargoShippingDate || "",
       cargoEta: cargo.cargoEta || "",
@@ -2487,7 +2506,7 @@ app.get("/api/state", async (req, res) => {
           ...c,
           cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
           cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
-          totalCargoPrice: c.totalCargoPrice ? parseFloat(c.totalCargoPrice) : "",
+          totalCargoPrice: getEffectiveTotalCargoPrice(c),
           cargoEtaHistory: safeJsonParse(c.cargoEtaHistory, [])
         }));
 
@@ -2703,7 +2722,7 @@ app.get("/api/state", async (req, res) => {
         ...c,
         cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
         cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
-        totalCargoPrice: c.totalCargoPrice ? parseFloat(c.totalCargoPrice) : ""
+        totalCargoPrice: getEffectiveTotalCargoPrice(c)
       }));
 
       const settings = {};
@@ -2916,7 +2935,7 @@ app.get("/api/cargos", async (req, res) => {
         ...c,
         cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
         cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
-        totalCargoPrice: c.totalCargoPrice ? parseFloat(c.totalCargoPrice) : ""
+        totalCargoPrice: getEffectiveTotalCargoPrice(c)
       }));
       res.json(cargos);
     } catch (err) {
@@ -3673,11 +3692,12 @@ app.post("/api/cargos", async (req, res) => {
           "currency" = EXCLUDED."currency",
           "cargoEtaHistory" = COALESCE(NULLIF(EXCLUDED."cargoEtaHistory", ''), cargos."cargoEtaHistory")
       `;
+      const effectiveTotal = getEffectiveTotalCargoPrice(c);
       const values = [
         c.id, c.vendorId, c.cargoOrderDate, c.cargoDetail,
-        c.cargoPrice === "" ? null : parseFloat(c.cargoPrice), c.cargoPriceUom || "",
-        c.cbmPackingList === "" ? null : parseFloat(c.cbmPackingList),
-        c.totalCargoPrice === "" ? null : parseFloat(c.totalCargoPrice),
+        c.cargoPrice === "" || c.cargoPrice == null ? null : parseFloat(c.cargoPrice), c.cargoPriceUom || "",
+        c.cbmPackingList === "" || c.cbmPackingList == null ? null : parseFloat(c.cbmPackingList),
+        effectiveTotal === "" || effectiveTotal == null ? null : parseFloat(effectiveTotal),
         c.modeOfTransport || "", c.cargoShippingDate || "", c.cargoEta || "",
         c.packingListFile || "", c.packingListData || "", c.invoiceFile || "", c.invoiceData || "", c.cargoReceiptFile || "", c.cargoReceiptData || "", c.isMaterialRec || "No", c.receivedDate || "", c.currency || "RMB",
         Array.isArray(c.cargoEtaHistory) ? JSON.stringify(c.cargoEtaHistory) : (c.cargoEtaHistory || "[]")

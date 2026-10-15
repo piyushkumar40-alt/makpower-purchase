@@ -3,7 +3,7 @@ import {
   PieChart, DollarSign, Building2, Truck, Package, Search, Filter, 
   Download, ArrowUpRight, CheckCircle2, AlertCircle, Layers, Coins, Globe, RefreshCw, BarChart2, Warehouse
 } from "lucide-react";
-import { formatIndianCurrency, normalizeCategoryName } from "../utils/formatters";
+import { formatIndianCurrency, normalizeCategoryName, calculateTotalCargoPrice } from "../utils/formatters";
 
 // Helper: Custom SVG Donut / Circle Chart Component with Interactive Hover Tooltips
 function CategoryDonutChart({ title, dataMap, colorPalette, totalAmount, currencySymbol = "₹" }) {
@@ -252,7 +252,7 @@ export default function CapitalPipelineStudio({
 
   // Card 3: Money at Transit (Goods Value + Freight Shipping Costs)
   const transitGoodsInr = transitRequests.reduce((sum, r) => sum + convertToInr(r.totalRmb || 0, r.currency), 0);
-  const transitFreightInr = inTransitCargos.reduce((sum, c) => sum + convertToInr(c.totalCargoPrice || 0, c.currency), 0);
+  const transitFreightInr = inTransitCargos.reduce((sum, c) => sum + convertToInr(calculateTotalCargoPrice(c) || 0, c.currency), 0);
   const transitMoneyInrTotal = transitGoodsInr + transitFreightInr;
 
   let transitGoodsRmb = 0, transitGoodsUsd = 0, transitGoodsInrVal = 0;
@@ -267,7 +267,7 @@ export default function CapitalPipelineStudio({
   let transitFreightRmb = 0, transitFreightUsd = 0, transitFreightInrVal = 0;
   inTransitCargos.forEach(c => {
     const cur = (c.currency || "RMB").toUpperCase();
-    const val = parseFloat(c.totalCargoPrice || 0);
+    const val = parseFloat(calculateTotalCargoPrice(c) || 0);
     if (cur === "USD") transitFreightUsd += val;
     else if (cur === "INR") transitFreightInrVal += val;
     else transitFreightRmb += val;

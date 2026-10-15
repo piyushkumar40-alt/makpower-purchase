@@ -35,7 +35,7 @@ import MasterOrderTracker, { getOrderStage } from "./MasterOrderTracker";
 import RequesterForm from "./RequesterForm";
 import CustomSelect from "./CustomSelect";
 import { useSortableData } from "../utils/useSortableData";
-import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol } from "../utils/formatters";
+import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol, calculateTotalCargoPrice } from "../utils/formatters";
 
 export default function RahulDashboard({ 
   currentUser = {}, 
@@ -130,9 +130,9 @@ export default function RahulDashboard({
       const c = cargos.find(x => x.id === r.cargoId || (r.cargoId && x.cargoDetail === r.cargoId));
       if (c && !pendingCargoSeen.has(c.id)) {
         pendingCargoSeen.add(c.id);
-        pendingCargoPriceTotal += parseFloat(c.totalCargoPrice || c.cargoPrice || 0);
+        pendingCargoPriceTotal += calculateTotalCargoPrice(c);
       } else if (!c && (r.totalCargoPrice || r.cargoPrice)) {
-        pendingCargoPriceTotal += parseFloat(r.totalCargoPrice || r.cargoPrice || 0);
+        pendingCargoPriceTotal += calculateTotalCargoPrice(r);
       }
     });
 
@@ -903,9 +903,9 @@ export default function RahulDashboard({
                         const c = cargos.find(x => x.id === r.cargoId || (r.cargoId && x.cargoDetail === r.cargoId));
                         if (c && !seenCargoIds.has(c.id)) {
                           seenCargoIds.add(c.id);
-                          cargoSum += parseFloat(c.totalCargoPrice || c.cargoPrice || 0);
+                          cargoSum += calculateTotalCargoPrice(c);
                         } else if (!c && (r.totalCargoPrice || r.cargoPrice)) {
-                          cargoSum += parseFloat(r.totalCargoPrice || r.cargoPrice || 0);
+                          cargoSum += calculateTotalCargoPrice(r);
                         }
                       });
                       return cargoSum > 0 ? (
@@ -1002,7 +1002,7 @@ export default function RahulDashboard({
                         title="Cargo Price" 
                         getValue={r => { 
                           const c = cargos.find(x => x.id === r.cargoId || (r.cargoId && x.cargoDetail === r.cargoId)); 
-                          return parseFloat(c?.totalCargoPrice || c?.cargoPrice || r.totalCargoPrice || r.cargoPrice || 0); 
+                          return calculateTotalCargoPrice(c, r); 
                         }} 
                       />
                       <RenderSortHeader colKey="isMaterialRec" title="Material Rec" />
@@ -1138,16 +1138,16 @@ export default function RahulDashboard({
                           <td style={{ whiteSpace: "nowrap" }}>
                             {(() => {
                               const c = cargo || cargos.find(x => r.cargoId && x.cargoDetail === r.cargoId);
-                              const total = c?.totalCargoPrice || r.totalCargoPrice;
+                              const total = calculateTotalCargoPrice(c, r);
                               const rate = c?.cargoPrice || r.cargoPrice;
                               const cur = c?.currency || r.currency || "RMB";
                               const uom = c?.cargoPriceUom || r.cargoPriceUom;
                               
-                              if (total || rate) {
+                              if (total > 0 || rate) {
                                 return (
                                   <div>
                                     <div style={{ fontWeight: 700, color: "#10b981", fontSize: "0.82rem" }}>
-                                      {total 
+                                      {total > 0 
                                         ? `${getCurrencySymbol(cur)}${Number(total).toLocaleString()}` 
                                         : `${getCurrencySymbol(cur)}${rate}`}
                                     </div>

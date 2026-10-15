@@ -545,3 +545,32 @@ export const getCurrencySymbol = (cur) => {
   if (c === "INR" || c === "RS" || c === "₹") return "₹";
   return "¥";
 };
+
+export const calculateTotalCargoPrice = (cargo, order) => {
+  const c = cargo || order;
+  if (!c) return 0;
+  const rate = parseFloat(c.cargoPrice || 0);
+  const uom = c.cargoPriceUom || "";
+  const basis = parseFloat(c.cbmPackingList || 0);
+  const stored = parseFloat(c.totalCargoPrice);
+
+  if (uom === "per CBM" || uom === "per KG") {
+    if (rate > 0 && basis > 0) {
+      if (isNaN(stored) || !stored || stored === rate) {
+        return rate * basis;
+      }
+      return stored;
+    }
+  } else if (uom === "per Pc") {
+    if (rate > 0 && basis > 0) {
+      if (isNaN(stored) || !stored || stored === rate) {
+        return rate * basis;
+      }
+      return stored;
+    }
+  }
+
+  if (!isNaN(stored) && stored > 0) return stored;
+  if (!isNaN(rate) && rate > 0) return rate;
+  return 0;
+};

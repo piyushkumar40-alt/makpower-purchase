@@ -10,7 +10,7 @@ import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
-import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob } from "../utils/formatters";
+import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice } from "../utils/formatters";
 import { useModalEscape } from "../utils/useModalEscape";
 import MasterOrderTracker from "./MasterOrderTracker";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
@@ -4440,6 +4440,7 @@ export default function PurchaserDashboard({
                           <div style={{ color: "var(--text-muted)" }}>Cargo Cost:</div>
                           <div style={{ fontWeight: 500 }}>
                             {getCurrencySymbol(cargo.currency)}{cargo.cargoPrice} ({cargo.cargoPriceUom || "Total"})
+                            {calculateTotalCargoPrice(cargo) ? ` | Total: ${getCurrencySymbol(cargo.currency)}${Number(calculateTotalCargoPrice(cargo)).toLocaleString()}` : ""}
                           </div>
                         </div>
                         <div>
@@ -5981,7 +5982,7 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
                 <div className="details-term">Cargo Detail:</div><div className="details-def">{cargo.cargoDetail || "—"}</div>
                 <div className="details-term">Cargo Cost:</div><div className="details-def">{cargo.cargoPrice ? `${getCurrencySymbol(cargo.currency)}${cargo.cargoPrice} (${cargo.cargoPriceUom || "Total"})` : "—"}</div>
                 <div className="details-term">{cargo.cargoPriceUom === "per Pc" ? "Total Pieces:" : cargo.cargoPriceUom === "per KG" ? "Weight (KG):" : "Volume (CBM):"}</div><div className="details-def">{cargo.cbmPackingList ? `${cargo.cbmPackingList} ${cargo.cargoPriceUom === "per Pc" ? "Pcs" : cargo.cargoPriceUom === "per KG" ? "KG" : "CBM"}` : "—"}</div>
-                <div className="details-term">Total Cargo Price:</div><div className="details-def">{cargo.totalCargoPrice ? `${getCurrencySymbol(cargo.currency)}${Number(cargo.totalCargoPrice).toLocaleString()}` : "—"}</div>
+                <div className="details-term">Total Cargo Price:</div><div className="details-def">{calculateTotalCargoPrice(cargo) ? `${getCurrencySymbol(cargo.currency)}${Number(calculateTotalCargoPrice(cargo)).toLocaleString()}` : "—"}</div>
                 <div className="details-term">Transport Mode:</div><div className="details-def" style={{ fontWeight: 600 }}>{cargo.modeOfTransport || "—"}</div>
                 <div className="details-term">Cargo Company:</div><div className="details-def">{cargoCompanies.find(cc => cc.id === cargo.cargoCompanyId)?.name || cargo.cargoDetail || "—"}</div>
                 <div className="details-term">Shipping Date:</div><div className="details-def">{cargo.cargoShippingDate || "—"}</div>
@@ -7180,7 +7181,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
   const totalPickedQty = Object.values(itemPickedQtyMap).reduce((sum, q) => sum + (parseFloat(q) || 0), 0);
 
   // Total Cargo price calculation
-  const totalCargoPrice = uom === "per CBM" 
+  const totalCargoPrice = (uom === "per CBM" || uom === "per KG") 
     ? (parseFloat(price || 0) * parseFloat(cbm || 0)) 
     : uom === "per Pc"
     ? (parseFloat(price || 0) * (parseFloat(cbm) || totalPickedQty || 1))
@@ -7363,7 +7364,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
               <input 
                 type="number" 
                 className="form-control" 
-                placeholder={uom === "per CBM" ? "Volume in m³" : uom === "per Pc" ? `Default: ${totalPickedQty} Pcs` : "Basis"} 
+                placeholder={uom === "per CBM" ? "Volume in m³" : uom === "per Pc" ? `Default: ${totalPickedQty} Pcs` : uom === "per KG" ? "Weight in KG" : "Basis"} 
                 value={cbm}
                 onChange={e => setCbm(e.target.value)}
                 min="0"
@@ -7706,7 +7707,7 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
   const cargoItems = requests.filter(r => r.cargoId === cargo.id);
   const totalItemPieces = cargoItems.reduce((sum, r) => sum + (parseFloat(r.vendorOrderQuantity || r.orderQuantity || 0)), 0);
 
-  const totalCargoPrice = uom === "per CBM" 
+  const totalCargoPrice = (uom === "per CBM" || uom === "per KG") 
     ? (parseFloat(price || 0) * parseFloat(cbm || 0)) 
     : uom === "per Pc"
     ? (parseFloat(price || 0) * (parseFloat(cbm) || totalItemPieces || 1))
@@ -7835,7 +7836,7 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
               <input 
                 type="number" 
                 className="form-control" 
-                placeholder={uom === "per CBM" ? "Volume in m³" : uom === "per Pc" ? `Default: ${totalItemPieces} Pcs` : "Basis"}
+                placeholder={uom === "per CBM" ? "Volume in m³" : uom === "per Pc" ? `Default: ${totalItemPieces} Pcs` : uom === "per KG" ? "Weight in KG" : "Basis"}
                 value={cbm}
                 onChange={e => setCbm(e.target.value)}
                 min="0"
@@ -9711,7 +9712,7 @@ export function CargoCompanyDetailModal({
                         <td>{c.cargoEta || "—"}</td>
                         <td>{c.cbmPackingList ? `${c.cbmPackingList} ${c.cargoPriceUom === "per Pc" ? "Pcs" : c.cargoPriceUom === "per KG" ? "KG" : "CBM"}` : "—"}</td>
                         <td>{c.modeOfTransport || "—"}</td>
-                        <td>{getCurrencySymbol(c.currency)}{Number(c.totalCargoPrice || 0).toLocaleString()}</td>
+                        <td>{getCurrencySymbol(c.currency)}{Number(calculateTotalCargoPrice(c) || 0).toLocaleString()}</td>
                         <td>{cargoItems.length} items</td>
                         <td>
                           <span className={`badge ${c.isMaterialRec === "Yes" ? "badge-received" : "badge-cargo"}`} style={{ fontSize: "0.7rem", padding: "2px 6px" }}>
