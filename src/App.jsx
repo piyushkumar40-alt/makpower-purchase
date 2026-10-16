@@ -3179,6 +3179,7 @@ export default function App() {
             items={items}
             purchasers={users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active")}
             onBatchUpdateRequests={batchUpdateRequests}
+            onUpdateCargo={updateCargo}
             onLogout={handleLogout}
           />
         )}

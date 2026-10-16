@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { 
   Ship, 
   Plane, 
@@ -21,10 +21,15 @@ import {
   X,
   AlertTriangle,
   Check,
-  Edit3
+  Edit3,
+  Upload,
+  CheckSquare,
+  RotateCcw
 } from "lucide-react";
 import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol, calculateTotalCargoPrice } from "../utils/formatters";
+import { uploadToCloudinary } from "../utils/upload";
 import CustomSelect from "./CustomSelect";
+import CargoDocumentModal from "./CargoDocumentModal";
 
 export default function BundledUpcomingShipments({
   cargos = [],
@@ -33,9 +38,19 @@ export default function BundledUpcomingShipments({
   cargoCompanies = [],
   purchasers = [],
   currentUser = {},
-  isViewOnly = true
+  isViewOnly = false,
+  onBatchUpdateRequests,
+  onUpdateCargo,
+  initialStatusFilter = "upcoming"
 }) {
-  const [statusFilter, setStatusFilter] = useState("upcoming"); // "upcoming" | "delivered" | "all"
+  const [statusFilter, setStatusFilter] = useState(initialStatusFilter || "upcoming"); // "upcoming" | "delivered" | "all" | "pending_bill_verification" | "missing_bill"
+
+  useEffect(() => {
+    if (initialStatusFilter) {
+      setStatusFilter(initialStatusFilter);
+    }
+  }, [initialStatusFilter]);
+
   const [vendorFilter, setVendorFilter] = useState("");
   const [carrierFilter, setCarrierFilter] = useState("");
   const [purchaserFilter, setPurchaserFilter] = useState("");
@@ -48,6 +63,31 @@ export default function BundledUpcomingShipments({
   const [inspectedOrder, setInspectedOrder] = useState(null);
   // ETA Revision History Modal
   const [selectedEtaHistory, setSelectedEtaHistory] = useState(null);
+  // Cargo Document Viewer & Attachment Modal
+  const [viewingCargoDoc, setViewingCargoDoc] = useState(null);
+
+  const handleOpenDocument = (cargo, docType, fileName, fileData, field, dataField) => {
+    if (!fileName) return;
+
+    let effectiveData = fileData;
+    // Check if any bundled item has packing list data as fallback
+    if (!effectiveData && docType?.toLowerCase().includes("packing")) {
+      const match = (requests || []).find(r => r.cargoId === cargo?.id && r.itemPackingListData);
+      if (match) {
+        effectiveData = match.itemPackingListData;
+      }
+    }
+
+    setViewingCargoDoc({
+      cargo,
+      docType,
+      fileName,
+      fileData: effectiveData || "",
+      field,
+      dataField,
+      isMissing: !effectiveData
+    });
+  };
 
   // Vendor & Carrier lookup maps
   const vendorMap = useMemo(() => {
@@ -109,6 +149,8 @@ export default function BundledUpcomingShipments({
     const upcomingValue = upcoming.reduce((sum, c) => sum + c.totalValueRmb, 0);
     const upcomingFreight = upcoming.reduce((sum, c) => sum + (calculateTotalCargoPrice(c) || 0), 0);
     const upcomingCbm = upcoming.reduce((sum, c) => sum + (Number(c.cbm) || 0), 0);
+    const pendingBillCount = enrichedCargos.filter(c => Boolean(c.invoiceFile) && c.billStatus !== "verified" && !c.billVerifiedAt).length;
+    const missingBillCount = enrichedCargos.filter(c => !c.invoiceFile).length;
 
     return {
       totalCargos: enrichedCargos.length,
@@ -118,7 +160,9 @@ export default function BundledUpcomingShipments({
       upcomingFreight,
       upcomingCbm,
       deliveredCount: delivered.length,
-      deliveredValue: delivered.reduce((sum, c) => sum + c.totalValueRmb, 0)
+      deliveredValue: delivered.reduce((sum, c) => sum + c.totalValueRmb, 0),
+      pendingBillCount,
+      missingBillCount
     };
   }, [enrichedCargos]);
 
@@ -128,6 +172,8 @@ export default function BundledUpcomingShipments({
       // 1. Status Filter
       if (statusFilter === "upcoming" && cargo.isDelivered) return false;
       if (statusFilter === "delivered" && !cargo.isDelivered) return false;
+      if (statusFilter === "pending_bill_verification" && (!cargo.invoiceFile || cargo.billStatus === "verified" || cargo.billVerifiedAt)) return false;
+      if (statusFilter === "missing_bill" && cargo.invoiceFile) return false;
 
       // 2. Vendor Filter
       if (vendorFilter && cargo.vendorId !== vendorFilter) return false;
@@ -187,6 +233,62 @@ export default function BundledUpcomingShipments({
     setFromDate("");
     setToDate("");
     setSearchQuery("");
+  };
+
+  // Action: Mark purchase for all items in a cargo lot
+  const handleMarkAllInCargo = async (cargoObj, status = "Yes") => {
+    if (!onBatchUpdateRequests) return;
+    const targetItems = status === "Yes"
+      ? (cargoObj.items || []).filter(it => it.purchaseUpdated !== "Yes")
+      : (cargoObj.items || []).filter(it => it.purchaseUpdated === "Yes");
+    if (targetItems.length === 0) return;
+    const updated = targetItems.map(it => ({
+      ...it,
+      purchaseUpdated: status
+    }));
+    await onBatchUpdateRequests(updated);
+  };
+
+  // Action: Toggle mark purchase for a single item (item-wise)
+  const handleToggleItemPurchase = async (itemObj, status = "Yes") => {
+    if (!onBatchUpdateRequests) return;
+    const updated = {
+      ...itemObj,
+      purchaseUpdated: status
+    };
+    await onBatchUpdateRequests([updated]);
+  };
+
+  // Action: Rahul Accounts marks bill as verified / unverified
+  const handleVerifyBill = async (cargoObj, newStatus = "verified") => {
+    if (!onUpdateCargo) return;
+    const isVerifying = newStatus === "verified";
+    const now = new Date().toISOString();
+    const updatedCargo = {
+      ...cargoObj,
+      billStatus: isVerifying ? "verified" : "pending_verification",
+      billVerifiedAt: isVerifying ? now : "",
+      billVerifiedBy: isVerifying ? (currentUser?.name || "Rahul Accounts") : ""
+    };
+    await onUpdateCargo(updatedCargo);
+  };
+
+  // Action: Purchaser / Admin uploads or replaces vendor bill for cargo
+  const handleBillUpload = async (cargoObj, file) => {
+    if (!file || !onUpdateCargo) return;
+    const url = await uploadToCloudinary(file, "makpower_docs");
+    const now = new Date().toISOString();
+    const updatedCargo = {
+      ...cargoObj,
+      invoiceFile: file.name,
+      invoiceData: url,
+      billUploadedAt: now,
+      billUploadedBy: currentUser?.name || currentUser?.id || "Purchaser",
+      billStatus: "pending_verification",
+      billVerifiedAt: "",
+      billVerifiedBy: ""
+    };
+    await onUpdateCargo(updatedCargo);
   };
 
   const vendorOptions = useMemo(() => [
@@ -332,6 +434,22 @@ export default function BundledUpcomingShipments({
               style={{ fontSize: "0.74rem", padding: "3px 10px" }}
             >
               ✅ Delivered ({stats.deliveredCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter("pending_bill_verification")}
+              className={`btn btn-sm ${statusFilter === "pending_bill_verification" ? "btn-warning" : "btn-secondary"}`}
+              style={{ fontSize: "0.74rem", padding: "3px 10px", fontWeight: 700 }}
+            >
+              📋 Pending Bill Verification ({stats.pendingBillCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter("missing_bill")}
+              className={`btn btn-sm ${statusFilter === "missing_bill" ? "btn-primary" : "btn-secondary"}`}
+              style={{ fontSize: "0.74rem", padding: "3px 10px" }}
+            >
+              ⚠️ Missing Bills ({stats.missingBillCount})
             </button>
             <button
               type="button"
@@ -490,25 +608,64 @@ export default function BundledUpcomingShipments({
                     </div>
                   </div>
 
-                  {/* Quick actions for cargo (matching screenshot layout with safe view-only state for Accounts) */}
+                  {/* Quick actions for cargo */}
                   <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-                    {!isDelivered && (
-                      <button 
-                        type="button"
-                        disabled={isViewOnly}
-                        className="btn btn-success btn-sm"
-                        style={{ 
-                          opacity: isViewOnly ? 0.8 : 1, 
-                          cursor: isViewOnly ? "not-allowed" : "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "5px"
-                        }}
-                        title={isViewOnly ? "Accounts View-Only: Cannot receive cargo" : undefined}
-                      >
-                        <Check size={14} /> Bulk Receive ({cargo.items.length} items)
-                      </button>
-                    )}
+                    {/* Mark All Purchase at top of lot (works for all items, even received) */}
+                    {cargo.items && cargo.items.length > 0 && (() => {
+                      const unmarkedItems = cargo.items.filter(it => it.purchaseUpdated !== "Yes");
+                      const allMarked = unmarkedItems.length === 0;
+
+                      if (!allMarked) {
+                        return (
+                          <button 
+                            type="button"
+                            onClick={() => handleMarkAllInCargo(cargo, "Yes")}
+                            className="btn btn-primary btn-sm"
+                            style={{ 
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              fontWeight: 600,
+                              boxShadow: "0 2px 6px rgba(56, 189, 248, 0.25)"
+                            }}
+                            title={`Mark all ${unmarkedItems.length} items in this cargo as Purchase Confirmed`}
+                          >
+                            <CheckSquare size={14} /> Mark Purchase (All {unmarkedItems.length} items)
+                          </button>
+                        );
+                      } else {
+                        return (
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                            <span 
+                              className="badge" 
+                              style={{ 
+                                background: "rgba(16, 185, 129, 0.15)", 
+                                color: "#10b981", 
+                                border: "1px solid rgba(16, 185, 129, 0.3)", 
+                                padding: "4px 10px", 
+                                fontSize: "0.78rem", 
+                                fontWeight: 700, 
+                                display: "inline-flex", 
+                                alignItems: "center", 
+                                gap: "5px" 
+                              }}
+                            >
+                              <CheckCircle2 size={13} /> All {cargo.items.length} Items Purchase Marked
+                            </span>
+                            <button 
+                              type="button"
+                              onClick={() => handleMarkAllInCargo(cargo, "No")}
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: "3px 8px", fontSize: "0.73rem", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                              title="Undo Mark Purchase for all items in this cargo"
+                            >
+                              <RotateCcw size={11} /> Unmark All
+                            </button>
+                          </div>
+                        );
+                      }
+                    })()}
+
                     <button 
                       type="button"
                       disabled={isViewOnly}
@@ -580,14 +737,14 @@ export default function BundledUpcomingShipments({
                 </div>
 
                 {/* Associated Files / Documents */}
-                <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", fontSize: "0.85rem", background: "rgba(0,0,0,0.1)", padding: "10px 16px", borderRadius: "8px", border: "1px solid var(--border-glass)", alignItems: "center", marginBottom: "16px" }}>
+                <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", fontSize: "0.85rem", background: "rgba(0,0,0,0.1)", padding: "10px 16px", borderRadius: "8px", border: "1px solid var(--border-glass)", alignItems: "center", marginBottom: "12px" }}>
                   <div style={{ fontWeight: 600, color: "var(--primary)" }}>Documents:</div>
                   <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
                     Packing List: {cargo.packingListFile ? (
                       <button
                         type="button"
-                        onClick={() => downloadOrOpenBlob(cargo.packingListData, cargo.packingListFile)}
-                        title={`Click to open ${cargo.packingListFile}`}
+                        onClick={() => handleOpenDocument(cargo, "Cargo Packing List", cargo.packingListFile, cargo.packingListData, "packingListFile", "packingListData")}
+                        title={`Click to open or inspect ${cargo.packingListFile}`}
                         className="doc-link-btn"
                         style={{
                           background: "rgba(56, 189, 248, 0.12)",
@@ -612,40 +769,70 @@ export default function BundledUpcomingShipments({
                     )}
                   </div>
                   <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                    Invoice: {cargo.invoiceFile ? (
-                      <button
-                        type="button"
-                        onClick={() => downloadOrOpenBlob(cargo.invoiceData, cargo.invoiceFile)}
-                        title={`Click to open ${cargo.invoiceFile}`}
-                        className="doc-link-btn"
-                        style={{
-                          background: "rgba(56, 189, 248, 0.12)",
-                          border: "1px solid rgba(56, 189, 248, 0.35)",
-                          padding: "3px 10px",
-                          borderRadius: "6px",
-                          cursor: "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          color: "var(--primary, #38bdf8)",
-                          textDecoration: "none",
-                          fontWeight: 600,
-                          fontSize: "0.83rem"
-                        }}
-                      >
-                        📄 {cargo.invoiceFile}
-                        <ExternalLink size={12} style={{ opacity: 0.85 }} />
-                      </button>
+                    Vendor Bill: {cargo.invoiceFile ? (
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDocument(cargo, "Vendor Bill (Invoice)", cargo.invoiceFile, cargo.invoiceData, "invoiceFile", "invoiceData")}
+                          title={`Click to open or inspect ${cargo.invoiceFile}`}
+                          className="doc-link-btn"
+                          style={{
+                            background: "rgba(56, 189, 248, 0.12)",
+                            border: "1px solid rgba(56, 189, 248, 0.35)",
+                            padding: "3px 10px",
+                            borderRadius: "6px",
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            color: "var(--primary, #38bdf8)",
+                            textDecoration: "none",
+                            fontWeight: 600,
+                            fontSize: "0.83rem"
+                          }}
+                        >
+                          📄 {cargo.invoiceFile}
+                          <ExternalLink size={12} style={{ opacity: 0.85 }} />
+                        </button>
+                        <label 
+                          className="btn btn-secondary btn-sm" 
+                          style={{ padding: "2px 7px", fontSize: "0.72rem", cursor: "pointer", margin: 0, height: "24px", display: "inline-flex", alignItems: "center", gap: "3px" }}
+                          title="Replace or upload a new bill file"
+                        >
+                          <Upload size={11} /> Replace
+                          <input 
+                            type="file" 
+                            accept=".pdf,.xlsx,.xls,.csv,image/*" 
+                            onChange={e => handleBillUpload(cargo, e.target.files[0])} 
+                            style={{ display: "none" }} 
+                          />
+                        </label>
+                      </div>
                     ) : (
-                      <span style={{ color: "var(--text-muted)" }}>Missing</span>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ color: "var(--danger)", fontWeight: 600 }}>Missing</span>
+                        <label 
+                          className="btn btn-warning btn-sm" 
+                          style={{ padding: "2px 8px", fontSize: "0.74rem", cursor: "pointer", margin: 0, display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 600 }}
+                          title="Upload Vendor Bill for this cargo shipment"
+                        >
+                          <Upload size={12} /> Upload Bill
+                          <input 
+                            type="file" 
+                            accept=".pdf,.xlsx,.xls,.csv,image/*" 
+                            onChange={e => handleBillUpload(cargo, e.target.files[0])} 
+                            style={{ display: "none" }} 
+                          />
+                        </label>
+                      </div>
                     )}
                   </div>
                   <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
                     Cargo Receipt: {cargo.cargoReceiptFile ? (
                       <button
                         type="button"
-                        onClick={() => downloadOrOpenBlob(cargo.cargoReceiptData, cargo.cargoReceiptFile)}
-                        title={`Click to open ${cargo.cargoReceiptFile}`}
+                        onClick={() => handleOpenDocument(cargo, "Cargo Delivery Receipt", cargo.cargoReceiptFile, cargo.cargoReceiptData, "cargoReceiptFile", "cargoReceiptData")}
+                        title={`Click to open or inspect ${cargo.cargoReceiptFile}`}
                         className="doc-link-btn"
                         style={{
                           background: "rgba(56, 189, 248, 0.12)",
@@ -671,67 +858,243 @@ export default function BundledUpcomingShipments({
                   </div>
                 </div>
 
+                {/* ==================== VENDOR BILL VERIFICATION TASK PANEL (4-DAY SLA) ==================== */}
+                {(() => {
+                  const hasBill = Boolean(cargo.invoiceFile);
+                  const isVerified = cargo.billStatus === "verified" || Boolean(cargo.billVerifiedAt);
+                  const uploadDateStr = cargo.billUploadedAt || cargo.cargoShippingDate || cargo.cargoOrderDate;
+                  const uploadTs = uploadDateStr ? new Date(uploadDateStr).getTime() : Date.now();
+                  const deadlineTs = uploadTs + (4 * 24 * 60 * 60 * 1000);
+                  const nowTs = Date.now();
+                  const msRemaining = deadlineTs - nowTs;
+                  const daysRemaining = Math.ceil(msRemaining / (1000 * 60 * 60 * 24));
+                  const isOverdue = daysRemaining < 0;
+                  const isDueToday = daysRemaining === 0;
+
+                  return (
+                    <div style={{
+                      marginBottom: "16px",
+                      background: hasBill 
+                        ? (isVerified ? "rgba(16, 185, 129, 0.08)" : "rgba(245, 158, 11, 0.09)") 
+                        : "rgba(239, 68, 68, 0.06)",
+                      border: hasBill 
+                        ? (isVerified ? "1px solid rgba(16, 185, 129, 0.25)" : "1px solid rgba(245, 158, 11, 0.35)") 
+                        : "1px solid rgba(239, 68, 68, 0.25)",
+                      borderRadius: "8px",
+                      padding: "10px 14px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "10px",
+                      fontSize: "0.84rem"
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                        <div style={{ 
+                          width: "30px", 
+                          height: "30px", 
+                          borderRadius: "6px", 
+                          display: "flex", 
+                          alignItems: "center", 
+                          justifyContent: "center",
+                          background: hasBill ? (isVerified ? "rgba(16, 185, 129, 0.2)" : "rgba(245, 158, 11, 0.2)") : "rgba(239, 68, 68, 0.15)",
+                          color: hasBill ? (isVerified ? "#10b981" : "#f59e0b") : "#ef4444"
+                        }}>
+                          {isVerified ? <CheckCircle2 size={16} /> : <FileText size={16} />}
+                        </div>
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                            <strong style={{ color: "var(--text-main)" }}>Vendor Bill Verification:</strong>
+                            {!hasBill ? (
+                              <span style={{ color: "#ef4444", fontWeight: 600 }}>
+                                ⚠️ Purchaser must upload bill (cargo assigned / departed vendor)
+                              </span>
+                            ) : isVerified ? (
+                              <span style={{ color: "#10b981", fontWeight: 700 }}>
+                                ✅ Verified by {cargo.billVerifiedBy || "Rahul Accounts"} on {new Date(cargo.billVerifiedAt).toLocaleDateString()}
+                              </span>
+                            ) : (
+                              <span style={{ 
+                                padding: "2px 8px", 
+                                borderRadius: "4px", 
+                                fontSize: "0.75rem", 
+                                fontWeight: 700,
+                                background: isOverdue ? "rgba(239, 68, 68, 0.18)" : isDueToday ? "rgba(245, 158, 11, 0.2)" : "rgba(56, 189, 248, 0.15)",
+                                color: isOverdue ? "#ef4444" : isDueToday ? "#f59e0b" : "#38bdf8",
+                                border: isOverdue ? "1px solid rgba(239, 68, 68, 0.35)" : isDueToday ? "1px solid rgba(245, 158, 11, 0.35)" : "1px solid rgba(56, 189, 248, 0.3)"
+                              }}>
+                                {isOverdue 
+                                  ? `🚨 OVERDUE by ${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) > 1 ? "s" : ""}!` 
+                                  : isDueToday 
+                                  ? "⚠️ Due Today (4-Day Verification SLA)" 
+                                  : `⏱️ ${daysRemaining} day${daysRemaining > 1 ? "s" : ""} left to verify (Due: ${new Date(deadlineTs).toLocaleDateString()})`}
+                              </span>
+                            )}
+                          </div>
+                          {hasBill && (
+                            <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                              Uploaded by: <strong>{cargo.billUploadedBy || "Purchaser"}</strong> {uploadDateStr ? `on ${new Date(uploadDateStr).toLocaleDateString()}` : ""}
+                              {!isVerified && " • Rahul Accounts must verify and mark verify bill within 4 days of upload."}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Action buttons for Rahul Accounts */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        {hasBill && !isVerified && (
+                          <button
+                            type="button"
+                            onClick={() => handleVerifyBill(cargo, "verified")}
+                            className="btn btn-success btn-sm"
+                            style={{ 
+                              padding: "4px 12px", 
+                              fontSize: "0.82rem", 
+                              fontWeight: 700, 
+                              display: "inline-flex", 
+                              alignItems: "center", 
+                              gap: "5px",
+                              boxShadow: "0 2px 6px rgba(16, 185, 129, 0.25)"
+                            }}
+                            title="Verify and confirm this vendor bill (Accounts Duty)"
+                          >
+                            <CheckCircle2 size={14} /> Verify Bill
+                          </button>
+                        )}
+                        {hasBill && isVerified && (
+                          <button
+                            type="button"
+                            onClick={() => handleVerifyBill(cargo, "pending_verification")}
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: "3px 8px", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                            title="Undo bill verification"
+                          >
+                            <RotateCcw size={11} /> Undo
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Combined Items List with Show Bundled Items Accordion */}
                 <div style={{ marginTop: "16px" }}>
-                  <details>
+                  <details open>
                     <summary style={{ cursor: "pointer", color: "var(--text-muted)", fontSize: "0.85rem", userSelect: "none", fontWeight: 600 }}>
                       Show Bundled Items ({cargo.items.length})
                     </summary>
                     <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "12px" }}>
-                      {cargo.items.map(item => (
-                        <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(255, 255, 255, 0.01)", border: "1px solid var(--border-glass)", padding: "10px 14px", borderRadius: "6px", fontSize: "0.85rem", flexWrap: "wrap", gap: "8px" }}>
-                          <div>
-                            <button 
-                              type="button"
-                              onClick={() => setInspectedOrder(item)}
-                              style={{
-                                background: "none",
-                                border: "none",
-                                color: "#38bdf8",
-                                cursor: "pointer",
-                                fontWeight: 700,
-                                textAlign: "left",
-                                padding: 0,
-                                textDecoration: "underline",
-                                fontSize: "inherit"
-                              }}
-                              title="Click to view full order details"
-                            >
-                              {item.model}
-                            </button> — Quantity: <strong>{item.vendorOrderQuantity || item.orderQuantity} units</strong>
-                            <span style={{ marginLeft: "10px", color: "var(--text-muted)", fontSize: "0.82rem" }}>
-                              📅 Order Date: <strong style={{ color: "var(--text-main)" }}>{item.orderDate || "—"}</strong>
-                            </span>
-                            <span className="badge" style={{ marginLeft: "8px", fontSize: "0.72rem", background: "rgba(56, 189, 248, 0.12)", color: "var(--primary)" }}>
-                              Purchaser: {getPurchaserDisplayName(item, purchasers)}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setInspectedOrder(item)}
-                              className="btn btn-secondary btn-sm"
-                              style={{ marginLeft: "8px", padding: "2px 8px", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "4px" }}
-                              title="View Order Details"
-                            >
-                              <Eye size={12} /> Order Details
-                            </button>
+                      {cargo.items.map(item => {
+                        const itemQty = Number(item.vendorOrderQuantity || item.orderQuantity) || 0;
+                        const unitCost = Number(item.priceRmb) || 0;
+                        const totalCost = Number(item.totalRmb) || (itemQty * unitCost);
+                        const isPurchaseMarked = item.purchaseUpdated === "Yes";
+                        const isReceived = item.isMaterialRec === "Yes";
+
+                        return (
+                          <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(255, 255, 255, 0.01)", border: "1px solid var(--border-glass)", padding: "10px 14px", borderRadius: "6px", fontSize: "0.85rem", flexWrap: "wrap", gap: "10px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                              <button 
+                                type="button"
+                                onClick={() => setInspectedOrder(item)}
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  color: "#38bdf8",
+                                  cursor: "pointer",
+                                  fontWeight: 700,
+                                  textAlign: "left",
+                                  padding: 0,
+                                  textDecoration: "underline",
+                                  fontSize: "inherit"
+                                }}
+                                title="Click to view full order details"
+                              >
+                                {item.model}
+                              </button> — Quantity: <strong>{itemQty} units</strong>
+                              <span style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>
+                                📅 Order Date: <strong style={{ color: "var(--text-main)" }}>{item.orderDate || "—"}</strong>
+                              </span>
+                              <span className="badge" style={{ fontSize: "0.72rem", background: "rgba(56, 189, 248, 0.12)", color: "var(--primary)" }}>
+                                Purchaser: {getPurchaserDisplayName(item, purchasers)}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setInspectedOrder(item)}
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: "2px 8px", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                                title="View Order Details"
+                              >
+                                <Eye size={12} /> Order Details
+                              </button>
+                            </div>
+
+                            <div style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
+                              {/* Item Cost & Total Cost */}
+                              <div style={{ textAlign: "right", display: "flex", flexDirection: "column", gap: "1px" }}>
+                                <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                                  Item Cost: <strong style={{ color: "var(--text-main)" }}>¥{unitCost.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</strong>
+                                </div>
+                                <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary)" }}>
+                                  Total Cost: ¥{totalCost.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                </div>
+                              </div>
+
+                              {/* Stage Badge: Received or In Transit */}
+                              <span style={{ 
+                                padding: "2px 8px", 
+                                borderRadius: "4px", 
+                                fontSize: "0.72rem", 
+                                fontWeight: 700, 
+                                background: isReceived ? "rgba(16, 185, 129, 0.15)" : "rgba(99, 102, 241, 0.15)",
+                                color: isReceived ? "#10b981" : "#818cf8",
+                                border: isReceived ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(99, 102, 241, 0.3)"
+                              }}>
+                                {isReceived ? "Warehouse Received" : "In Transit"}
+                              </span>
+
+                              {/* Item-wise Mark Purchase (Works even for received items) */}
+                              {isPurchaseMarked ? (
+                                <div style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                                  <span style={{ 
+                                    padding: "3px 8px", 
+                                    borderRadius: "4px", 
+                                    fontSize: "0.72rem", 
+                                    fontWeight: 700, 
+                                    background: "rgba(16, 185, 129, 0.15)", 
+                                    color: "#10b981",
+                                    border: "1px solid rgba(16, 185, 129, 0.3)",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px"
+                                  }}>
+                                    <CheckCircle2 size={12} /> Purchase Marked
+                                  </span>
+                                  <button 
+                                    type="button" 
+                                    onClick={() => handleToggleItemPurchase(item, "No")}
+                                    className="btn btn-secondary btn-sm"
+                                    style={{ padding: "2px 6px", fontSize: "0.72rem", height: "24px" }}
+                                    title="Undo Purchase Marked"
+                                  >
+                                    <RotateCcw size={11} /> Unmark
+                                  </button>
+                                </div>
+                              ) : (
+                                <button 
+                                  type="button" 
+                                  onClick={() => handleToggleItemPurchase(item, "Yes")}
+                                  className="btn btn-primary btn-sm"
+                                  style={{ padding: "3px 10px", fontSize: "0.76rem", display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 600 }}
+                                  title="Mark this item as Purchase Confirmed"
+                                >
+                                  <CheckSquare size={13} /> Mark Purchase
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-                            <span style={{ color: "var(--primary)", fontWeight: 600 }}>
-                              Price: ¥{Number(item.totalRmb || ((item.orderQuantity || 0) * (item.priceRmb || 0))).toLocaleString()}
-                            </span>
-                            <span style={{ 
-                              padding: "2px 8px", 
-                              borderRadius: "4px", 
-                              fontSize: "0.72rem", 
-                              fontWeight: 700, 
-                              background: item.isMaterialRec === "Yes" ? "rgba(16, 185, 129, 0.15)" : "rgba(99, 102, 241, 0.15)",
-                              color: item.isMaterialRec === "Yes" ? "#10b981" : "#818cf8"
-                            }}>
-                              {item.isMaterialRec === "Yes" ? "Received" : "In Transit"}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </details>
                 </div>
@@ -749,6 +1112,8 @@ export default function BundledUpcomingShipments({
           vendors={vendors}
           purchasers={purchasers}
           cargoCompanies={cargoCompanies}
+          requests={requests}
+          onUpdateCargo={onUpdateCargo}
           onClose={() => setInspectedOrder(null)}
         />
       )}
@@ -758,6 +1123,16 @@ export default function BundledUpcomingShipments({
         <EtaHistoryModal
           cargo={selectedEtaHistory}
           onClose={() => setSelectedEtaHistory(null)}
+        />
+      )}
+
+      {/* Cargo Document Modal (View / Download / Attach Missing) */}
+      {viewingCargoDoc && (
+        <CargoDocumentModal
+          docInfo={viewingCargoDoc}
+          onClose={() => setViewingCargoDoc(null)}
+          onUpdateCargo={onUpdateCargo}
+          bundledRequests={requests.filter(r => r.cargoId === viewingCargoDoc?.cargo?.id)}
         />
       )}
     </div>
@@ -832,8 +1207,10 @@ export function EtaHistoryModal({ cargo, onClose }) {
 }
 
 // Read-only Order Inspection Modal
-export function OrderInspectionModal({ order, cargos = [], vendors = [], purchasers = [], cargoCompanies = [], onClose }) {
+export function OrderInspectionModal({ order, cargos = [], vendors = [], purchasers = [], cargoCompanies = [], onClose, onUpdateCargo, requests = [] }) {
   if (!order) return null;
+
+  const [viewingDoc, setViewingDoc] = useState(null);
 
   const vendor = vendors.find(v => v.id === order.vendorId);
   const cargo = cargos.find(c => c.id === order.cargoId || String(c.id) === String(order.cargoId) || (order.cargoId && c.cargoDetail === order.cargoId));
@@ -848,6 +1225,26 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
   const unitPrice = Number(order.priceRmb) || 0;
   const qty = Number(order.orderQuantity) || 0;
   const totalVal = Number(order.totalRmb) || (unitPrice * qty);
+
+  const handleInspectDoc = (docType, fileName, fileData, field, dataField) => {
+    if (!fileName) return;
+    let effectiveData = fileData;
+    if (!effectiveData && docType?.toLowerCase().includes("packing")) {
+      const match = (requests || []).find(r => r.cargoId === cargo?.id && r.itemPackingListData);
+      if (match) {
+        effectiveData = match.itemPackingListData;
+      }
+    }
+    setViewingDoc({
+      cargo,
+      docType,
+      fileName,
+      fileData: effectiveData || "",
+      field,
+      dataField,
+      isMissing: !effectiveData
+    });
+  };
 
   return (
     <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1300 }}>
@@ -1019,10 +1416,10 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
               {cargo.packingListFile && (
                 <button
                   type="button"
-                  onClick={() => downloadOrOpenBlob(cargo.packingListData, cargo.packingListFile)}
+                  onClick={() => handleInspectDoc("Cargo Packing List", cargo.packingListFile, cargo.packingListData, "packingListFile", "packingListData")}
                   className="btn btn-secondary btn-sm"
                   style={{ fontSize: "0.72rem", padding: "3px 9px", display: "inline-flex", alignItems: "center", gap: "4px" }}
-                  title={`Open ${cargo.packingListFile}`}
+                  title={`Open or inspect ${cargo.packingListFile}`}
                 >
                   <FileText size={12} /> PL: {cargo.packingListFile}
                 </button>
@@ -1030,10 +1427,10 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
               {cargo.invoiceFile && (
                 <button
                   type="button"
-                  onClick={() => downloadOrOpenBlob(cargo.invoiceData, cargo.invoiceFile)}
+                  onClick={() => handleInspectDoc("Vendor Bill (Invoice)", cargo.invoiceFile, cargo.invoiceData, "invoiceFile", "invoiceData")}
                   className="btn btn-secondary btn-sm"
                   style={{ fontSize: "0.72rem", padding: "3px 9px", display: "inline-flex", alignItems: "center", gap: "4px" }}
-                  title={`Open ${cargo.invoiceFile}`}
+                  title={`Open or inspect ${cargo.invoiceFile}`}
                 >
                   <FileText size={12} /> INV: {cargo.invoiceFile}
                 </button>
@@ -1041,10 +1438,10 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
               {cargo.cargoReceiptFile && (
                 <button
                   type="button"
-                  onClick={() => downloadOrOpenBlob(cargo.cargoReceiptData, cargo.cargoReceiptFile)}
+                  onClick={() => handleInspectDoc("Cargo Delivery Receipt", cargo.cargoReceiptFile, cargo.cargoReceiptData, "cargoReceiptFile", "cargoReceiptData")}
                   className="btn btn-secondary btn-sm"
                   style={{ fontSize: "0.72rem", padding: "3px 9px", display: "inline-flex", alignItems: "center", gap: "4px" }}
-                  title={`Open ${cargo.cargoReceiptFile}`}
+                  title={`Open or inspect ${cargo.cargoReceiptFile}`}
                 >
                   <FileText size={12} /> CR: {cargo.cargoReceiptFile}
                 </button>
@@ -1067,6 +1464,16 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
             Close Inspection
           </button>
         </div>
+
+        {/* Document Modal inside Inspection */}
+        {viewingDoc && (
+          <CargoDocumentModal
+            docInfo={viewingDoc}
+            onClose={() => setViewingDoc(null)}
+            onUpdateCargo={onUpdateCargo}
+            bundledRequests={requests.filter(r => r.cargoId === cargo?.id)}
+          />
+        )}
       </div>
     </div>
   );

@@ -125,7 +125,8 @@ export default function MasterOrderTracker({
   isViewOnly: propIsViewOnly = false,
   onEditRequest,
   onNavigateStep,
-  onDeleteRequests
+  onDeleteRequests,
+  onUpdateCargo
 }) {
   const isViewOnly = Boolean(propIsViewOnly || currentUser?.role === "rahul");
   const isAdmin = Boolean(
@@ -1342,6 +1343,8 @@ export default function MasterOrderTracker({
           vendors={vendors}
           purchasers={purchasers}
           cargoCompanies={cargoCompanies}
+          requests={requests}
+          onUpdateCargo={onUpdateCargo}
           onClose={() => setInspectedOrder(null)}
         />
       )}

@@ -756,6 +756,12 @@ async function setupPgDatabase() {
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoReceiptFile" TEXT;
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoReceiptData" TEXT;
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoEtaHistory" TEXT;
+      ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billUploadedAt" TEXT;
+      ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billUploadedBy" TEXT;
+      ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billStatus" TEXT;
+      ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billVerifiedAt" TEXT;
+      ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billVerifiedBy" TEXT;
+      ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billVerificationNotes" TEXT;
     `);
 
     await pool.query(`
@@ -3668,8 +3674,9 @@ app.post("/api/cargos", async (req, res) => {
         INSERT INTO cargos (
           "id", "vendorId", "cargoOrderDate", "cargoDetail", "cargoPrice", "cargoPriceUom",
           "cbmPackingList", "totalCargoPrice", "modeOfTransport", "cargoShippingDate", "cargoEta",
-          "packingListFile", "packingListData", "invoiceFile", "invoiceData", "cargoReceiptFile", "cargoReceiptData", "isMaterialRec", "receivedDate", "currency", "cargoEtaHistory"
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+          "packingListFile", "packingListData", "invoiceFile", "invoiceData", "cargoReceiptFile", "cargoReceiptData", "isMaterialRec", "receivedDate", "currency", "cargoEtaHistory",
+          "billUploadedAt", "billUploadedBy", "billStatus", "billVerifiedAt", "billVerifiedBy", "billVerificationNotes"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
         ON CONFLICT ("id") DO UPDATE SET
           "vendorId" = EXCLUDED."vendorId",
           "cargoOrderDate" = EXCLUDED."cargoOrderDate",
@@ -3690,7 +3697,13 @@ app.post("/api/cargos", async (req, res) => {
           "isMaterialRec" = EXCLUDED."isMaterialRec",
           "receivedDate" = EXCLUDED."receivedDate",
           "currency" = EXCLUDED."currency",
-          "cargoEtaHistory" = COALESCE(NULLIF(EXCLUDED."cargoEtaHistory", ''), cargos."cargoEtaHistory")
+          "cargoEtaHistory" = COALESCE(NULLIF(EXCLUDED."cargoEtaHistory", ''), cargos."cargoEtaHistory"),
+          "billUploadedAt" = COALESCE(NULLIF(EXCLUDED."billUploadedAt", ''), cargos."billUploadedAt"),
+          "billUploadedBy" = COALESCE(NULLIF(EXCLUDED."billUploadedBy", ''), cargos."billUploadedBy"),
+          "billStatus" = COALESCE(NULLIF(EXCLUDED."billStatus", ''), cargos."billStatus"),
+          "billVerifiedAt" = EXCLUDED."billVerifiedAt",
+          "billVerifiedBy" = EXCLUDED."billVerifiedBy",
+          "billVerificationNotes" = EXCLUDED."billVerificationNotes"
       `;
       const effectiveTotal = getEffectiveTotalCargoPrice(c);
       const values = [
@@ -3700,7 +3713,8 @@ app.post("/api/cargos", async (req, res) => {
         effectiveTotal === "" || effectiveTotal == null ? null : parseFloat(effectiveTotal),
         c.modeOfTransport || "", c.cargoShippingDate || "", c.cargoEta || "",
         c.packingListFile || "", c.packingListData || "", c.invoiceFile || "", c.invoiceData || "", c.cargoReceiptFile || "", c.cargoReceiptData || "", c.isMaterialRec || "No", c.receivedDate || "", c.currency || "RMB",
-        Array.isArray(c.cargoEtaHistory) ? JSON.stringify(c.cargoEtaHistory) : (c.cargoEtaHistory || "[]")
+        Array.isArray(c.cargoEtaHistory) ? JSON.stringify(c.cargoEtaHistory) : (c.cargoEtaHistory || "[]"),
+        c.billUploadedAt || "", c.billUploadedBy || "", c.billStatus || "", c.billVerifiedAt || "", c.billVerifiedBy || "", c.billVerificationNotes || ""
       ];
       await pool.query(query, values);
       res.json({ success: true });

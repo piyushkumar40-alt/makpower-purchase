@@ -34,6 +34,7 @@ import BundledUpcomingShipments, { OrderInspectionModal } from "./BundledUpcomin
 import MasterOrderTracker, { getOrderStage } from "./MasterOrderTracker";
 import RequesterForm from "./RequesterForm";
 import CustomSelect from "./CustomSelect";
+import CargoDocumentModal from "./CargoDocumentModal";
 import { useSortableData } from "../utils/useSortableData";
 import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol, calculateTotalCargoPrice } from "../utils/formatters";
 
@@ -47,6 +48,7 @@ export default function RahulDashboard({
   users = [],
   items = [],
   onBatchUpdateRequests, 
+  onUpdateCargo,
   onLogout 
 }) {
   const getPurchaserName = (r) => getPurchaserDisplayName(r, purchasers);
@@ -55,12 +57,36 @@ export default function RahulDashboard({
     return localStorage.getItem("makpower_rahul_tab") || "pending";
   });
 
+  const [transitStatusFilter, setTransitStatusFilter] = useState("all");
+
   useEffect(() => {
     localStorage.setItem("makpower_rahul_tab", activeTab);
   }, [activeTab]);
 
   // Inspection modal state
   const [inspectedOrder, setInspectedOrder] = useState(null);
+  // Cargo Document Modal state
+  const [viewingCargoDoc, setViewingCargoDoc] = useState(null);
+
+  const handleOpenDocument = (cargo, docType, fileName, fileData, field, dataField) => {
+    if (!fileName) return;
+    let effectiveData = fileData;
+    if (!effectiveData && docType?.toLowerCase().includes("packing")) {
+      const match = (requests || []).find(r => r.cargoId === cargo?.id && r.itemPackingListData);
+      if (match) {
+        effectiveData = match.itemPackingListData;
+      }
+    }
+    setViewingCargoDoc({
+      cargo,
+      docType,
+      fileName,
+      fileData: effectiveData || "",
+      field,
+      dataField,
+      isMissing: !effectiveData
+    });
+  };
 
   // Multi-Level Filtration States
   const [quickStatus, setQuickStatus] = useState("all"); // "all" | "coming" | "pipeline" | "delivered" | "pending_mark" | "marked"
@@ -155,6 +181,28 @@ export default function RahulDashboard({
       upcomingShipmentsCount
     };
   }, [activeRequests, cargos]);
+
+  // Pending bill verification metrics (SLA: 4 days from purchaser bill upload)
+  const billVerificationStats = useMemo(() => {
+    let pendingCount = 0;
+    let overdueCount = 0;
+    const now = Date.now();
+
+    (cargos || []).forEach(c => {
+      const hasBill = Boolean(c.invoiceFile);
+      const isVerified = c.billStatus === "verified" || Boolean(c.billVerifiedAt);
+      if (hasBill && !isVerified) {
+        pendingCount++;
+        const uploadTime = new Date(c.billUploadedAt || c.cargoShippingDate || c.cargoOrderDate || now).getTime();
+        const deadline = uploadTime + (4 * 24 * 60 * 60 * 1000);
+        if (now > deadline) {
+          overdueCount++;
+        }
+      }
+    });
+
+    return { pendingCount, overdueCount };
+  }, [cargos]);
 
   // Filter requests: priced, vendor assigned (all items, not just Import)
   const eligibleRequests = useMemo(() => requests.filter(r => r.priceRmb && r.vendorId), [requests]);
@@ -537,6 +585,53 @@ export default function RahulDashboard({
 
       </div>
 
+      {/* ==================== HIGH-PRIORITY TASK BANNER: VENDOR BILL VERIFICATION SLA ==================== */}
+      {billVerificationStats.pendingCount > 0 && (
+        <div style={{
+          background: "linear-gradient(90deg, rgba(245, 158, 11, 0.14) 0%, rgba(239, 68, 68, 0.12) 100%)",
+          border: "1px solid rgba(245, 158, 11, 0.35)",
+          borderRadius: "10px",
+          padding: "12px 18px",
+          marginBottom: "18px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "12px"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div style={{ width: "38px", height: "38px", borderRadius: "8px", background: "rgba(245, 158, 11, 0.22)", display: "flex", alignItems: "center", justifyContent: "center", color: "#f59e0b" }}>
+              <AlertTriangle size={20} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--text-main)" }}>
+                ⚡ New Task Assigned: {billVerificationStats.pendingCount} Cargo Vendor Bill{billVerificationStats.pendingCount > 1 ? "s" : ""} Pending Verification
+              </div>
+              <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                Purchasers have uploaded bills for cargo shipments. Rahul Accounts must verify and mark verify bill in 4 days of upload.
+                {billVerificationStats.overdueCount > 0 && (
+                  <strong style={{ color: "#ef4444", marginLeft: "6px" }}>
+                    ({billVerificationStats.overdueCount} Overdue!)
+                  </strong>
+                )}
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => { 
+              setActiveTab("shipments"); 
+              setTransitStatusFilter("pending_bill_verification"); 
+              setCheckedIds([]); 
+            }}
+            className="btn btn-warning btn-sm"
+            style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px", boxShadow: "0 2px 8px rgba(245, 158, 11, 0.25)" }}
+          >
+            Review & Verify Bills ({billVerificationStats.pendingCount}) <ArrowRight size={14} />
+          </button>
+        </div>
+      )}
+
       {/* ==================== MAIN TAB BAR ==================== */}
       <div style={{ display: "flex", gap: "8px", marginBottom: "20px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "10px", flexWrap: "wrap" }}>
         
@@ -565,6 +660,19 @@ export default function RahulDashboard({
           style={{ color: "#38bdf8", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
         >
           <Ship size={15} /> Step 5: Transit Tracking ({cargos.length})
+          {billVerificationStats.pendingCount > 0 && (
+            <span style={{ 
+              background: "#f59e0b", 
+              color: "#000", 
+              fontSize: "0.72rem", 
+              fontWeight: 800, 
+              padding: "1px 6px", 
+              borderRadius: "10px", 
+              marginLeft: "4px" 
+            }}>
+              {billVerificationStats.pendingCount} Bills to Verify
+            </span>
+          )}
         </button>
 
         {/* Feature 2: Master Order Tracker */}
@@ -605,7 +713,10 @@ export default function RahulDashboard({
             cargoCompanies={cargoCompanies}
             purchasers={purchasers}
             currentUser={currentUser}
-            isViewOnly={true}
+            isViewOnly={false}
+            onBatchUpdateRequests={onBatchUpdateRequests}
+            onUpdateCargo={onUpdateCargo}
+            initialStatusFilter={transitStatusFilter}
           />
         </div>
       )}
@@ -1177,10 +1288,10 @@ export default function RahulDashboard({
                                 {cargo.packingListFile && (
                                   <button
                                     type="button"
-                                    onClick={() => downloadOrOpenBlob(cargo.packingListData, cargo.packingListFile)}
+                                    onClick={() => handleOpenDocument(cargo, "Cargo Packing List", cargo.packingListFile, cargo.packingListData, "packingListFile", "packingListData")}
                                     className="doc-link"
-                                    style={{ background: "none", border: "none", padding: 0, cursor: cargo.packingListData ? "pointer" : "default", fontSize: "0.7rem", display: "inline-flex", alignItems: "center", gap: "2px", color: "var(--primary)", textDecoration: cargo.packingListData ? "underline" : "none" }}
-                                    title={cargo.packingListData ? `Open ${cargo.packingListFile}` : cargo.packingListFile}
+                                    style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: "0.7rem", display: "inline-flex", alignItems: "center", gap: "2px", color: "var(--primary)", textDecoration: "underline" }}
+                                    title={`Click to open or inspect ${cargo.packingListFile}`}
                                   >
                                     📄 PL: {cargo.packingListFile.length > 11 ? `${cargo.packingListFile.substring(0, 9)}...` : cargo.packingListFile}
                                   </button>
@@ -1188,10 +1299,10 @@ export default function RahulDashboard({
                                 {cargo.invoiceFile && (
                                   <button
                                     type="button"
-                                    onClick={() => downloadOrOpenBlob(cargo.invoiceData, cargo.invoiceFile)}
+                                    onClick={() => handleOpenDocument(cargo, "Vendor Bill (Invoice)", cargo.invoiceFile, cargo.invoiceData, "invoiceFile", "invoiceData")}
                                     className="doc-link"
-                                    style={{ background: "none", border: "none", padding: 0, cursor: cargo.invoiceData ? "pointer" : "default", fontSize: "0.7rem", display: "inline-flex", alignItems: "center", gap: "2px", color: "var(--primary)", textDecoration: cargo.invoiceData ? "underline" : "none" }}
-                                    title={cargo.invoiceData ? `Open ${cargo.invoiceFile}` : cargo.invoiceFile}
+                                    style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: "0.7rem", display: "inline-flex", alignItems: "center", gap: "2px", color: "var(--primary)", textDecoration: "underline" }}
+                                    title={`Click to open or inspect ${cargo.invoiceFile}`}
                                   >
                                     📄 INV: {cargo.invoiceFile.length > 11 ? `${cargo.invoiceFile.substring(0, 9)}...` : cargo.invoiceFile}
                                   </button>
@@ -1199,10 +1310,10 @@ export default function RahulDashboard({
                                 {cargo.cargoReceiptFile && (
                                   <button
                                     type="button"
-                                    onClick={() => downloadOrOpenBlob(cargo.cargoReceiptData, cargo.cargoReceiptFile)}
+                                    onClick={() => handleOpenDocument(cargo, "Cargo Delivery Receipt", cargo.cargoReceiptFile, cargo.cargoReceiptData, "cargoReceiptFile", "cargoReceiptData")}
                                     className="doc-link"
-                                    style={{ background: "none", border: "none", padding: 0, cursor: cargo.cargoReceiptData ? "pointer" : "default", fontSize: "0.7rem", display: "inline-flex", alignItems: "center", gap: "2px", color: "var(--primary)", textDecoration: cargo.cargoReceiptData ? "underline" : "none" }}
-                                    title={cargo.cargoReceiptData ? `Open ${cargo.cargoReceiptFile}` : cargo.cargoReceiptFile}
+                                    style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: "0.7rem", display: "inline-flex", alignItems: "center", gap: "2px", color: "var(--primary)", textDecoration: "underline" }}
+                                    title={`Click to open or inspect ${cargo.cargoReceiptFile}`}
                                   >
                                     📄 CR: {cargo.cargoReceiptFile.length > 11 ? `${cargo.cargoReceiptFile.substring(0, 9)}...` : cargo.cargoReceiptFile}
                                   </button>
@@ -1231,7 +1342,19 @@ export default function RahulDashboard({
           vendors={vendors}
           purchasers={purchasers}
           cargoCompanies={cargoCompanies}
+          requests={requests}
+          onUpdateCargo={onUpdateCargo}
           onClose={() => setInspectedOrder(null)}
+        />
+      )}
+
+      {/* ==================== CARGO DOCUMENT MODAL ==================== */}
+      {viewingCargoDoc && (
+        <CargoDocumentModal
+          docInfo={viewingCargoDoc}
+          onClose={() => setViewingCargoDoc(null)}
+          onUpdateCargo={onUpdateCargo}
+          bundledRequests={requests.filter(r => r.cargoId === viewingCargoDoc?.cargo?.id)}
         />
       )}
 

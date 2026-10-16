@@ -461,28 +461,42 @@ export const getPurchaserDisplayName = (r, purchasers = []) => {
  * - For images & PDFs: opens in a new tab for instant viewing.
  * - For Excel (.xlsx, .xls), CSV, or other binary files: triggers a browser download so Excel or the OS opens it.
  */
-export const downloadOrOpenBlob = (fileData, fileName = "document") => {
+export const downloadOrOpenBlob = async (fileData, fileName = "document") => {
   if (!fileData) return false;
 
   const lowerName = String(fileName || "").toLowerCase();
+  const isImage = /\.(png|jpe?g|gif|webp|svg|bmp)(\?.*)?$/i.test(lowerName) || /\.(png|jpe?g|gif|webp|svg|bmp)(\?.*)?$/i.test(String(fileData));
+  const isPdf = /\.pdf(\?.*)?$/i.test(lowerName) || /\.pdf(\?.*)?$/i.test(String(fileData));
 
   // 1. HTTP or HTTPS web URL (e.g. Cloudinary CDN)
   if (typeof fileData === "string" && (fileData.startsWith("http://") || fileData.startsWith("https://"))) {
-    const isImage = /\.(png|jpe?g|gif|webp|svg|bmp)(\?.*)?$/i.test(lowerName) || /\.(png|jpe?g|gif|webp|svg|bmp)(\?.*)?$/i.test(fileData);
-    const isPdf = /\.pdf(\?.*)?$/i.test(lowerName) || /\.pdf(\?.*)?$/i.test(fileData);
-
     if (isImage || isPdf) {
       window.open(fileData, "_blank", "noopener,noreferrer");
-    } else {
-      // Trigger download for Excel / spreadsheets / binary docs
-      const a = document.createElement("a");
-      a.href = fileData;
-      a.target = "_blank";
-      a.download = fileName || "document";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      return true;
     }
+
+    // For spreadsheets (.xlsx, .xls, .csv) & binary documents:
+    // Fetch blob so download attribute works 100% with exact filename across all browsers
+    try {
+      const resp = await fetch(fileData);
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = fileName || "document.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+        return true;
+      }
+    } catch (err) {
+      console.warn("Direct blob download failed, falling back to window.open:", err);
+    }
+
+    // Fallback: direct window.open
+    window.open(fileData, "_blank");
     return true;
   }
 
@@ -513,10 +527,10 @@ export const downloadOrOpenBlob = (fileData, fileName = "document") => {
       const blob = new Blob([byteArray], { type: mime });
       const blobUrl = URL.createObjectURL(blob);
 
-      const isImage = mime.startsWith("image/");
-      const isPdf = mime === "application/pdf";
+      const isImg = mime.startsWith("image/");
+      const isPdfMime = mime === "application/pdf";
 
-      if (isImage || isPdf) {
+      if (isImg || isPdfMime) {
         window.open(blobUrl, "_blank");
       } else {
         const a = document.createElement("a");

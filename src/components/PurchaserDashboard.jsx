@@ -15,6 +15,7 @@ import { useModalEscape } from "../utils/useModalEscape";
 import MasterOrderTracker from "./MasterOrderTracker";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
 import AddEddModal from "./AddEddModal";
+import CargoDocumentModal from "./CargoDocumentModal";
 
 export { isRequestForUser, isVendorForUser, getPurchaserDisplayName };
 
@@ -506,21 +507,40 @@ export default function PurchaserDashboard({
   const handleOpenDocument = (cargo, docType, fileName, fileData, field, dataField) => {
     if (!fileName) return;
 
-    const lowerName = String(fileName || "").toLowerCase();
-    const isSpreadsheet = lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls") || lowerName.endsWith(".csv");
-    const isImage = /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(lowerName) || (typeof fileData === "string" && fileData.startsWith("data:image/"));
-    const isPdf = lowerName.endsWith(".pdf") || (typeof fileData === "string" && fileData.startsWith("data:application/pdf"));
-
-    if (fileData) {
-      if (isSpreadsheet) {
-        downloadOrOpenBlob(fileData, fileName);
-        return;
+    let effectiveData = fileData;
+    // Check if any bundled item has packing list data as fallback
+    if (!effectiveData && docType?.toLowerCase().includes("packing")) {
+      const match = (requests || []).find(r => r.cargoId === cargo?.id && r.itemPackingListData);
+      if (match) {
+        effectiveData = match.itemPackingListData;
       }
-      setViewingCargoDoc({ cargo, docType, fileName, fileData, field, dataField, isImage, isPdf, isSpreadsheet });
-      return;
     }
 
-    setViewingCargoDoc({ cargo, docType, fileName, fileData: "", field, dataField, isMissing: true, isSpreadsheet, isImage, isPdf });
+    setViewingCargoDoc({
+      cargo,
+      docType,
+      fileName,
+      fileData: effectiveData || "",
+      field,
+      dataField,
+      isMissing: !effectiveData
+    });
+  };
+
+  const handlePurchaserBillUpload = async (cargoObj, file) => {
+    if (!file || !onUpdateCargo) return;
+    const url = await uploadToCloudinary(file, "makpower_docs");
+    const now = new Date().toISOString();
+    onUpdateCargo({
+      ...cargoObj,
+      invoiceFile: file.name,
+      invoiceData: url,
+      billUploadedAt: now,
+      billUploadedBy: currentUser?.name || currentUser?.id || "Purchaser",
+      billStatus: "pending_verification",
+      billVerifiedAt: "",
+      billVerifiedBy: ""
+    });
   };
   // Vendor-ready bulk selection
   const [vrFilter, setVrFilter] = useState("");        // vendor filter for vendor-ready tab
@@ -4486,33 +4506,73 @@ export default function PurchaserDashboard({
                             <span style={{ color: "var(--text-muted)" }}>Missing</span>
                           )}
                         </div>
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                          Invoice: {cargo.invoiceFile ? (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenDocument(cargo, "Invoice", cargo.invoiceFile, cargo.invoiceData, "invoiceFile", "invoiceData")}
-                              title={`Click to open ${cargo.invoiceFile}`}
-                              className="doc-link-btn"
-                              style={{
-                                background: "rgba(56, 189, 248, 0.12)",
-                                border: "1px solid rgba(56, 189, 248, 0.35)",
-                                padding: "3px 10px",
-                                borderRadius: "6px",
-                                cursor: "pointer",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "6px",
-                                color: "var(--primary, #38bdf8)",
-                                textDecoration: "none",
-                                fontWeight: 600,
-                                fontSize: "0.83rem"
-                              }}
-                            >
-                              📄 {cargo.invoiceFile}
-                              <ExternalLink size={12} style={{ opacity: 0.85 }} />
-                            </button>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                          <span>Vendor Bill:</span>
+                          {cargo.invoiceFile ? (
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenDocument(cargo, "Invoice", cargo.invoiceFile, cargo.invoiceData, "invoiceFile", "invoiceData")}
+                                title={`Click to open ${cargo.invoiceFile}`}
+                                className="doc-link-btn"
+                                style={{
+                                  background: "rgba(56, 189, 248, 0.12)",
+                                  border: "1px solid rgba(56, 189, 248, 0.35)",
+                                  padding: "3px 10px",
+                                  borderRadius: "6px",
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                  color: "var(--primary, #38bdf8)",
+                                  textDecoration: "none",
+                                  fontWeight: 600,
+                                  fontSize: "0.83rem"
+                                }}
+                              >
+                                📄 {cargo.invoiceFile}
+                                <ExternalLink size={12} style={{ opacity: 0.85 }} />
+                              </button>
+                              <label
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: "2px 7px", fontSize: "0.72rem", cursor: "pointer", margin: 0, height: "24px", display: "inline-flex", alignItems: "center", gap: "3px" }}
+                                title="Replace or re-upload Vendor Bill"
+                              >
+                                <Upload size={11} /> Replace
+                                <input
+                                  type="file"
+                                  accept=".pdf,.xlsx,.xls,.csv,image/*"
+                                  onChange={e => handlePurchaserBillUpload(cargo, e.target.files[0])}
+                                  style={{ display: "none" }}
+                                />
+                              </label>
+                              {cargo.billStatus === "verified" || cargo.billVerifiedAt ? (
+                                <span style={{ color: "var(--success)", fontSize: "0.75rem", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                  <CheckCircle2 size={13} /> Bill Verified by {cargo.billVerifiedBy || "Rahul Accounts"}
+                                </span>
+                              ) : (
+                                <span style={{ color: "#f59e0b", fontSize: "0.75rem", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                  <Clock size={12} /> Awaiting Rahul Accounts Verification (4-day SLA)
+                                </span>
+                              )}
+                            </div>
                           ) : (
-                            <span style={{ color: "var(--text-muted)" }}>Missing</span>
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                              <span style={{ color: "var(--danger)", fontWeight: 600, fontSize: "0.78rem" }}>⚠️ Required (Cargo Left Vendor)</span>
+                              <label
+                                className="btn btn-warning btn-sm"
+                                style={{ padding: "2px 8px", fontSize: "0.74rem", cursor: "pointer", margin: 0, display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 700 }}
+                                title="Upload Vendor Bill for this cargo"
+                              >
+                                <Upload size={12} /> Upload Bill
+                                <input
+                                  type="file"
+                                  accept=".pdf,.xlsx,.xls,.csv,image/*"
+                                  onChange={e => handlePurchaserBillUpload(cargo, e.target.files[0])}
+                                  style={{ display: "none" }}
+                                />
+                              </label>
+                            </div>
                           )}
                         </div>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
@@ -7152,7 +7212,6 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
   const [packingListFile, setPackingListFile] = useState(null);   // { name, data }
   const [invoiceFile, setInvoiceFile] = useState(null);           // { name, data }
   const [cargoReceiptFile, setCargoReceiptFile] = useState(null); // { name, data }
-  const [isRec, setIsRec] = useState("No");
   const [showQuickCargoCompanyModal, setShowQuickCargoCompanyModal] = useState(false);
 
   const [itemPickedQtyMap, setItemPickedQtyMap] = useState(() => {
@@ -7208,7 +7267,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
       invoiceData: invoiceFile?.data || "",
       cargoReceiptFile: cargoReceiptFile?.name || "",
       cargoReceiptData: cargoReceiptFile?.data || "",
-      isMaterialRec: isRec
+      isMaterialRec: "No"
     }, itemPickedQtyMap);
   };
 
@@ -7495,14 +7554,6 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
             </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Is Cargo Received? (Bulk status)</label>
-            <select className="form-control" value={isRec} onChange={e => setIsRec(e.target.value)}>
-              <option value="No">No - In Transit</option>
-              <option value="Yes">Yes - Received at Warehouse</option>
-            </select>
-          </div>
-
           {/* Buttons */}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
             <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
@@ -7519,149 +7570,6 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
             if (newCompany?.id) setCargoCompanyId(newCompany.id);
           }}
         />
-      </div>
-    </div>
-  );
-}
-
-// 3b. CARGO DOCUMENT VIEWER & ATTACHMENT MODAL
-function CargoDocumentModal({ docInfo, onClose, onUpdateCargo }) {
-  useModalEscape(onClose);
-  if (!docInfo) return null;
-  const { cargo, docType, fileName, field, dataField } = docInfo;
-  const [currentData, setCurrentData] = useState(docInfo.fileData || "");
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState("");
-
-  const lowerName = String(fileName || "").toLowerCase();
-  const isSpreadsheet = lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls") || lowerName.endsWith(".csv");
-  const isImage = /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(lowerName) || (typeof currentData === "string" && currentData.startsWith("data:image/"));
-  const isPdf = lowerName.endsWith(".pdf") || (typeof currentData === "string" && currentData.startsWith("data:application/pdf"));
-
-  const handleAttachFile = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setIsUploading(true);
-    setUploadError("");
-    try {
-      const url = await uploadToCloudinary(file, "makpower_docs");
-      const finalData = url || "";
-      setCurrentData(finalData);
-      if (cargo && onUpdateCargo) {
-        onUpdateCargo({
-          ...cargo,
-          [field]: file.name,
-          [dataField]: finalData
-        });
-      }
-      // Immediately trigger open / download
-      downloadOrOpenBlob(finalData, file.name);
-    } catch (err) {
-      setUploadError(`Upload failed: ${err.message}`);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  return (
-    <div className="modal-overlay" style={{ zIndex: 1100 }}>
-      <div className="glass-panel modal-content" style={{ width: "95%", maxWidth: isImage || isPdf ? "850px" : "600px", maxHeight: "90vh", display: "flex", flexDirection: "column", padding: "24px", position: "relative" }}>
-        {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px", marginBottom: "16px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div style={{ width: "38px", height: "38px", borderRadius: "8px", background: "rgba(56, 189, 248, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--primary)" }}>
-              {isSpreadsheet ? <FileSpreadsheet size={22} /> : isImage ? <Eye size={22} /> : <FileText size={22} />}
-            </div>
-            <div>
-              <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700, color: "var(--text-main)" }}>{docType}</h3>
-              <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                Cargo: <span style={{ color: "var(--primary)", fontWeight: 600 }}>{cargo?.id || "—"}</span> &nbsp;|&nbsp; File: <span style={{ fontWeight: 600 }}>{fileName}</span>
-              </div>
-            </div>
-          </div>
-          <button type="button" onClick={onClose} className="btn-icon" style={{ cursor: "pointer", background: "none", border: "none", color: "var(--text-muted)" }}>
-            <X size={20} />
-          </button>
-        </div>
-
-        {/* Content Body */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "10px 0" }}>
-          {/* If Image and Data Present */}
-          {isImage && currentData && (
-            <div style={{ textAlign: "center", background: "rgba(0,0,0,0.3)", borderRadius: "10px", padding: "16px", marginBottom: "16px", border: "1px solid var(--border-glass)" }}>
-              <img src={currentData} alt={fileName} style={{ maxWidth: "100%", maxHeight: "55vh", objectFit: "contain", borderRadius: "6px" }} />
-            </div>
-          )}
-
-          {/* If PDF and Data Present */}
-          {isPdf && currentData && (
-            <div style={{ background: "rgba(0,0,0,0.3)", borderRadius: "10px", overflow: "hidden", marginBottom: "16px", border: "1px solid var(--border-glass)" }}>
-              <iframe src={currentData} title={fileName} style={{ width: "100%", height: "55vh", border: "none" }} />
-            </div>
-          )}
-
-          {/* If Data Present (Spreadsheet / Any) */}
-          {currentData ? (
-            <div style={{ background: "rgba(34, 197, 94, 0.08)", border: "1px solid rgba(34, 197, 94, 0.25)", borderRadius: "8px", padding: "14px", marginBottom: "16px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--success)", fontWeight: 600, fontSize: "0.9rem", marginBottom: "4px" }}>
-                <CheckCircle2 size={16} /> File Content Attached &amp; Ready
-              </div>
-              <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
-                Click below to open or download <strong>{fileName}</strong>.
-              </div>
-            </div>
-          ) : (
-            /* If Missing Data */
-            <div style={{ background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: "8px", padding: "16px", marginBottom: "16px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#f59e0b", fontWeight: 700, fontSize: "0.95rem", marginBottom: "8px" }}>
-                <AlertTriangle size={18} /> File Content Not Attached
-              </div>
-              <p style={{ margin: "0 0 14px 0", fontSize: "0.85rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
-                The filename is registered as <strong style={{ color: "var(--primary)" }}>{fileName}</strong>, but its file content needs to be attached to open. Attach the file now to view or download it anytime:
-              </p>
-              <label className="btn btn-primary" style={{ display: "inline-flex", alignItems: "center", gap: "8px", cursor: isUploading ? "wait" : "pointer" }}>
-                <Upload size={16} /> {isUploading ? "Uploading & Attaching..." : "Choose File to Attach & Open"}
-                <input type="file" accept=".xlsx,.xls,.csv,.pdf,image/*" disabled={isUploading} style={{ display: "none" }} onChange={handleAttachFile} />
-              </label>
-              {uploadError && <div style={{ color: "var(--danger)", fontSize: "0.8rem", marginTop: "8px" }}>{uploadError}</div>}
-            </div>
-          )}
-        </div>
-
-        {/* Footer Actions */}
-        <div style={{ borderTop: "1px solid var(--border-glass)", paddingTop: "14px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
-          <div>
-            <label className="btn btn-secondary btn-sm" style={{ display: "inline-flex", alignItems: "center", gap: "6px", cursor: isUploading ? "wait" : "pointer" }}>
-              <Upload size={14} /> {isUploading ? "Uploading..." : "Replace / Re-upload File"}
-              <input type="file" accept=".xlsx,.xls,.csv,.pdf,image/*" disabled={isUploading} style={{ display: "none" }} onChange={handleAttachFile} />
-            </label>
-          </div>
-          <div style={{ display: "flex", gap: "10px" }}>
-            {currentData && (
-              <>
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={() => downloadOrOpenBlob(currentData, fileName)}
-                  style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-                >
-                  <Download size={14} /> Download / Open
-                </button>
-                {(isImage || isPdf) && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => window.open(currentData, "_blank")}
-                    style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-                  >
-                    <ExternalLink size={14} /> Open in New Tab
-                  </button>
-                )}
-              </>
-            )}
-            <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Close</button>
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -8127,7 +8035,15 @@ function PendingDocumentsPanel({
     const result = await readFile(file);
     const cargo = cargos.find(c => c.id === cargoId);
     if (!cargo) return;
-    onUpdateCargo({ ...cargo, [field]: result.name, [dataField]: result.data });
+    const extraUpdates = {};
+    if (field === "invoiceFile") {
+      extraUpdates.billUploadedAt = new Date().toISOString();
+      extraUpdates.billUploadedBy = currentUser?.name || currentUser?.id || "Purchaser";
+      extraUpdates.billStatus = "pending_verification";
+      extraUpdates.billVerifiedAt = "";
+      extraUpdates.billVerifiedBy = "";
+    }
+    onUpdateCargo({ ...cargo, [field]: result.name, [dataField]: result.data, ...extraUpdates });
   };
 
   const handleItemPackingUpload = async (requestId, file) => {
@@ -8359,33 +8275,49 @@ function PendingDocumentsPanel({
                     )}
                   </div>
 
-                  {/* Invoice — one per cargo */}
+                  {/* Invoice / Vendor Bill — one per cargo */}
                   <div style={{ background: "rgba(0,0,0,0.15)", borderRadius: "8px", padding: "12px" }}>
-                    <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px", fontWeight: 600 }}>INVOICE</div>
+                    <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px", fontWeight: 600 }}>VENDOR BILL / INVOICE</div>
                     {cargo.invoiceFile ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", flexWrap: "wrap" }}>
-                        <span style={{ color: "var(--success)" }}>✓</span>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenDocument(cargo, "Invoice", cargo.invoiceFile, cargo.invoiceData, "invoiceFile", "invoiceData")}
-                          title={`Click to open ${cargo.invoiceFile}`}
-                          className="doc-link-btn"
-                          style={{ background: "rgba(56, 189, 248, 0.1)", border: "1px solid rgba(56, 189, 248, 0.3)", padding: "2px 8px", borderRadius: "4px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px", color: "var(--primary, #38bdf8)", fontSize: "0.82rem", fontWeight: 500 }}
-                        >
-                          📄 {cargo.invoiceFile} <ExternalLink size={11} />
-                        </button>
-                        <label style={{ cursor: "pointer", color: "var(--primary)", fontSize: "0.75rem" }}>
-                          Replace
-                          <input type="file" accept=".pdf,.xlsx,.xls,image/*" style={{ display: "none" }}
-                            onChange={e => handleCargoDocUpload(cargo.id, "invoiceFile", "invoiceData", e.target.files[0])} />
-                        </label>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", flexWrap: "wrap" }}>
+                          <span style={{ color: "var(--success)" }}>✓</span>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDocument(cargo, "Invoice", cargo.invoiceFile, cargo.invoiceData, "invoiceFile", "invoiceData")}
+                            title={`Click to open ${cargo.invoiceFile}`}
+                            className="doc-link-btn"
+                            style={{ background: "rgba(56, 189, 248, 0.1)", border: "1px solid rgba(56, 189, 248, 0.3)", padding: "2px 8px", borderRadius: "4px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px", color: "var(--primary, #38bdf8)", fontSize: "0.82rem", fontWeight: 500 }}
+                          >
+                            📄 {cargo.invoiceFile} <ExternalLink size={11} />
+                          </button>
+                          <label style={{ cursor: "pointer", color: "var(--primary)", fontSize: "0.75rem" }}>
+                            Replace
+                            <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" style={{ display: "none" }}
+                              onChange={e => handleCargoDocUpload(cargo.id, "invoiceFile", "invoiceData", e.target.files[0])} />
+                          </label>
+                        </div>
+                        {cargo.billStatus === "verified" || cargo.billVerifiedAt ? (
+                          <div style={{ color: "var(--success)", fontSize: "0.73rem", marginTop: "6px", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "3px" }}>
+                            <CheckCircle2 size={12} /> Verified by Accounts ({cargo.billVerifiedBy || "Rahul"}) on {new Date(cargo.billVerifiedAt).toLocaleDateString()}
+                          </div>
+                        ) : (
+                          <div style={{ color: "#f59e0b", fontSize: "0.73rem", marginTop: "6px", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: "3px" }}>
+                            <Clock size={12} /> Uploaded • Awaiting Rahul Accounts verification (4-day SLA)
+                          </div>
+                        )}
                       </div>
                     ) : (
-                      <label className="doc-upload-btn" style={{ height: "36px", padding: "6px 12px", fontSize: "0.8rem" }}>
-                        <Upload size={13} /> Upload Invoice
-                        <input type="file" accept=".pdf,.xlsx,.xls,image/*" style={{ display: "none" }}
-                          onChange={e => handleCargoDocUpload(cargo.id, "invoiceFile", "invoiceData", e.target.files[0])} />
-                      </label>
+                      <div>
+                        <label className="doc-upload-btn" style={{ height: "36px", padding: "6px 12px", fontSize: "0.8rem" }}>
+                          <Upload size={13} /> Upload Vendor Bill
+                          <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" style={{ display: "none" }}
+                            onChange={e => handleCargoDocUpload(cargo.id, "invoiceFile", "invoiceData", e.target.files[0])} />
+                        </label>
+                        <div style={{ color: "var(--danger)", fontSize: "0.72rem", marginTop: "4px" }}>
+                          * Must upload bill after cargo leaves vendor
+                        </div>
+                      </div>
                     )}
                   </div>
 
