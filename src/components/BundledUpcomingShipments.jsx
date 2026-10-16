@@ -150,7 +150,6 @@ export default function BundledUpcomingShipments({
     const upcomingFreight = upcoming.reduce((sum, c) => sum + (calculateTotalCargoPrice(c) || 0), 0);
     const upcomingCbm = upcoming.reduce((sum, c) => sum + (Number(c.cbm) || 0), 0);
     const pendingBillCount = enrichedCargos.filter(c => Boolean(c.invoiceFile) && c.billStatus !== "verified" && !c.billVerifiedAt).length;
-    const missingBillCount = enrichedCargos.filter(c => !c.invoiceFile).length;
 
     return {
       totalCargos: enrichedCargos.length,
@@ -161,8 +160,7 @@ export default function BundledUpcomingShipments({
       upcomingCbm,
       deliveredCount: delivered.length,
       deliveredValue: delivered.reduce((sum, c) => sum + c.totalValueRmb, 0),
-      pendingBillCount,
-      missingBillCount
+      pendingBillCount
     };
   }, [enrichedCargos]);
 
@@ -173,7 +171,6 @@ export default function BundledUpcomingShipments({
       if (statusFilter === "upcoming" && cargo.isDelivered) return false;
       if (statusFilter === "delivered" && !cargo.isDelivered) return false;
       if (statusFilter === "pending_bill_verification" && (!cargo.invoiceFile || cargo.billStatus === "verified" || cargo.billVerifiedAt)) return false;
-      if (statusFilter === "missing_bill" && cargo.invoiceFile) return false;
 
       // 2. Vendor Filter
       if (vendorFilter && cargo.vendorId !== vendorFilter) return false;
@@ -408,6 +405,30 @@ export default function BundledUpcomingShipments({
             ¥{stats.deliveredValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} received
           </div>
         </div>
+
+        {stats.pendingBillCount > 0 && (
+          <div 
+            onClick={() => setStatusFilter("pending_bill_verification")}
+            className="glass-panel" 
+            style={{ 
+              padding: "16px", 
+              cursor: "pointer", 
+              border: statusFilter === "pending_bill_verification" ? "2px solid #f59e0b" : "1px solid rgba(245, 158, 11, 0.35)",
+              background: "rgba(245, 158, 11, 0.08)" 
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "0.75rem", textTransform: "uppercase", fontWeight: 700, color: "#f59e0b" }}>Step 2: Bills to Verify</span>
+              <FileText size={18} style={{ color: "#f59e0b" }} />
+            </div>
+            <div style={{ fontSize: "1.6rem", fontWeight: 800, marginTop: "6px", color: "#f59e0b" }}>
+              {stats.pendingBillCount} <span style={{ fontSize: "0.8rem", fontWeight: 500, color: "var(--text-muted)" }}>Pending</span>
+            </div>
+            <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "4px" }}>
+              Uploaded by purchaser • 4-day SLA
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Multi-Level Filtration Panel */}
@@ -429,27 +450,19 @@ export default function BundledUpcomingShipments({
             </button>
             <button
               type="button"
+              onClick={() => setStatusFilter("pending_bill_verification")}
+              className={`btn btn-sm ${statusFilter === "pending_bill_verification" ? "btn-warning" : "btn-secondary"}`}
+              style={{ fontSize: "0.74rem", padding: "3px 10px", fontWeight: 700 }}
+            >
+              📋 Step 2: Pending Bill Verification ({stats.pendingBillCount})
+            </button>
+            <button
+              type="button"
               onClick={() => setStatusFilter("delivered")}
               className={`btn btn-sm ${statusFilter === "delivered" ? "btn-primary" : "btn-secondary"}`}
               style={{ fontSize: "0.74rem", padding: "3px 10px" }}
             >
               ✅ Delivered ({stats.deliveredCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter("pending_bill_verification")}
-              className={`btn btn-sm ${statusFilter === "pending_bill_verification" ? "btn-warning" : "btn-secondary"}`}
-              style={{ fontSize: "0.74rem", padding: "3px 10px", fontWeight: 700 }}
-            >
-              📋 Pending Bill Verification ({stats.pendingBillCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter("missing_bill")}
-              className={`btn btn-sm ${statusFilter === "missing_bill" ? "btn-primary" : "btn-secondary"}`}
-              style={{ fontSize: "0.74rem", padding: "3px 10px" }}
-            >
-              ⚠️ Missing Bills ({stats.missingBillCount})
             </button>
             <button
               type="button"
@@ -809,22 +822,7 @@ export default function BundledUpcomingShipments({
                         </label>
                       </div>
                     ) : (
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                        <span style={{ color: "var(--danger)", fontWeight: 600 }}>Missing</span>
-                        <label 
-                          className="btn btn-warning btn-sm" 
-                          style={{ padding: "2px 8px", fontSize: "0.74rem", cursor: "pointer", margin: 0, display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 600 }}
-                          title="Upload Vendor Bill for this cargo shipment"
-                        >
-                          <Upload size={12} /> Upload Bill
-                          <input 
-                            type="file" 
-                            accept=".pdf,.xlsx,.xls,.csv,image/*" 
-                            onChange={e => handleBillUpload(cargo, e.target.files[0])} 
-                            style={{ display: "none" }} 
-                          />
-                        </label>
-                      </div>
+                      <span style={{ color: "var(--text-muted)" }}>Not uploaded yet</span>
                     )}
                   </div>
                   <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
@@ -858,9 +856,12 @@ export default function BundledUpcomingShipments({
                   </div>
                 </div>
 
-                {/* ==================== VENDOR BILL VERIFICATION TASK PANEL (4-DAY SLA) ==================== */}
+                {/* ==================== STEP 2: VENDOR BILL VERIFICATION (ONLY SHOWN WHEN BILL IS UPLOADED) ==================== */}
                 {(() => {
                   const hasBill = Boolean(cargo.invoiceFile);
+                  // When bill is uploaded then it will show pending work, otherwise show nothing!
+                  if (!hasBill) return null;
+
                   const isVerified = cargo.billStatus === "verified" || Boolean(cargo.billVerifiedAt);
                   const uploadDateStr = cargo.billUploadedAt || cargo.cargoShippingDate || cargo.cargoOrderDate;
                   const uploadTs = uploadDateStr ? new Date(uploadDateStr).getTime() : Date.now();
@@ -874,12 +875,16 @@ export default function BundledUpcomingShipments({
                   return (
                     <div style={{
                       marginBottom: "16px",
-                      background: hasBill 
-                        ? (isVerified ? "rgba(16, 185, 129, 0.08)" : "rgba(245, 158, 11, 0.09)") 
-                        : "rgba(239, 68, 68, 0.06)",
-                      border: hasBill 
-                        ? (isVerified ? "1px solid rgba(16, 185, 129, 0.25)" : "1px solid rgba(245, 158, 11, 0.35)") 
-                        : "1px solid rgba(239, 68, 68, 0.25)",
+                      background: isVerified 
+                        ? "rgba(16, 185, 129, 0.08)" 
+                        : isOverdue 
+                        ? "rgba(239, 68, 68, 0.09)" 
+                        : "rgba(245, 158, 11, 0.09)",
+                      border: isVerified 
+                        ? "1px solid rgba(16, 185, 129, 0.25)" 
+                        : isOverdue 
+                        ? "1px solid rgba(239, 68, 68, 0.35)" 
+                        : "1px solid rgba(245, 158, 11, 0.35)",
                       borderRadius: "8px",
                       padding: "10px 14px",
                       display: "flex",
@@ -897,19 +902,15 @@ export default function BundledUpcomingShipments({
                           display: "flex", 
                           alignItems: "center", 
                           justifyContent: "center",
-                          background: hasBill ? (isVerified ? "rgba(16, 185, 129, 0.2)" : "rgba(245, 158, 11, 0.2)") : "rgba(239, 68, 68, 0.15)",
-                          color: hasBill ? (isVerified ? "#10b981" : "#f59e0b") : "#ef4444"
+                          background: isVerified ? "rgba(16, 185, 129, 0.2)" : isOverdue ? "rgba(239, 68, 68, 0.2)" : "rgba(245, 158, 11, 0.2)",
+                          color: isVerified ? "#10b981" : isOverdue ? "#ef4444" : "#f59e0b"
                         }}>
                           {isVerified ? <CheckCircle2 size={16} /> : <FileText size={16} />}
                         </div>
                         <div>
                           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                            <strong style={{ color: "var(--text-main)" }}>Vendor Bill Verification:</strong>
-                            {!hasBill ? (
-                              <span style={{ color: "#ef4444", fontWeight: 600 }}>
-                                ⚠️ Purchaser must upload bill (cargo assigned / departed vendor)
-                              </span>
-                            ) : isVerified ? (
+                            <strong style={{ color: "var(--text-main)" }}>Step 2: Vendor Bill Verification:</strong>
+                            {isVerified ? (
                               <span style={{ color: "#10b981", fontWeight: 700 }}>
                                 ✅ Verified by {cargo.billVerifiedBy || "Rahul Accounts"} on {new Date(cargo.billVerifiedAt).toLocaleDateString()}
                               </span>
@@ -919,36 +920,34 @@ export default function BundledUpcomingShipments({
                                 borderRadius: "4px", 
                                 fontSize: "0.75rem", 
                                 fontWeight: 700,
-                                background: isOverdue ? "rgba(239, 68, 68, 0.18)" : isDueToday ? "rgba(245, 158, 11, 0.2)" : "rgba(56, 189, 248, 0.15)",
-                                color: isOverdue ? "#ef4444" : isDueToday ? "#f59e0b" : "#38bdf8",
-                                border: isOverdue ? "1px solid rgba(239, 68, 68, 0.35)" : isDueToday ? "1px solid rgba(245, 158, 11, 0.35)" : "1px solid rgba(56, 189, 248, 0.3)"
+                                background: isOverdue ? "rgba(239, 68, 68, 0.18)" : isDueToday ? "rgba(245, 158, 11, 0.2)" : "rgba(245, 158, 11, 0.15)",
+                                color: isOverdue ? "#ef4444" : isDueToday ? "#f59e0b" : "#f59e0b",
+                                border: isOverdue ? "1px solid rgba(239, 68, 68, 0.35)" : "1px solid rgba(245, 158, 11, 0.35)"
                               }}>
                                 {isOverdue 
-                                  ? `🚨 OVERDUE by ${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) > 1 ? "s" : ""}!` 
+                                  ? `🚨 PENDING ALERT: OVERDUE by ${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) > 1 ? "s" : ""}! (4-Day SLA Exceeded)` 
                                   : isDueToday 
-                                  ? "⚠️ Due Today (4-Day Verification SLA)" 
-                                  : `⏱️ ${daysRemaining} day${daysRemaining > 1 ? "s" : ""} left to verify (Due: ${new Date(deadlineTs).toLocaleDateString()})`}
+                                  ? "⚠️ PENDING ALERT: Due Today (4-Day Verification SLA)" 
+                                  : `⏱️ PENDING ALERT: ${daysRemaining} day${daysRemaining > 1 ? "s" : ""} left to verify (Due: ${new Date(deadlineTs).toLocaleDateString()})`}
                               </span>
                             )}
                           </div>
-                          {hasBill && (
-                            <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                              Uploaded by: <strong>{cargo.billUploadedBy || "Purchaser"}</strong> {uploadDateStr ? `on ${new Date(uploadDateStr).toLocaleDateString()}` : ""}
-                              {!isVerified && " • Rahul Accounts must verify and mark verify bill within 4 days of upload."}
-                            </div>
-                          )}
+                          <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                            Uploaded by: <strong>{cargo.billUploadedBy || "Purchaser"}</strong> {uploadDateStr ? `on ${new Date(uploadDateStr).toLocaleDateString()}` : ""}
+                            {!isVerified && " • Bill uploaded by purchaser. Rahul Accounts must verify and mark verify bill within 4 days."}
+                          </div>
                         </div>
                       </div>
 
                       {/* Action buttons for Rahul Accounts */}
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        {hasBill && !isVerified && (
+                        {!isVerified && (
                           <button
                             type="button"
                             onClick={() => handleVerifyBill(cargo, "verified")}
                             className="btn btn-success btn-sm"
                             style={{ 
-                              padding: "4px 12px", 
+                              padding: "4px 14px", 
                               fontSize: "0.82rem", 
                               fontWeight: 700, 
                               display: "inline-flex", 
@@ -956,12 +955,12 @@ export default function BundledUpcomingShipments({
                               gap: "5px",
                               boxShadow: "0 2px 6px rgba(16, 185, 129, 0.25)"
                             }}
-                            title="Verify and confirm this vendor bill (Accounts Duty)"
+                            title="Verify and confirm this vendor bill (Step 2 Duty)"
                           >
-                            <CheckCircle2 size={14} /> Verify Bill
+                            <CheckCircle2 size={14} /> Verify Bill (Step 2)
                           </button>
                         )}
-                        {hasBill && isVerified && (
+                        {isVerified && (
                           <button
                             type="button"
                             onClick={() => handleVerifyBill(cargo, "pending_verification")}

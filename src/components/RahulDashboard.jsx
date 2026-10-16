@@ -605,7 +605,7 @@ export default function RahulDashboard({
             </div>
             <div>
               <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--text-main)" }}>
-                ⚡ New Task Assigned: {billVerificationStats.pendingCount} Cargo Vendor Bill{billVerificationStats.pendingCount > 1 ? "s" : ""} Pending Verification
+                ⚡ Step 2 Pending Work: {billVerificationStats.pendingCount} Cargo Vendor Bill{billVerificationStats.pendingCount > 1 ? "s" : ""} Pending Verification
               </div>
               <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
                 Purchasers have uploaded bills for cargo shipments. Rahul Accounts must verify and mark verify bill in 4 days of upload.
@@ -653,13 +653,13 @@ export default function RahulDashboard({
           <CheckCircle size={15} /> Marked in Ledger Archive ({submittedRequests.length})
         </button>
 
-        {/* Feature 1: Bundled Upcoming Shipments (Step 5) */}
+        {/* Feature 1: Bundled Upcoming Shipments (Transit Tracking & Step 2 Verification) */}
         <button 
           onClick={() => { setActiveTab("shipments"); setCheckedIds([]); }} 
           className={`tab-btn ${activeTab === "shipments" ? "active" : ""}`}
           style={{ color: "#38bdf8", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
         >
-          <Ship size={15} /> Step 5: Transit Tracking ({cargos.length})
+          <Ship size={15} /> Transit Tracking ({cargos.length})
           {billVerificationStats.pendingCount > 0 && (
             <span style={{ 
               background: "#f59e0b", 
@@ -670,7 +670,7 @@ export default function RahulDashboard({
               borderRadius: "10px", 
               marginLeft: "4px" 
             }}>
-              {billVerificationStats.pendingCount} Bills to Verify
+              Step 2: {billVerificationStats.pendingCount} Bills to Verify
             </span>
           )}
         </button>
@@ -1301,10 +1301,22 @@ export default function RahulDashboard({
                                     type="button"
                                     onClick={() => handleOpenDocument(cargo, "Vendor Bill (Invoice)", cargo.invoiceFile, cargo.invoiceData, "invoiceFile", "invoiceData")}
                                     className="doc-link"
-                                    style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: "0.7rem", display: "inline-flex", alignItems: "center", gap: "2px", color: "var(--primary)", textDecoration: "underline" }}
-                                    title={`Click to open or inspect ${cargo.invoiceFile}`}
+                                    style={{ 
+                                      background: "none", 
+                                      border: "none", 
+                                      padding: 0, 
+                                      cursor: "pointer", 
+                                      fontSize: "0.7rem", 
+                                      display: "inline-flex", 
+                                      alignItems: "center", 
+                                      gap: "2px", 
+                                      color: (cargo.billStatus === "verified" || cargo.billVerifiedAt) ? "#10b981" : "#f59e0b", 
+                                      textDecoration: "underline" 
+                                    }}
+                                    title={`Click to open or inspect ${cargo.invoiceFile} • ${(cargo.billStatus === "verified" || cargo.billVerifiedAt) ? "Step 2 Verified" : "Pending Step 2 Verification"}`}
                                   >
                                     📄 INV: {cargo.invoiceFile.length > 11 ? `${cargo.invoiceFile.substring(0, 9)}...` : cargo.invoiceFile}
+                                    {(cargo.billStatus === "verified" || cargo.billVerifiedAt) ? " ✓" : " ⏳"}
                                   </button>
                                 )}
                                 {cargo.cargoReceiptFile && (
