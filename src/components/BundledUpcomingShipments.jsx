@@ -102,11 +102,11 @@ export default function BundledUpcomingShipments({
     return map;
   }, [cargoCompanies]);
 
-  // Group requests by cargoId
+  // Group requests by cargoId - ONLY TRANSIT GOODS (Exclude received items)
   const cargoItemsMap = useMemo(() => {
     const map = {};
     (requests || []).forEach(r => {
-      if (r.cargoId && r.status !== "Cancelled") {
+      if (r.cargoId && r.status !== "Cancelled" && r.isMaterialRec !== "Yes") {
         if (!map[r.cargoId]) map[r.cargoId] = [];
         map[r.cargoId].push(r);
       }
@@ -114,52 +114,54 @@ export default function BundledUpcomingShipments({
     return map;
   }, [requests]);
 
-  // Enriched Cargos
+  // Enriched Cargos - In-Transit Goods Only
   const enrichedCargos = useMemo(() => {
-    return (cargos || []).map(cargo => {
-      const items = cargoItemsMap[cargo.id] || [];
-      const totalUnits = items.reduce((sum, it) => sum + (Number(it.orderQuantity) || 0), 0);
-      const totalValueRmb = items.reduce((sum, it) => {
-        const qty = Number(it.orderQuantity) || 0;
-        const price = Number(it.priceRmb) || 0;
-        return sum + (Number(it.totalRmb) || (qty * price));
-      }, 0);
-      const vendorName = vendorMap[cargo.vendorId]?.name || "Multiple / Unspecified Vendors";
-      const carrierName = carrierMap[cargo.cargoCompanyId]?.name || "Direct Logistics Carrier";
-      const isDelivered = cargo.isMaterialRec === "Yes";
+    return (cargos || [])
+      .filter(cargo => {
+        const isDelivered = cargo.isMaterialRec === "Yes" || cargo.status === "Delivered" || cargo.status === "Received";
+        if (isDelivered) return false;
+        const allItems = (requests || []).filter(r => r.cargoId === cargo.id && r.status !== "Cancelled");
+        if (allItems.length > 0 && allItems.every(it => it.isMaterialRec === "Yes")) {
+          return false;
+        }
+        return true;
+      })
+      .map(cargo => {
+        const items = cargoItemsMap[cargo.id] || [];
+        const totalUnits = items.reduce((sum, it) => sum + (Number(it.orderQuantity) || 0), 0);
+        const totalValueRmb = items.reduce((sum, it) => {
+          const qty = Number(it.orderQuantity) || 0;
+          const price = Number(it.priceRmb) || 0;
+          return sum + (Number(it.totalRmb) || (qty * price));
+        }, 0);
+        const vendorName = vendorMap[cargo.vendorId]?.name || "Multiple / Unspecified Vendors";
+        const carrierName = carrierMap[cargo.cargoCompanyId]?.name || "Direct Logistics Carrier";
 
-      return {
-        ...cargo,
-        items,
-        totalUnits,
-        totalValueRmb,
-        vendorName,
-        carrierName,
-        isDelivered
-      };
-    });
-  }, [cargos, cargoItemsMap, vendorMap, carrierMap]);
+        return {
+          ...cargo,
+          items,
+          totalUnits,
+          totalValueRmb,
+          vendorName,
+          carrierName
+        };
+      });
+  }, [cargos, requests, cargoItemsMap, vendorMap, carrierMap]);
 
-  // Metrics Bar
+  // Metrics Bar - In-Transit Goods Only
   const stats = useMemo(() => {
-    const upcoming = enrichedCargos.filter(c => !c.isDelivered);
-    const delivered = enrichedCargos.filter(c => c.isDelivered);
-
-    const upcomingUnits = upcoming.reduce((sum, c) => sum + c.totalUnits, 0);
-    const upcomingValue = upcoming.reduce((sum, c) => sum + c.totalValueRmb, 0);
-    const upcomingFreight = upcoming.reduce((sum, c) => sum + (calculateTotalCargoPrice(c) || 0), 0);
-    const upcomingCbm = upcoming.reduce((sum, c) => sum + (Number(c.cbm) || 0), 0);
+    const totalUnits = enrichedCargos.reduce((sum, c) => sum + c.totalUnits, 0);
+    const totalValue = enrichedCargos.reduce((sum, c) => sum + c.totalValueRmb, 0);
+    const totalFreight = enrichedCargos.reduce((sum, c) => sum + (calculateTotalCargoPrice(c) || 0), 0);
+    const totalCbm = enrichedCargos.reduce((sum, c) => sum + (Number(c.cbm) || 0), 0);
     const pendingBillCount = enrichedCargos.filter(c => Boolean(c.invoiceFile) && c.billStatus !== "verified" && !c.billVerifiedAt).length;
 
     return {
       totalCargos: enrichedCargos.length,
-      upcomingCount: upcoming.length,
-      upcomingUnits,
-      upcomingValue,
-      upcomingFreight,
-      upcomingCbm,
-      deliveredCount: delivered.length,
-      deliveredValue: delivered.reduce((sum, c) => sum + c.totalValueRmb, 0),
+      totalUnits,
+      totalValue,
+      totalFreight,
+      totalCbm,
       pendingBillCount
     };
   }, [enrichedCargos]);
@@ -168,8 +170,6 @@ export default function BundledUpcomingShipments({
   const filteredCargos = useMemo(() => {
     return enrichedCargos.filter(cargo => {
       // 1. Status Filter
-      if (statusFilter === "upcoming" && cargo.isDelivered) return false;
-      if (statusFilter === "delivered" && !cargo.isDelivered) return false;
       if (statusFilter === "pending_bill_verification" && (!cargo.invoiceFile || cargo.billStatus === "verified" || cargo.billVerifiedAt)) return false;
 
       // 2. Vendor Filter
@@ -342,19 +342,19 @@ export default function BundledUpcomingShipments({
           style={{ 
             padding: "16px", 
             cursor: "pointer", 
-            border: statusFilter === "upcoming" ? "2px solid #38bdf8" : "1px solid var(--border-glass)",
-            background: statusFilter === "upcoming" ? "rgba(56, 189, 248, 0.08)" : undefined 
+            border: (statusFilter === "upcoming" || statusFilter === "all") ? "2px solid #38bdf8" : "1px solid var(--border-glass)",
+            background: (statusFilter === "upcoming" || statusFilter === "all") ? "rgba(56, 189, 248, 0.08)" : undefined 
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: "0.75rem", textTransform: "uppercase", fontWeight: 700, color: "#38bdf8" }}>Upcoming In-Transit</span>
+            <span style={{ fontSize: "0.75rem", textTransform: "uppercase", fontWeight: 700, color: "#38bdf8" }}>In-Transit Cargos</span>
             <Ship size={18} style={{ color: "#38bdf8" }} />
           </div>
           <div style={{ fontSize: "1.6rem", fontWeight: 800, marginTop: "6px", color: "var(--text-main)" }}>
-            {stats.upcomingCount} <span style={{ fontSize: "0.8rem", fontWeight: 500, color: "var(--text-muted)" }}>Cargos</span>
+            {stats.totalCargos} <span style={{ fontSize: "0.8rem", fontWeight: 500, color: "var(--text-muted)" }}>Cargos</span>
           </div>
           <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "4px" }}>
-            {stats.upcomingUnits.toLocaleString()} Pcs bundled ({stats.upcomingCbm.toFixed(1)} CBM)
+            {stats.totalUnits.toLocaleString()} Pcs bundled ({stats.totalCbm.toFixed(1)} CBM)
           </div>
         </div>
 
@@ -364,7 +364,7 @@ export default function BundledUpcomingShipments({
             <DollarSign size={18} style={{ color: "#10b981" }} />
           </div>
           <div style={{ fontSize: "1.6rem", fontWeight: 800, marginTop: "6px", color: "#10b981" }}>
-            ¥{stats.upcomingValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+            ¥{stats.totalValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
           </div>
           <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "4px" }}>
             Goods value currently on water / air freight
@@ -377,32 +377,10 @@ export default function BundledUpcomingShipments({
             <Truck size={18} style={{ color: "#f59e0b" }} />
           </div>
           <div style={{ fontSize: "1.6rem", fontWeight: 800, marginTop: "6px", color: "#f59e0b" }}>
-            ¥{stats.upcomingFreight.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+            ¥{stats.totalFreight.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
           </div>
           <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "4px" }}>
             Carrier logistics freight expense
-          </div>
-        </div>
-
-        <div 
-          onClick={() => setStatusFilter("delivered")}
-          className="glass-panel" 
-          style={{ 
-            padding: "16px", 
-            cursor: "pointer", 
-            border: statusFilter === "delivered" ? "2px solid #22c55e" : "1px solid var(--border-glass)",
-            background: statusFilter === "delivered" ? "rgba(34, 197, 94, 0.08)" : undefined 
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: "0.75rem", textTransform: "uppercase", fontWeight: 700, color: "#22c55e" }}>Delivered & Cleared</span>
-            <CheckCircle2 size={18} style={{ color: "#22c55e" }} />
-          </div>
-          <div style={{ fontSize: "1.6rem", fontWeight: 800, marginTop: "6px", color: "#22c55e" }}>
-            {stats.deliveredCount} <span style={{ fontSize: "0.8rem", fontWeight: 500, color: "var(--text-muted)" }}>Cargos</span>
-          </div>
-          <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "4px" }}>
-            ¥{stats.deliveredValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} received
           </div>
         </div>
 
@@ -443,35 +421,21 @@ export default function BundledUpcomingShipments({
             <button
               type="button"
               onClick={() => setStatusFilter("upcoming")}
-              className={`btn btn-sm ${statusFilter === "upcoming" ? "btn-primary" : "btn-secondary"}`}
+              className={`btn btn-sm ${(statusFilter === "upcoming" || statusFilter === "all") ? "btn-primary" : "btn-secondary"}`}
               style={{ fontSize: "0.74rem", padding: "3px 10px" }}
             >
-              🚢 In Freight Transit ({stats.upcomingCount})
+              🚢 In Freight Transit ({stats.totalCargos})
             </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter("pending_bill_verification")}
-              className={`btn btn-sm ${statusFilter === "pending_bill_verification" ? "btn-warning" : "btn-secondary"}`}
-              style={{ fontSize: "0.74rem", padding: "3px 10px", fontWeight: 700 }}
-            >
-              📋 Step 2: Pending Bill Verification ({stats.pendingBillCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter("delivered")}
-              className={`btn btn-sm ${statusFilter === "delivered" ? "btn-primary" : "btn-secondary"}`}
-              style={{ fontSize: "0.74rem", padding: "3px 10px" }}
-            >
-              ✅ Delivered ({stats.deliveredCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter("all")}
-              className={`btn btn-sm ${statusFilter === "all" ? "btn-primary" : "btn-secondary"}`}
-              style={{ fontSize: "0.74rem", padding: "3px 10px" }}
-            >
-              🌟 All Cargos ({stats.totalCargos})
-            </button>
+            {stats.pendingBillCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setStatusFilter("pending_bill_verification")}
+                className={`btn btn-sm ${statusFilter === "pending_bill_verification" ? "btn-warning" : "btn-secondary"}`}
+                style={{ fontSize: "0.74rem", padding: "3px 10px", fontWeight: 700 }}
+              >
+                📋 Step 2: Pending Bill Verification ({stats.pendingBillCount})
+              </button>
+            )}
           </div>
         </div>
 
@@ -1045,14 +1009,14 @@ export default function BundledUpcomingShipments({
                                 borderRadius: "4px", 
                                 fontSize: "0.72rem", 
                                 fontWeight: 700, 
-                                background: isReceived ? "rgba(16, 185, 129, 0.15)" : "rgba(99, 102, 241, 0.15)",
-                                color: isReceived ? "#10b981" : "#818cf8",
-                                border: isReceived ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(99, 102, 241, 0.3)"
+                                background: "rgba(99, 102, 241, 0.15)",
+                                color: "#818cf8",
+                                border: "1px solid rgba(99, 102, 241, 0.3)"
                               }}>
-                                {isReceived ? "Warehouse Received" : "In Transit"}
+                                In Freight Transit
                               </span>
 
-                              {/* Item-wise Mark Purchase (Works even for received items) */}
+                              {/* Item-wise Mark Purchase */}
                               {isPurchaseMarked ? (
                                 <div style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
                                   <span style={{ 

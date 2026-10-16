@@ -182,13 +182,26 @@ export default function RahulDashboard({
     };
   }, [activeRequests, cargos]);
 
-  // Pending bill verification metrics (SLA: 4 days from purchaser bill upload)
+  // In-transit cargos strictly (excluding delivered/received cargos and completed cargos)
+  const inTransitCargos = useMemo(() => {
+    return (cargos || []).filter(c => {
+      const isDelivered = c.isMaterialRec === "Yes" || c.status === "Delivered" || c.status === "Received";
+      if (isDelivered) return false;
+      const cargoItems = (requests || []).filter(r => r.cargoId === c.id && r.status !== "Cancelled");
+      if (cargoItems.length > 0 && cargoItems.every(it => it.isMaterialRec === "Yes")) {
+        return false;
+      }
+      return true;
+    });
+  }, [cargos, requests]);
+
+  // Pending bill verification metrics (SLA: 4 days from purchaser bill upload) for in-transit shipments
   const billVerificationStats = useMemo(() => {
     let pendingCount = 0;
     let overdueCount = 0;
     const now = Date.now();
 
-    (cargos || []).forEach(c => {
+    (inTransitCargos || []).forEach(c => {
       const hasBill = Boolean(c.invoiceFile);
       const isVerified = c.billStatus === "verified" || Boolean(c.billVerifiedAt);
       if (hasBill && !isVerified) {
@@ -202,7 +215,7 @@ export default function RahulDashboard({
     });
 
     return { pendingCount, overdueCount };
-  }, [cargos]);
+  }, [inTransitCargos]);
 
   // Filter requests: priced, vendor assigned (all items, not just Import)
   const eligibleRequests = useMemo(() => requests.filter(r => r.priceRmb && r.vendorId), [requests]);
@@ -659,7 +672,7 @@ export default function RahulDashboard({
           className={`tab-btn ${activeTab === "shipments" ? "active" : ""}`}
           style={{ color: "#38bdf8", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
         >
-          <Ship size={15} /> Transit Tracking ({cargos.length})
+          <Ship size={15} /> Transit Tracking ({inTransitCargos.length})
           {billVerificationStats.pendingCount > 0 && (
             <span style={{ 
               background: "#f59e0b", 
@@ -707,8 +720,8 @@ export default function RahulDashboard({
       {activeTab === "shipments" && (
         <div className="card-fade-in">
           <BundledUpcomingShipments 
-            cargos={cargos}
-            requests={requests}
+            cargos={inTransitCargos}
+            requests={requests.filter(r => r.isMaterialRec !== "Yes" && r.status !== "Cancelled")}
             vendors={vendors}
             cargoCompanies={cargoCompanies}
             purchasers={purchasers}
