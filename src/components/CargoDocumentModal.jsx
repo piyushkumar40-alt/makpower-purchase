@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   X, 
   Upload, 
@@ -10,7 +10,9 @@ import {
   FileSpreadsheet, 
   Eye, 
   Loader2, 
-  Link2 
+  Link2,
+  Search,
+  Layers
 } from "lucide-react";
 import { useModalEscape } from "../utils/useModalEscape";
 import { uploadToCloudinary } from "../utils/upload";
@@ -18,7 +20,8 @@ import { downloadOrOpenBlob } from "../utils/formatters";
 
 /**
  * Reusable Cargo Document Viewer, Downloader & Attachment Modal.
- * Handles images, PDFs, Excel/CSV spreadsheets, and missing file attachments ("not even here").
+ * Handles images, PDFs, Excel/CSV spreadsheets (with live SheetJS table preview),
+ * and missing file attachments ("not even here").
  */
 export default function CargoDocumentModal({ 
   docInfo, 
@@ -35,11 +38,74 @@ export default function CargoDocumentModal({
   const [uploadError, setUploadError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
+  // Spreadsheet Live Preview States
+  const [parsedSheets, setParsedSheets] = useState({});
+  const [sheetNames, setSheetNames] = useState([]);
+  const [activeSheetIndex, setActiveSheetIndex] = useState(0);
+  const [isParsingSheet, setIsParsingSheet] = useState(false);
+  const [sheetParseError, setSheetParseError] = useState("");
+  const [tableSearch, setTableSearch] = useState("");
+
   const lowerName = String(fileName || "").toLowerCase();
   const isSpreadsheet = lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls") || lowerName.endsWith(".csv");
   const isImage = /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(lowerName) || (typeof currentData === "string" && currentData.startsWith("data:image/"));
   const isPdf = lowerName.endsWith(".pdf") || (typeof currentData === "string" && currentData.startsWith("data:application/pdf"));
   const isWebUrl = typeof currentData === "string" && (currentData.startsWith("http://") || currentData.startsWith("https://"));
+
+  // Parse spreadsheet when currentData is available
+  useEffect(() => {
+    if (!isSpreadsheet || !currentData) return;
+    let cancelled = false;
+    setIsParsingSheet(true);
+    setSheetParseError("");
+
+    async function loadSpreadsheet() {
+      try {
+        if (typeof window === "undefined" || !window.XLSX) {
+          throw new Error("Spreadsheet engine (SheetJS) is not loaded in browser.");
+        }
+
+        let workbook;
+        if (currentData.startsWith("http://") || currentData.startsWith("https://")) {
+          const resp = await fetch(currentData);
+          if (!resp.ok) throw new Error(`Could not fetch spreadsheet from CDN (${resp.status})`);
+          const arrayBuffer = await resp.arrayBuffer();
+          workbook = window.XLSX.read(arrayBuffer, { type: "array" });
+        } else if (currentData.startsWith("data:")) {
+          const base64Data = currentData.split(",")[1] || currentData;
+          workbook = window.XLSX.read(base64Data, { type: "base64" });
+        } else {
+          workbook = window.XLSX.read(currentData, { type: "base64" });
+        }
+
+        if (cancelled) return;
+
+        const sheets = {};
+        (workbook.SheetNames || []).forEach(name => {
+          const ws = workbook.Sheets[name];
+          const jsonRows = window.XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+          // Filter out completely blank rows
+          sheets[name] = jsonRows.filter(row => Array.isArray(row) && row.some(cell => cell !== "" && cell !== null && cell !== undefined));
+        });
+
+        setParsedSheets(sheets);
+        setSheetNames(workbook.SheetNames || []);
+        setActiveSheetIndex(0);
+      } catch (err) {
+        if (!cancelled) {
+          console.warn("Spreadsheet preview parser notice:", err);
+          setSheetParseError(err.message || "Spreadsheet preview could not be generated.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsParsingSheet(false);
+        }
+      }
+    }
+
+    loadSpreadsheet();
+    return () => { cancelled = true; };
+  }, [currentData, isSpreadsheet]);
 
   // Check if any bundled items have packing list data to offer as 1-click fallback
   const itemWithDoc = !currentData && docType?.toLowerCase().includes("packing")
@@ -109,8 +175,8 @@ export default function CargoDocumentModal({
         className="glass-panel modal-content" 
         style={{ 
           width: "95%", 
-          maxWidth: isImage || isPdf ? "850px" : "620px", 
-          maxHeight: "90vh", 
+          maxWidth: isSpreadsheet ? "1050px" : (isImage || isPdf ? "850px" : "620px"), 
+          maxHeight: "92vh", 
           display: "flex", 
           flexDirection: "column", 
           padding: "24px", 
@@ -192,47 +258,163 @@ export default function CargoDocumentModal({
 
           {/* If Data Present (Spreadsheet / Any File Attached) */}
           {currentData ? (
-            <div style={{ background: "rgba(34, 197, 94, 0.08)", border: "1px solid rgba(34, 197, 94, 0.25)", borderRadius: "10px", padding: "18px", marginBottom: "16px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--success)", fontWeight: 700, fontSize: "0.95rem", marginBottom: "6px" }}>
-                <CheckCircle2 size={18} /> File Content Attached &amp; Ready
-              </div>
-              <p style={{ margin: "0 0 16px 0", fontSize: "0.85rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
-                The document <strong>{fileName}</strong> is stored securely. You can download it directly to open in Excel or view it online.
-              </p>
+            <div style={{ background: "rgba(255, 255, 255, 0.02)", border: "1px solid var(--border-glass)", borderRadius: "10px", padding: "16px", marginBottom: "16px" }}>
               
-              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleDownload}
-                  style={{ display: "inline-flex", alignItems: "center", gap: "8px", fontWeight: 600, padding: "8px 16px" }}
-                >
-                  <Download size={16} /> Download {isSpreadsheet ? "Excel / CSV" : "Document"}
-                </button>
-
-                {googleDocsViewerUrl && isSpreadsheet && (
+              {/* Header Action Bar for Document */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "14px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--success)", fontWeight: 700, fontSize: "0.95rem" }}>
+                  <CheckCircle2 size={18} /> File Content Attached &amp; Ready
+                </div>
+                
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
                   <button
                     type="button"
-                    className="btn btn-secondary"
-                    onClick={() => window.open(googleDocsViewerUrl, "_blank", "noopener,noreferrer")}
-                    style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.85rem" }}
-                    title="View spreadsheet in Google Docs Viewer without needing MS Excel installed"
+                    className="btn btn-primary btn-sm"
+                    onClick={handleDownload}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 600, padding: "6px 14px" }}
                   >
-                    <Eye size={15} /> View in Google Docs Viewer <ExternalLink size={12} />
+                    <Download size={15} /> Download {isSpreadsheet ? "Excel (.xlsx)" : "Document"}
                   </button>
-                )}
 
-                {isWebUrl && !isSpreadsheet && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => window.open(currentData, "_blank", "noopener,noreferrer")}
-                    style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.85rem" }}
-                  >
-                    <ExternalLink size={15} /> Open Direct Link
-                  </button>
-                )}
+                  {googleDocsViewerUrl && isSpreadsheet && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => window.open(googleDocsViewerUrl, "_blank", "noopener,noreferrer")}
+                      style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.8rem" }}
+                      title="View in Google Docs Viewer"
+                    >
+                      <Eye size={14} /> Google Viewer <ExternalLink size={11} />
+                    </button>
+                  )}
+
+                  {isWebUrl && !isSpreadsheet && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => window.open(currentData, "_blank", "noopener,noreferrer")}
+                      style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.8rem" }}
+                    >
+                      <ExternalLink size={14} /> Direct URL
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {/* LIVE SPREADSHEET VIEWER (SheetJS) */}
+              {isSpreadsheet && (
+                <div>
+                  {isParsingSheet && (
+                    <div style={{ padding: "30px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.9rem" }}>
+                      <Loader2 size={24} className="spinner" style={{ marginBottom: "8px", color: "var(--primary)" }} />
+                      <div>Reading and rendering spreadsheet data...</div>
+                    </div>
+                  )}
+
+                  {!isParsingSheet && sheetNames.length > 0 && (() => {
+                    const currentSheetName = sheetNames[activeSheetIndex] || sheetNames[0];
+                    const rows = parsedSheets[currentSheetName] || [];
+                    const filteredRows = tableSearch.trim()
+                      ? rows.filter((r, idx) => idx === 0 || r.some(cell => String(cell || "").toLowerCase().includes(tableSearch.toLowerCase())))
+                      : rows;
+
+                    return (
+                      <div>
+                        {/* Sheet Tabs & Search */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "12px" }}>
+                          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
+                            {sheetNames.length > 1 && sheetNames.map((name, idx) => (
+                              <button
+                                key={name}
+                                type="button"
+                                onClick={() => setActiveSheetIndex(idx)}
+                                className={`btn btn-sm ${activeSheetIndex === idx ? "btn-primary" : "btn-secondary"}`}
+                                style={{ fontSize: "0.75rem", padding: "3px 10px", borderRadius: "6px" }}
+                              >
+                                <Layers size={11} style={{ marginRight: "4px" }} /> {name} ({parsedSheets[name]?.length || 0})
+                              </button>
+                            ))}
+                            {sheetNames.length === 1 && (
+                              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>
+                                📄 Sheet: <strong style={{ color: "var(--text-main)" }}>{currentSheetName}</strong> ({rows.length} rows)
+                              </span>
+                            )}
+                          </div>
+
+                          {rows.length > 0 && (
+                            <div style={{ position: "relative", width: "220px" }}>
+                              <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+                              <input
+                                type="text"
+                                placeholder="Search in sheet..."
+                                value={tableSearch}
+                                onChange={e => setTableSearch(e.target.value)}
+                                className="form-control"
+                                style={{ paddingLeft: "30px", height: "30px", fontSize: "0.78rem" }}
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Interactive Spreadsheet Data Table */}
+                        {filteredRows.length === 0 ? (
+                          <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                            No matching rows found for "{tableSearch}".
+                          </div>
+                        ) : (
+                          <div style={{ 
+                            maxHeight: "50vh", 
+                            overflow: "auto", 
+                            border: "1px solid var(--border-glass)", 
+                            borderRadius: "8px", 
+                            background: "rgba(0,0,0,0.2)" 
+                          }}>
+                            <table className="table table-dark table-sm table-hover" style={{ margin: 0, fontSize: "0.8rem", whiteSpace: "nowrap" }}>
+                              <thead>
+                                <tr style={{ background: "rgba(15, 23, 42, 0.95)", position: "sticky", top: 0, zIndex: 2 }}>
+                                  <th style={{ width: "40px", textAlign: "center", color: "var(--text-muted)", padding: "8px 10px", fontSize: "0.72rem", borderBottom: "2px solid var(--border-glass)" }}>#</th>
+                                  {(filteredRows[0] || []).map((headerCell, colIdx) => (
+                                    <th key={colIdx} style={{ padding: "8px 12px", color: "var(--primary)", fontWeight: 700, borderBottom: "2px solid var(--border-glass)" }}>
+                                      {headerCell !== "" && headerCell !== null && headerCell !== undefined ? String(headerCell) : `Col ${colIdx + 1}`}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {filteredRows.slice(1, 201).map((row, rIdx) => (
+                                  <tr key={rIdx} style={{ background: rIdx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)" }}>
+                                    <td style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.72rem", padding: "6px 10px" }}>{rIdx + 1}</td>
+                                    {(filteredRows[0] || []).map((_, cIdx) => (
+                                      <td key={cIdx} style={{ padding: "6px 12px" }}>
+                                        {row[cIdx] !== "" && row[cIdx] !== null && row[cIdx] !== undefined ? String(row[cIdx]) : "—"}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            {filteredRows.length > 201 && (
+                              <div style={{ padding: "8px 14px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.75rem", borderTop: "1px solid var(--border-glass)" }}>
+                                Showing first 200 rows of {filteredRows.length - 1} data rows. Download Excel file for complete ledger.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {!isParsingSheet && sheetParseError && (
+                    <div style={{ padding: "14px", background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.25)", borderRadius: "8px", fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                      <div style={{ color: "#f59e0b", fontWeight: 700, marginBottom: "4px" }}>Note on Online Preview:</div>
+                      {sheetParseError}
+                      <div style={{ marginTop: "8px" }}>
+                        Click <strong>Download Excel</strong> above to open this spreadsheet directly in Microsoft Excel, Apple Numbers, or WPS.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             /* If Missing Data ("not even here") */

@@ -588,3 +588,142 @@ export const calculateTotalCargoPrice = (cargo, order) => {
   if (!isNaN(rate) && rate > 0) return rate;
   return 0;
 };
+
+/**
+ * Calculates the SLA deadline and status for Step 2 Vendor Bill Verification.
+ * 
+ * Rules:
+ * 1. Has Bill: cargo must have invoiceFile / bill uploaded.
+ * 2. Material Received: cargo.isMaterialRec === "Yes" || Boolean(cargo.receivedDate).
+ * 3. Pre-condition for SLA: BOTH bill must be uploaded AND material must be received.
+ *    - If bill is uploaded BUT material is NOT received yet (e.g. in transit):
+ *      Not overdue! Status is "awaiting_material". SLA starts once warehouse receives goods.
+ * 4. Two Scenarios when both are present:
+ *    - Scenario 1 (Bill uploaded earlier, material received today/later):
+ *      Trigger date = Material Received Date (cargo.receivedDate).
+ *      Rahul has 3 working days (excluding Sunday) from material received date.
+ *    - Scenario 2 (Material received earlier, bill uploaded later):
+ *      Trigger date = Bill Upload Date (cargo.billUploadedAt).
+ *      Rahul has 3 working days (excluding Sunday) from bill upload date.
+ * 5. Working Days calculation (excluding Sunday):
+ *    Starting from triggerDate, count 3 days skipping getDay() === 0 (Sunday).
+ */
+export const calculateBillSlaStatus = (cargo) => {
+  const hasBill = Boolean(cargo?.invoiceFile);
+  if (!hasBill) {
+    return { hasBill: false, shouldShow: false };
+  }
+
+  const isVerified = cargo.billStatus === "verified" || Boolean(cargo.billVerifiedAt);
+  const isMaterialReceived = cargo.isMaterialRec === "Yes" || Boolean(cargo.receivedDate) || Boolean(cargo.actualReceivedDate);
+
+  if (!isMaterialReceived) {
+    return {
+      hasBill: true,
+      shouldShow: true,
+      isVerified,
+      isMaterialReceived: false,
+      scenario: "awaiting_material",
+      scenarioLabel: "In Freight Transit • Awaiting Material Receipt",
+      statusLabel: "Waiting for Warehouse Material Receipt",
+      isOverdue: false,
+      isDueToday: false,
+      daysRemaining: null,
+      deadlineDate: null,
+      billUploadedAt: cargo.billUploadedAt,
+      description: "Bill uploaded by purchaser • 3-day SLA countdown will begin once material is received at warehouse."
+    };
+  }
+
+  // Both bill uploaded AND material received!
+  const rawRec = cargo.receivedDate || cargo.actualReceivedDate || "";
+  const rawUpload = cargo.billUploadedAt || cargo.cargoShippingDate || cargo.cargoOrderDate || "";
+
+  const normRec = parseFlexibleDate(rawRec) || rawRec;
+  const normUpload = parseFlexibleDate(rawUpload) || rawUpload;
+
+  const recDateObj = normRec ? new Date(normRec) : null;
+  const uploadDateObj = normUpload ? new Date(normUpload) : null;
+
+  const recTs = recDateObj && !isNaN(recDateObj.getTime()) ? recDateObj.getTime() : 0;
+  const uploadTs = uploadDateObj && !isNaN(uploadDateObj.getTime()) ? uploadDateObj.getTime() : 0;
+
+  let triggerDateStr = "";
+  let triggerDateObj = null;
+  let scenario = "";
+
+  if (recTs >= uploadTs && recTs > 0) {
+    // Scenario 1: Bill uploaded earlier, material received today/later -> 3 days from material received date
+    triggerDateStr = normRec || rawRec;
+    triggerDateObj = recDateObj;
+    scenario = "material_received_after_bill";
+  } else if (uploadTs > 0) {
+    // Scenario 2: Material received earlier, bill uploaded later -> 3 days from bill upload date
+    triggerDateStr = normUpload || rawUpload;
+    triggerDateObj = uploadDateObj;
+    scenario = "bill_uploaded_after_material";
+  } else {
+    triggerDateStr = normRec || normUpload || new Date().toISOString().split("T")[0];
+    triggerDateObj = new Date(triggerDateStr);
+    scenario = "standard";
+  }
+
+  // Add 3 working days excluding Sundays
+  const cur = new Date(triggerDateObj.getFullYear(), triggerDateObj.getMonth(), triggerDateObj.getDate());
+  let addedWorkingDays = 0;
+  while (addedWorkingDays < 3) {
+    cur.setDate(cur.getDate() + 1);
+    if (cur.getDay() !== 0) { // 0 is Sunday
+      addedWorkingDays++;
+    }
+  }
+  cur.setHours(23, 59, 59, 999);
+
+  const now = new Date();
+  const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const deadlineMidnight = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate()).getTime();
+
+  let diffDays = 0;
+  if (nowMidnight > deadlineMidnight) {
+    let c = new Date(deadlineMidnight);
+    while (c < nowMidnight) {
+      c.setDate(c.getDate() + 1);
+      if (c.getDay() !== 0) {
+        diffDays--;
+      }
+    }
+  } else if (nowMidnight < deadlineMidnight) {
+    let c = new Date(nowMidnight);
+    while (c < deadlineMidnight) {
+      c.setDate(c.getDate() + 1);
+      if (c.getDay() !== 0) {
+        diffDays++;
+      }
+    }
+  } else {
+    diffDays = 0;
+  }
+
+  const isOverdue = diffDays < 0;
+  const isDueToday = diffDays === 0;
+
+  return {
+    hasBill: true,
+    shouldShow: true,
+    isVerified,
+    isMaterialReceived: true,
+    scenario,
+    scenarioLabel: scenario === "material_received_after_bill" 
+      ? "Scenario 1: Bill Uploaded Earlier • Material Received Later" 
+      : "Scenario 2: Material Received Earlier • Bill Uploaded Later",
+    triggerDate: triggerDateStr,
+    deadlineDate: cur,
+    deadlineFormatted: cur.toLocaleDateString(),
+    daysRemaining: diffDays,
+    isOverdue,
+    isDueToday,
+    description: scenario === "material_received_after_bill"
+      ? `Material received on ${rawRec || triggerDateStr}. Rahul Accounts has 3 working days (excl. Sunday) from receipt date to verify bill.`
+      : `Bill uploaded on ${rawUpload ? new Date(rawUpload).toLocaleDateString() : triggerDateStr}. Rahul Accounts has 3 working days (excl. Sunday) from upload date to verify bill.`
+  };
+};

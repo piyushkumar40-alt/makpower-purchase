@@ -26,7 +26,7 @@ import {
   CheckSquare,
   RotateCcw
 } from "lucide-react";
-import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol, calculateTotalCargoPrice } from "../utils/formatters";
+import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus } from "../utils/formatters";
 import { uploadToCloudinary } from "../utils/upload";
 import CustomSelect from "./CustomSelect";
 import CargoDocumentModal from "./CargoDocumentModal";
@@ -821,20 +821,15 @@ export default function BundledUpcomingShipments({
                 </div>
 
                 {/* ==================== STEP 2: VENDOR BILL VERIFICATION (ONLY SHOWN WHEN BILL IS UPLOADED) ==================== */}
+                {/* ==================== STEP 2: VENDOR BILL VERIFICATION (ONLY SHOWN WHEN BILL IS UPLOADED) ==================== */}
                 {(() => {
-                  const hasBill = Boolean(cargo.invoiceFile);
-                  // When bill is uploaded then it will show pending work, otherwise show nothing!
-                  if (!hasBill) return null;
+                  const sla = calculateBillSlaStatus(cargo);
+                  if (!sla.shouldShow) return null;
 
-                  const isVerified = cargo.billStatus === "verified" || Boolean(cargo.billVerifiedAt);
-                  const uploadDateStr = cargo.billUploadedAt || cargo.cargoShippingDate || cargo.cargoOrderDate;
-                  const uploadTs = uploadDateStr ? new Date(uploadDateStr).getTime() : Date.now();
-                  const deadlineTs = uploadTs + (4 * 24 * 60 * 60 * 1000);
-                  const nowTs = Date.now();
-                  const msRemaining = deadlineTs - nowTs;
-                  const daysRemaining = Math.ceil(msRemaining / (1000 * 60 * 60 * 24));
-                  const isOverdue = daysRemaining < 0;
-                  const isDueToday = daysRemaining === 0;
+                  const isVerified = sla.isVerified;
+                  const isOverdue = sla.isOverdue;
+                  const isDueToday = sla.isDueToday;
+                  const isAwaitingMaterial = !sla.isMaterialReceived;
 
                   return (
                     <div style={{
@@ -843,11 +838,15 @@ export default function BundledUpcomingShipments({
                         ? "rgba(16, 185, 129, 0.08)" 
                         : isOverdue 
                         ? "rgba(239, 68, 68, 0.09)" 
+                        : isAwaitingMaterial
+                        ? "rgba(56, 189, 248, 0.08)"
                         : "rgba(245, 158, 11, 0.09)",
                       border: isVerified 
                         ? "1px solid rgba(16, 185, 129, 0.25)" 
                         : isOverdue 
                         ? "1px solid rgba(239, 68, 68, 0.35)" 
+                        : isAwaitingMaterial
+                        ? "1px solid rgba(56, 189, 248, 0.28)"
                         : "1px solid rgba(245, 158, 11, 0.35)",
                       borderRadius: "8px",
                       padding: "10px 14px",
@@ -866,10 +865,10 @@ export default function BundledUpcomingShipments({
                           display: "flex", 
                           alignItems: "center", 
                           justifyContent: "center",
-                          background: isVerified ? "rgba(16, 185, 129, 0.2)" : isOverdue ? "rgba(239, 68, 68, 0.2)" : "rgba(245, 158, 11, 0.2)",
-                          color: isVerified ? "#10b981" : isOverdue ? "#ef4444" : "#f59e0b"
+                          background: isVerified ? "rgba(16, 185, 129, 0.2)" : isOverdue ? "rgba(239, 68, 68, 0.2)" : isAwaitingMaterial ? "rgba(56, 189, 248, 0.2)" : "rgba(245, 158, 11, 0.2)",
+                          color: isVerified ? "#10b981" : isOverdue ? "#ef4444" : isAwaitingMaterial ? "#38bdf8" : "#f59e0b"
                         }}>
-                          {isVerified ? <CheckCircle2 size={16} /> : <FileText size={16} />}
+                          {isVerified ? <CheckCircle2 size={16} /> : isAwaitingMaterial ? <Ship size={16} /> : <FileText size={16} />}
                         </div>
                         <div>
                           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
@@ -877,6 +876,18 @@ export default function BundledUpcomingShipments({
                             {isVerified ? (
                               <span style={{ color: "#10b981", fontWeight: 700 }}>
                                 ✅ Verified by {cargo.billVerifiedBy || "Rahul Accounts"} on {new Date(cargo.billVerifiedAt).toLocaleDateString()}
+                              </span>
+                            ) : isAwaitingMaterial ? (
+                              <span style={{ 
+                                padding: "2px 8px", 
+                                borderRadius: "4px", 
+                                fontSize: "0.75rem", 
+                                fontWeight: 700,
+                                background: "rgba(56, 189, 248, 0.15)",
+                                color: "#38bdf8",
+                                border: "1px solid rgba(56, 189, 248, 0.3)"
+                              }}>
+                                📦 Bill Uploaded • Waiting for Warehouse Material Receipt (SLA starts on receipt)
                               </span>
                             ) : (
                               <span style={{ 
@@ -889,16 +900,15 @@ export default function BundledUpcomingShipments({
                                 border: isOverdue ? "1px solid rgba(239, 68, 68, 0.35)" : "1px solid rgba(245, 158, 11, 0.35)"
                               }}>
                                 {isOverdue 
-                                  ? `🚨 PENDING ALERT: OVERDUE by ${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) > 1 ? "s" : ""}! (4-Day SLA Exceeded)` 
+                                  ? `🚨 PENDING ALERT: OVERDUE by ${Math.abs(sla.daysRemaining)} working day${Math.abs(sla.daysRemaining) > 1 ? "s" : ""}! (3-Day SLA Excl. Sunday Exceeded)` 
                                   : isDueToday 
-                                  ? "⚠️ PENDING ALERT: Due Today (4-Day Verification SLA)" 
-                                  : `⏱️ PENDING ALERT: ${daysRemaining} day${daysRemaining > 1 ? "s" : ""} left to verify (Due: ${new Date(deadlineTs).toLocaleDateString()})`}
+                                  ? "⚠️ PENDING ALERT: Due Today (3 Working Days SLA Excl. Sunday)" 
+                                  : `⏱️ PENDING ALERT: ${sla.daysRemaining} working day${sla.daysRemaining > 1 ? "s" : ""} left to verify (Due: ${sla.deadlineFormatted})`}
                               </span>
                             )}
                           </div>
                           <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                            Uploaded by: <strong>{cargo.billUploadedBy || "Purchaser"}</strong> {uploadDateStr ? `on ${new Date(uploadDateStr).toLocaleDateString()}` : ""}
-                            {!isVerified && " • Bill uploaded by purchaser. Rahul Accounts must verify and mark verify bill within 4 days."}
+                            {sla.description}
                           </div>
                         </div>
                       </div>
@@ -921,7 +931,7 @@ export default function BundledUpcomingShipments({
                             }}
                             title="Verify and confirm this vendor bill (Step 2 Duty)"
                           >
-                            <CheckCircle2 size={14} /> Verify Bill (Step 2)
+                            <CheckCircle2 size={14} /> Verify Bill & Mark Entry
                           </button>
                         )}
                         {isVerified && (

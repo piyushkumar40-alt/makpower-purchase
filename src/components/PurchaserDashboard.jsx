@@ -5252,6 +5252,7 @@ export default function PurchaserDashboard({
           docInfo={viewingCargoDoc}
           onClose={() => setViewingCargoDoc(null)}
           onUpdateCargo={onUpdateCargo}
+          bundledRequests={requests.filter(r => r.cargoId === viewingCargoDoc?.cargo?.id)}
         />
       )}
 
@@ -7214,6 +7215,8 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
   const [cargoReceiptFile, setCargoReceiptFile] = useState(null); // { name, data }
   const [showQuickCargoCompanyModal, setShowQuickCargoCompanyModal] = useState(false);
 
+  const [uploadingDocField, setUploadingDocField] = useState("");
+
   const [itemPickedQtyMap, setItemPickedQtyMap] = useState(() => {
     const map = {};
     (requests || []).filter(r => selectedIds.includes(r.id)).forEach(r => {
@@ -7227,11 +7230,18 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
     return { name: file.name, data: url };
   };
 
-  const handleFileChange = async (e, setter) => {
+  const handleFileChange = async (e, setter, fieldName) => {
     const file = e.target.files[0];
     if (!file) return;
-    const result = await readFile(file);
-    setter(result);
+    setUploadingDocField(fieldName);
+    try {
+      const result = await readFile(file);
+      setter(result);
+    } catch (err) {
+      console.error("File upload error:", err);
+    } finally {
+      setUploadingDocField("");
+    }
   };
 
   // Sum of total price of items combined (converting to RMB base)
@@ -7526,29 +7536,29 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
             <div className="form-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "10px" }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>
-                  Packing List {packingListFile && <span style={{ color: "var(--success)", fontSize: "0.72rem" }}>✓ {packingListFile.name}</span>}
+                  Packing List {uploadingDocField === "packing" ? <span style={{ color: "#38bdf8", fontSize: "0.72rem" }}>Uploading...</span> : (packingListFile && <span style={{ color: "var(--success)", fontSize: "0.72rem" }}>✓ {packingListFile.name}</span>)}
                 </label>
-                <label className="doc-upload-btn" style={{ height: "38px", padding: "6px 12px", fontSize: "0.8rem" }}>
-                  <Upload size={13} /> {packingListFile ? "Replace File" : "Upload Packing List"}
-                  <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" onChange={e => handleFileChange(e, setPackingListFile)} style={{ display: "none" }} />
-                </label>
-              </div>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: "0.78rem" }}>
-                  Invoice {invoiceFile && <span style={{ color: "var(--success)", fontSize: "0.72rem" }}>✓ {invoiceFile.name}</span>}
-                </label>
-                <label className="doc-upload-btn" style={{ height: "38px", padding: "6px 12px", fontSize: "0.8rem" }}>
-                  <Upload size={13} /> {invoiceFile ? "Replace File" : "Upload Invoice"}
-                  <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" onChange={e => handleFileChange(e, setInvoiceFile)} style={{ display: "none" }} />
+                <label className="doc-upload-btn" style={{ height: "38px", padding: "6px 12px", fontSize: "0.8rem", cursor: uploadingDocField ? "wait" : "pointer", opacity: uploadingDocField ? 0.7 : 1 }}>
+                  <Upload size={13} /> {uploadingDocField === "packing" ? "Uploading..." : (packingListFile ? "Replace File" : "Upload Packing List")}
+                  <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" disabled={Boolean(uploadingDocField)} onChange={e => handleFileChange(e, setPackingListFile, "packing")} style={{ display: "none" }} />
                 </label>
               </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>
-                  Cargo Receipt {cargoReceiptFile && <span style={{ color: "var(--success)", fontSize: "0.72rem" }}>✓ {cargoReceiptFile.name}</span>}
+                  Invoice {uploadingDocField === "invoice" ? <span style={{ color: "#38bdf8", fontSize: "0.72rem" }}>Uploading...</span> : (invoiceFile && <span style={{ color: "var(--success)", fontSize: "0.72rem" }}>✓ {invoiceFile.name}</span>)}
                 </label>
-                <label className="doc-upload-btn" style={{ height: "38px", padding: "6px 12px", fontSize: "0.8rem" }}>
-                  <Upload size={13} /> {cargoReceiptFile ? "Replace File" : "Upload Cargo Receipt"}
-                  <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" onChange={e => handleFileChange(e, setCargoReceiptFile)} style={{ display: "none" }} />
+                <label className="doc-upload-btn" style={{ height: "38px", padding: "6px 12px", fontSize: "0.8rem", cursor: uploadingDocField ? "wait" : "pointer", opacity: uploadingDocField ? 0.7 : 1 }}>
+                  <Upload size={13} /> {uploadingDocField === "invoice" ? "Uploading..." : (invoiceFile ? "Replace File" : "Upload Invoice")}
+                  <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" disabled={Boolean(uploadingDocField)} onChange={e => handleFileChange(e, setInvoiceFile, "invoice")} style={{ display: "none" }} />
+                </label>
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>
+                  Cargo Receipt {uploadingDocField === "receipt" ? <span style={{ color: "#38bdf8", fontSize: "0.72rem" }}>Uploading...</span> : (cargoReceiptFile && <span style={{ color: "var(--success)", fontSize: "0.72rem" }}>✓ {cargoReceiptFile.name}</span>)}
+                </label>
+                <label className="doc-upload-btn" style={{ height: "38px", padding: "6px 12px", fontSize: "0.8rem", cursor: uploadingDocField ? "wait" : "pointer", opacity: uploadingDocField ? 0.7 : 1 }}>
+                  <Upload size={13} /> {uploadingDocField === "receipt" ? "Uploading..." : (cargoReceiptFile ? "Replace File" : "Upload Cargo Receipt")}
+                  <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" disabled={Boolean(uploadingDocField)} onChange={e => handleFileChange(e, setCargoReceiptFile, "receipt")} style={{ display: "none" }} />
                 </label>
               </div>
             </div>
@@ -7556,8 +7566,10 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
 
           {/* Buttons */}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-            <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
-            <button type="submit" className="btn btn-primary">Create Cargo</button>
+            <button type="button" onClick={onClose} className="btn btn-secondary" disabled={Boolean(uploadingDocField)}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={Boolean(uploadingDocField)}>
+              {uploadingDocField ? "Uploading File..." : "Create Cargo"}
+            </button>
           </div>
 
         </form>
@@ -7599,17 +7611,25 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
     cargo.cargoReceiptFile ? { name: cargo.cargoReceiptFile, data: cargo.cargoReceiptData || "" } : null
   );
   const [isRec, setIsRec] = useState(cargo.isMaterialRec || "No");
+  const [uploadingDocField, setUploadingDocField] = useState("");
 
   const readFile = async (file) => {
     const url = await uploadToCloudinary(file, "makpower_docs");
     return { name: file.name, data: url };
   };
 
-  const handleFileChange = async (e, setter) => {
+  const handleFileChange = async (e, setter, fieldName) => {
     const file = e.target.files[0];
     if (!file) return;
-    const result = await readFile(file);
-    setter(result);
+    setUploadingDocField(fieldName);
+    try {
+      const result = await readFile(file);
+      setter(result);
+    } catch (err) {
+      console.error("File upload error:", err);
+    } finally {
+      setUploadingDocField("");
+    }
   };
 
   const cargoItems = requests.filter(r => r.cargoId === cargo.id);
@@ -7846,32 +7866,32 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
             <div className="form-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "10px" }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>
-                  Packing List {packingListFile && <span style={{ color: "var(--success)", fontSize: "0.72rem" }}>✓ {packingListFile.name}</span>}
-                  {!packingListFile && <span style={{ color: "#f59e0b", fontSize: "0.72rem" }}> ⚠ Missing</span>}
+                  Packing List {uploadingDocField === "packing" ? <span style={{ color: "#38bdf8", fontSize: "0.72rem" }}>Uploading...</span> : (packingListFile && <span style={{ color: "var(--success)", fontSize: "0.72rem" }}>✓ {packingListFile.name}</span>)}
+                  {!packingListFile && !uploadingDocField && <span style={{ color: "#f59e0b", fontSize: "0.72rem" }}> ⚠ Missing</span>}
                 </label>
-                <label className="doc-upload-btn" style={{ height: "38px", padding: "6px 12px", fontSize: "0.8rem" }}>
-                  <Upload size={13} /> {packingListFile ? "Replace File" : "Upload Packing List"}
-                  <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" onChange={e => handleFileChange(e, setPackingListFile)} style={{ display: "none" }} />
-                </label>
-              </div>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: "0.78rem" }}>
-                  Invoice {invoiceFile && <span style={{ color: "var(--success)", fontSize: "0.72rem" }}>✓ {invoiceFile.name}</span>}
-                  {!invoiceFile && <span style={{ color: "#f59e0b", fontSize: "0.72rem" }}> ⚠ Missing</span>}
-                </label>
-                <label className="doc-upload-btn" style={{ height: "38px", padding: "6px 12px", fontSize: "0.8rem" }}>
-                  <Upload size={13} /> {invoiceFile ? "Replace File" : "Upload Invoice"}
-                  <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" onChange={e => handleFileChange(e, setInvoiceFile)} style={{ display: "none" }} />
+                <label className="doc-upload-btn" style={{ height: "38px", padding: "6px 12px", fontSize: "0.8rem", cursor: uploadingDocField ? "wait" : "pointer", opacity: uploadingDocField ? 0.7 : 1 }}>
+                  <Upload size={13} /> {uploadingDocField === "packing" ? "Uploading..." : (packingListFile ? "Replace File" : "Upload Packing List")}
+                  <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" disabled={Boolean(uploadingDocField)} onChange={e => handleFileChange(e, setPackingListFile, "packing")} style={{ display: "none" }} />
                 </label>
               </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>
-                  Cargo Receipt {cargoReceiptFile && <span style={{ color: "var(--success)", fontSize: "0.72rem" }}>✓ {cargoReceiptFile.name}</span>}
-                  {!cargoReceiptFile && <span style={{ color: "#f59e0b", fontSize: "0.72rem" }}> ⚠ Missing</span>}
+                  Invoice {uploadingDocField === "invoice" ? <span style={{ color: "#38bdf8", fontSize: "0.72rem" }}>Uploading...</span> : (invoiceFile && <span style={{ color: "var(--success)", fontSize: "0.72rem" }}>✓ {invoiceFile.name}</span>)}
+                  {!invoiceFile && !uploadingDocField && <span style={{ color: "#f59e0b", fontSize: "0.72rem" }}> ⚠ Missing</span>}
                 </label>
-                <label className="doc-upload-btn" style={{ height: "38px", padding: "6px 12px", fontSize: "0.8rem" }}>
-                  <Upload size={13} /> {cargoReceiptFile ? "Replace File" : "Upload Cargo Receipt"}
-                  <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" onChange={e => handleFileChange(e, setCargoReceiptFile)} style={{ display: "none" }} />
+                <label className="doc-upload-btn" style={{ height: "38px", padding: "6px 12px", fontSize: "0.8rem", cursor: uploadingDocField ? "wait" : "pointer", opacity: uploadingDocField ? 0.7 : 1 }}>
+                  <Upload size={13} /> {uploadingDocField === "invoice" ? "Uploading..." : (invoiceFile ? "Replace File" : "Upload Invoice")}
+                  <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" disabled={Boolean(uploadingDocField)} onChange={e => handleFileChange(e, setInvoiceFile, "invoice")} style={{ display: "none" }} />
+                </label>
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>
+                  Cargo Receipt {uploadingDocField === "receipt" ? <span style={{ color: "#38bdf8", fontSize: "0.72rem" }}>Uploading...</span> : (cargoReceiptFile && <span style={{ color: "var(--success)", fontSize: "0.72rem" }}>✓ {cargoReceiptFile.name}</span>)}
+                  {!cargoReceiptFile && !uploadingDocField && <span style={{ color: "#f59e0b", fontSize: "0.72rem" }}> ⚠ Missing</span>}
+                </label>
+                <label className="doc-upload-btn" style={{ height: "38px", padding: "6px 12px", fontSize: "0.8rem", cursor: uploadingDocField ? "wait" : "pointer", opacity: uploadingDocField ? 0.7 : 1 }}>
+                  <Upload size={13} /> {uploadingDocField === "receipt" ? "Uploading..." : (cargoReceiptFile ? "Replace File" : "Upload Cargo Receipt")}
+                  <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" disabled={Boolean(uploadingDocField)} onChange={e => handleFileChange(e, setCargoReceiptFile, "receipt")} style={{ display: "none" }} />
                 </label>
               </div>
             </div>
@@ -7886,8 +7906,10 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-            <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
-            <button type="submit" className="btn btn-primary">Save Changes</button>
+            <button type="button" onClick={onClose} className="btn btn-secondary" disabled={Boolean(uploadingDocField)}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={Boolean(uploadingDocField)}>
+              {uploadingDocField ? "Uploading File..." : "Save Changes"}
+            </button>
           </div>
 
         </form>

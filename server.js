@@ -1356,12 +1356,30 @@ app.post("/api/upload", async (req, res) => {
       return res.json({ success: true, url: fileToUpload });
     }
 
-    const uploadOptions = {
-      folder: folder || "makpower_uploads",
-      resource_type: "auto"
-    };
+    const isDocOrSpreadsheet = typeof fileToUpload === "string" && (
+      fileToUpload.includes("spreadsheetml") ||
+      fileToUpload.includes("ms-excel") ||
+      fileToUpload.includes("text/csv") ||
+      fileToUpload.includes("application/zip") ||
+      fileToUpload.includes("application/octet-stream") ||
+      fileToUpload.includes(".xlsx") ||
+      fileToUpload.includes(".xls") ||
+      fileToUpload.includes(".csv")
+    );
 
-    const uploadResult = await cloudinary.uploader.upload(fileToUpload, uploadOptions);
+    let uploadResult;
+    try {
+      uploadResult = await cloudinary.uploader.upload(fileToUpload, {
+        folder: folder || "makpower_uploads",
+        resource_type: isDocOrSpreadsheet ? "raw" : "auto"
+      });
+    } catch (primaryErr) {
+      console.warn("Primary Cloudinary upload failed, retrying with resource_type: 'raw':", primaryErr.message);
+      uploadResult = await cloudinary.uploader.upload(fileToUpload, {
+        folder: folder || "makpower_uploads",
+        resource_type: "raw"
+      });
+    }
 
     return res.json({
       success: true,

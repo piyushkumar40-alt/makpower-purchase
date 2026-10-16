@@ -36,7 +36,7 @@ import RequesterForm from "./RequesterForm";
 import CustomSelect from "./CustomSelect";
 import CargoDocumentModal from "./CargoDocumentModal";
 import { useSortableData } from "../utils/useSortableData";
-import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol, calculateTotalCargoPrice } from "../utils/formatters";
+import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus } from "../utils/formatters";
 
 export default function RahulDashboard({ 
   currentUser = {}, 
@@ -53,11 +53,21 @@ export default function RahulDashboard({
 }) {
   const getPurchaserName = (r) => getPurchaserDisplayName(r, purchasers);
 
+  const [workflowStep, setWorkflowStep] = useState(() => {
+    return localStorage.getItem("makpower_rahul_step") || "step1";
+  });
+
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem("makpower_rahul_tab") || "pending";
   });
 
   const [transitStatusFilter, setTransitStatusFilter] = useState("all");
+  const [step2Filter, setStep2Filter] = useState("pending"); // "pending" | "overdue" | "due_today" | "awaiting_material" | "verified" | "all"
+  const [step2Search, setStep2Search] = useState("");
+
+  useEffect(() => {
+    localStorage.setItem("makpower_rahul_step", workflowStep);
+  }, [workflowStep]);
 
   useEffect(() => {
     localStorage.setItem("makpower_rahul_tab", activeTab);
@@ -195,27 +205,89 @@ export default function RahulDashboard({
     });
   }, [cargos, requests]);
 
-  // Pending bill verification metrics (SLA: 4 days from purchaser bill upload) for in-transit shipments
+  // All cargos where vendor bill is uploaded by purchaser (Step 2 Scope)
+  const billCargos = useMemo(() => {
+    return (cargos || []).filter(c => Boolean(c.invoiceFile));
+  }, [cargos]);
+
+  // SLA stats calculated with Sunday exclusion and 2 scenarios across all uploaded bills
   const billVerificationStats = useMemo(() => {
     let pendingCount = 0;
     let overdueCount = 0;
-    const now = Date.now();
+    let dueTodayCount = 0;
+    let awaitingMaterialCount = 0;
+    let verifiedCount = 0;
 
-    (inTransitCargos || []).forEach(c => {
-      const hasBill = Boolean(c.invoiceFile);
-      const isVerified = c.billStatus === "verified" || Boolean(c.billVerifiedAt);
-      if (hasBill && !isVerified) {
+    billCargos.forEach(c => {
+      const sla = calculateBillSlaStatus(c);
+      if (sla.isVerified) {
+        verifiedCount++;
+      } else if (!sla.isMaterialReceived) {
+        awaitingMaterialCount++;
+      } else {
         pendingCount++;
-        const uploadTime = new Date(c.billUploadedAt || c.cargoShippingDate || c.cargoOrderDate || now).getTime();
-        const deadline = uploadTime + (4 * 24 * 60 * 60 * 1000);
-        if (now > deadline) {
-          overdueCount++;
-        }
+        if (sla.isOverdue) overdueCount++;
+        if (sla.isDueToday) dueTodayCount++;
       }
     });
 
-    return { pendingCount, overdueCount };
-  }, [inTransitCargos]);
+    return {
+      totalWithBills: billCargos.length,
+      pendingCount,
+      overdueCount,
+      dueTodayCount,
+      awaitingMaterialCount,
+      verifiedCount
+    };
+  }, [billCargos]);
+
+  // Handle Verify Bill action for Step 2
+  const handleVerifyBill = async (cargoObj, newStatus = "verified") => {
+    if (!onUpdateCargo) return;
+    const isVerifying = newStatus === "verified";
+    const now = new Date().toISOString();
+    const updatedCargo = {
+      ...cargoObj,
+      billStatus: isVerifying ? "verified" : "pending_verification",
+      billVerifiedAt: isVerifying ? now : "",
+      billVerifiedBy: isVerifying ? (currentUser?.name || "Rahul Accounts") : ""
+    };
+    await onUpdateCargo(updatedCargo);
+  };
+
+  // Filtered cargos for Step 2 Bill Verification Board
+  const filteredStep2Cargos = useMemo(() => {
+    return billCargos.filter(c => {
+      const sla = calculateBillSlaStatus(c);
+      
+      // Step 2 status filter
+      if (step2Filter === "pending") {
+        if (sla.isVerified || !sla.isMaterialReceived) return false;
+      } else if (step2Filter === "overdue") {
+        if (sla.isVerified || !sla.isOverdue) return false;
+      } else if (step2Filter === "due_today") {
+        if (sla.isVerified || !sla.isDueToday) return false;
+      } else if (step2Filter === "awaiting_material") {
+        if (sla.isVerified || sla.isMaterialReceived) return false;
+      } else if (step2Filter === "verified") {
+        if (!sla.isVerified) return false;
+      }
+
+      // Search filter
+      if (step2Search.trim()) {
+        const q = step2Search.toLowerCase();
+        const vendor = vendors.find(v => v.id === c.vendorId);
+        const matchCargoId = String(c.id || "").toLowerCase().includes(q);
+        const matchVendor = String(vendor?.name || "").toLowerCase().includes(q);
+        const matchBill = String(c.invoiceFile || "").toLowerCase().includes(q);
+        const matchPL = String(c.packingListFile || "").toLowerCase().includes(q);
+        const matchCarrier = String(c.cargoDetail || "").toLowerCase().includes(q);
+        if (!matchCargoId && !matchVendor && !matchBill && !matchPL && !matchCarrier) return false;
+      }
+
+      return true;
+    });
+  }, [billCargos, step2Filter, step2Search, vendors]);
 
   // Filter requests: priced, vendor assigned (all items, not just Import)
   const eligibleRequests = useMemo(() => requests.filter(r => r.priceRmb && r.vendorId), [requests]);
@@ -492,9 +564,9 @@ export default function RahulDashboard({
         
         {/* KPI 1: What's Coming (In Transit & Ready) */}
         <div 
-          onClick={() => { setActiveTab("shipments"); }}
+          onClick={() => { setWorkflowStep("transit"); }}
           className="glass-panel card-fade-in" 
-          style={{ padding: "16px 18px", cursor: "pointer", border: activeTab === "shipments" ? "1px solid #38bdf8" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
+          style={{ padding: "16px 18px", cursor: "pointer", border: workflowStep === "transit" ? "1px solid #38bdf8" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
             <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>🚚 What's Coming</span>
@@ -513,9 +585,9 @@ export default function RahulDashboard({
 
         {/* KPI 2: Total Order Value RMB */}
         <div 
-          onClick={() => { setActiveTab("masterorder"); }}
+          onClick={() => { setWorkflowStep("masterorder"); }}
           className="glass-panel card-fade-in" 
-          style={{ padding: "16px 18px", cursor: "pointer", border: activeTab === "masterorder" ? "1px solid #f59e0b" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
+          style={{ padding: "16px 18px", cursor: "pointer", border: workflowStep === "masterorder" ? "1px solid #f59e0b" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
             <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>💰 Total RMB Committed</span>
@@ -533,7 +605,7 @@ export default function RahulDashboard({
 
         {/* KPI 3: Where Items Are Now (Active Pipeline) */}
         <div 
-          onClick={() => { setActiveTab("masterorder"); }}
+          onClick={() => { setWorkflowStep("masterorder"); }}
           className="glass-panel card-fade-in" 
           style={{ padding: "16px 18px", cursor: "pointer", transition: "all 0.2s" }}
         >
@@ -553,7 +625,7 @@ export default function RahulDashboard({
 
         {/* KPI 4: Delivered (Warehouse Receipts) */}
         <div 
-          onClick={() => { setActiveTab("masterorder"); }}
+          onClick={() => { setWorkflowStep("masterorder"); }}
           className="glass-panel card-fade-in" 
           style={{ padding: "16px 18px", cursor: "pointer", transition: "all 0.2s" }}
         >
@@ -571,14 +643,14 @@ export default function RahulDashboard({
           </div>
         </div>
 
-        {/* KPI 5: Pending Ledger Mark Purchases (His Primary Duty) */}
+        {/* KPI 5: Step 1 Pending Ledger Mark Purchases */}
         <div 
-          onClick={() => { setActiveTab("pending"); setCheckedIds([]); }}
+          onClick={() => { setWorkflowStep("step1"); setActiveTab("pending"); setCheckedIds([]); }}
           className="glass-panel card-fade-in" 
-          style={{ padding: "16px 18px", cursor: "pointer", border: activeTab === "pending" ? "1px solid #ec4899" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
+          style={{ padding: "16px 18px", cursor: "pointer", border: workflowStep === "step1" ? "1px solid #ec4899" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>📝 Pending Mark Purchases</span>
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>📝 Step 1: Mark Purchases</span>
             <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "rgba(236, 72, 153, 0.15)", color: "#ec4899", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Clock size={16} />
             </div>
@@ -598,126 +670,571 @@ export default function RahulDashboard({
 
       </div>
 
-      {/* ==================== HIGH-PRIORITY TASK BANNER: VENDOR BILL VERIFICATION SLA ==================== */}
-      {billVerificationStats.pendingCount > 0 && (
-        <div style={{
-          background: "linear-gradient(90deg, rgba(245, 158, 11, 0.14) 0%, rgba(239, 68, 68, 0.12) 100%)",
-          border: "1px solid rgba(245, 158, 11, 0.35)",
-          borderRadius: "10px",
-          padding: "12px 18px",
-          marginBottom: "18px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "12px"
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <div style={{ width: "38px", height: "38px", borderRadius: "8px", background: "rgba(245, 158, 11, 0.22)", display: "flex", alignItems: "center", justifyContent: "center", color: "#f59e0b" }}>
-              <AlertTriangle size={20} />
-            </div>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--text-main)" }}>
-                ⚡ Step 2 Pending Work: {billVerificationStats.pendingCount} Cargo Vendor Bill{billVerificationStats.pendingCount > 1 ? "s" : ""} Pending Verification
-              </div>
-              <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                Purchasers have uploaded bills for cargo shipments. Rahul Accounts must verify and mark verify bill in 4 days of upload.
-                {billVerificationStats.overdueCount > 0 && (
-                  <strong style={{ color: "#ef4444", marginLeft: "6px" }}>
-                    ({billVerificationStats.overdueCount} Overdue!)
-                  </strong>
-                )}
-              </div>
-            </div>
+      {/* ==================== WORKFLOW STEP DROPDOWN SELECTOR ==================== */}
+      <div className="glass-panel" style={{ padding: "14px 20px", marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "14px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+          <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Workflow Step:
           </div>
+          <div style={{ minWidth: "360px", maxWidth: "480px" }}>
+            <select
+              value={workflowStep}
+              onChange={e => {
+                setWorkflowStep(e.target.value);
+                if (e.target.value === "step1") setActiveTab("pending");
+                setCheckedIds([]);
+              }}
+              className="form-control"
+              style={{
+                fontWeight: 700,
+                fontSize: "0.95rem",
+                padding: "8px 14px",
+                borderRadius: "8px",
+                background: "rgba(15, 23, 42, 0.9)",
+                color: workflowStep === "step1" ? "#ec4899" : workflowStep === "step2" ? "#f59e0b" : "#38bdf8",
+                border: `2px solid ${workflowStep === "step1" ? "rgba(236, 72, 153, 0.6)" : workflowStep === "step2" ? "rgba(245, 158, 11, 0.6)" : "rgba(56, 189, 248, 0.5)"}`,
+                cursor: "pointer"
+              }}
+            >
+              <option value="step1">Step 1: Mark Purchases (Ledger Entry) — ({pendingRequests.length} Pending)</option>
+              <option value="step2">Step 2: Vendor Bill Verification &amp; Entry — ({billVerificationStats.pendingCount} Pending{billVerificationStats.overdueCount > 0 ? ` • ${billVerificationStats.overdueCount} OVERDUE!` : ""})</option>
+              <option value="transit">In-Transit Cargo Tracking — ({inTransitCargos.length} Shipments)</option>
+              <option value="masterorder">Master Order Tracker — (All 6 Stages)</option>
+              <option value="create_order">Master Requisitions (View-Only)</option>
+              <option value="itemmaster">Item Catalog &amp; Stock</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Step Quick Switcher Tabs */}
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
           <button
             type="button"
-            onClick={() => { 
-              setActiveTab("shipments"); 
-              setTransitStatusFilter("pending_bill_verification"); 
-              setCheckedIds([]); 
-            }}
-            className="btn btn-warning btn-sm"
-            style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px", boxShadow: "0 2px 8px rgba(245, 158, 11, 0.25)" }}
+            onClick={() => { setWorkflowStep("step1"); setActiveTab("pending"); setCheckedIds([]); }}
+            className={`btn btn-sm ${workflowStep === "step1" ? "btn-primary" : "btn-secondary"}`}
+            style={{ fontWeight: 700, fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: "5px" }}
           >
-            Review & Verify Bills ({billVerificationStats.pendingCount}) <ArrowRight size={14} />
+            <Clock size={14} /> Step 1: Mark Purchases ({pendingRequests.length})
           </button>
+          
+          <button
+            type="button"
+            onClick={() => { setWorkflowStep("step2"); setCheckedIds([]); }}
+            className={`btn btn-sm ${workflowStep === "step2" ? "btn-warning" : "btn-secondary"}`}
+            style={{ 
+              fontWeight: 700, 
+              fontSize: "0.82rem", 
+              display: "inline-flex", 
+              alignItems: "center", 
+              gap: "5px",
+              color: workflowStep === "step2" ? "#000" : (billVerificationStats.overdueCount > 0 ? "#ef4444" : "#f59e0b"),
+              borderColor: billVerificationStats.overdueCount > 0 ? "rgba(239, 68, 68, 0.5)" : "rgba(245, 158, 11, 0.4)"
+            }}
+          >
+            <FileText size={14} /> Step 2: Verify Bills ({billVerificationStats.pendingCount})
+            {billVerificationStats.overdueCount > 0 && (
+              <span style={{ background: "#ef4444", color: "#fff", padding: "1px 6px", borderRadius: "8px", fontSize: "0.7rem", fontWeight: 800 }}>
+                {billVerificationStats.overdueCount} OVERDUE
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setWorkflowStep("transit"); setCheckedIds([]); }}
+            className={`btn btn-sm ${workflowStep === "transit" ? "btn-primary" : "btn-secondary"}`}
+            style={{ fontWeight: 600, fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: "5px", color: workflowStep === "transit" ? "#fff" : "#38bdf8" }}
+          >
+            <Ship size={14} /> In-Transit ({inTransitCargos.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setWorkflowStep("masterorder"); setCheckedIds([]); }}
+            className={`btn btn-sm ${workflowStep === "masterorder" ? "btn-primary" : "btn-secondary"}`}
+            style={{ fontWeight: 600, fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: "5px", color: workflowStep === "masterorder" ? "#fff" : "#f59e0b" }}
+          >
+            <Layers size={14} /> Master Tracker
+          </button>
+        </div>
+      </div>
+
+      {/* ==================== WORKFLOW: STEP 2 VENDOR BILL VERIFICATION WORKBOARD ==================== */}
+      {workflowStep === "step2" && (
+        <div className="card-fade-in">
+          {/* Step 2 Header & Explanation Banner */}
+          <div className="glass-panel" style={{ padding: "18px 22px", marginBottom: "18px", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: "1.35rem", fontWeight: 800, color: "#f59e0b", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <FileText size={22} /> Step 2: Cargo Vendor Bill Verification &amp; Entry
+                </h3>
+                <p style={{ margin: "6px 0 0 0", fontSize: "0.86rem", color: "var(--text-muted)", lineHeight: 1.5, maxWidth: "880px" }}>
+                  After cargo leaves from vendor, purchaser uploads the vendor bill. Rahul Accounts must verify and mark bill entry within <strong>3 working days (excluding Sunday)</strong> once material is received at the warehouse.
+                </p>
+                <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginTop: "10px", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                    <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#38bdf8" }}></span>
+                    <strong>Scenario 1:</strong> Bill uploaded earlier $\rightarrow$ 3 working days from Material Receipt date (excl. Sunday)
+                  </span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                    <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#f59e0b" }}></span>
+                    <strong>Scenario 2:</strong> Material received earlier $\rightarrow$ 3 working days from Bill Upload date (excl. Sunday)
+                  </span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                    <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#a855f7" }}></span>
+                    <strong>In Transit:</strong> SLA timer paused until warehouse receives material
+                  </span>
+                </div>
+              </div>
+
+              {billVerificationStats.overdueCount > 0 && (
+                <div style={{ background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.35)", borderRadius: "8px", padding: "8px 14px", display: "flex", alignItems: "center", gap: "8px", color: "#ef4444", fontWeight: 700, fontSize: "0.88rem" }}>
+                  <AlertTriangle size={18} /> {billVerificationStats.overdueCount} Bill{billVerificationStats.overdueCount > 1 ? "s" : ""} Exceeded 3-Day SLA!
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Step 2 KPI Counters */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "12px", marginBottom: "20px" }}>
+            <div 
+              onClick={() => setStep2Filter("pending")}
+              className="glass-panel" 
+              style={{ padding: "12px 16px", cursor: "pointer", border: step2Filter === "pending" ? "1px solid #f59e0b" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
+            >
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>⏳ Pending Entry</div>
+              <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "#f59e0b", marginTop: "2px" }}>
+                {billVerificationStats.pendingCount}
+              </div>
+              <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>Material rec'd &amp; bill uploaded</div>
+            </div>
+
+            <div 
+              onClick={() => setStep2Filter("overdue")}
+              className="glass-panel" 
+              style={{ padding: "12px 16px", cursor: "pointer", border: step2Filter === "overdue" ? "1px solid #ef4444" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
+            >
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>🚨 Overdue Alerts</div>
+              <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "#ef4444", marginTop: "2px" }}>
+                {billVerificationStats.overdueCount}
+              </div>
+              <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>&gt; 3 days (excl. Sunday)</div>
+            </div>
+
+            <div 
+              onClick={() => setStep2Filter("due_today")}
+              className="glass-panel" 
+              style={{ padding: "12px 16px", cursor: "pointer", border: step2Filter === "due_today" ? "1px solid #eab308" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
+            >
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>⚠️ Due Today</div>
+              <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "#eab308", marginTop: "2px" }}>
+                {billVerificationStats.dueTodayCount}
+              </div>
+              <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>Expires end of today</div>
+            </div>
+
+            <div 
+              onClick={() => setStep2Filter("awaiting_material")}
+              className="glass-panel" 
+              style={{ padding: "12px 16px", cursor: "pointer", border: step2Filter === "awaiting_material" ? "1px solid #38bdf8" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
+            >
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>📦 Awaiting Material</div>
+              <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "#38bdf8", marginTop: "2px" }}>
+                {billVerificationStats.awaitingMaterialCount}
+              </div>
+              <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>In transit (SLA paused)</div>
+            </div>
+
+            <div 
+              onClick={() => setStep2Filter("verified")}
+              className="glass-panel" 
+              style={{ padding: "12px 16px", cursor: "pointer", border: step2Filter === "verified" ? "1px solid #10b981" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
+            >
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>✅ Verified Archive</div>
+              <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "#10b981", marginTop: "2px" }}>
+                {billVerificationStats.verifiedCount}
+              </div>
+              <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>Entry completed</div>
+            </div>
+
+            <div 
+              onClick={() => setStep2Filter("all")}
+              className="glass-panel" 
+              style={{ padding: "12px 16px", cursor: "pointer", border: step2Filter === "all" ? "1px solid var(--primary)" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
+            >
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>📑 All Uploaded Bills</div>
+              <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--text-main)", marginTop: "2px" }}>
+                {billVerificationStats.totalWithBills}
+              </div>
+              <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>Total cargos with bill</div>
+            </div>
+          </div>
+
+          {/* Step 2 Filter & Search Bar */}
+          <div className="glass-panel" style={{ padding: "14px 18px", marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+              <button 
+                onClick={() => setStep2Filter("pending")}
+                className={`btn btn-sm ${step2Filter === "pending" ? "btn-warning" : "btn-secondary"}`}
+                style={{ fontSize: "0.78rem" }}
+              >
+                Pending Entry ({billVerificationStats.pendingCount})
+              </button>
+              <button 
+                onClick={() => setStep2Filter("overdue")}
+                className={`btn btn-sm ${step2Filter === "overdue" ? "btn-danger" : "btn-secondary"}`}
+                style={{ fontSize: "0.78rem" }}
+              >
+                🚨 Overdue ({billVerificationStats.overdueCount})
+              </button>
+              <button 
+                onClick={() => setStep2Filter("due_today")}
+                className={`btn btn-sm ${step2Filter === "due_today" ? "btn-primary" : "btn-secondary"}`}
+                style={{ fontSize: "0.78rem" }}
+              >
+                ⚠️ Due Today ({billVerificationStats.dueTodayCount})
+              </button>
+              <button 
+                onClick={() => setStep2Filter("awaiting_material")}
+                className={`btn btn-sm ${step2Filter === "awaiting_material" ? "btn-primary" : "btn-secondary"}`}
+                style={{ fontSize: "0.78rem" }}
+              >
+                📦 In Transit / Awaiting Material ({billVerificationStats.awaitingMaterialCount})
+              </button>
+              <button 
+                onClick={() => setStep2Filter("verified")}
+                className={`btn btn-sm ${step2Filter === "verified" ? "btn-success" : "btn-secondary"}`}
+                style={{ fontSize: "0.78rem" }}
+              >
+                ✅ Verified ({billVerificationStats.verifiedCount})
+              </button>
+              <button 
+                onClick={() => setStep2Filter("all")}
+                className={`btn btn-sm ${step2Filter === "all" ? "btn-primary" : "btn-secondary"}`}
+                style={{ fontSize: "0.78rem" }}
+              >
+                Show All ({billVerificationStats.totalWithBills})
+              </button>
+            </div>
+
+            <div style={{ position: "relative", minWidth: "240px" }}>
+              <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+              <input
+                type="text"
+                placeholder="Search cargo, vendor, or bill..."
+                value={step2Search}
+                onChange={e => setStep2Search(e.target.value)}
+                className="form-control form-control-sm"
+                style={{ paddingLeft: "30px", fontSize: "0.8rem", height: "32px" }}
+              />
+            </div>
+          </div>
+
+          {/* Cargo Cards with Bills */}
+          {filteredStep2Cargos.length === 0 ? (
+            <div className="glass-panel" style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+              <FileText size={36} style={{ marginBottom: "10px", opacity: 0.5, color: "#f59e0b" }} />
+              <h4 style={{ color: "var(--text-main)", marginBottom: "6px" }}>No Cargo Bills Found</h4>
+              <p style={{ fontSize: "0.85rem", maxWidth: "500px", margin: "0 auto" }}>
+                {step2Filter === "pending" 
+                  ? "Great job! There are currently no pending vendor bills awaiting verification for received material."
+                  : `No vendor bills match the current filter (${step2Filter}).`}
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              {filteredStep2Cargos.map(cargo => {
+                const sla = calculateBillSlaStatus(cargo);
+                const vendor = vendors.find(v => v.id === cargo.vendorId);
+                const carrierObj = cargoCompanies.find(cc => cc.id === cargo.cargoCompanyId);
+                const carrierDisplay = carrierObj?.name || cargo.cargoDetail || "—";
+                const cargoItems = requests.filter(r => r.cargoId === cargo.id && r.status !== "Cancelled");
+                const totalCargoRmb = cargoItems.reduce((sum, it) => sum + (Number(it.totalRmb) || (Number(it.priceRmb || 0) * Number(it.orderQuantity || 0))), 0);
+                const isVerified = sla.isVerified;
+
+                return (
+                  <div 
+                    key={cargo.id} 
+                    className="glass-panel card-fade-in" 
+                    style={{ 
+                      padding: "18px 20px", 
+                      border: isVerified 
+                        ? "1px solid rgba(16, 185, 129, 0.3)" 
+                        : sla.isOverdue 
+                        ? "1px solid rgba(239, 68, 68, 0.45)" 
+                        : sla.isDueToday 
+                        ? "1px solid rgba(245, 158, 11, 0.45)" 
+                        : "1px solid var(--border-glass)",
+                      boxShadow: sla.isOverdue ? "0 4px 14px rgba(239, 68, 68, 0.12)" : "none"
+                    }}
+                  >
+                    {/* Cargo Header Info */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px", marginBottom: "14px" }}>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                          <span style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--primary)" }}>
+                            Cargo #{cargo.id}
+                          </span>
+                          <span className="badge" style={{ background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)", fontSize: "0.75rem" }}>
+                            {cargo.modeOfTransport || "Sea"} Transport
+                          </span>
+                          <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                            Carrier: <strong style={{ color: "var(--text-main)" }}>{carrierDisplay}</strong>
+                          </span>
+                          <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                            Vendor: <strong style={{ color: "var(--text-main)" }}>{vendor?.name || cargo.vendorId || "—"}</strong>
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginTop: "6px", fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                          <span>📅 Shipping Date: <strong style={{ color: "var(--text-main)" }}>{cargo.cargoShippingDate || "—"}</strong></span>
+                          <span>🎯 ETA: <strong style={{ color: "#38bdf8" }}>{cargo.cargoEta || "—"}</strong></span>
+                          <span>
+                            🏢 Warehouse Receipt: {cargo.isMaterialRec === "Yes" ? (
+                              <strong style={{ color: "#10b981" }}>✓ Received ({cargo.receivedDate || "Warehouse"})</strong>
+                            ) : (
+                              <strong style={{ color: "#38bdf8" }}>📦 In Freight Transit</strong>
+                            )}
+                          </span>
+                          <span>📦 Bundled Items: <strong>{cargoItems.length} items</strong> (¥{Math.round(totalCargoRmb).toLocaleString()} RMB)</span>
+                        </div>
+                      </div>
+
+                      {/* Action Button */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        {!isVerified ? (
+                          <button
+                            type="button"
+                            onClick={() => handleVerifyBill(cargo, "verified")}
+                            className="btn btn-success"
+                            style={{ 
+                              padding: "6px 16px", 
+                              fontWeight: 700, 
+                              fontSize: "0.85rem", 
+                              display: "inline-flex", 
+                              alignItems: "center", 
+                              gap: "6px",
+                              boxShadow: "0 2px 10px rgba(16, 185, 129, 0.3)"
+                            }}
+                            title="Verify vendor bill and mark accounts entry"
+                          >
+                            <CheckCircle2 size={16} /> Verify Bill &amp; Mark Entry
+                          </button>
+                        ) : (
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span style={{ color: "#10b981", fontWeight: 700, fontSize: "0.85rem", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                              <CheckCircle2 size={16} /> Verified by {cargo.billVerifiedBy || "Rahul Accounts"}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleVerifyBill(cargo, "pending_verification")}
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: "4px 8px", fontSize: "0.75rem" }}
+                              title="Undo verification"
+                            >
+                              <RotateCcw size={12} /> Undo
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Attached Documents Row */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "12px", marginBottom: "14px" }}>
+                      
+                      {/* Vendor Bill Card */}
+                      <div style={{ padding: "12px 14px", borderRadius: "8px", background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.25)" }}>
+                        <div style={{ fontSize: "0.74rem", fontWeight: 700, color: "#f59e0b", textTransform: "uppercase", marginBottom: "6px" }}>
+                          📄 Step 2 Attached Vendor Bill:
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDocument(cargo, "Vendor Bill (Invoice)", cargo.invoiceFile, cargo.invoiceData, "invoiceFile", "invoiceData")}
+                            className="doc-link-btn"
+                            style={{ 
+                              background: "rgba(245, 158, 11, 0.15)", 
+                              border: "1px solid rgba(245, 158, 11, 0.4)", 
+                              padding: "4px 10px", 
+                              borderRadius: "6px", 
+                              cursor: "pointer", 
+                              display: "inline-flex", 
+                              alignItems: "center", 
+                              gap: "6px", 
+                              color: "#f59e0b", 
+                              fontSize: "0.85rem", 
+                              fontWeight: 600 
+                            }}
+                            title={`Inspect bill ${cargo.invoiceFile}`}
+                          >
+                            <FileText size={15} /> {cargo.invoiceFile} <ExternalLink size={12} />
+                          </button>
+
+                          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                            By <strong>{cargo.billUploadedBy || "Purchaser"}</strong> {cargo.billUploadedAt ? `on ${new Date(cargo.billUploadedAt).toLocaleDateString()}` : ""}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Packing List Card */}
+                      <div style={{ padding: "12px 14px", borderRadius: "8px", background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.25)" }}>
+                        <div style={{ fontSize: "0.74rem", fontWeight: 700, color: "#38bdf8", textTransform: "uppercase", marginBottom: "6px" }}>
+                          📊 Attached Packing List:
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
+                          {cargo.packingListFile ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDocument(cargo, "Cargo Packing List", cargo.packingListFile, cargo.packingListData, "packingListFile", "packingListData")}
+                              className="doc-link-btn"
+                              style={{ 
+                                background: "rgba(56, 189, 248, 0.15)", 
+                                border: "1px solid rgba(56, 189, 248, 0.4)", 
+                                padding: "4px 10px", 
+                                borderRadius: "6px", 
+                                cursor: "pointer", 
+                                display: "inline-flex", 
+                                alignItems: "center", 
+                                gap: "6px", 
+                                color: "#38bdf8", 
+                                fontSize: "0.85rem", 
+                                fontWeight: 600 
+                              }}
+                              title={`Inspect packing list ${cargo.packingListFile}`}
+                            >
+                              <FileSpreadsheet size={15} /> {cargo.packingListFile} <ExternalLink size={12} />
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>No packing list attached</span>
+                          )}
+
+                          {cargo.cargoReceiptFile && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDocument(cargo, "Cargo Delivery Receipt", cargo.cargoReceiptFile, cargo.cargoReceiptData, "cargoReceiptFile", "cargoReceiptData")}
+                              className="btn btn-secondary btn-sm"
+                              style={{ fontSize: "0.75rem", padding: "3px 8px" }}
+                            >
+                              CR: {cargo.cargoReceiptFile}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* SLA Status Box */}
+                    <div style={{ 
+                      padding: "10px 14px", 
+                      borderRadius: "8px", 
+                      background: isVerified 
+                        ? "rgba(16, 185, 129, 0.08)" 
+                        : sla.isOverdue 
+                        ? "rgba(239, 68, 68, 0.1)" 
+                        : !sla.isMaterialReceived 
+                        ? "rgba(56, 189, 248, 0.08)" 
+                        : "rgba(245, 158, 11, 0.08)",
+                      border: isVerified 
+                        ? "1px solid rgba(16, 185, 129, 0.25)" 
+                        : sla.isOverdue 
+                        ? "1px solid rgba(239, 68, 68, 0.35)" 
+                        : !sla.isMaterialReceived 
+                        ? "1px solid rgba(56, 189, 248, 0.28)" 
+                        : "1px solid rgba(245, 158, 11, 0.35)",
+                      display: "flex", 
+                      justifyContent: "space-between", 
+                      alignItems: "center", 
+                      flexWrap: "wrap", 
+                      gap: "10px", 
+                      fontSize: "0.84rem" 
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                        <span style={{ 
+                          padding: "3px 9px", 
+                          borderRadius: "4px", 
+                          fontSize: "0.76rem", 
+                          fontWeight: 700,
+                          background: isVerified 
+                            ? "rgba(16, 185, 129, 0.2)" 
+                            : sla.isOverdue 
+                            ? "rgba(239, 68, 68, 0.22)" 
+                            : !sla.isMaterialReceived 
+                            ? "rgba(56, 189, 248, 0.18)" 
+                            : "rgba(245, 158, 11, 0.2)",
+                          color: isVerified ? "#10b981" : sla.isOverdue ? "#ef4444" : !sla.isMaterialReceived ? "#38bdf8" : "#f59e0b"
+                        }}>
+                          {isVerified 
+                            ? `✅ Verified on ${new Date(cargo.billVerifiedAt).toLocaleDateString()}` 
+                            : !sla.isMaterialReceived 
+                            ? "📦 Waiting for Warehouse Material Receipt" 
+                            : sla.isOverdue 
+                            ? `🚨 OVERDUE by ${Math.abs(sla.daysRemaining)} working day${Math.abs(sla.daysRemaining) > 1 ? "s" : ""}! (Excl. Sunday)` 
+                            : sla.isDueToday 
+                            ? "⚠️ Due Today (3 Working Days Excl. Sunday)" 
+                            : `⏱️ ${sla.daysRemaining} working day${sla.daysRemaining > 1 ? "s" : ""} left (Due: ${sla.deadlineFormatted}, Excl. Sunday)`}
+                        </span>
+
+                        <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+                          {sla.description}
+                        </span>
+                      </div>
+
+                      {sla.scenario && (
+                        <span style={{ fontSize: "0.74rem", color: "var(--text-muted)", background: "rgba(0,0,0,0.2)", padding: "2px 8px", borderRadius: "4px" }}>
+                          {sla.scenarioLabel}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Bundled Items Accordion */}
+                    <div style={{ marginTop: "12px" }}>
+                      <details>
+                        <summary style={{ cursor: "pointer", color: "var(--text-muted)", fontSize: "0.82rem", fontWeight: 600, userSelect: "none" }}>
+                          View Bundled Items in This Cargo ({cargoItems.length})
+                        </summary>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "10px" }}>
+                          {cargoItems.map(item => {
+                            const unitPrice = Number(item.priceRmb) || 0;
+                            const qty = Number(item.vendorOrderQuantity || item.orderQuantity) || 0;
+                            const totalVal = Number(item.totalRmb) || (unitPrice * qty);
+
+                            return (
+                              <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderRadius: "6px", background: "rgba(255, 255, 255, 0.02)", border: "1px solid var(--border-glass)", fontSize: "0.82rem", flexWrap: "wrap", gap: "8px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setInspectedOrder(item)}
+                                    style={{ background: "none", border: "none", color: "#38bdf8", cursor: "pointer", fontWeight: 700, padding: 0, textDecoration: "underline" }}
+                                  >
+                                    {item.model}
+                                  </button>
+                                  <span style={{ color: "var(--text-muted)" }}>• Qty: <strong>{qty} pcs</strong></span>
+                                  <span style={{ color: "var(--text-muted)" }}>• Order Date: <strong>{item.orderDate || "—"}</strong></span>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                  <span style={{ color: "var(--text-muted)" }}>Unit: <strong style={{ color: "var(--text-main)" }}>¥{unitPrice}</strong></span>
+                                  <span style={{ color: "#10b981", fontWeight: 700 }}>Total: ¥{totalVal.toLocaleString()}</span>
+                                  <span style={{ fontSize: "0.72rem", padding: "1px 6px", borderRadius: "4px", background: item.purchaseUpdated === "Yes" ? "rgba(16, 185, 129, 0.15)" : "rgba(236, 72, 153, 0.15)", color: item.purchaseUpdated === "Yes" ? "#10b981" : "#ec4899" }}>
+                                    {item.purchaseUpdated === "Yes" ? "✓ Purchase Marked" : "⏳ Pending Purchase"}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </details>
+                    </div>
+
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
-      {/* ==================== MAIN TAB BAR ==================== */}
-      <div style={{ display: "flex", gap: "8px", marginBottom: "20px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "10px", flexWrap: "wrap" }}>
-        
-        {/* Core Duty 1: Pending Purchases */}
-        <button 
-          onClick={() => { setActiveTab("pending"); setCheckedIds([]); }} 
-          className={`tab-btn ${activeTab === "pending" ? "active" : ""}`}
-          style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-        >
-          <Clock size={15} /> Pending Mark Purchases ({pendingRequests.length})
-        </button>
-
-        {/* Core Duty 2: Submitted Purchases Archive */}
-        <button 
-          onClick={() => { setActiveTab("submitted"); setCheckedIds([]); }} 
-          className={`tab-btn ${activeTab === "submitted" ? "active" : ""}`}
-          style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-        >
-          <CheckCircle size={15} /> Marked in Ledger Archive ({submittedRequests.length})
-        </button>
-
-        {/* Feature 1: Bundled Upcoming Shipments (Transit Tracking & Step 2 Verification) */}
-        <button 
-          onClick={() => { setActiveTab("shipments"); setCheckedIds([]); }} 
-          className={`tab-btn ${activeTab === "shipments" ? "active" : ""}`}
-          style={{ color: "#38bdf8", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
-        >
-          <Ship size={15} /> Transit Tracking ({inTransitCargos.length})
-          {billVerificationStats.pendingCount > 0 && (
-            <span style={{ 
-              background: "#f59e0b", 
-              color: "#000", 
-              fontSize: "0.72rem", 
-              fontWeight: 800, 
-              padding: "1px 6px", 
-              borderRadius: "10px", 
-              marginLeft: "4px" 
-            }}>
-              Step 2: {billVerificationStats.pendingCount} Bills to Verify
-            </span>
-          )}
-        </button>
-
-        {/* Feature 2: Master Order Tracker */}
-        <button 
-          onClick={() => { setActiveTab("masterorder"); setCheckedIds([]); }} 
-          className={`tab-btn ${activeTab === "masterorder" ? "active" : ""}`}
-          style={{ color: "#f59e0b", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
-        >
-          <Layers size={15} /> Master Order Tracker (All Stages)
-        </button>
-
-        {/* Feature 3: Create Master Order (View-Only) */}
-        <button 
-          onClick={() => { setActiveTab("create_order"); setCheckedIds([]); }} 
-          className={`tab-btn ${activeTab === "create_order" ? "active" : ""}`}
-          style={{ color: "#818cf8", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
-        >
-          <ShoppingCart size={15} /> Master Requisitions (View-Only)
-        </button>
-
-        {/* Feature 4: Item Catalog & Stock */}
-        <button 
-          onClick={() => { setActiveTab("itemmaster"); setCheckedIds([]); }} 
-          className={`tab-btn ${activeTab === "itemmaster" ? "active" : ""}`}
-          style={{ color: "#a855f7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
-        >
-          <Package size={15} /> Item Catalog & Stock
-        </button>
-      </div>
-
-      {/* ==================== TAB CONTENT: BUNDLED UPCOMING SHIPMENTS ==================== */}
-      {activeTab === "shipments" && (
+      {/* ==================== WORKFLOW: IN-TRANSIT CARGO TRACKING ==================== */}
+      {workflowStep === "transit" && (
         <div className="card-fade-in">
           <BundledUpcomingShipments 
             cargos={inTransitCargos}
@@ -734,8 +1251,8 @@ export default function RahulDashboard({
         </div>
       )}
 
-      {/* ==================== TAB CONTENT: MASTER ORDER TRACKER ==================== */}
-      {activeTab === "masterorder" && (
+      {/* ==================== WORKFLOW: MASTER ORDER TRACKER ==================== */}
+      {workflowStep === "masterorder" && (
         <div className="card-fade-in">
           <div style={{ marginBottom: "14px", padding: "10px 16px", borderRadius: "8px", background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.25)", display: "flex", alignItems: "center", gap: "10px" }}>
             <Eye size={18} style={{ color: "#f59e0b" }} />
@@ -755,8 +1272,8 @@ export default function RahulDashboard({
         </div>
       )}
 
-      {/* ==================== TAB CONTENT: CREATE MASTER ORDER (VIEW ONLY) ==================== */}
-      {activeTab === "create_order" && (
+      {/* ==================== WORKFLOW: CREATE MASTER REQUISITION (VIEW ONLY) ==================== */}
+      {workflowStep === "create_order" && (
         <div className="card-fade-in">
           <RequesterForm 
             onAddRequests={() => {}} 
@@ -774,15 +1291,34 @@ export default function RahulDashboard({
         </div>
       )}
 
-      {/* ==================== TAB CONTENT: ITEM CATALOG & STOCK ==================== */}
-      {activeTab === "itemmaster" && (
+      {/* ==================== WORKFLOW: ITEM CATALOG & STOCK ==================== */}
+      {workflowStep === "itemmaster" && (
         <div className="card-fade-in">
           <ItemMasterView requests={requests} vendors={vendors} cargos={cargos} cargoCompanies={cargoCompanies} purchasers={purchasers} />
         </div>
       )}
 
-      {/* ==================== TAB CONTENT: MARK PURCHASES WORKBOARD (PENDING / SUBMITTED) ==================== */}
-      {(activeTab === "pending" || activeTab === "submitted") && (
+      {/* ==================== WORKFLOW: STEP 1 MARK PURCHASES (ONLY STEP 1 RELATED WORK) ==================== */}
+      {workflowStep === "step1" && (
+        <div className="card-fade-in">
+          {/* Step 1 Sub-Tab Switcher (Pending Confirmation vs Archive) */}
+          <div style={{ display: "flex", gap: "8px", marginBottom: "18px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "10px", flexWrap: "wrap" }}>
+            <button 
+              onClick={() => { setActiveTab("pending"); setCheckedIds([]); }} 
+              className={`tab-btn ${activeTab === "pending" ? "active" : ""}`}
+              style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+            >
+              <Clock size={15} /> Pending Mark Purchases ({pendingRequests.length})
+            </button>
+
+            <button 
+              onClick={() => { setActiveTab("submitted"); setCheckedIds([]); }} 
+              className={`tab-btn ${activeTab === "submitted" ? "active" : ""}`}
+              style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+            >
+              <CheckCircle size={15} /> Marked in Ledger Archive ({submittedRequests.length})
+            </button>
+          </div>
         <>
           {/* ==================== MULTI-LEVEL FILTRATION PANEL ==================== */}
           <div className="glass-panel" style={{ padding: "18px 22px", marginBottom: "20px" }}>
@@ -1357,7 +1893,8 @@ export default function RahulDashboard({
             </div>
           )}
         </>
-      )}
+      </div>
+    )}
 
       {/* ==================== GLOBAL ORDER INSPECTION MODAL ==================== */}
       {inspectedOrder && (
