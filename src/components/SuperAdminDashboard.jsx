@@ -4,7 +4,7 @@ import {
   Upload, Eye, EyeOff, Truck, ChevronRight, Sliders, Package, ShieldCheck, Clock, 
   UserX, LogOut, Folder, HardDrive, Trash2, Copy, ExternalLink, Key, Check, 
   CheckCircle, CheckCircle2, Layers, AlertTriangle, ShieldAlert, X, Search, Edit2, Tag, DollarSign,
-  Award, Gift
+  Award, Gift, Lock
 } from "lucide-react";
 import TransferModal from "./TransferModal";
 import { getCurrencySymbol, CargoCompaniesPanel, VendorDetailModal, CargoCompanyDetailModal } from "./PurchaserDashboard";
