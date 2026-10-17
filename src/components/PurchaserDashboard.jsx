@@ -1182,7 +1182,7 @@ export default function PurchaserDashboard({
               { value: "planner", label: "Step 3: Cargo Consolidation" },
               { value: "cargopickup", label: "Step 4: Cargo Pickup" },
               { value: "shipments", label: "Step 5: Transit Tracking & Warehouse Receipting" },
-              { value: "docs", label: `Step 6: Pending Document Uploads ${myCargos.filter(c => !c.packingListFile || !c.invoiceFile || !c.cargoReceiptFile).length > 0 ? `(${myCargos.filter(c => !c.packingListFile || !c.invoiceFile || !c.cargoReceiptFile).length} Missing)` : ""}` },
+              { value: "docs", label: `Step 6: Pending Document Uploads ${myCargos.filter(c => !(c.packingListFile && c.packingListData) || !(c.invoiceFile && c.invoiceData) || !(c.cargoReceiptFile && c.cargoReceiptData)).length > 0 ? `(${myCargos.filter(c => !(c.packingListFile && c.packingListData) || !(c.invoiceFile && c.invoiceData) || !(c.cargoReceiptFile && c.cargoReceiptData)).length} Missing)` : ""}` },
               { value: "all", label: "Received History (Warehouse Archive)" },
               { value: "cancelled", label: "Cancelled Orders" }
             ]}
@@ -4489,7 +4489,7 @@ export default function PurchaserDashboard({
                         <div style={{ fontWeight: 600, color: "var(--primary)" }}>Documents:</div>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                           <span>Packing List:</span>
-                          {cargo.packingListFile ? (
+                          {(cargo.packingListFile && cargo.packingListData) ? (
                             <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                               <button
                                 type="button"
@@ -4549,7 +4549,7 @@ export default function PurchaserDashboard({
                         </div>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                           <span>Vendor Bill:</span>
-                          {cargo.invoiceFile ? (
+                          {(cargo.invoiceFile && cargo.invoiceData) ? (
                             <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                               <button
                                 type="button"
@@ -4617,7 +4617,7 @@ export default function PurchaserDashboard({
                           )}
                         </div>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                          Cargo Receipt: {cargo.cargoReceiptFile ? (
+                          Cargo Receipt: {(cargo.cargoReceiptFile && cargo.cargoReceiptData) ? (
                             <button
                               type="button"
                               onClick={() => handleOpenDocument(cargo, "Cargo Receipt", cargo.cargoReceiptFile, cargo.cargoReceiptData, "cargoReceiptFile", "cargoReceiptData")}
@@ -6126,7 +6126,7 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
                 )}
                 <div className="details-term">Packing List:</div>
                 <div className="details-def">
-                  {cargo.packingListFile ? (
+                  {(cargo.packingListFile && cargo.packingListData) ? (
                     <button
                       type="button"
                       onClick={() => handleOpenDocument(cargo, "Packing List", cargo.packingListFile, cargo.packingListData, "packingListFile", "packingListData")}
@@ -6140,7 +6140,7 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
                 </div>
                 <div className="details-term">Invoice:</div>
                 <div className="details-def">
-                  {cargo.invoiceFile ? (
+                  {(cargo.invoiceFile && cargo.invoiceData) ? (
                     <button
                       type="button"
                       onClick={() => handleOpenDocument(cargo, "Invoice", cargo.invoiceFile, cargo.invoiceData, "invoiceFile", "invoiceData")}
@@ -6154,7 +6154,7 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
                 </div>
                 <div className="details-term">Cargo Receipt:</div>
                 <div className="details-def">
-                  {cargo.cargoReceiptFile ? (
+                  {(cargo.cargoReceiptFile && cargo.cargoReceiptData) ? (
                     <button
                       type="button"
                       onClick={() => handleOpenDocument(cargo, "Cargo Receipt", cargo.cargoReceiptFile, cargo.cargoReceiptData, "cargoReceiptFile", "cargoReceiptData")}
@@ -8087,8 +8087,8 @@ function PendingDocumentsPanel({
   };
 
   // Cargos with missing documents vs completed documents
-  const rawPendingCargos = activeCargosWithItems.filter(c => !c.packingListFile || !c.invoiceFile || !c.cargoReceiptFile);
-  const rawCompleteCargos = activeCargosWithItems.filter(c => c.packingListFile && c.invoiceFile && c.cargoReceiptFile);
+  const rawPendingCargos = activeCargosWithItems.filter(c => !(c.packingListFile && c.packingListData) || !(c.invoiceFile && c.invoiceData) || !(c.cargoReceiptFile && c.cargoReceiptData));
+  const rawCompleteCargos = activeCargosWithItems.filter(c => (c.packingListFile && c.packingListData) && (c.invoiceFile && c.invoiceData) && (c.cargoReceiptFile && c.cargoReceiptData));
 
   const pendingCargos = processCargos(rawPendingCargos);
   const completeCargos = processCargos(rawCompleteCargos);
@@ -8289,9 +8289,9 @@ function PendingDocumentsPanel({
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
-                    {!cargo.packingListFile && <span style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "6px", padding: "3px 10px", fontSize: "0.75rem", fontWeight: 600 }}>⚠ Packing List Missing</span>}
-                    {!cargo.invoiceFile && <span style={{ background: "rgba(239,68,68,0.12)", color: "var(--danger)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "6px", padding: "3px 10px", fontSize: "0.75rem", fontWeight: 600 }}>⚠ Invoice Missing</span>}
-                    {!cargo.cargoReceiptFile && <span style={{ background: "rgba(56,189,248,0.12)", color: "#38bdf8", border: "1px solid rgba(56,189,248,0.25)", borderRadius: "6px", padding: "3px 10px", fontSize: "0.75rem", fontWeight: 600 }}>⚠ Cargo Receipt Missing</span>}
+                    {!(cargo.packingListFile && cargo.packingListData) && <span style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "6px", padding: "3px 10px", fontSize: "0.75rem", fontWeight: 600 }}>⚠ Packing List Missing</span>}
+                    {!(cargo.invoiceFile && cargo.invoiceData) && <span style={{ background: "rgba(239,68,68,0.12)", color: "var(--danger)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "6px", padding: "3px 10px", fontSize: "0.75rem", fontWeight: 600 }}>⚠ Invoice Missing</span>}
+                    {!(cargo.cargoReceiptFile && cargo.cargoReceiptData) && <span style={{ background: "rgba(56,189,248,0.12)", color: "#38bdf8", border: "1px solid rgba(56,189,248,0.25)", borderRadius: "6px", padding: "3px 10px", fontSize: "0.75rem", fontWeight: 600 }}>⚠ Cargo Receipt Missing</span>}
                     {onDeleteCargo && cargoItems.length === 0 && (
                       <button 
                         type="button" 
@@ -8311,7 +8311,7 @@ function PendingDocumentsPanel({
                   {/* Packing List — cargo level */}
                   <div style={{ background: "rgba(0,0,0,0.15)", borderRadius: "8px", padding: "12px" }}>
                     <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px", fontWeight: 600 }}>CARGO PACKING LIST</div>
-                    {cargo.packingListFile ? (
+                    {(cargo.packingListFile && cargo.packingListData) ? (
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", flexWrap: "wrap" }}>
                         <span style={{ color: "var(--success)" }}>✓</span>
                         <button
@@ -8341,7 +8341,7 @@ function PendingDocumentsPanel({
                   {/* Invoice / Vendor Bill — one per cargo */}
                   <div style={{ background: "rgba(0,0,0,0.15)", borderRadius: "8px", padding: "12px" }}>
                     <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px", fontWeight: 600 }}>VENDOR BILL / INVOICE</div>
-                    {cargo.invoiceFile ? (
+                    {(cargo.invoiceFile && cargo.invoiceData) ? (
                       <div>
                         <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", flexWrap: "wrap" }}>
                           <span style={{ color: "var(--success)" }}>✓</span>
@@ -8387,7 +8387,7 @@ function PendingDocumentsPanel({
                   {/* Cargo Receipt — one per cargo */}
                   <div style={{ background: "rgba(0,0,0,0.15)", borderRadius: "8px", padding: "12px" }}>
                     <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px", fontWeight: 600 }}>CARGO RECEIPT</div>
-                    {cargo.cargoReceiptFile ? (
+                    {(cargo.cargoReceiptFile && cargo.cargoReceiptData) ? (
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", flexWrap: "wrap" }}>
                         <span style={{ color: "var(--success)" }}>✓</span>
                         <button

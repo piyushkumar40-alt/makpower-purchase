@@ -79,6 +79,23 @@ function getEffectiveTotalCargoPrice(c) {
   return total ? total : (c.totalCargoPrice != null && c.totalCargoPrice !== "" ? parseFloat(c.totalCargoPrice) : "");
 }
 
+function sanitizeCargoDocuments(c) {
+  if (!c) return c;
+  const hasPacking = Boolean(c.packingListData && String(c.packingListData).trim());
+  const hasInvoice = Boolean(c.invoiceData && String(c.invoiceData).trim());
+  const hasReceipt = Boolean(c.cargoReceiptData && String(c.cargoReceiptData).trim());
+
+  return {
+    ...c,
+    packingListFile: hasPacking ? (c.packingListFile || "") : "",
+    packingListData: hasPacking ? c.packingListData : "",
+    invoiceFile: hasInvoice ? (c.invoiceFile || "") : "",
+    invoiceData: hasInvoice ? c.invoiceData : "",
+    cargoReceiptFile: hasReceipt ? (c.cargoReceiptFile || "") : "",
+    cargoReceiptData: hasReceipt ? c.cargoReceiptData : ""
+  };
+}
+
 // Automatically invalidate full-state cache on any mutating request
 app.use((req, res, next) => {
   if (req.method !== "GET" && req.path.startsWith("/api") && !req.path.startsWith("/api/audit-logs") && !req.path.startsWith("/api/auth")) {
@@ -2526,7 +2543,7 @@ app.get("/api/state", async (req, res) => {
           vendorEddHistory: safeJsonParse(r.vendorEddHistory, [])
         }));
 
-        const cargos = cargosRes.rows.map(c => ({
+        const cargos = cargosRes.rows.map(c => sanitizeCargoDocuments({
           ...c,
           cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
           cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
@@ -2742,7 +2759,7 @@ app.get("/api/state", async (req, res) => {
         balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : ""
       }));
 
-      const cargos = (cargosRes.rows || []).map(c => ({
+      const cargos = (cargosRes.rows || []).map(c => sanitizeCargoDocuments({
         ...c,
         cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
         cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
@@ -2827,7 +2844,7 @@ app.get("/api/state", async (req, res) => {
           users: (uR.rows || []).map(u => ({ ...u, status: u.status || "active" })),
           vendors: (vR.rows || []).map(v => ({ ...v, purchaserIds: safeJsonParse(v.purchaserIds, []) })),
           requests: (rR.rows || []).map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })),
-          cargos: cR.rows || [],
+          cargos: (cR.rows || []).map(sanitizeCargoDocuments),
           cargoCompanies: [],
           items: [],
           designations: initialDesignations,
@@ -2840,11 +2857,13 @@ app.get("/api/state", async (req, res) => {
       } catch (fbErr) {
         console.error("GET /api/state ultimate fallback:", fbErr.message);
         const data = readLocalJson();
+        if (data.cargos) data.cargos = data.cargos.map(sanitizeCargoDocuments);
         return res.json(data);
       }
     }
   } else {
     const data = readLocalJson();
+    if (data.cargos) data.cargos = data.cargos.map(sanitizeCargoDocuments);
     if (isPurchaseOnlyRole) {
       return res.json({
         ...data,
@@ -2955,7 +2974,7 @@ app.get("/api/cargos", async (req, res) => {
   if (isPg) {
     try {
       const result = await pool.query('SELECT * FROM cargos ORDER BY "cargoOrderDate" DESC');
-      const cargos = result.rows.map(c => ({
+      const cargos = result.rows.map(c => sanitizeCargoDocuments({
         ...c,
         cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
         cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
@@ -2968,7 +2987,7 @@ app.get("/api/cargos", async (req, res) => {
     }
   } else {
     const data = readLocalJson();
-    res.json(data.cargos || []);
+    res.json((data.cargos || []).map(sanitizeCargoDocuments));
   }
 });
 
@@ -3685,7 +3704,7 @@ app.post("/api/requests/delete-by-date", async (req, res) => {
 
 // 4. POST /api/cargos - Upserts cargo shipments
 app.post("/api/cargos", async (req, res) => {
-  const c = req.body;
+  const c = sanitizeCargoDocuments(req.body);
   if (isPg) {
     try {
       const query = `
@@ -3706,19 +3725,19 @@ app.post("/api/cargos", async (req, res) => {
           "modeOfTransport" = EXCLUDED."modeOfTransport",
           "cargoShippingDate" = EXCLUDED."cargoShippingDate",
           "cargoEta" = EXCLUDED."cargoEta",
-          "packingListFile" = COALESCE(NULLIF(EXCLUDED."packingListFile", ''), cargos."packingListFile"),
-          "packingListData" = COALESCE(NULLIF(EXCLUDED."packingListData", ''), cargos."packingListData"),
-          "invoiceFile" = COALESCE(NULLIF(EXCLUDED."invoiceFile", ''), cargos."invoiceFile"),
-          "invoiceData" = COALESCE(NULLIF(EXCLUDED."invoiceData", ''), cargos."invoiceData"),
-          "cargoReceiptFile" = COALESCE(NULLIF(EXCLUDED."cargoReceiptFile", ''), cargos."cargoReceiptFile"),
-          "cargoReceiptData" = COALESCE(NULLIF(EXCLUDED."cargoReceiptData", ''), cargos."cargoReceiptData"),
+          "packingListFile" = EXCLUDED."packingListFile",
+          "packingListData" = EXCLUDED."packingListData",
+          "invoiceFile" = EXCLUDED."invoiceFile",
+          "invoiceData" = EXCLUDED."invoiceData",
+          "cargoReceiptFile" = EXCLUDED."cargoReceiptFile",
+          "cargoReceiptData" = EXCLUDED."cargoReceiptData",
           "isMaterialRec" = EXCLUDED."isMaterialRec",
           "receivedDate" = EXCLUDED."receivedDate",
           "currency" = EXCLUDED."currency",
           "cargoEtaHistory" = COALESCE(NULLIF(EXCLUDED."cargoEtaHistory", ''), cargos."cargoEtaHistory"),
-          "billUploadedAt" = COALESCE(NULLIF(EXCLUDED."billUploadedAt", ''), cargos."billUploadedAt"),
-          "billUploadedBy" = COALESCE(NULLIF(EXCLUDED."billUploadedBy", ''), cargos."billUploadedBy"),
-          "billStatus" = COALESCE(NULLIF(EXCLUDED."billStatus", ''), cargos."billStatus"),
+          "billUploadedAt" = EXCLUDED."billUploadedAt",
+          "billUploadedBy" = EXCLUDED."billUploadedBy",
+          "billStatus" = EXCLUDED."billStatus",
           "billVerifiedAt" = EXCLUDED."billVerifiedAt",
           "billVerifiedBy" = EXCLUDED."billVerifiedBy",
           "billVerificationNotes" = EXCLUDED."billVerificationNotes"
@@ -3747,13 +3766,7 @@ app.post("/api/cargos", async (req, res) => {
     if (index !== -1) {
       data.cargos[index] = {
         ...data.cargos[index],
-        ...c,
-        packingListFile: c.packingListFile || data.cargos[index].packingListFile || "",
-        packingListData: c.packingListData || data.cargos[index].packingListData || "",
-        invoiceFile: c.invoiceFile || data.cargos[index].invoiceFile || "",
-        invoiceData: c.invoiceData || data.cargos[index].invoiceData || "",
-        cargoReceiptFile: c.cargoReceiptFile || data.cargos[index].cargoReceiptFile || "",
-        cargoReceiptData: c.cargoReceiptData || data.cargos[index].cargoReceiptData || ""
+        ...c
       };
     } else {
       data.cargos.unshift(c);

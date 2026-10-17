@@ -154,7 +154,7 @@ export default function BundledUpcomingShipments({
     const totalValue = enrichedCargos.reduce((sum, c) => sum + c.totalValueRmb, 0);
     const totalFreight = enrichedCargos.reduce((sum, c) => sum + (calculateTotalCargoPrice(c) || 0), 0);
     const totalCbm = enrichedCargos.reduce((sum, c) => sum + (Number(c.cbm) || 0), 0);
-    const pendingBillCount = enrichedCargos.filter(c => Boolean(c.invoiceFile) && c.billStatus !== "verified" && !c.billVerifiedAt).length;
+    const pendingBillCount = enrichedCargos.filter(c => Boolean(c.invoiceFile && c.invoiceData) && c.billStatus !== "verified" && !c.billVerifiedAt).length;
 
     return {
       totalCargos: enrichedCargos.length,
@@ -170,7 +170,7 @@ export default function BundledUpcomingShipments({
   const filteredCargos = useMemo(() => {
     return enrichedCargos.filter(cargo => {
       // 1. Status Filter
-      if (statusFilter === "pending_bill_verification" && (!cargo.invoiceFile || cargo.billStatus === "verified" || cargo.billVerifiedAt)) return false;
+      if (statusFilter === "pending_bill_verification" && (!cargo.invoiceFile || !cargo.invoiceData || cargo.billStatus === "verified" || cargo.billVerifiedAt)) return false;
 
       // 2. Vendor Filter
       if (vendorFilter && cargo.vendorId !== vendorFilter) return false;
@@ -730,7 +730,7 @@ export default function BundledUpcomingShipments({
                   <div style={{ fontWeight: 600, color: "var(--primary)" }}>Documents:</div>
                   <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                     <span>Packing List:</span>
-                    {cargo.packingListFile ? (
+                    {(cargo.packingListFile && cargo.packingListData) ? (
                       <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                         <button
                           type="button"
@@ -789,7 +789,7 @@ export default function BundledUpcomingShipments({
                     )}
                   </div>
                   <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                    Vendor Bill: {cargo.invoiceFile ? (
+                    Vendor Bill: {(cargo.invoiceFile && cargo.invoiceData) ? (
                       <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
                         <button
                           type="button"
@@ -833,7 +833,7 @@ export default function BundledUpcomingShipments({
                     )}
                   </div>
                   <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                    Cargo Receipt: {cargo.cargoReceiptFile ? (
+                    Cargo Receipt: {(cargo.cargoReceiptFile && cargo.cargoReceiptData) ? (
                       <button
                         type="button"
                         onClick={() => handleOpenDocument(cargo, "Cargo Delivery Receipt", cargo.cargoReceiptFile, cargo.cargoReceiptData, "cargoReceiptFile", "cargoReceiptData")}
@@ -1426,10 +1426,10 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
           </div>
 
           {/* Cargo Associated Documents if available */}
-          {cargo && (cargo.packingListFile || cargo.invoiceFile || cargo.cargoReceiptFile) && (
+          {cargo && ((cargo.packingListFile && cargo.packingListData) || (cargo.invoiceFile && cargo.invoiceData) || (cargo.cargoReceiptFile && cargo.cargoReceiptData)) && (
             <div style={{ marginTop: "12px", padding: "10px 14px", borderRadius: "8px", background: "rgba(255, 255, 255, 0.02)", border: "1px dashed var(--border-glass)", display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
               <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--primary)", textTransform: "uppercase" }}>Cargo Documents:</div>
-              {cargo.packingListFile && (
+              {cargo.packingListFile && cargo.packingListData && (
                 <button
                   type="button"
                   onClick={() => handleInspectDoc("Cargo Packing List", cargo.packingListFile, cargo.packingListData, "packingListFile", "packingListData")}
@@ -1440,7 +1440,7 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
                   <FileText size={12} /> PL: {cargo.packingListFile}
                 </button>
               )}
-              {cargo.invoiceFile && (
+              {cargo.invoiceFile && cargo.invoiceData && (
                 <button
                   type="button"
                   onClick={() => handleInspectDoc("Vendor Bill (Invoice)", cargo.invoiceFile, cargo.invoiceData, "invoiceFile", "invoiceData")}
@@ -1451,7 +1451,7 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
                   <FileText size={12} /> INV: {cargo.invoiceFile}
                 </button>
               )}
-              {cargo.cargoReceiptFile && (
+              {cargo.cargoReceiptFile && cargo.cargoReceiptData && (
                 <button
                   type="button"
                   onClick={() => handleInspectDoc("Cargo Delivery Receipt", cargo.cargoReceiptFile, cargo.cargoReceiptData, "cargoReceiptFile", "cargoReceiptData")}

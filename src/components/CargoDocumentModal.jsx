@@ -12,7 +12,8 @@ import {
   Loader2, 
   Link2,
   Search,
-  Layers
+  Layers,
+  Trash2
 } from "lucide-react";
 import { useModalEscape } from "../utils/useModalEscape";
 import { uploadToCloudinary } from "../utils/upload";
@@ -158,6 +159,25 @@ export default function CargoDocumentModal({
     } catch (err) {
       setUploadError(`Failed to link item document: ${err.message}`);
     } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleRemoveDocument = async () => {
+    if (!cargo || !onUpdateCargo) return;
+    setIsUploading(true);
+    setUploadError("");
+    try {
+      await onUpdateCargo({
+        ...cargo,
+        [field]: "",
+        [dataField]: ""
+      });
+      setCurrentFileName("");
+      setCurrentData("");
+      if (onClose) onClose();
+    } catch (err) {
+      setUploadError(`Failed to remove document: ${err.message}`);
       setIsUploading(false);
     }
   };
@@ -429,7 +449,7 @@ export default function CargoDocumentModal({
               </p>
               
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <div>
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
                   <label 
                     className="btn btn-primary" 
                     style={{ 
@@ -451,6 +471,25 @@ export default function CargoDocumentModal({
                       onChange={handleAttachFile} 
                     />
                   </label>
+
+                  <button
+                    type="button"
+                    onClick={handleRemoveDocument}
+                    disabled={isUploading}
+                    className="btn btn-secondary"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "9px 16px",
+                      fontSize: "0.85rem",
+                      color: "var(--danger)",
+                      borderColor: "rgba(239, 68, 68, 0.4)"
+                    }}
+                    title="Remove unattached document reference from cargo"
+                  >
+                    <Trash2 size={15} /> Remove Unattached Reference
+                  </button>
                 </div>
 
                 {/* If bundled item has document available */}
@@ -482,12 +521,12 @@ export default function CargoDocumentModal({
 
         {/* Footer Actions */}
         <div style={{ borderTop: "1px solid var(--border-glass)", paddingTop: "14px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
-          <div>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
             <label 
               className="btn btn-secondary btn-sm" 
               style={{ display: "inline-flex", alignItems: "center", gap: "6px", cursor: isUploading ? "wait" : "pointer", fontSize: "0.8rem" }}
             >
-              <Upload size={13} /> {isUploading ? "Uploading..." : "Replace / Re-upload File"}
+              <Upload size={13} /> {isUploading ? "Uploading..." : (currentData ? "Replace / Re-upload File" : "Upload File")}
               <input 
                 type="file" 
                 accept=".xlsx,.xls,.csv,.pdf,image/*" 
@@ -496,6 +535,18 @@ export default function CargoDocumentModal({
                 onChange={handleAttachFile} 
               />
             </label>
+            {!currentData && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleRemoveDocument}
+                disabled={isUploading}
+                style={{ display: "inline-flex", alignItems: "center", gap: "5px", color: "var(--danger)", fontSize: "0.78rem" }}
+                title="Remove unattached document reference"
+              >
+                <Trash2 size={13} /> Remove
+              </button>
+            )}
           </div>
           <div style={{ display: "flex", gap: "10px" }}>
             {currentData && (

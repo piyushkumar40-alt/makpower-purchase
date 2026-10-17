@@ -208,7 +208,7 @@ export default function RahulDashboard({
 
   // All cargos where vendor bill is uploaded by purchaser (Step 2 Scope)
   const billCargos = useMemo(() => {
-    return (cargos || []).filter(c => Boolean(c.invoiceFile));
+    return (cargos || []).filter(c => Boolean(c.invoiceFile && c.invoiceData));
   }, [cargos]);
 
   // SLA stats calculated with Sunday exclusion and 2 scenarios across all uploaded bills
@@ -1083,7 +1083,7 @@ export default function RahulDashboard({
                           📊 Attached Packing List:
                         </div>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
-                          {cargo.packingListFile ? (
+                          {(cargo.packingListFile && cargo.packingListData) ? (
                             <button
                               type="button"
                               onClick={() => handleOpenDocument(cargo, "Cargo Packing List", cargo.packingListFile, cargo.packingListData, "packingListFile", "packingListData")}
@@ -1833,9 +1833,9 @@ export default function RahulDashboard({
 
                           {/* Cargo Documents */}
                           <td>
-                            {cargo && (cargo.packingListFile || cargo.invoiceFile || cargo.cargoReceiptFile) ? (
+                            {cargo && ((cargo.packingListFile && cargo.packingListData) || (cargo.invoiceFile && cargo.invoiceData) || (cargo.cargoReceiptFile && cargo.cargoReceiptData)) ? (
                               <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-                                {cargo.packingListFile && (
+                                {cargo.packingListFile && cargo.packingListData && (
                                   <button
                                     type="button"
                                     onClick={() => handleOpenDocument(cargo, "Cargo Packing List", cargo.packingListFile, cargo.packingListData, "packingListFile", "packingListData")}
@@ -1846,7 +1846,7 @@ export default function RahulDashboard({
                                     📄 PL: {cargo.packingListFile.length > 11 ? `${cargo.packingListFile.substring(0, 9)}...` : cargo.packingListFile}
                                   </button>
                                 )}
-                                {cargo.invoiceFile && (
+                                {cargo.invoiceFile && cargo.invoiceData && (
                                   <button
                                     type="button"
                                     onClick={() => handleOpenDocument(cargo, "Vendor Bill (Invoice)", cargo.invoiceFile, cargo.invoiceData, "invoiceFile", "invoiceData")}
@@ -1869,7 +1869,7 @@ export default function RahulDashboard({
                                     {(cargo.billStatus === "verified" || cargo.billVerifiedAt) ? " ✓" : " ⏳"}
                                   </button>
                                 )}
-                                {cargo.cargoReceiptFile && (
+                                {cargo.cargoReceiptFile && cargo.cargoReceiptData && (
                                   <button
                                     type="button"
                                     onClick={() => handleOpenDocument(cargo, "Cargo Delivery Receipt", cargo.cargoReceiptFile, cargo.cargoReceiptData, "cargoReceiptFile", "cargoReceiptData")}
