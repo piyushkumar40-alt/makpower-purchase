@@ -1144,12 +1144,10 @@ async function setupPgDatabase() {
       console.log("Default settings seeded in PG database.");
     }
 
-    // Auto-sync 4-Month Party Category Sales on startup
-    try {
-      await syncPartyCategoryMonthlySales();
-    } catch (syncErr) {
+    // Auto-sync 4-Month Party Category Sales asynchronously in background on startup (non-blocking)
+    syncPartyCategoryMonthlySales().catch(syncErr => {
       console.warn("Party category sales initial sync notice:", syncErr.message);
-    }
+    });
   } catch (err) {
     console.error("Error setting up PostgreSQL schemas/seeds:", err.message);
   }
@@ -2459,7 +2457,7 @@ async function syncPartyCategoryMonthlySales() {
       await pool.query(`TRUNCATE TABLE crm_party_category_monthly_sales`);
       
       const nowIso = new Date().toISOString();
-      const batchSize = 100;
+      const batchSize = 500;
       
       for (let i = 0; i < list.length; i += batchSize) {
         const chunk = list.slice(i, i + batchSize);
