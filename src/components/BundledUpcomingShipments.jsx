@@ -270,6 +270,18 @@ export default function BundledUpcomingShipments({
     await onUpdateCargo(updatedCargo);
   };
 
+  // Action: Purchaser / Admin uploads or replaces packing list for cargo
+  const handlePackingUpload = async (cargoObj, file) => {
+    if (!file || !onUpdateCargo) return;
+    const url = await uploadToCloudinary(file, "makpower_docs");
+    const updatedCargo = {
+      ...cargoObj,
+      packingListFile: file.name,
+      packingListData: url
+    };
+    await onUpdateCargo(updatedCargo);
+  };
+
   // Action: Purchaser / Admin uploads or replaces vendor bill for cargo
   const handleBillUpload = async (cargoObj, file) => {
     if (!file || !onUpdateCargo) return;
@@ -716,33 +728,64 @@ export default function BundledUpcomingShipments({
                 {/* Associated Files / Documents */}
                 <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", fontSize: "0.85rem", background: "rgba(0,0,0,0.1)", padding: "10px 16px", borderRadius: "8px", border: "1px solid var(--border-glass)", alignItems: "center", marginBottom: "12px" }}>
                   <div style={{ fontWeight: 600, color: "var(--primary)" }}>Documents:</div>
-                  <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                    Packing List: {cargo.packingListFile ? (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenDocument(cargo, "Cargo Packing List", cargo.packingListFile, cargo.packingListData, "packingListFile", "packingListData")}
-                        title={`Click to open or inspect ${cargo.packingListFile}`}
-                        className="doc-link-btn"
-                        style={{
-                          background: "rgba(56, 189, 248, 0.12)",
-                          border: "1px solid rgba(56, 189, 248, 0.35)",
-                          padding: "3px 10px",
-                          borderRadius: "6px",
-                          cursor: "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          color: "var(--primary, #38bdf8)",
-                          textDecoration: "none",
-                          fontWeight: 600,
-                          fontSize: "0.83rem"
-                        }}
-                      >
-                        📄 {cargo.packingListFile}
-                        <ExternalLink size={12} style={{ opacity: 0.85 }} />
-                      </button>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                    <span>Packing List:</span>
+                    {cargo.packingListFile ? (
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDocument(cargo, "Cargo Packing List", cargo.packingListFile, cargo.packingListData, "packingListFile", "packingListData")}
+                          title={`Click to open or inspect ${cargo.packingListFile}`}
+                          className="doc-link-btn"
+                          style={{
+                            background: "rgba(56, 189, 248, 0.12)",
+                            border: "1px solid rgba(56, 189, 248, 0.35)",
+                            padding: "3px 10px",
+                            borderRadius: "6px",
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            color: "var(--primary, #38bdf8)",
+                            textDecoration: "none",
+                            fontWeight: 600,
+                            fontSize: "0.83rem"
+                          }}
+                        >
+                          📄 {cargo.packingListFile}
+                          <ExternalLink size={12} style={{ opacity: 0.85 }} />
+                        </button>
+                        <label 
+                          className="btn btn-secondary btn-sm" 
+                          style={{ padding: "2px 7px", fontSize: "0.72rem", cursor: "pointer", margin: 0, height: "24px", display: "inline-flex", alignItems: "center", gap: "3px" }}
+                          title="Replace or re-upload Packing List"
+                        >
+                          <Upload size={11} /> Replace
+                          <input 
+                            type="file" 
+                            accept=".xlsx,.xls,.csv,.pdf,image/*" 
+                            onChange={e => handlePackingUpload(cargo, e.target.files[0])} 
+                            style={{ display: "none" }} 
+                          />
+                        </label>
+                      </div>
                     ) : (
-                      <span style={{ color: "var(--text-muted)" }}>Missing</span>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ color: "var(--text-muted)" }}>Missing</span>
+                        <label 
+                          className="btn btn-secondary btn-sm" 
+                          style={{ padding: "2px 7px", fontSize: "0.72rem", cursor: "pointer", margin: 0, height: "24px", display: "inline-flex", alignItems: "center", gap: "3px" }}
+                          title="Upload Packing List"
+                        >
+                          <Upload size={11} /> Upload
+                          <input 
+                            type="file" 
+                            accept=".xlsx,.xls,.csv,.pdf,image/*" 
+                            onChange={e => handlePackingUpload(cargo, e.target.files[0])} 
+                            style={{ display: "none" }} 
+                          />
+                        </label>
+                      </div>
                     )}
                   </div>
                   <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>

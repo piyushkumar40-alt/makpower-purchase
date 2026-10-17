@@ -33,6 +33,7 @@ export default function CargoDocumentModal({
   if (!docInfo) return null;
 
   const { cargo, docType, fileName, field, dataField } = docInfo;
+  const [currentFileName, setCurrentFileName] = useState(docInfo.fileName || "");
   const [currentData, setCurrentData] = useState(docInfo.fileData || "");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -46,7 +47,7 @@ export default function CargoDocumentModal({
   const [sheetParseError, setSheetParseError] = useState("");
   const [tableSearch, setTableSearch] = useState("");
 
-  const lowerName = String(fileName || "").toLowerCase();
+  const lowerName = String(currentFileName || "").toLowerCase();
   const isSpreadsheet = lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls") || lowerName.endsWith(".csv");
   const isImage = /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(lowerName) || (typeof currentData === "string" && currentData.startsWith("data:image/"));
   const isPdf = lowerName.endsWith(".pdf") || (typeof currentData === "string" && currentData.startsWith("data:application/pdf"));
@@ -121,6 +122,7 @@ export default function CargoDocumentModal({
     try {
       const url = await uploadToCloudinary(file, "makpower_docs");
       const finalData = url || "";
+      setCurrentFileName(file.name);
       setCurrentData(finalData);
 
       if (cargo && onUpdateCargo) {
@@ -132,8 +134,6 @@ export default function CargoDocumentModal({
       }
 
       setSuccessMessage(`File "${file.name}" uploaded and attached successfully!`);
-      // Trigger download / open
-      downloadOrOpenBlob(finalData, file.name);
     } catch (err) {
       setUploadError(`Upload failed: ${err.message}`);
     } finally {
@@ -144,15 +144,17 @@ export default function CargoDocumentModal({
   const handleLinkItemDoc = async (item) => {
     if (!item?.itemPackingListData || !cargo || !onUpdateCargo) return;
     setIsUploading(true);
+    setUploadError("");
     try {
+      const targetName = item.itemPackingListFile || currentFileName;
+      setCurrentFileName(targetName);
       setCurrentData(item.itemPackingListData);
       await onUpdateCargo({
         ...cargo,
-        [field]: item.itemPackingListFile || fileName,
+        [field]: targetName,
         [dataField]: item.itemPackingListData
       });
       setSuccessMessage(`Linked packing list from item "${item.model}" successfully!`);
-      downloadOrOpenBlob(item.itemPackingListData, item.itemPackingListFile || fileName);
     } catch (err) {
       setUploadError(`Failed to link item document: ${err.message}`);
     } finally {
@@ -162,7 +164,7 @@ export default function CargoDocumentModal({
 
   const handleDownload = () => {
     if (!currentData) return;
-    downloadOrOpenBlob(currentData, fileName);
+    downloadOrOpenBlob(currentData, currentFileName || fileName);
   };
 
   const googleDocsViewerUrl = isWebUrl 
@@ -206,7 +208,7 @@ export default function CargoDocumentModal({
               </h3>
               <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "3px" }}>
                 Cargo: <span style={{ color: "var(--primary)", fontWeight: 600 }}>{cargo?.id || "—"}</span> &nbsp;|&nbsp; 
-                File: <span style={{ fontWeight: 600, color: "var(--text-main)" }}>{fileName || "Unnamed Document"}</span>
+                File: <span style={{ fontWeight: 600, color: "var(--text-main)" }}>{currentFileName || "Unnamed Document"}</span>
               </div>
             </div>
           </div>
@@ -245,14 +247,14 @@ export default function CargoDocumentModal({
           {/* If Image and Data Present */}
           {isImage && currentData && (
             <div style={{ textAlign: "center", background: "rgba(0,0,0,0.3)", borderRadius: "10px", padding: "16px", marginBottom: "16px", border: "1px solid var(--border-glass)" }}>
-              <img src={currentData} alt={fileName} style={{ maxWidth: "100%", maxHeight: "55vh", objectFit: "contain", borderRadius: "6px" }} />
+              <img src={currentData} alt={currentFileName} style={{ maxWidth: "100%", maxHeight: "55vh", objectFit: "contain", borderRadius: "6px" }} />
             </div>
           )}
 
           {/* If PDF and Data Present */}
           {isPdf && currentData && (
             <div style={{ background: "rgba(0,0,0,0.3)", borderRadius: "10px", overflow: "hidden", marginBottom: "16px", border: "1px solid var(--border-glass)" }}>
-              <iframe src={currentData} title={fileName} style={{ width: "100%", height: "55vh", border: "none" }} />
+              <iframe src={currentData} title={currentFileName} style={{ width: "100%", height: "55vh", border: "none" }} />
             </div>
           )}
 
@@ -417,13 +419,13 @@ export default function CargoDocumentModal({
               )}
             </div>
           ) : (
-            /* If Missing Data ("not even here") */
+            /* If Missing Data (Payload not uploaded yet) */
             <div style={{ background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: "10px", padding: "18px", marginBottom: "16px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#f59e0b", fontWeight: 700, fontSize: "0.98rem", marginBottom: "8px" }}>
-                <AlertTriangle size={20} /> File Content Not Attached ("Not Even Here")
+                <AlertTriangle size={20} /> Document Payload Not Attached
               </div>
               <p style={{ margin: "0 0 14px 0", fontSize: "0.85rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
-                The filename is recorded as <strong style={{ color: "var(--primary)" }}>{fileName}</strong>, but its file content (payload) was not uploaded to the server yet.
+                The filename is recorded as <strong style={{ color: "var(--primary)" }}>{currentFileName || fileName}</strong>, but its file content (payload) was not uploaded to the server yet (common for records created prior to payload storage). You can attach the file below to view and persist it.
               </p>
               
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -440,7 +442,7 @@ export default function CargoDocumentModal({
                     }}
                   >
                     {isUploading ? <Loader2 size={16} className="spinner" /> : <Upload size={16} />}
-                    {isUploading ? "Uploading & Attaching..." : "Choose File to Attach & Open"}
+                    {isUploading ? "Uploading & Attaching..." : "Upload & Attach File"}
                     <input 
                       type="file" 
                       accept=".xlsx,.xls,.csv,.pdf,image/*" 

@@ -3706,11 +3706,11 @@ app.post("/api/cargos", async (req, res) => {
           "modeOfTransport" = EXCLUDED."modeOfTransport",
           "cargoShippingDate" = EXCLUDED."cargoShippingDate",
           "cargoEta" = EXCLUDED."cargoEta",
-          "packingListFile" = EXCLUDED."packingListFile",
+          "packingListFile" = COALESCE(NULLIF(EXCLUDED."packingListFile", ''), cargos."packingListFile"),
           "packingListData" = COALESCE(NULLIF(EXCLUDED."packingListData", ''), cargos."packingListData"),
-          "invoiceFile" = EXCLUDED."invoiceFile",
+          "invoiceFile" = COALESCE(NULLIF(EXCLUDED."invoiceFile", ''), cargos."invoiceFile"),
           "invoiceData" = COALESCE(NULLIF(EXCLUDED."invoiceData", ''), cargos."invoiceData"),
-          "cargoReceiptFile" = EXCLUDED."cargoReceiptFile",
+          "cargoReceiptFile" = COALESCE(NULLIF(EXCLUDED."cargoReceiptFile", ''), cargos."cargoReceiptFile"),
           "cargoReceiptData" = COALESCE(NULLIF(EXCLUDED."cargoReceiptData", ''), cargos."cargoReceiptData"),
           "isMaterialRec" = EXCLUDED."isMaterialRec",
           "receivedDate" = EXCLUDED."receivedDate",
@@ -3745,7 +3745,16 @@ app.post("/api/cargos", async (req, res) => {
     c.cargoEtaHistory = safeJsonParse(c.cargoEtaHistory, []);
     const index = data.cargos.findIndex(x => x.id === c.id);
     if (index !== -1) {
-      data.cargos[index] = c;
+      data.cargos[index] = {
+        ...data.cargos[index],
+        ...c,
+        packingListFile: c.packingListFile || data.cargos[index].packingListFile || "",
+        packingListData: c.packingListData || data.cargos[index].packingListData || "",
+        invoiceFile: c.invoiceFile || data.cargos[index].invoiceFile || "",
+        invoiceData: c.invoiceData || data.cargos[index].invoiceData || "",
+        cargoReceiptFile: c.cargoReceiptFile || data.cargos[index].cargoReceiptFile || "",
+        cargoReceiptData: c.cargoReceiptData || data.cargos[index].cargoReceiptData || ""
+      };
     } else {
       data.cargos.unshift(c);
     }
