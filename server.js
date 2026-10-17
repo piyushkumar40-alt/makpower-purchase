@@ -781,6 +781,24 @@ async function setupPgDatabase() {
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billVerificationNotes" TEXT;
     `);
 
+    // Clean up legacy cargos with phantom document filenames but empty/null data payloads
+    try {
+      await pool.query(`
+        UPDATE cargos
+        SET
+          "packingListFile" = CASE WHEN "packingListData" IS NULL OR TRIM("packingListData") = '' THEN '' ELSE "packingListFile" END,
+          "invoiceFile" = CASE WHEN "invoiceData" IS NULL OR TRIM("invoiceData") = '' THEN '' ELSE "invoiceFile" END,
+          "cargoReceiptFile" = CASE WHEN "cargoReceiptData" IS NULL OR TRIM("cargoReceiptData") = '' THEN '' ELSE "cargoReceiptFile" END
+        WHERE
+          ("packingListFile" != '' AND ("packingListData" IS NULL OR TRIM("packingListData") = ''))
+          OR ("invoiceFile" != '' AND ("invoiceData" IS NULL OR TRIM("invoiceData") = ''))
+          OR ("cargoReceiptFile" != '' AND ("cargoReceiptData" IS NULL OR TRIM("cargoReceiptData") = ''));
+      `);
+      console.log("Verified and sanitized legacy cargo document references in database.");
+    } catch (cleanErr) {
+      console.warn("Notice: cargo document reference cleanup:", cleanErr.message);
+    }
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS requests (
         "id" TEXT PRIMARY KEY,
@@ -3899,6 +3917,56 @@ app.post("/api/cargos/purge-empty", async (req, res) => {
     const deletedCount = beforeCount - data.cargos.length;
     writeLocalJson(data);
     res.json({ success: true, deletedCount });
+  }
+});
+
+// POST /api/cargos/clean-unattached-documents - Clears unattached document filename references where payloads are missing
+app.post("/api/cargos/clean-unattached-documents", async (req, res) => {
+  invalidateStateCache();
+  if (isPg) {
+    try {
+      const result = await pool.query(`
+        UPDATE cargos
+        SET
+          "packingListFile" = CASE WHEN "packingListData" IS NULL OR TRIM("packingListData") = '' THEN '' ELSE "packingListFile" END,
+          "invoiceFile" = CASE WHEN "invoiceData" IS NULL OR TRIM("invoiceData") = '' THEN '' ELSE "invoiceFile" END,
+          "cargoReceiptFile" = CASE WHEN "cargoReceiptData" IS NULL OR TRIM("cargoReceiptData") = '' THEN '' ELSE "cargoReceiptFile" END
+        WHERE
+          ("packingListFile" != '' AND ("packingListData" IS NULL OR TRIM("packingListData") = ''))
+          OR ("invoiceFile" != '' AND ("invoiceData" IS NULL OR TRIM("invoiceData") = ''))
+          OR ("cargoReceiptFile" != '' AND ("cargoReceiptData" IS NULL OR TRIM("cargoReceiptData") = ''));
+      `);
+      res.json({ success: true, updatedCount: result.rowCount });
+    } catch (err) {
+      console.error("POST /api/cargos/clean-unattached-documents error:", err.message);
+      res.status(500).json({ error: "Failed to clean unattached cargo documents." });
+    }
+  } else {
+    const data = readLocalJson();
+    let updatedCount = 0;
+    (data.cargos || []).forEach(c => {
+      let changed = false;
+      if (c.packingListFile && (!c.packingListData || !String(c.packingListData).trim())) {
+        c.packingListFile = "";
+        c.packingListData = "";
+        changed = true;
+      }
+      if (c.invoiceFile && (!c.invoiceData || !String(c.invoiceData).trim())) {
+        c.invoiceFile = "";
+        c.invoiceData = "";
+        changed = true;
+      }
+      if (c.cargoReceiptFile && (!c.cargoReceiptData || !String(c.cargoReceiptData).trim())) {
+        c.cargoReceiptFile = "";
+        c.cargoReceiptData = "";
+        changed = true;
+      }
+      if (changed) updatedCount++;
+    });
+    if (updatedCount > 0) {
+      writeLocalJson(data);
+    }
+    res.json({ success: true, updatedCount });
   }
 });
 
