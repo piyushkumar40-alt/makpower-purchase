@@ -727,3 +727,37 @@ export const calculateBillSlaStatus = (cargo) => {
       : `Bill uploaded on ${rawUpload ? new Date(rawUpload).toLocaleDateString() : triggerDateStr}. Rahul Accounts has 3 working days (excl. Sunday) from upload date to verify bill.`
   };
 };
+
+export const calculateCargoTotalCartons = (cargo, requests = []) => {
+  if (!cargo) return 0;
+  if (cargo.totalCartons != null && cargo.totalCartons !== "" && !isNaN(parseInt(cargo.totalCartons, 10))) {
+    const directVal = parseInt(cargo.totalCartons, 10);
+    if (directVal > 0) return directVal;
+  }
+  if (!Array.isArray(requests) || requests.length === 0) return 0;
+  const cargoItems = requests.filter(r => r.cargoId === cargo.id || (cargo.cargoDetail && r.cargoId === cargo.cargoDetail));
+  return cargoItems.reduce((sum, r) => {
+    if (r.totalCartons != null && r.totalCartons !== "" && !isNaN(parseInt(r.totalCartons, 10))) {
+      return sum + parseInt(r.totalCartons, 10);
+    }
+    const ipc = parseInt(r.itemsPerCarton, 10);
+    const qty = parseInt(r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+    if (ipc > 0 && qty > 0) {
+      return sum + Math.ceil(qty / ipc);
+    }
+    return sum;
+  }, 0);
+};
+
+export const calculateItemCartons = (item) => {
+  if (!item) return 0;
+  if (item.totalCartons != null && item.totalCartons !== "" && !isNaN(parseInt(item.totalCartons, 10))) {
+    return parseInt(item.totalCartons, 10);
+  }
+  const ipc = parseInt(item.itemsPerCarton, 10);
+  const qty = parseInt(item.cargoPickedQty || item.vendorOrderQuantity || item.orderQuantity || 0, 10);
+  if (ipc > 0 && qty > 0) {
+    return Math.ceil(qty / ipc);
+  }
+  return 0;
+};

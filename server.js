@@ -779,6 +779,7 @@ async function setupPgDatabase() {
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billVerifiedAt" TEXT;
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billVerifiedBy" TEXT;
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billVerificationNotes" TEXT;
+      ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "totalCartons" INTEGER;
     `);
 
     // Clean up legacy cargos with phantom document filenames but empty/null data payloads
@@ -847,6 +848,8 @@ async function setupPgDatabase() {
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "currency" TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "timestamp" TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "vendorEddHistory" TEXT;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "itemsPerCarton" INTEGER;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "totalCartons" INTEGER;
       UPDATE requests SET "timestamp" = "orderDate" WHERE ("timestamp" IS NULL OR "timestamp" = '') AND "orderDate" IS NOT NULL;
     `);
 
@@ -3291,8 +3294,9 @@ app.post("/api/requests", async (req, res) => {
           "cargoId", "isMaterialRec", "actualReceivedDate", "notes", "itemNature", "category",
           "requiredByDate", "entryBy", "packingOrderedByNitin", "purchaseUpdated", "status",
             "cancellationReason", "cancelledAt", "cargoAssignedAt",
-            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency", "timestamp", "vendorEddHistory"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
+            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency", "timestamp", "vendorEddHistory",
+            "itemsPerCarton", "totalCartons"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38)
           ON CONFLICT ("id") DO UPDATE SET
             "purchaserId" = EXCLUDED."purchaserId",
             "vendorId" = EXCLUDED."vendorId",
@@ -3328,8 +3332,13 @@ app.post("/api/requests", async (req, res) => {
             "vendorReadyDate" = EXCLUDED."vendorReadyDate",
             "currency" = EXCLUDED."currency",
             "timestamp" = COALESCE(EXCLUDED."timestamp", requests."timestamp"),
-            "vendorEddHistory" = COALESCE(NULLIF(EXCLUDED."vendorEddHistory", ''), requests."vendorEddHistory")
+            "vendorEddHistory" = COALESCE(NULLIF(EXCLUDED."vendorEddHistory", ''), requests."vendorEddHistory"),
+            "itemsPerCarton" = COALESCE(EXCLUDED."itemsPerCarton", requests."itemsPerCarton"),
+            "totalCartons" = COALESCE(EXCLUDED."totalCartons", requests."totalCartons")
         `;
+        const calculatedCartons = (r.itemsPerCarton && parseInt(r.itemsPerCarton) > 0)
+          ? Math.ceil(parseInt(r.vendorOrderQuantity || r.orderQuantity || 0) / parseInt(r.itemsPerCarton))
+          : (r.totalCartons != null && r.totalCartons !== "" ? parseInt(r.totalCartons) : null);
         const values = [
           r.id, r.purchaserId, r.vendorId, r.orderDate, r.type, r.model, parseInt(r.orderQuantity || 0),
           r.priceRmb === "" ? null : parseFloat(r.priceRmb), r.totalRmb === "" ? null : parseFloat(r.totalRmb),
@@ -3346,7 +3355,9 @@ app.post("/api/requests", async (req, res) => {
           r.vendorReadyDate || "",
           r.currency || "RMB",
           r.timestamp || r.orderDate || new Date().toISOString(),
-          Array.isArray(r.vendorEddHistory) ? JSON.stringify(r.vendorEddHistory) : (r.vendorEddHistory || "[]")
+          Array.isArray(r.vendorEddHistory) ? JSON.stringify(r.vendorEddHistory) : (r.vendorEddHistory || "[]"),
+          r.itemsPerCarton != null && r.itemsPerCarton !== "" ? parseInt(r.itemsPerCarton) : null,
+          calculatedCartons
         ];
         await pool.query(query, values);
         markAppActivity();
@@ -3554,8 +3565,9 @@ app.post("/api/requests/batch", async (req, res) => {
             "cargoId", "isMaterialRec", "actualReceivedDate", "notes", "itemNature", "category",
             "requiredByDate", "entryBy", "packingOrderedByNitin", "purchaseUpdated", "status",
             "cancellationReason", "cancelledAt", "cargoAssignedAt",
-            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency", "timestamp"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
+            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency", "timestamp",
+            "itemsPerCarton", "totalCartons"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
           ON CONFLICT ("id") DO UPDATE SET
             "purchaserId" = EXCLUDED."purchaserId",
             "vendorId" = EXCLUDED."vendorId",
@@ -3590,8 +3602,13 @@ app.post("/api/requests/batch", async (req, res) => {
             "parentRequestId" = EXCLUDED."parentRequestId",
             "vendorReadyDate" = EXCLUDED."vendorReadyDate",
             "currency" = EXCLUDED."currency",
-            "timestamp" = COALESCE(EXCLUDED."timestamp", requests."timestamp")
+            "timestamp" = COALESCE(EXCLUDED."timestamp", requests."timestamp"),
+            "itemsPerCarton" = COALESCE(EXCLUDED."itemsPerCarton", requests."itemsPerCarton"),
+            "totalCartons" = COALESCE(EXCLUDED."totalCartons", requests."totalCartons")
         `;
+        const calculatedCartons = (r.itemsPerCarton && parseInt(r.itemsPerCarton) > 0)
+          ? Math.ceil(parseInt(r.vendorOrderQuantity || r.orderQuantity || 0) / parseInt(r.itemsPerCarton))
+          : (r.totalCartons != null && r.totalCartons !== "" ? parseInt(r.totalCartons) : null);
         const values = [
           r.id, r.purchaserId, r.vendorId, r.orderDate, r.type, r.model, parseInt(r.orderQuantity || 0),
           r.priceRmb === "" ? null : parseFloat(r.priceRmb), r.totalRmb === "" ? null : parseFloat(r.totalRmb),
@@ -3607,7 +3624,9 @@ app.post("/api/requests/batch", async (req, res) => {
           r.parentRequestId || "",
           r.vendorReadyDate || "",
           r.currency || "RMB",
-          r.timestamp || r.orderDate || new Date().toISOString()
+          r.timestamp || r.orderDate || new Date().toISOString(),
+          r.itemsPerCarton != null && r.itemsPerCarton !== "" ? parseInt(r.itemsPerCarton) : null,
+          calculatedCartons
         ];
         await pool.query(query, values);
       }
@@ -3730,8 +3749,9 @@ app.post("/api/cargos", async (req, res) => {
           "id", "vendorId", "cargoOrderDate", "cargoDetail", "cargoPrice", "cargoPriceUom",
           "cbmPackingList", "totalCargoPrice", "modeOfTransport", "cargoShippingDate", "cargoEta",
           "packingListFile", "packingListData", "invoiceFile", "invoiceData", "cargoReceiptFile", "cargoReceiptData", "isMaterialRec", "receivedDate", "currency", "cargoEtaHistory",
-          "billUploadedAt", "billUploadedBy", "billStatus", "billVerifiedAt", "billVerifiedBy", "billVerificationNotes"
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+          "billUploadedAt", "billUploadedBy", "billStatus", "billVerifiedAt", "billVerifiedBy", "billVerificationNotes",
+          "totalCartons"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
         ON CONFLICT ("id") DO UPDATE SET
           "vendorId" = EXCLUDED."vendorId",
           "cargoOrderDate" = EXCLUDED."cargoOrderDate",
@@ -3758,7 +3778,8 @@ app.post("/api/cargos", async (req, res) => {
           "billStatus" = EXCLUDED."billStatus",
           "billVerifiedAt" = EXCLUDED."billVerifiedAt",
           "billVerifiedBy" = EXCLUDED."billVerifiedBy",
-          "billVerificationNotes" = EXCLUDED."billVerificationNotes"
+          "billVerificationNotes" = EXCLUDED."billVerificationNotes",
+          "totalCartons" = COALESCE(EXCLUDED."totalCartons", cargos."totalCartons")
       `;
       const effectiveTotal = getEffectiveTotalCargoPrice(c);
       const values = [
@@ -3769,7 +3790,8 @@ app.post("/api/cargos", async (req, res) => {
         c.modeOfTransport || "", c.cargoShippingDate || "", c.cargoEta || "",
         c.packingListFile || "", c.packingListData || "", c.invoiceFile || "", c.invoiceData || "", c.cargoReceiptFile || "", c.cargoReceiptData || "", c.isMaterialRec || "No", c.receivedDate || "", c.currency || "RMB",
         Array.isArray(c.cargoEtaHistory) ? JSON.stringify(c.cargoEtaHistory) : (c.cargoEtaHistory || "[]"),
-        c.billUploadedAt || "", c.billUploadedBy || "", c.billStatus || "", c.billVerifiedAt || "", c.billVerifiedBy || "", c.billVerificationNotes || ""
+        c.billUploadedAt || "", c.billUploadedBy || "", c.billStatus || "", c.billVerifiedAt || "", c.billVerifiedBy || "", c.billVerificationNotes || "",
+        c.totalCartons != null && c.totalCartons !== "" ? parseInt(c.totalCartons) : null
       ];
       await pool.query(query, values);
       res.json({ success: true });

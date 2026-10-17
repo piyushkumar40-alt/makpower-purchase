@@ -10,7 +10,7 @@ import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
-import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice } from "../utils/formatters";
+import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons } from "../utils/formatters";
 import { useModalEscape } from "../utils/useModalEscape";
 import MasterOrderTracker from "./MasterOrderTracker";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
@@ -574,6 +574,8 @@ export default function PurchaserDashboard({
   const [checkedRequestIds, setCheckedRequestIds] = useState([]);
   const [plannerNewQtyMap, setPlannerNewQtyMap] = useState({}); // { [reqId]: number }
   const [plannerNewPriceMap, setPlannerNewPriceMap] = useState({}); // { [reqId]: number }
+  const [plannerItemsPerCartonMap, setPlannerItemsPerCartonMap] = useState({}); // { [reqId]: number }
+  const [cartonModalConfig, setCartonModalConfig] = useState(null); // { isOpen: boolean, targetMode: 'selected' | 'all' | 'missing' | 'single', singleItem?: object }
   const [plannerSortDiffTop, setPlannerSortDiffTop] = useState(false);
   const [showExcelUpdateModal, setShowExcelUpdateModal] = useState(false);
   const [excelNotification, setExcelNotification] = useState(null); // { matchedCount, unmatchedCount, unmatchedList, timestamp }
@@ -2250,6 +2252,7 @@ export default function PurchaserDashboard({
                         setCheckedRequestIds([]);
                         setPlannerNewQtyMap({});
                         setPlannerNewPriceMap({});
+                        setPlannerItemsPerCartonMap({});
                         setExcelNotification(null);
                       }}
                       style={{ fontWeight: 600, borderColor: plannerPurchaserFilter !== "all" ? "var(--primary)" : undefined }}
@@ -2273,6 +2276,7 @@ export default function PurchaserDashboard({
                       setCheckedRequestIds([]);
                       setPlannerNewQtyMap({});
                       setPlannerNewPriceMap({});
+                      setPlannerItemsPerCartonMap({});
                       setStep3SelectedOrderDate("");
                       setStep3SelectedCategory("");
                       setStep3ModelSearch("");
@@ -2371,6 +2375,21 @@ export default function PurchaserDashboard({
 
                 return (hasQ && effQ !== origQ) || (hasP && Math.abs(effP - origP) > 0.0001);
               }).length;
+              const selectedTotalCartons = selectedReadyRequests.reduce((acc, r) => {
+                const customQ = plannerNewQtyMap[r.id];
+                const effQ = (customQ !== undefined && customQ !== null && customQ !== "") ? parseInt(customQ, 10) : parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+                const ctnSize = plannerItemsPerCartonMap[r.id] ?? r.itemsPerCarton;
+                const ctnVal = parseInt(ctnSize, 10);
+                if (!isNaN(ctnVal) && ctnVal > 0) {
+                  return acc + Math.ceil(effQ / ctnVal);
+                }
+                return acc;
+              }, 0);
+              const selectedMissingCartonCount = selectedReadyRequests.filter(r => {
+                const ctnSize = plannerItemsPerCartonMap[r.id] ?? r.itemsPerCarton;
+                const ctnVal = parseInt(ctnSize, 10);
+                return isNaN(ctnVal) || ctnVal <= 0;
+              }).length;
               const selectedCurrency = selectedReadyRequests[0]?.currency || "RMB";
 
               return (
@@ -2427,6 +2446,29 @@ export default function PurchaserDashboard({
                       title="Add or update Vendor EDD in bulk for selected or all filtered orders"
                     >
                       <Calendar size={14} /> Update Vendor EDD ({checkedRequestIds.length > 0 ? checkedRequestIds.length : step3FilteredRequests.length})
+                    </button>
+                    <button 
+                      type="button"
+                      disabled={step3FilteredRequests.length === 0}
+                      onClick={() => setCartonModalConfig({
+                        isOpen: true,
+                        targetMode: checkedRequestIds.length > 0 ? "selected" : "all"
+                      })}
+                      className="btn btn-secondary btn-sm"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        fontSize: "0.82rem",
+                        padding: "6px 12px",
+                        fontWeight: 600,
+                        borderColor: (checkedRequestIds.length > 0 || step3FilteredRequests.length > 0) ? "#f59e0b" : undefined,
+                        color: (checkedRequestIds.length > 0 || step3FilteredRequests.length > 0) ? "#f59e0b" : undefined,
+                        background: (checkedRequestIds.length > 0 || step3FilteredRequests.length > 0) ? "rgba(245, 158, 11, 0.12)" : undefined
+                      }}
+                      title="Compulsory: Set items per carton for selected or all filtered orders"
+                    >
+                      <Package size={14} /> Set Items / Carton ({checkedRequestIds.length > 0 ? checkedRequestIds.length : step3FilteredRequests.length})
                     </button>
                   </div>
                 </div>
@@ -2667,6 +2709,30 @@ export default function PurchaserDashboard({
                     >
                       <Calendar size={13} /> Update Vendor EDD ({checkedRequestIds.length > 0 ? checkedRequestIds.length : step3FilteredRequests.length})
                     </button>
+                    <button
+                      type="button"
+                      disabled={step3FilteredRequests.length === 0}
+                      onClick={() => setCartonModalConfig({
+                        isOpen: true,
+                        targetMode: checkedRequestIds.length > 0 ? "selected" : "all"
+                      })}
+                      className="btn btn-secondary btn-sm"
+                      style={{
+                        padding: "4px 10px",
+                        fontSize: "0.76rem",
+                        whiteSpace: "nowrap",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "5px",
+                        fontWeight: 600,
+                        borderColor: (checkedRequestIds.length > 0 || step3FilteredRequests.length > 0) ? "#f59e0b" : undefined,
+                        color: (checkedRequestIds.length > 0 || step3FilteredRequests.length > 0) ? "#f59e0b" : undefined,
+                        background: (checkedRequestIds.length > 0 || step3FilteredRequests.length > 0) ? "rgba(245, 158, 11, 0.12)" : undefined
+                      }}
+                      title="Set items per carton in bulk for selected or all filtered items"
+                    >
+                      <Package size={13} /> Set Items / Carton ({checkedRequestIds.length > 0 ? checkedRequestIds.length : step3FilteredRequests.length})
+                    </button>
                     {checkedRequestIds.length > 0 && (
                       <button
                         type="button"
@@ -2851,8 +2917,53 @@ export default function PurchaserDashboard({
                       <span style={{ fontSize: "0.9rem", color: "var(--text-main)" }}>
                         Total Price: <strong style={{ fontWeight: 800, fontSize: "1.02rem" }}>{getCurrencySymbol(selectedCurrency)}{Number(selectedTotalPrice.toFixed(2)).toLocaleString()}</strong>
                       </span>
+                      <span style={{ color: "var(--border-glass, #cbd5e1)", opacity: 0.6 }}>|</span>
+                      <span style={{ fontSize: "0.9rem", color: "#f59e0b", display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                        Total Cartons: <strong style={{ fontWeight: 800, fontSize: "1.05rem" }}>📦 {selectedTotalCartons} Ctns</strong>
+                      </span>
+                      {selectedMissingCartonCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setCartonModalConfig({ isOpen: true, targetMode: "missing" })}
+                          className="badge"
+                          style={{
+                            fontSize: "0.78rem",
+                            padding: "4px 10px",
+                            cursor: "pointer",
+                            border: "1px solid rgba(239, 68, 68, 0.6)",
+                            background: "rgba(239, 68, 68, 0.2)",
+                            color: "#f87171",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                            fontWeight: 700
+                          }}
+                          title="Click to fill missing carton sizes (Compulsory for cargo)"
+                        >
+                          <AlertTriangle size={13} /> {selectedMissingCartonCount} item(s) missing carton size (Compulsory)
+                        </button>
+                      )}
                     </div>
                     <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      <button
+                        type="button"
+                        onClick={() => setCartonModalConfig({ isOpen: true, targetMode: "selected" })}
+                        className="btn btn-secondary btn-sm"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          fontWeight: 600,
+                          fontSize: "0.78rem",
+                          padding: "4px 10px",
+                          background: "rgba(245, 158, 11, 0.15)",
+                          borderColor: "#f59e0b",
+                          color: "#f59e0b"
+                        }}
+                        title="Set items per carton for selected items"
+                      >
+                        <Package size={13} /> Set Carton Size ({selectedCount})
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -2918,6 +3029,7 @@ export default function PurchaserDashboard({
                         <th style={{ minWidth: "110px" }}>Purchaser</th>
                         <th>Quantity</th>
                         <th style={{ color: "#38bdf8", minWidth: "125px" }}>New Qty</th>
+                        <th style={{ color: "#f59e0b", minWidth: "135px" }}>Items / Ctn</th>
                         <th>Unit Price</th>
                         <th style={{ color: "#38bdf8", minWidth: "125px" }}>New Price</th>
                         <th>Total Price</th>
@@ -3089,6 +3201,65 @@ export default function PurchaserDashboard({
                                 </div>
                               </td>
 
+                              {/* Items / Carton & Total Cartons */}
+                              <td>
+                                {(() => {
+                                  const ctnVal = plannerItemsPerCartonMap[r.id] ?? r.itemsPerCarton;
+                                  const ctnNum = parseInt(ctnVal, 10);
+                                  const hasValidCtn = !isNaN(ctnNum) && ctnNum > 0;
+                                  const calculatedCtns = hasValidCtn ? Math.ceil(effectiveQty / ctnNum) : null;
+                                  return (
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "3px", alignItems: "center" }}>
+                                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                        <input
+                                          type="number"
+                                          min="1"
+                                          className="form-control"
+                                          style={{
+                                            width: "80px",
+                                            padding: "4px 6px",
+                                            fontSize: "0.85rem",
+                                            fontWeight: 700,
+                                            textAlign: "center",
+                                            borderColor: hasValidCtn ? "#10b981" : "#ef4444",
+                                            background: hasValidCtn ? "rgba(16, 185, 129, 0.08)" : "rgba(239, 68, 68, 0.08)",
+                                            color: hasValidCtn ? "var(--text-main)" : "#ef4444"
+                                          }}
+                                          value={plannerItemsPerCartonMap[r.id] ?? r.itemsPerCarton ?? ""}
+                                          placeholder="Pcs/ctn"
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            setPlannerItemsPerCartonMap(prev => {
+                                              const next = { ...prev };
+                                              if (val === "") {
+                                                delete next[r.id];
+                                              } else {
+                                                const num = parseInt(val, 10);
+                                                if (!isNaN(num)) next[r.id] = num;
+                                              }
+                                              return next;
+                                            });
+                                            if (val !== "" && !checkedRequestIds.includes(r.id)) {
+                                              setCheckedRequestIds(prev => [...prev, r.id]);
+                                            }
+                                          }}
+                                        />
+                                        <span style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>/ctn</span>
+                                      </div>
+                                      {hasValidCtn ? (
+                                        <span style={{ fontSize: "0.74rem", color: "var(--warning, #f59e0b)", fontWeight: 700, whiteSpace: "nowrap" }}>
+                                          📦 {calculatedCtns} ctn{calculatedCtns !== 1 ? "s" : ""}
+                                        </span>
+                                      ) : (
+                                        <span style={{ fontSize: "0.68rem", color: "#ef4444", fontWeight: 700, whiteSpace: "nowrap" }}>
+                                          * Required
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                              </td>
+
                               {/* Unit Price */}
                               <td>
                                 <div><strong>{getCurrencySymbol(r.currency)}{Number(origPrice.toFixed(2)).toLocaleString()}</strong></div>
@@ -3239,6 +3410,7 @@ export default function PurchaserDashboard({
                           <td colSpan="2" style={{ color: "var(--primary, #0284c7)", fontWeight: 800 }}>
                             Total Selected ({selectedCount} item{selectedCount !== 1 ? "s" : ""})
                           </td>
+                          <td></td>
                           <td>
                             <strong style={{ fontSize: "0.95rem" }}>{selectedOrigQty.toLocaleString()} Pcs</strong>
                           </td>
@@ -3251,6 +3423,9 @@ export default function PurchaserDashboard({
                                   : `+${(selectedNewQty - selectedOrigQty).toLocaleString()} Pcs`}
                               </span>
                             )}
+                          </td>
+                          <td style={{ color: "#f59e0b" }}>
+                            <strong style={{ fontSize: "1.02rem" }}>📦 {selectedTotalCartons} Ctns</strong>
                           </td>
                           <td colSpan="2"></td>
                           <td>
@@ -3278,52 +3453,59 @@ export default function PurchaserDashboard({
                         <span>Total New Qty: <strong style={{ color: "var(--primary, #0284c7)" }}>{selectedNewQty.toLocaleString()} Pcs</strong></span>
                         <span style={{ opacity: 0.4 }}>•</span>
                         <span>Total Price: <strong>{getCurrencySymbol(selectedCurrency)}{Number(selectedTotalPrice.toFixed(2)).toLocaleString()}</strong></span>
+                        <span style={{ opacity: 0.4 }}>•</span>
+                        <span>Total Cartons: <strong style={{ color: "#f59e0b" }}>📦 {selectedTotalCartons} Ctns</strong></span>
                       </>
                     )}
-                    {checkedRequestIds.filter(id => plannerNewQtyMap[id] != null || plannerNewPriceMap[id] != null).length > 0 && (
+                    {checkedRequestIds.filter(id => plannerNewQtyMap[id] != null || plannerNewPriceMap[id] != null || plannerItemsPerCartonMap[id] != null).length > 0 && (
                       <span style={{ color: "#38bdf8", marginLeft: "4px" }}>
-                        ({checkedRequestIds.filter(id => plannerNewQtyMap[id] != null || plannerNewPriceMap[id] != null).length} with updated quantity/price)
+                        ({checkedRequestIds.filter(id => plannerNewQtyMap[id] != null || plannerNewPriceMap[id] != null || plannerItemsPerCartonMap[id] != null).length} with updated quantity/price/cartons)
                       </span>
                     )}
                   </div>
                   <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-                    {checkedRequestIds.some(id => plannerNewQtyMap[id] != null || plannerNewPriceMap[id] != null) && (
+                    {checkedRequestIds.some(id => plannerNewQtyMap[id] != null || plannerNewPriceMap[id] != null || plannerItemsPerCartonMap[id] != null) && (
                       <button
                         type="button"
                         onClick={async () => {
                           const itemsToUpdate = checkedRequestIds
-                            .filter(id => plannerNewQtyMap[id] != null || plannerNewPriceMap[id] != null)
+                            .filter(id => plannerNewQtyMap[id] != null || plannerNewPriceMap[id] != null || plannerItemsPerCartonMap[id] != null)
                             .map(id => {
                               const r = myRequests.find(x => x.id === id);
                               if (!r) return null;
                               const newQty = plannerNewQtyMap[id] != null ? plannerNewQtyMap[id] : parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
                               const newPrice = plannerNewPriceMap[id] != null ? plannerNewPriceMap[id] : parseFloat(r.priceRmb || 0);
+                              const ctnVal = plannerItemsPerCartonMap[id] != null ? plannerItemsPerCartonMap[id] : r.itemsPerCarton;
+                              const ctnNum = parseInt(ctnVal, 10);
+                              const hasCtn = !isNaN(ctnNum) && ctnNum > 0;
                               return {
                                 ...r,
                                 vendorOrderQuantity: newQty,
                                 priceRmb: newPrice,
-                                totalRmb: newPrice > 0 ? newPrice * newQty : r.totalRmb
+                                totalRmb: newPrice > 0 ? newPrice * newQty : r.totalRmb,
+                                itemsPerCarton: hasCtn ? ctnNum : r.itemsPerCarton,
+                                totalCartons: hasCtn ? Math.ceil(newQty / ctnNum) : r.totalCartons
                               };
                             })
                             .filter(Boolean);
 
                           if (itemsToUpdate.length === 0) return;
-                          if (window.confirm(`Update order quantity and/or price for ${itemsToUpdate.length} item(s) in system?`)) {
+                          if (window.confirm(`Update order quantity, price and/or carton sizes for ${itemsToUpdate.length} item(s) in system?`)) {
                             if (batchUpdateRequests) {
-                              await batchUpdateRequests(itemsToUpdate, "UPDATE_QUANTITY_PRICE", `Updated order quantities and prices for ${itemsToUpdate.length} item(s)`);
+                              await batchUpdateRequests(itemsToUpdate, "UPDATE_QUANTITY_PRICE", `Updated order quantities, prices and carton sizes for ${itemsToUpdate.length} item(s)`);
                             } else {
                               for (const itm of itemsToUpdate) {
                                 await onUpdateRequest(itm);
                               }
                             }
-                            alert(`Successfully updated quantity/price for ${itemsToUpdate.length} item(s).`);
+                            alert(`Successfully updated details for ${itemsToUpdate.length} item(s).`);
                           }
                         }}
                         className="btn btn-secondary"
                         style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem" }}
-                        title="Permanently save updated quantities and prices to order records"
+                        title="Permanently save updated quantities, prices, and carton sizes to order records"
                       >
-                        <CheckCircle2 size={16} style={{ color: "#10b981" }} /> Save New Quantities & Prices
+                        <CheckCircle2 size={16} style={{ color: "#10b981" }} /> Save New Details (Qty, Price, Cartons)
                       </button>
                     )}
                     <button
@@ -3353,7 +3535,20 @@ export default function PurchaserDashboard({
                     </button>
                     <button 
                       disabled={checkedRequestIds.length === 0}
-                      onClick={() => setCreatingCargo(true)}
+                      onClick={() => {
+                        const selectedItems = readyRequests.filter(r => checkedRequestIds.includes(r.id));
+                        const missingCartons = selectedItems.filter(r => {
+                          const ctn = plannerItemsPerCartonMap[r.id] ?? r.itemsPerCarton;
+                          const num = parseInt(ctn, 10);
+                          return isNaN(num) || num <= 0;
+                        });
+                        if (missingCartons.length > 0) {
+                          alert(`⚠️ CARTON SIZE IS COMPULSORY!\n\nYou must specify "Items per Carton" before combining orders into a cargo shipment.\n\nMissing carton size on ${missingCartons.length} item(s):\n• ` + missingCartons.map(i => `${i.model} (Qty: ${i.vendorOrderQuantity || i.orderQuantity} Pcs)`).join("\n• ") + `\n\nPlease enter the items per carton in the table or click "Set Carton Size".`);
+                          setCartonModalConfig({ isOpen: true, targetMode: "missing" });
+                          return;
+                        }
+                        setCreatingCargo(true);
+                      }}
                       className="btn btn-primary"
                     >
                       <Plus size={16} /> Combine Selected into Cargo
@@ -4319,9 +4514,25 @@ export default function PurchaserDashboard({
                                     Picked: {r.cargoPickedQty} Pcs
                                   </span>
                                 ) : null}
+                                {calculateItemCartons(r) ? (
+                                  <span style={{ fontSize: "0.74rem", color: "var(--warning, #f59e0b)", display: "block", fontWeight: 700, marginTop: "2px" }}>
+                                    📦 {calculateItemCartons(r)} ctns ({r.itemsPerCarton || "—"} pcs/ctn)
+                                  </span>
+                                ) : null}
                               </td>
                               <td>{vName}</td>
-                              <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{r.cargoId}</td>
+                              <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                                <div>{r.cargoId}</div>
+                                {(() => {
+                                  const cg = cargos.find(c => c.id === r.cargoId);
+                                  const cCartons = calculateCargoTotalCartons(cg, requests);
+                                  return cCartons > 0 ? (
+                                    <span style={{ fontSize: "0.72rem", color: "#f59e0b", fontWeight: 700, display: "block", marginTop: "2px" }}>
+                                      📦 {cCartons} ctns
+                                    </span>
+                                  ) : null;
+                                })()}
+                              </td>
                               <td style={{ color: "var(--success)", fontSize: "0.8rem" }}>{r.vendorReadyDate || "—"}</td>
                               <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
                                 {r.cargoAssignedAt ? r.cargoAssignedAt.split("T")[0] : "—"}
@@ -4465,6 +4676,12 @@ export default function PurchaserDashboard({
                         <div>
                           <div style={{ color: "var(--text-muted)" }}>{cargo.cargoPriceUom === "per Pc" ? "Total Pieces:" : cargo.cargoPriceUom === "per KG" ? "Weight (KG):" : "Volume (CBM):"}</div>
                           <div style={{ fontWeight: 500 }}>{cargo.cbmPackingList ? `${cargo.cbmPackingList} ${cargo.cargoPriceUom === "per Pc" ? "Pcs" : cargo.cargoPriceUom === "per KG" ? "KG" : "CBM"}` : "—"}</div>
+                        </div>
+                        <div>
+                          <div style={{ color: "var(--text-muted)" }}>Total Cartons:</div>
+                          <div style={{ fontWeight: 700, color: "var(--warning, #f59e0b)" }}>
+                            📦 {calculateCargoTotalCartons(cargo, requests)} Cartons
+                          </div>
                         </div>
                         <div>
                           <div style={{ color: "var(--text-muted)" }}>Cargo Cost:</div>
@@ -4684,6 +4901,11 @@ export default function PurchaserDashboard({
                                     >
                                       {item.model}
                                     </button> — Quantity: {item.vendorOrderQuantity || item.orderQuantity} units
+                                    {calculateItemCartons(item) ? (
+                                      <span style={{ marginLeft: "8px", color: "var(--warning, #f59e0b)", fontWeight: 700, fontSize: "0.82rem" }}>
+                                        📦 {calculateItemCartons(item)} ctns ({item.itemsPerCarton || "—"} pcs/ctn)
+                                      </span>
+                                    ) : null}
                                     <span style={{ marginLeft: "10px", color: "var(--text-muted)", fontSize: "0.82rem" }}>
                                       📅 Order Date: <strong style={{ color: "var(--text-main)" }}>{item.orderDate || "—"}</strong>
                                     </span>
@@ -5138,17 +5360,37 @@ export default function PurchaserDashboard({
           selectedIds={checkedRequestIds}
           requests={requests}
           initialPickedQtyMap={plannerNewQtyMap}
+          initialPickedCartonMap={plannerItemsPerCartonMap}
           cargos={cargos}
           cargoCompanies={cargoCompanies}
           onAddCargoCompany={onAddCargoCompany}
           onClose={() => setCreatingCargo(false)}
-          onSave={(cargoDetails, itemPickedQtyMap) => {
-            onAddCargo(cargoDetails, checkedRequestIds, itemPickedQtyMap, plannerNewPriceMap);
+          onSave={(cargoDetails, itemPickedQtyMap, itemPickedCartonMap) => {
+            onAddCargo(cargoDetails, checkedRequestIds, itemPickedQtyMap, plannerNewPriceMap, itemPickedCartonMap || plannerItemsPerCartonMap);
             setCreatingCargo(false);
             setCheckedRequestIds([]);
             setPlannerNewQtyMap({});
             setPlannerNewPriceMap({});
+            setPlannerItemsPerCartonMap({});
             setActiveTab("cargopickup"); // Go to Cargo Pickup step next
+          }}
+        />
+      )}
+
+      {/* ==================== SET CARTON SIZES MODAL ==================== */}
+      {cartonModalConfig && cartonModalConfig.isOpen && (
+        <SetCartonModal
+          config={cartonModalConfig}
+          onClose={() => setCartonModalConfig(null)}
+          readyRequests={plannerCandidateRequests.filter(r => r.vendorId === plannerVendorId)}
+          checkedRequestIds={checkedRequestIds}
+          plannerItemsPerCartonMap={plannerItemsPerCartonMap}
+          onApply={(updates) => {
+            setPlannerItemsPerCartonMap(prev => ({ ...prev, ...updates }));
+            const updatedIds = Object.keys(updates);
+            if (updatedIds.length > 0) {
+              setCheckedRequestIds(prev => Array.from(new Set([...prev, ...updatedIds])));
+            }
           }}
         />
       )}
@@ -5477,6 +5719,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
   const [type, setType] = useState(request.type || "Import");
   const [itemNature, setItemNature] = useState(request.itemNature || "Non Consumables");
   const [category, setCategory] = useState(cleanCategoryName(request.category) || "");
+  const [itemsPerCarton, setItemsPerCarton] = useState(request.itemsPerCarton || "");
   const [showQuickVendorModal, setShowQuickVendorModal] = useState(false);
 
   // Lock order parameters if goods are currently in transit till received (Super Admin can override Vendor & Price)
@@ -5592,6 +5835,10 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
       isMaterialRec: isMaterialRec,
       actualReceivedDate: isMaterialRec === "Yes" ? (actualReceivedDate || new Date().toISOString().split("T")[0]) : "",
       cargoId: cargoId,
+      itemsPerCarton: itemsPerCarton !== "" ? parseInt(itemsPerCarton, 10) : request.itemsPerCarton,
+      totalCartons: (itemsPerCarton !== "" && parseInt(itemsPerCarton, 10) > 0)
+        ? Math.ceil(vOrderQty / parseInt(itemsPerCarton, 10))
+        : request.totalCartons,
       photo: activePhoto,
       notes: notes,
       purchaseUpdated: "Yes",
@@ -5813,6 +6060,30 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>Vendor Ready Date (Step 2)</label>
                 <input type="date" className="form-control" value={vendorReadyDate} onChange={e => setVendorReadyDate(e.target.value)} disabled={isInTransit} />
               </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Items Per Carton (Carton Size)</label>
+                <input 
+                  type="number" 
+                  className="form-control" 
+                  placeholder="Pcs/ctn" 
+                  value={itemsPerCarton} 
+                  onChange={e => setItemsPerCarton(e.target.value)} 
+                  disabled={isInTransit} 
+                  min="1" 
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Calculated Cartons</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  value={itemsPerCarton && parseInt(itemsPerCarton, 10) > 0 ? `📦 ${Math.ceil(effectiveQty / parseInt(itemsPerCarton, 10))} Cartons` : "—"} 
+                  disabled 
+                  style={{ fontWeight: 700, color: "var(--warning, #f59e0b)" }}
+                />
+              </div>
             </div>
           </div>
 
@@ -6022,6 +6293,8 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
               <div className="details-term">Total Price:</div><div className="details-def">{request.totalRmb ? `${getCurrencySymbol(request.currency)}${Number(request.totalRmb).toLocaleString()}` : "—"}</div>
               <div className="details-term">Advance Payment:</div><div className="details-def">{request.advancePayment ? `${getCurrencySymbol(request.currency)}${Number(request.advancePayment).toLocaleString()}` : "—"}</div>
               <div className="details-term">Balance Payment:</div><div className="details-def">{request.balancePayment ? `${getCurrencySymbol(request.currency)}${Number(request.balancePayment).toLocaleString()}` : "—"}</div>
+              <div className="details-term">Items Per Carton:</div><div className="details-def">{request.itemsPerCarton ? `${request.itemsPerCarton} Pcs/Ctn` : "—"}</div>
+              <div className="details-term">Total Cartons:</div><div className="details-def" style={{ fontWeight: 700, color: "var(--warning, #f59e0b)" }}>{calculateItemCartons(request) ? `📦 ${calculateItemCartons(request)} Cartons` : "—"}</div>
               <div className="details-term">Vendor EDD:</div>
               <div className="details-def" style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                 <span>{request.vendorEdd || "—"}</span>
@@ -6084,6 +6357,7 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
                 <div className="details-term">Cargo Detail:</div><div className="details-def">{cargo.cargoDetail || "—"}</div>
                 <div className="details-term">Cargo Cost:</div><div className="details-def">{cargo.cargoPrice ? `${getCurrencySymbol(cargo.currency)}${cargo.cargoPrice} (${cargo.cargoPriceUom || "Total"})` : "—"}</div>
                 <div className="details-term">{cargo.cargoPriceUom === "per Pc" ? "Total Pieces:" : cargo.cargoPriceUom === "per KG" ? "Weight (KG):" : "Volume (CBM):"}</div><div className="details-def">{cargo.cbmPackingList ? `${cargo.cbmPackingList} ${cargo.cargoPriceUom === "per Pc" ? "Pcs" : cargo.cargoPriceUom === "per KG" ? "KG" : "CBM"}` : "—"}</div>
+                <div className="details-term">Total Cargo Cartons:</div><div className="details-def" style={{ fontWeight: 700, color: "var(--warning, #f59e0b)" }}>📦 {calculateCargoTotalCartons(cargo, requests)} Cartons</div>
                 <div className="details-term">Total Cargo Price:</div><div className="details-def">{calculateTotalCargoPrice(cargo) ? `${getCurrencySymbol(cargo.currency)}${Number(calculateTotalCargoPrice(cargo)).toLocaleString()}` : "—"}</div>
                 <div className="details-term">Transport Mode:</div><div className="details-def" style={{ fontWeight: 600 }}>{cargo.modeOfTransport || "—"}</div>
                 <div className="details-term">Cargo Company:</div><div className="details-def">{cargoCompanies.find(cc => cc.id === cargo.cargoCompanyId)?.name || cargo.cargoDetail || "—"}</div>
@@ -6277,7 +6551,9 @@ function ReceiveCargoModal({ cargo, requests, purchasers = [], onClose, onConfir
           </div>
           <div>
             <h3 style={{ fontSize: "1.3rem", fontWeight: 700 }}>Confirm Cargo Receipt & Delivery Quantities</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Cargo: {cargo.id} — {activeItems.length} item(s)</p>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+              Cargo: {cargo.id} — {activeItems.length} item(s) &bull; <strong style={{ color: "#f59e0b" }}>📦 {calculateCargoTotalCartons(cargo, requests)} Cartons</strong>
+            </p>
           </div>
         </div>
 
@@ -6302,7 +6578,14 @@ function ReceiveCargoModal({ cargo, requests, purchasers = [], onClose, onConfir
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>Cargo Picked Qty: <strong>{expected} Pcs</strong></div>
+                      <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                        Cargo Picked Qty: <strong>{expected} Pcs</strong>
+                        {calculateItemCartons(r) ? (
+                          <span style={{ marginLeft: "6px", color: "#f59e0b", fontWeight: 700 }}>
+                            &bull; 📦 {calculateItemCartons(r)} ctns ({r.itemsPerCarton || "—"} pcs/ctn)
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
                       <span style={{ fontSize: "0.72rem", color: "var(--success)", fontWeight: 600 }}>Actual Received Qty:</span>
@@ -7239,8 +7522,242 @@ function ExcelShippingUpdateModal({
   );
 }
 
+// ==================== SET CARTON SIZES MODAL ====================
+function SetCartonModal({ config, onClose, onApply, readyRequests = [], checkedRequestIds = [], plannerItemsPerCartonMap = {} }) {
+  useModalEscape(onClose);
+  if (!config || !config.isOpen) return null;
+
+  const { targetMode = "selected", singleItem } = config;
+
+  // Determine target items
+  const targetItems = React.useMemo(() => {
+    if (singleItem) return [singleItem];
+    if (targetMode === "selected") {
+      const selected = readyRequests.filter(r => checkedRequestIds.includes(r.id));
+      return selected.length > 0 ? selected : readyRequests;
+    }
+    if (targetMode === "missing") {
+      const selected = readyRequests.filter(r => checkedRequestIds.includes(r.id));
+      const pool = selected.length > 0 ? selected : readyRequests;
+      return pool.filter(r => {
+        const ctn = plannerItemsPerCartonMap[r.id] ?? r.itemsPerCarton;
+        return !ctn || parseInt(ctn, 10) <= 0;
+      });
+    }
+    return readyRequests;
+  }, [readyRequests, checkedRequestIds, plannerItemsPerCartonMap, targetMode, singleItem]);
+
+  const [bulkInput, setBulkInput] = useState("");
+  const [itemOverrides, setItemOverrides] = useState(() => {
+    const map = {};
+    targetItems.forEach(r => {
+      map[r.id] = plannerItemsPerCartonMap[r.id] ?? r.itemsPerCarton ?? "";
+    });
+    return map;
+  });
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const handleApplyBulkToAll = (num) => {
+    if (num > 0) {
+      setBulkInput(String(num));
+      const next = {};
+      targetItems.forEach(r => {
+        next[r.id] = num;
+      });
+      setItemOverrides(next);
+      setErrorMsg("");
+    }
+  };
+
+  const handleApply = (e) => {
+    e.preventDefault();
+    const bulkNum = parseInt(bulkInput, 10);
+    const updates = {};
+    let missingCount = 0;
+
+    targetItems.forEach(item => {
+      const overrideVal = itemOverrides[item.id];
+      const oNum = parseInt(overrideVal, 10);
+      if (!isNaN(oNum) && oNum > 0) {
+        updates[item.id] = oNum;
+      } else if (!isNaN(bulkNum) && bulkNum > 0) {
+        updates[item.id] = bulkNum;
+      } else {
+        missingCount += 1;
+      }
+    });
+
+    if (missingCount > 0) {
+      setErrorMsg(`Carton size is compulsory! Please enter valid items per carton (> 0) for all ${targetItems.length} items.`);
+      return;
+    }
+
+    onApply(updates);
+    onClose();
+  };
+
+  // Calculate projected total cartons
+  const projectedTotalCartons = targetItems.reduce((acc, r) => {
+    const qty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+    const ctnVal = itemOverrides[r.id] || bulkInput;
+    const ctnNum = parseInt(ctnVal, 10);
+    if (!isNaN(ctnNum) && ctnNum > 0) {
+      return acc + Math.ceil(qty / ctnNum);
+    }
+    return acc;
+  }, 0);
+
+  return (
+    <div className="modal-overlay">
+      <div className="glass-panel modal-content" style={{ maxWidth: "680px", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-glass)", paddingBottom: "14px", marginBottom: "16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ width: "38px", height: "38px", borderRadius: "8px", background: "rgba(245, 158, 11, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "#f59e0b" }}>
+              <Package size={22} />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "var(--text-main)" }}>
+                Set Items Per Carton (Carton Size)
+              </h3>
+              <p style={{ margin: "2px 0 0", fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                {targetItems.length} item(s) &bull; <strong style={{ color: "var(--warning, #f59e0b)" }}>Compulsory before cargo assignment</strong>
+              </p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="btn-icon" style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}>
+            <X size={20} />
+          </button>
+        </div>
+
+        {errorMsg && (
+          <div style={{ background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.4)", borderRadius: "8px", padding: "10px 14px", marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px", color: "#f87171", fontSize: "0.85rem", fontWeight: 600 }}>
+            <AlertTriangle size={16} /> {errorMsg}
+          </div>
+        )}
+
+        <form onSubmit={handleApply} style={{ display: "flex", flexDirection: "column", gap: "16px", overflow: "hidden", flex: 1 }}>
+          {/* Bulk set bar */}
+          <div style={{ background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.25)", borderRadius: "10px", padding: "14px" }}>
+            <label style={{ fontSize: "0.85rem", fontWeight: 700, color: "#f59e0b", display: "block", marginBottom: "6px" }}>
+              ⚡ Bulk Apply Items Per Carton to All {targetItems.length} Items:
+            </label>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                type="number"
+                min="1"
+                className="form-control"
+                style={{ width: "130px", fontWeight: 700, fontSize: "0.95rem" }}
+                placeholder="e.g. 50 pcs"
+                value={bulkInput}
+                onChange={e => {
+                  const val = e.target.value;
+                  setBulkInput(val);
+                  const num = parseInt(val, 10);
+                  if (num > 0) {
+                    const next = {};
+                    targetItems.forEach(r => { next[r.id] = num; });
+                    setItemOverrides(next);
+                  }
+                  setErrorMsg("");
+                }}
+              />
+              <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Pcs / Carton</span>
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                {[10, 20, 25, 50, 100].map(cnt => (
+                  <button
+                    key={cnt}
+                    type="button"
+                    onClick={() => handleApplyBulkToAll(cnt)}
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: "3px 8px", fontSize: "0.75rem" }}
+                  >
+                    {cnt} pcs
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Items breakdown list */}
+          <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px", maxHeight: "40vh", paddingRight: "4px" }}>
+            {targetItems.map(item => {
+              const qty = parseInt(item.vendorOrderQuantity || item.orderQuantity || 0, 10);
+              const ctnVal = itemOverrides[item.id] !== undefined ? itemOverrides[item.id] : (item.itemsPerCarton || "");
+              const ctnNum = parseInt(ctnVal, 10);
+              const hasValidCtn = !isNaN(ctnNum) && ctnNum > 0;
+              const calcCtns = hasValidCtn ? Math.ceil(qty / ctnNum) : null;
+
+              return (
+                <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "var(--bg-card, rgba(255,255,255,0.03))", border: "1px solid var(--border-glass)", borderRadius: "8px", gap: "12px", flexWrap: "wrap" }}>
+                  <div style={{ flex: "1 1 180px" }}>
+                    <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>{item.model}</div>
+                    <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                      Qty: <strong>{qty} Pcs</strong> &bull; Date: {item.orderDate || "—"}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                      <input
+                        type="number"
+                        min="1"
+                        className="form-control"
+                        style={{
+                          width: "85px",
+                          padding: "4px 8px",
+                          fontWeight: 700,
+                          textAlign: "center",
+                          borderColor: hasValidCtn ? "#10b981" : "#ef4444"
+                        }}
+                        placeholder="Pcs/ctn"
+                        value={itemOverrides[item.id] ?? ""}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setItemOverrides(prev => ({ ...prev, [item.id]: val }));
+                          setErrorMsg("");
+                        }}
+                      />
+                      <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>/ctn</span>
+                    </div>
+                    <div style={{ minWidth: "85px", textAlign: "right" }}>
+                      {hasValidCtn ? (
+                        <span style={{ fontSize: "0.82rem", color: "var(--warning, #f59e0b)", fontWeight: 700 }}>
+                          📦 {calcCtns} ctn{calcCtns !== 1 ? "s" : ""}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: "0.75rem", color: "#ef4444", fontWeight: 700 }}>
+                          * Required
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Footer summary & actions */}
+          <div style={{ borderTop: "1px solid var(--border-glass)", paddingTop: "14px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+            <div style={{ fontSize: "0.9rem", color: "var(--text-main)" }}>
+              Total Projected Cartons: <strong style={{ color: "#f59e0b", fontSize: "1.05rem" }}>📦 {projectedTotalCartons} Ctns</strong>
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button type="button" onClick={onClose} className="btn btn-secondary btn-sm">
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary btn-sm" style={{ fontWeight: 700, padding: "6px 16px" }}>
+                <Check size={14} /> Apply Carton Sizes ({targetItems.length})
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // 3. CREATE CARGO BUNDLE MODAL
-function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos = [], cargoCompanies = [], onAddCargoCompany, onClose, onSave, initialPickedQtyMap = {} }) {
+function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos = [], cargoCompanies = [], onAddCargoCompany, onClose, onSave, initialPickedQtyMap = {}, initialPickedCartonMap = {} }) {
   useModalEscape(onClose);
   const [detail, setDetail] = useState("");
   const [currency, setCurrency] = useState("RMB");
@@ -7255,6 +7772,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
   const [invoiceFile, setInvoiceFile] = useState(null);           // { name, data }
   const [cargoReceiptFile, setCargoReceiptFile] = useState(null); // { name, data }
   const [showQuickCargoCompanyModal, setShowQuickCargoCompanyModal] = useState(false);
+  const [cartonError, setCartonError] = useState("");
 
   const [uploadingDocField, setUploadingDocField] = useState("");
 
@@ -7262,6 +7780,14 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
     const map = {};
     (requests || []).filter(r => selectedIds.includes(r.id)).forEach(r => {
       map[r.id] = initialPickedQtyMap[r.id] ?? (r.vendorOrderQuantity || r.orderQuantity || 1);
+    });
+    return map;
+  });
+
+  const [itemPickedCartonMap, setItemPickedCartonMap] = useState(() => {
+    const map = {};
+    (requests || []).filter(r => selectedIds.includes(r.id)).forEach(r => {
+      map[r.id] = initialPickedCartonMap[r.id] ?? r.itemsPerCarton ?? "";
     });
     return map;
   });
@@ -7290,6 +7816,17 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
   const totalItemSpendInRmb = combinedRequests.reduce((sum, r) => sum + convertToRmb(r.totalRmb, r.currency), 0);
   const totalPickedQty = Object.values(itemPickedQtyMap).reduce((sum, q) => sum + (parseFloat(q) || 0), 0);
 
+  // Total Cargo cartons calculation
+  const totalCargoCartons = combinedRequests.reduce((sum, r) => {
+    const pickedQ = parseFloat(itemPickedQtyMap[r.id]) || (r.vendorOrderQuantity || r.orderQuantity || 1);
+    const ctnVal = itemPickedCartonMap[r.id] ?? r.itemsPerCarton;
+    const ctnNum = parseInt(ctnVal, 10);
+    if (!isNaN(ctnNum) && ctnNum > 0) {
+      return sum + Math.ceil(pickedQ / ctnNum);
+    }
+    return sum;
+  }, 0);
+
   // Total Cargo price calculation
   const totalCargoPrice = (uom === "per CBM" || uom === "per KG") 
     ? (parseFloat(price || 0) * parseFloat(cbm || 0)) 
@@ -7299,6 +7836,16 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const missing = combinedRequests.filter(r => {
+      const ctnVal = itemPickedCartonMap[r.id] ?? r.itemsPerCarton;
+      const num = parseInt(ctnVal, 10);
+      return isNaN(num) || num <= 0;
+    });
+    if (missing.length > 0) {
+      setCartonError(`Carton size (items per carton) is compulsory! Please enter valid items per carton (> 0) for: ${missing.map(m => m.model).join(", ")}`);
+      return;
+    }
+
     onSave({
       vendorId,
       cargoOrderDate: new Date().toISOString().split("T")[0],
@@ -7308,6 +7855,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
       cargoPriceUom: uom,
       cbmPackingList: parseFloat(cbm || 0),
       totalCargoPrice: totalCargoPrice,
+      totalCartons: totalCargoCartons,
       modeOfTransport: mode,
       cargoCompanyId: cargoCompanyId,
       cargoShippingDate: shipDate,
@@ -7319,16 +7867,22 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
       cargoReceiptFile: cargoReceiptFile?.name || "",
       cargoReceiptData: cargoReceiptFile?.data || "",
       isMaterialRec: "No"
-    }, itemPickedQtyMap);
+    }, itemPickedQtyMap, itemPickedCartonMap);
   };
 
   return (
     <div className="modal-overlay">
-      <div className="glass-panel modal-content" style={{ maxWidth: "600px" }}>
+      <div className="glass-panel modal-content" style={{ maxWidth: "680px" }}>
         <h3 style={{ fontSize: "1.4rem", marginBottom: "6px", color: "var(--primary)" }}>Create Combined Cargo Shipment</h3>
-        <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "20px" }}>
-          Vendor: <strong>{vendorName}</strong> | Combining <strong>{selectedIds.length}</strong> purchase items (Total Value: ¥{totalItemSpendInRmb.toLocaleString(undefined, { maximumFractionDigits: 0 })} Est. in RMB)
+        <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "16px" }}>
+          Vendor: <strong>{vendorName}</strong> | Combining <strong>{selectedIds.length}</strong> items | Total Cartons: <strong style={{ color: "#f59e0b" }}>📦 {totalCargoCartons} Cartons</strong> | Value: ¥{totalItemSpendInRmb.toLocaleString(undefined, { maximumFractionDigits: 0 })} Est. RMB
         </p>
+
+        {cartonError && (
+          <div style={{ background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.4)", borderRadius: "8px", padding: "10px 14px", marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px", color: "#f87171", fontSize: "0.85rem", fontWeight: 600 }}>
+            <AlertTriangle size={16} /> {cartonError}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           
@@ -7379,30 +7933,36 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
             </datalist>
           </div>
 
-          {/* Item Breakdown & Pickup Quantity */}
+          {/* Item Breakdown, Pickup Quantity & Cartons */}
           <div style={{ background: "var(--bg-card, #f8fafc)", padding: "16px", borderRadius: "10px", border: "1px solid var(--border-glass, rgba(226, 232, 240, 0.8))" }}>
-            <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--primary)", marginBottom: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>📦 Item Quantity Picked for Cargo</span>
-              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", fontWeight: 400 }}>Unpicked qty stays pending at vendor</span>
+            <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--primary)", marginBottom: "10px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>📦 Item Quantity &amp; Cartons Picked for Cargo</span>
+              <span style={{ fontSize: "0.82rem", color: "#f59e0b", fontWeight: 700 }}>Total Cartons: 📦 {totalCargoCartons} Ctns</span>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "180px", overflowY: "auto" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "220px", overflowY: "auto" }}>
               {combinedRequests.map(r => {
                 const vendorQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0);
                 const currentPicked = itemPickedQtyMap[r.id] ?? vendorQty;
                 const remaining = Math.max(0, vendorQty - currentPicked);
+                const ctnVal = itemPickedCartonMap[r.id] ?? r.itemsPerCarton ?? "";
+                const ctnNum = parseInt(ctnVal, 10);
+                const hasValidCtn = !isNaN(ctnNum) && ctnNum > 0;
+                const itemCartons = hasValidCtn ? Math.ceil(currentPicked / ctnNum) : null;
+
                 return (
-                  <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", fontSize: "0.85rem", background: "var(--bg-input, #ffffff)", padding: "10px 14px", borderRadius: "8px", border: "1px solid var(--border-glass, #e2e8f0)" }}>
-                    <div>
+                  <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", fontSize: "0.85rem", background: "var(--bg-input, #ffffff)", padding: "10px 14px", borderRadius: "8px", border: hasValidCtn ? "1px solid var(--border-glass, #e2e8f0)" : "1px solid #ef4444", flexWrap: "wrap" }}>
+                    <div style={{ flex: "1 1 180px" }}>
                       <strong style={{ color: "var(--text-main)", fontSize: "0.92rem" }}>{r.model}</strong>
                       <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>Vendor Confirmed Qty: <strong>{vendorQty} Pcs</strong></div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                      {/* Picked Qty */}
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                        <span style={{ fontSize: "0.74rem", color: "var(--primary)", fontWeight: 700, marginBottom: "2px" }}>Qty Picked for Cargo:</span>
+                        <span style={{ fontSize: "0.72rem", color: "var(--primary)", fontWeight: 700, marginBottom: "2px" }}>Qty Picked:</span>
                         <input 
                           type="number" 
                           min="1" 
-                          style={{ width: "95px", padding: "5px 10px", fontSize: "0.88rem", fontWeight: 700, textAlign: "center" }}
+                          style={{ width: "85px", padding: "4px 8px", fontSize: "0.86rem", fontWeight: 700, textAlign: "center" }}
                           className="form-control"
                           value={currentPicked}
                           onChange={e => {
@@ -7411,13 +7971,62 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
                           }}
                         />
                       </div>
+
+                      {/* Items / Carton */}
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                        <span style={{ fontSize: "0.72rem", color: "#f59e0b", fontWeight: 700, marginBottom: "2px" }}>Items / Ctn:</span>
+                        <input 
+                          type="number" 
+                          min="1" 
+                          style={{
+                            width: "80px", 
+                            padding: "4px 8px", 
+                            fontSize: "0.86rem", 
+                            fontWeight: 700, 
+                            textAlign: "center",
+                            borderColor: hasValidCtn ? "#10b981" : "#ef4444",
+                            background: hasValidCtn ? "rgba(16, 185, 129, 0.08)" : "rgba(239, 68, 68, 0.08)"
+                          }}
+                          className="form-control"
+                          value={ctnVal}
+                          placeholder="Pcs/ctn"
+                          onChange={e => {
+                            const val = e.target.value;
+                            setItemPickedCartonMap(prev => {
+                              const next = { ...prev };
+                              if (val === "") {
+                                delete next[r.id];
+                              } else {
+                                const num = parseInt(val, 10);
+                                if (!isNaN(num)) next[r.id] = num;
+                              }
+                              return next;
+                            });
+                            if (cartonError) setCartonError("");
+                          }}
+                        />
+                      </div>
+
+                      {/* Cartons Badge */}
+                      <div style={{ minWidth: "80px", textAlign: "right" }}>
+                        {hasValidCtn ? (
+                          <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#f59e0b", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", padding: "3px 8px", borderRadius: "6px", whiteSpace: "nowrap" }}>
+                            📦 {itemCartons} ctns
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#ef4444", background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", padding: "3px 8px", borderRadius: "6px", whiteSpace: "nowrap" }}>
+                            * Required
+                          </span>
+                        )}
+                      </div>
+
                       {remaining > 0 ? (
-                        <span style={{ fontSize: "0.75rem", fontWeight: 700, background: "rgba(245,158,11,0.15)", color: "#b45309", border: "1px solid rgba(245,158,11,0.3)", padding: "4px 10px", borderRadius: "6px", whiteSpace: "nowrap" }}>
-                          {remaining} Pcs stays at vendor
+                        <span style={{ fontSize: "0.74rem", fontWeight: 700, background: "rgba(245,158,11,0.15)", color: "#b45309", border: "1px solid rgba(245,158,11,0.3)", padding: "3px 8px", borderRadius: "6px", whiteSpace: "nowrap" }}>
+                          {remaining} Pcs stays
                         </span>
                       ) : currentPicked > vendorQty ? (
-                        <span style={{ fontSize: "0.75rem", fontWeight: 700, background: "rgba(16,185,129,0.15)", color: "#059669", border: "1px solid rgba(16,185,129,0.3)", padding: "4px 10px", borderRadius: "6px", whiteSpace: "nowrap" }}>
-                          +{currentPicked - vendorQty} Pcs extra
+                        <span style={{ fontSize: "0.74rem", fontWeight: 700, background: "rgba(16,185,129,0.15)", color: "#059669", border: "1px solid rgba(16,185,129,0.3)", padding: "3px 8px", borderRadius: "6px", whiteSpace: "nowrap" }}>
+                          +{currentPicked - vendorQty} extra
                         </span>
                       ) : null}
                     </div>
@@ -7675,6 +8284,7 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
 
   const cargoItems = requests.filter(r => r.cargoId === cargo.id);
   const totalItemPieces = cargoItems.reduce((sum, r) => sum + (parseFloat(r.vendorOrderQuantity || r.orderQuantity || 0)), 0);
+  const totalCartons = calculateCargoTotalCartons(cargo, requests);
 
   const totalCargoPrice = (uom === "per CBM" || uom === "per KG") 
     ? (parseFloat(price || 0) * parseFloat(cbm || 0)) 
@@ -7692,6 +8302,7 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
       cargoPriceUom: uom,
       cbmPackingList: parseFloat(cbm || 0),
       totalCargoPrice: totalCargoPrice,
+      totalCartons: totalCartons || cargo.totalCartons,
       modeOfTransport: mode,
       cargoCompanyId: cargoCompanyId,
       cargoShippingDate: shipDate,
@@ -7709,7 +8320,10 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
   return (
     <div className="modal-overlay">
       <div className="glass-panel modal-content" style={{ maxWidth: "600px" }}>
-        <h3 style={{ fontSize: "1.4rem", marginBottom: "20px", color: "var(--primary)" }}>Update Shipping & Cargo Details</h3>
+        <h3 style={{ fontSize: "1.4rem", marginBottom: "6px", color: "var(--primary)" }}>Update Shipping & Cargo Details</h3>
+        <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "18px" }}>
+          Cargo Code: <strong>{cargo.id}</strong> | Items: <strong>{cargoItems.length}</strong> | Total Pieces: <strong>{totalItemPieces} Pcs</strong> | Total Cartons: <strong style={{ color: "var(--warning, #f59e0b)" }}>📦 {totalCartons} Cartons</strong>
+        </p>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           

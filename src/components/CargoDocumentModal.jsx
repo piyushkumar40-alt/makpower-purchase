@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useModalEscape } from "../utils/useModalEscape";
 import { uploadToCloudinary } from "../utils/upload";
-import { downloadOrOpenBlob } from "../utils/formatters";
+import { downloadOrOpenBlob, calculateCargoTotalCartons } from "../utils/formatters";
 
 /**
  * Reusable Cargo Document Viewer, Downloader & Attachment Modal.
@@ -34,6 +34,7 @@ export default function CargoDocumentModal({
   if (!docInfo) return null;
 
   const { cargo, docType, fileName, field, dataField } = docInfo;
+  const totalCartons = calculateCargoTotalCartons(cargo, bundledRequests);
   const [currentFileName, setCurrentFileName] = useState(docInfo.fileName || "");
   const [currentData, setCurrentData] = useState(docInfo.fileData || "");
   const [isUploading, setIsUploading] = useState(false);
@@ -228,6 +229,11 @@ export default function CargoDocumentModal({
               </h3>
               <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "3px" }}>
                 Cargo: <span style={{ color: "var(--primary)", fontWeight: 600 }}>{cargo?.id || "—"}</span> &nbsp;|&nbsp; 
+                {totalCartons > 0 && (
+                  <>
+                    <span style={{ color: "var(--warning, #f59e0b)", fontWeight: 700 }}>📦 {totalCartons} Cartons</span> &nbsp;|&nbsp; 
+                  </>
+                )}
                 File: <span style={{ fontWeight: 600, color: "var(--text-main)" }}>{currentFileName || "Unnamed Document"}</span>
               </div>
             </div>

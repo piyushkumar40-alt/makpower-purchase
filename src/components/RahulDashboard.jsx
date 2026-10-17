@@ -37,7 +37,7 @@ import RequesterForm from "./RequesterForm";
 import CustomSelect from "./CustomSelect";
 import CargoDocumentModal from "./CargoDocumentModal";
 import { useSortableData } from "../utils/useSortableData";
-import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus } from "../utils/formatters";
+import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons } from "../utils/formatters";
 
 export default function RahulDashboard({ 
   currentUser = {}, 
@@ -1558,6 +1558,13 @@ export default function RahulDashboard({
                     <span>(Total Goods: <strong style={{ color: "#f59e0b" }}>¥{Math.round(pendingRequests.filter(r => checkedIds.includes(r.id)).reduce((sum, r) => sum + ((r.orderQuantity || 0) * (r.priceRmb || 0)), 0)).toLocaleString()}</strong></span>
                     {(() => {
                       const selectedReqs = pendingRequests.filter(r => checkedIds.includes(r.id));
+                      const totalCartons = selectedReqs.reduce((sum, r) => sum + (r.totalCartons || (r.itemsPerCarton ? Math.ceil((r.orderQuantity || 0) / r.itemsPerCarton) : 0)), 0);
+                      return totalCartons > 0 ? (
+                        <span>| Cartons: <strong style={{ color: "#a855f7" }}>📦 {totalCartons.toLocaleString()} Ctns</strong></span>
+                      ) : null;
+                    })()}
+                    {(() => {
+                      const selectedReqs = pendingRequests.filter(r => checkedIds.includes(r.id));
                       const seenCargoIds = new Set();
                       let cargoSum = 0;
                       selectedReqs.forEach(r => {
@@ -1756,7 +1763,21 @@ export default function RahulDashboard({
                           </td>
 
                           {/* Qty */}
-                          <td style={{ fontWeight: 700 }}>{qty.toLocaleString()}</td>
+                          <td style={{ fontWeight: 700 }}>
+                            <div>{qty.toLocaleString()} Pcs</div>
+                            {(() => {
+                              const ipc = parseInt(r.itemsPerCarton, 10);
+                              const ctns = r.totalCartons || (ipc > 0 ? Math.ceil(qty / ipc) : 0);
+                              if (ipc > 0 || ctns > 0) {
+                                return (
+                                  <div style={{ fontSize: "0.72rem", color: "#a855f7", fontWeight: 600, marginTop: "2px" }}>
+                                    {ipc > 0 ? `${ipc}/ctn • ` : ""}📦 {ctns} ctn{ctns !== 1 ? "s" : ""}
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </td>
 
                           {/* Price RMB */}
                           <td style={{ fontWeight: 600, color: "#f59e0b" }}>
@@ -1782,9 +1803,21 @@ export default function RahulDashboard({
                                 {r.cargoId && r.cargoId !== cargo.cargoDetail && (
                                   <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "1px" }}>#{r.cargoId}</div>
                                 )}
+                                {calculateCargoTotalCartons(cargo, requests) > 0 && (
+                                  <div style={{ fontSize: "0.72rem", color: "#a855f7", fontWeight: 700, marginTop: "2px" }}>
+                                    📦 {calculateCargoTotalCartons(cargo, requests)} Cartons
+                                  </div>
+                                )}
                               </div>
                             ) : (
-                              <span style={{ color: "var(--text-muted)" }}>{r.cargoId || "—"}</span>
+                              <div>
+                                <span style={{ color: "var(--text-muted)" }}>{r.cargoId || "—"}</span>
+                                {cargo && calculateCargoTotalCartons(cargo, requests) > 0 && (
+                                  <div style={{ fontSize: "0.72rem", color: "#a855f7", fontWeight: 700, marginTop: "2px" }}>
+                                    📦 {calculateCargoTotalCartons(cargo, requests)} Cartons
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </td>
                           <td>

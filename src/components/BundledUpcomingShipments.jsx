@@ -26,7 +26,7 @@ import {
   CheckSquare,
   RotateCcw
 } from "lucide-react";
-import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus } from "../utils/formatters";
+import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons } from "../utils/formatters";
 import { uploadToCloudinary } from "../utils/upload";
 import CustomSelect from "./CustomSelect";
 import CargoDocumentModal from "./CargoDocumentModal";
@@ -134,6 +134,7 @@ export default function BundledUpcomingShipments({
           const price = Number(it.priceRmb) || 0;
           return sum + (Number(it.totalRmb) || (qty * price));
         }, 0);
+        const totalCartons = calculateCargoTotalCartons(cargo, requests);
         const vendorName = vendorMap[cargo.vendorId]?.name || "Multiple / Unspecified Vendors";
         const carrierName = carrierMap[cargo.cargoCompanyId]?.name || "Direct Logistics Carrier";
 
@@ -142,6 +143,7 @@ export default function BundledUpcomingShipments({
           items,
           totalUnits,
           totalValueRmb,
+          totalCartons,
           vendorName,
           carrierName
         };
@@ -151,6 +153,7 @@ export default function BundledUpcomingShipments({
   // Metrics Bar - In-Transit Goods Only
   const stats = useMemo(() => {
     const totalUnits = enrichedCargos.reduce((sum, c) => sum + c.totalUnits, 0);
+    const totalCartons = enrichedCargos.reduce((sum, c) => sum + (c.totalCartons || 0), 0);
     const totalValue = enrichedCargos.reduce((sum, c) => sum + c.totalValueRmb, 0);
     const totalFreight = enrichedCargos.reduce((sum, c) => sum + (calculateTotalCargoPrice(c) || 0), 0);
     const totalCbm = enrichedCargos.reduce((sum, c) => sum + (Number(c.cbm) || 0), 0);
@@ -159,6 +162,7 @@ export default function BundledUpcomingShipments({
     return {
       totalCargos: enrichedCargos.length,
       totalUnits,
+      totalCartons,
       totalValue,
       totalFreight,
       totalCbm,
@@ -366,7 +370,7 @@ export default function BundledUpcomingShipments({
             {stats.totalCargos} <span style={{ fontSize: "0.8rem", fontWeight: 500, color: "var(--text-muted)" }}>Cargos</span>
           </div>
           <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "4px" }}>
-            {stats.totalUnits.toLocaleString()} Pcs bundled ({stats.totalCbm.toFixed(1)} CBM)
+            {stats.totalUnits.toLocaleString()} Pcs bundled • <strong style={{ color: "var(--primary)" }}>📦 {stats.totalCartons.toLocaleString()} Cartons</strong> ({stats.totalCbm.toFixed(1)} CBM)
           </div>
         </div>
 
@@ -708,6 +712,12 @@ export default function BundledUpcomingShipments({
                       {cargo.cbmPackingList 
                         ? `${cargo.cbmPackingList} ${cargo.cargoPriceUom === "per Pc" ? "Pcs" : cargo.cargoPriceUom === "per KG" ? "KG" : "CBM"}` 
                         : `${cargo.totalUnits.toLocaleString()} Pcs`}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ color: "var(--text-muted)" }}>Total Cartons:</div>
+                    <div style={{ fontWeight: 600, color: "var(--primary)" }}>
+                      📦 {cargo.totalCartons ? `${cargo.totalCartons.toLocaleString()} Cartons` : "—"}
                     </div>
                   </div>
                   <div>
@@ -1407,6 +1417,12 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
                 {(cargo?.cbmPackingList || order.cbmPackingList) 
                   ? `${cargo?.cbmPackingList || order.cbmPackingList} ${(cargo?.cargoPriceUom || order.cargoPriceUom) === "per Pc" ? "Pcs" : (cargo?.cargoPriceUom || order.cargoPriceUom) === "per KG" ? "KG" : "CBM"}` 
                   : "—"}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Total Cartons</div>
+              <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--primary)", marginTop: "2px" }}>
+                📦 {(cargo?.totalCartons ? `${cargo.totalCartons} Cartons` : null) || (order.totalCartons ? `${order.totalCartons} Cartons` : "—")}
               </div>
             </div>
             <div>

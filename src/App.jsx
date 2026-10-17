@@ -1242,11 +1242,27 @@ export default function App() {
     logSystemActivity("UNDO_PRICING", `Undid pricing for ${target.model} (#${target.id})`, "Requisition", target.id, target, updated);
   };
 
-  const addCargo = async (cargoDetails, selectedRequestIds, itemPickedQtyMap = {}, itemPickedPriceMap = {}) => {
+  const addCargo = async (cargoDetails, selectedRequestIds, itemPickedQtyMap = {}, itemPickedPriceMap = {}, itemPickedCartonMap = {}) => {
     const newCargoId = `cargo-${Date.now()}`;
+
+    // Calculate total cartons across picked items
+    let computedCargoCartons = 0;
+    requests.filter(r => selectedRequestIds.includes(r.id)).forEach(r => {
+      const totalVendorQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0);
+      const pickedQty = itemPickedQtyMap[r.id] != null ? parseInt(itemPickedQtyMap[r.id]) : totalVendorQty;
+      const ipc = itemPickedCartonMap[r.id] ?? r.itemsPerCarton;
+      const ipcNum = parseInt(ipc, 10);
+      if (ipcNum > 0) {
+        computedCargoCartons += Math.ceil(pickedQty / ipcNum);
+      }
+    });
+
     const newCargo = {
       id: newCargoId,
       ...cargoDetails,
+      totalCartons: cargoDetails.totalCartons != null && cargoDetails.totalCartons !== ""
+        ? parseInt(cargoDetails.totalCartons, 10)
+        : (computedCargoCartons > 0 ? computedCargoCartons : null),
       createdBy: currentUser?.id || "",
       createdByName: currentUser?.name || "",
       isMaterialRec: cargoDetails.isMaterialRec || "No",
@@ -1267,6 +1283,11 @@ export default function App() {
       const effectivePrice = (customPrice !== null && !isNaN(customPrice) && customPrice >= 0) ? customPrice : (r.priceRmb ? parseFloat(r.priceRmb) : 0);
       const autoReadyDate = r.vendorReadyDate || cargoDetails.cargoShippingDate || cargoDetails.cargoOrderDate || new Date().toISOString().split("T")[0];
 
+      const ipc = itemPickedCartonMap[r.id] ?? r.itemsPerCarton;
+      const ipcNum = parseInt(ipc, 10);
+      const itemCartons = (ipcNum > 0) ? Math.ceil(pickedQty / ipcNum) : null;
+      const remainingCartons = (ipcNum > 0 && remainingQty > 0) ? Math.ceil(remainingQty / ipcNum) : null;
+
       const updatedReq = {
         ...r,
         cargoId: newCargoId,
@@ -1279,7 +1300,9 @@ export default function App() {
         cargoAssignedByName: currentUser?.name || "",
         isMaterialRec: newCargo.isMaterialRec,
         actualReceivedDate: newCargo.isMaterialRec === "Yes" ? (cargoDetails.receivedDate || new Date().toISOString().split("T")[0]) : "",
-        totalRmb: effectivePrice > 0 ? effectivePrice * pickedQty : (r.priceRmb ? parseFloat(r.priceRmb) * pickedQty : r.totalRmb)
+        totalRmb: effectivePrice > 0 ? effectivePrice * pickedQty : (r.priceRmb ? parseFloat(r.priceRmb) * pickedQty : r.totalRmb),
+        itemsPerCarton: ipcNum > 0 ? ipcNum : (r.itemsPerCarton || null),
+        totalCartons: itemCartons
       };
       updatedItems.push(updatedReq);
 
@@ -1300,7 +1323,9 @@ export default function App() {
           actualReceivedDate: "",
           parentRequestId: r.id,
           status: "Active",
-          notes: `${r.notes ? r.notes + " | " : ""}Partial cargo pickup: ${pickedQty} Pcs loaded to Cargo #${newCargoId}, ${remainingQty} Pcs balance left at vendor`
+          notes: `${r.notes ? r.notes + " | " : ""}Partial cargo pickup: ${pickedQty} Pcs loaded to Cargo #${newCargoId}, ${remainingQty} Pcs balance left at vendor`,
+          itemsPerCarton: ipcNum > 0 ? ipcNum : (r.itemsPerCarton || null),
+          totalCartons: remainingCartons
         };
         newRemainingItems.push(remReq);
       }
