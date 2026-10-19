@@ -1066,11 +1066,18 @@ export default function PurchaserDashboard({
     return (myRequests || []).filter(r => r.priceRmb && !r.cargoId && r.status !== "Cancelled");
   }, [requests, myRequests, hasFullPurchaseAccess, currentUser, plannerPurchaserFilter, purchasers]);
 
-  // Step 3 Vendors available in dropdown (filtered to selected purchaser, sorted by ready order count)
+  // Step 3 Vendors available in dropdown (only vendors with pending orders ready for cargo consolidation)
   const plannerAvailableVendors = useMemo(() => {
     const targetPurchaser = hasFullPurchaseAccess
       ? (plannerPurchaserFilter === "all" ? null : ((purchasers || []).find(p => p.id === plannerPurchaserFilter) || { id: plannerPurchaserFilter }))
       : currentUser;
+
+    const vendorCandidateMap = new Map();
+    plannerCandidateRequests.forEach(r => {
+      if (r.vendorId) {
+        vendorCandidateMap.set(r.vendorId, (vendorCandidateMap.get(r.vendorId) || 0) + 1);
+      }
+    });
 
     return (vendors || [])
       .filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive")
@@ -1078,13 +1085,29 @@ export default function PurchaserDashboard({
         if (!targetPurchaser && hasFullPurchaseAccess) return true;
         return isVendorForUser(v, targetPurchaser || currentUser, requests);
       })
+      .filter(v => (vendorCandidateMap.get(v.id) || 0) > 0)
       .sort((a, b) => {
-        const countA = plannerCandidateRequests.filter(r => r.vendorId === a.id).length;
-        const countB = plannerCandidateRequests.filter(r => r.vendorId === b.id).length;
+        const countA = vendorCandidateMap.get(a.id) || 0;
+        const countB = vendorCandidateMap.get(b.id) || 0;
         if (countB !== countA) return countB - countA;
         return (a.name || "").localeCompare(b.name || "");
       });
   }, [vendors, hasFullPurchaseAccess, currentUser, plannerPurchaserFilter, plannerCandidateRequests, requests, purchasers]);
+
+  // If the currently selected vendor no longer has pending orders in Step 3, reset selection cleanly
+  useEffect(() => {
+    if (plannerVendorId && !plannerAvailableVendors.some(v => v.id === plannerVendorId)) {
+      setPlannerVendorId("");
+      setCheckedRequestIds([]);
+      setPlannerNewQtyMap({});
+      setPlannerNewPriceMap({});
+      setPlannerItemsPerCartonMap({});
+      setStep3SelectedOrderDate("");
+      setStep3SelectedCategory("");
+      setStep3ModelSearch("");
+      setExcelNotification(null);
+    }
+  }, [plannerVendorId, plannerAvailableVendors]);
 
   // Step 4: Cargo Pickup sorting
   const rawCpItems = useMemo(() => {
@@ -2283,7 +2306,7 @@ export default function PurchaserDashboard({
                       setExcelNotification(null);
                     }}
                   >
-                    <option value="">Select Vendor...</option>
+                    <option value="">{plannerAvailableVendors.length === 0 ? "No Vendors with Pending Orders in Step 3" : "Select Vendor..."}</option>
                     {plannerAvailableVendors.map(v => {
                       const readyOrders = plannerCandidateRequests.filter(r => r.vendorId === v.id);
                       const orderCount = readyOrders.length;
@@ -2930,17 +2953,17 @@ export default function PurchaserDashboard({
                             fontSize: "0.78rem",
                             padding: "4px 10px",
                             cursor: "pointer",
-                            border: "1px solid rgba(239, 68, 68, 0.6)",
-                            background: "rgba(239, 68, 68, 0.2)",
-                            color: "#f87171",
+                            border: "1px solid rgba(245, 158, 11, 0.4)",
+                            background: "rgba(245, 158, 11, 0.12)",
+                            color: "#f59e0b",
                             display: "inline-flex",
                             alignItems: "center",
                             gap: "5px",
-                            fontWeight: 700
+                            fontWeight: 600
                           }}
-                          title="Click to fill missing carton sizes (Compulsory for cargo)"
+                          title="Click to fill carton size per item, or you can apply Total Cartons during Cargo assignment"
                         >
-                          <AlertTriangle size={13} /> {selectedMissingCartonCount} item(s) missing carton size (Compulsory)
+                          <Package size={13} /> {selectedMissingCartonCount} item(s) without carton size (or apply Total Cartons in cargo)
                         </button>
                       )}
                     </div>
@@ -3221,9 +3244,9 @@ export default function PurchaserDashboard({
                                             fontSize: "0.85rem",
                                             fontWeight: 700,
                                             textAlign: "center",
-                                            borderColor: hasValidCtn ? "#10b981" : "#ef4444",
-                                            background: hasValidCtn ? "rgba(16, 185, 129, 0.08)" : "rgba(239, 68, 68, 0.08)",
-                                            color: hasValidCtn ? "var(--text-main)" : "#ef4444"
+                                            borderColor: hasValidCtn ? "#10b981" : undefined,
+                                            background: hasValidCtn ? "rgba(16, 185, 129, 0.08)" : undefined,
+                                            color: hasValidCtn ? "var(--text-main)" : undefined
                                           }}
                                           value={plannerItemsPerCartonMap[r.id] ?? r.itemsPerCarton ?? ""}
                                           placeholder="Pcs/ctn"
@@ -3251,8 +3274,8 @@ export default function PurchaserDashboard({
                                           📦 {calculatedCtns} ctn{calculatedCtns !== 1 ? "s" : ""}
                                         </span>
                                       ) : (
-                                        <span style={{ fontSize: "0.68rem", color: "#ef4444", fontWeight: 700, whiteSpace: "nowrap" }}>
-                                          * Required
+                                        <span style={{ fontSize: "0.68rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                                          (or set in cargo)
                                         </span>
                                       )}
                                     </div>
@@ -3535,20 +3558,7 @@ export default function PurchaserDashboard({
                     </button>
                     <button 
                       disabled={checkedRequestIds.length === 0}
-                      onClick={() => {
-                        const selectedItems = readyRequests.filter(r => checkedRequestIds.includes(r.id));
-                        const missingCartons = selectedItems.filter(r => {
-                          const ctn = plannerItemsPerCartonMap[r.id] ?? r.itemsPerCarton;
-                          const num = parseInt(ctn, 10);
-                          return isNaN(num) || num <= 0;
-                        });
-                        if (missingCartons.length > 0) {
-                          alert(`⚠️ CARTON SIZE IS COMPULSORY!\n\nYou must specify "Items per Carton" before combining orders into a cargo shipment.\n\nMissing carton size on ${missingCartons.length} item(s):\n• ` + missingCartons.map(i => `${i.model} (Qty: ${i.vendorOrderQuantity || i.orderQuantity} Pcs)`).join("\n• ") + `\n\nPlease enter the items per carton in the table or click "Set Carton Size".`);
-                          setCartonModalConfig({ isOpen: true, targetMode: "missing" });
-                          return;
-                        }
-                        setCreatingCargo(true);
-                      }}
+                      onClick={() => setCreatingCargo(true)}
                       className="btn btn-primary"
                     >
                       <Plus size={16} /> Combine Selected into Cargo
@@ -7817,7 +7827,8 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
   const totalPickedQty = Object.values(itemPickedQtyMap).reduce((sum, q) => sum + (parseFloat(q) || 0), 0);
 
   // Total Cargo cartons calculation
-  const totalCargoCartons = combinedRequests.reduce((sum, r) => {
+  // Total Cargo cartons calculation from item-level carton settings
+  const calculatedCargoCartons = combinedRequests.reduce((sum, r) => {
     const pickedQ = parseFloat(itemPickedQtyMap[r.id]) || (r.vendorOrderQuantity || r.orderQuantity || 1);
     const ctnVal = itemPickedCartonMap[r.id] ?? r.itemsPerCarton;
     const ctnNum = parseInt(ctnVal, 10);
@@ -7826,6 +7837,20 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
     }
     return sum;
   }, 0);
+
+  const [totalCartonsInput, setTotalCartonsInput] = useState(() => {
+    return calculatedCargoCartons > 0 ? String(calculatedCargoCartons) : "";
+  });
+
+  useEffect(() => {
+    if (calculatedCargoCartons > 0 && !totalCartonsInput) {
+      setTotalCartonsInput(String(calculatedCargoCartons));
+    }
+  }, [calculatedCargoCartons]);
+
+  const effectiveTotalCartons = totalCartonsInput !== "" 
+    ? (parseInt(totalCartonsInput, 10) || 0) 
+    : calculatedCargoCartons;
 
   // Total Cargo price calculation
   const totalCargoPrice = (uom === "per CBM" || uom === "per KG") 
@@ -7836,13 +7861,9 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const missing = combinedRequests.filter(r => {
-      const ctnVal = itemPickedCartonMap[r.id] ?? r.itemsPerCarton;
-      const num = parseInt(ctnVal, 10);
-      return isNaN(num) || num <= 0;
-    });
-    if (missing.length > 0) {
-      setCartonError(`Carton size (items per carton) is compulsory! Please enter valid items per carton (> 0) for: ${missing.map(m => m.model).join(", ")}`);
+    const finalCartons = totalCartonsInput !== "" ? parseInt(totalCartonsInput, 10) : calculatedCargoCartons;
+    if (!finalCartons || isNaN(finalCartons) || finalCartons <= 0) {
+      setCartonError("Please enter the Total Cartons for this cargo shipment.");
       return;
     }
 
@@ -7855,7 +7876,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
       cargoPriceUom: uom,
       cbmPackingList: parseFloat(cbm || 0),
       totalCargoPrice: totalCargoPrice,
-      totalCartons: totalCargoCartons,
+      totalCartons: finalCartons,
       modeOfTransport: mode,
       cargoCompanyId: cargoCompanyId,
       cargoShippingDate: shipDate,
@@ -7875,7 +7896,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
       <div className="glass-panel modal-content" style={{ maxWidth: "680px" }}>
         <h3 style={{ fontSize: "1.4rem", marginBottom: "6px", color: "var(--primary)" }}>Create Combined Cargo Shipment</h3>
         <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "16px" }}>
-          Vendor: <strong>{vendorName}</strong> | Combining <strong>{selectedIds.length}</strong> items | Total Cartons: <strong style={{ color: "#f59e0b" }}>📦 {totalCargoCartons} Cartons</strong> | Value: ¥{totalItemSpendInRmb.toLocaleString(undefined, { maximumFractionDigits: 0 })} Est. RMB
+          Vendor: <strong>{vendorName}</strong> | Combining <strong>{selectedIds.length}</strong> items | Total Cartons: <strong style={{ color: "#f59e0b" }}>📦 {effectiveTotalCartons > 0 ? `${effectiveTotalCartons} Cartons` : "To be specified"}</strong> | Value: ¥{totalItemSpendInRmb.toLocaleString(undefined, { maximumFractionDigits: 0 })} Est. RMB
         </p>
 
         {cartonError && (
@@ -7937,7 +7958,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
           <div style={{ background: "var(--bg-card, #f8fafc)", padding: "16px", borderRadius: "10px", border: "1px solid var(--border-glass, rgba(226, 232, 240, 0.8))" }}>
             <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--primary)", marginBottom: "10px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
               <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>📦 Item Quantity &amp; Cartons Picked for Cargo</span>
-              <span style={{ fontSize: "0.82rem", color: "#f59e0b", fontWeight: 700 }}>Total Cartons: 📦 {totalCargoCartons} Ctns</span>
+              <span style={{ fontSize: "0.82rem", color: "#f59e0b", fontWeight: 700 }}>Total Cartons: 📦 {effectiveTotalCartons > 0 ? `${effectiveTotalCartons} Ctns` : "Set Below"}</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "220px", overflowY: "auto" }}>
               {combinedRequests.map(r => {
@@ -7950,7 +7971,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
                 const itemCartons = hasValidCtn ? Math.ceil(currentPicked / ctnNum) : null;
 
                 return (
-                  <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", fontSize: "0.85rem", background: "var(--bg-input, #ffffff)", padding: "10px 14px", borderRadius: "8px", border: hasValidCtn ? "1px solid var(--border-glass, #e2e8f0)" : "1px solid #ef4444", flexWrap: "wrap" }}>
+                  <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", fontSize: "0.85rem", background: "var(--bg-input, #ffffff)", padding: "10px 14px", borderRadius: "8px", border: "1px solid var(--border-glass, #e2e8f0)", flexWrap: "wrap" }}>
                     <div style={{ flex: "1 1 180px" }}>
                       <strong style={{ color: "var(--text-main)", fontSize: "0.92rem" }}>{r.model}</strong>
                       <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>Vendor Confirmed Qty: <strong>{vendorQty} Pcs</strong></div>
@@ -7984,8 +8005,8 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
                             fontSize: "0.86rem", 
                             fontWeight: 700, 
                             textAlign: "center",
-                            borderColor: hasValidCtn ? "#10b981" : "#ef4444",
-                            background: hasValidCtn ? "rgba(16, 185, 129, 0.08)" : "rgba(239, 68, 68, 0.08)"
+                            borderColor: hasValidCtn ? "#10b981" : undefined,
+                            background: hasValidCtn ? "rgba(16, 185, 129, 0.08)" : undefined
                           }}
                           className="form-control"
                           value={ctnVal}
@@ -8014,8 +8035,8 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
                             📦 {itemCartons} ctns
                           </span>
                         ) : (
-                          <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#ef4444", background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", padding: "3px 8px", borderRadius: "6px", whiteSpace: "nowrap" }}>
-                            * Required
+                          <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", padding: "3px 8px", whiteSpace: "nowrap" }}>
+                            (in total)
                           </span>
                         )}
                       </div>
@@ -8099,6 +8120,34 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
                 value={`${getCurrencySymbol(currency)}${totalCargoPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
                 disabled
               />
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600 }}>Total Cartons (Consignment) *</label>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <input 
+                  type="number" 
+                  min="1"
+                  className="form-control" 
+                  placeholder={calculatedCargoCartons > 0 ? String(calculatedCargoCartons) : "e.g. 50 Cartons"}
+                  value={totalCartonsInput}
+                  onChange={e => {
+                    setTotalCartonsInput(e.target.value);
+                    if (cartonError) setCartonError("");
+                  }}
+                  required
+                />
+                <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--warning, #f59e0b)", whiteSpace: "nowrap" }}>
+                  📦 Cartons
+                </span>
+              </div>
+              <small style={{ color: "var(--text-muted)", fontSize: "0.74rem", marginTop: "2px", display: "block" }}>
+                {calculatedCargoCartons > 0 
+                  ? `Pre-filled from item carton sizes (${calculatedCargoCartons} Ctns). You can override this if needed.` 
+                  : "Enter the total number of cartons for this cargo shipment here if items don't have individual carton sizes."}
+              </small>
             </div>
           </div>
 
@@ -8249,6 +8298,7 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
   const [cargoCompanyId, setCargoCompanyId] = useState(cargo.cargoCompanyId || "");
   const [shipDate, setShipDate] = useState(cargo.cargoShippingDate || "");
   const [eta, setEta] = useState(cargo.cargoEta || "");
+  const [editTotalCartons, setEditTotalCartons] = useState(cargo.totalCartons != null ? String(cargo.totalCartons) : "");
   const [showQuickCargoCompanyModal, setShowQuickCargoCompanyModal] = useState(false);
   // File state: keep existing filename/data OR allow new upload
   const [packingListFile, setPackingListFile] = useState(
@@ -8302,7 +8352,7 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
       cargoPriceUom: uom,
       cbmPackingList: parseFloat(cbm || 0),
       totalCargoPrice: totalCargoPrice,
-      totalCartons: totalCartons || cargo.totalCartons,
+      totalCartons: editTotalCartons !== "" ? (parseInt(editTotalCartons, 10) || null) : (totalCartons || cargo.totalCartons),
       modeOfTransport: mode,
       cargoCompanyId: cargoCompanyId,
       cargoShippingDate: shipDate,
@@ -8435,6 +8485,25 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
                 value={`${getCurrencySymbol(currency)}${totalCargoPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
                 disabled
               />
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600 }}>Total Cartons</label>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <input 
+                  type="number" 
+                  min="1"
+                  className="form-control" 
+                  placeholder={totalCartons ? String(totalCartons) : "e.g. 50 Cartons"}
+                  value={editTotalCartons}
+                  onChange={e => setEditTotalCartons(e.target.value)}
+                />
+                <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--warning, #f59e0b)", whiteSpace: "nowrap" }}>
+                  📦 Cartons
+                </span>
+              </div>
             </div>
           </div>
 

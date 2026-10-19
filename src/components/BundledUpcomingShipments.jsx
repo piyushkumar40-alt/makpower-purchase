@@ -681,7 +681,7 @@ export default function BundledUpcomingShipments({
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px", marginBottom: "16px", fontSize: "0.85rem" }}>
                   <div>
                     <div style={{ color: "var(--text-muted)" }}>Cargo Detail:</div>
-                    <div style={{ fontWeight: 500 }}>{cargo.cargoDetail || "na"}</div>
+                    <div style={{ fontWeight: 500 }}>{cargo.cargoDetail || "—"}</div>
                   </div>
                   <div>
                     <div style={{ color: "var(--text-muted)" }}>Shipping / ETA Dates:</div>

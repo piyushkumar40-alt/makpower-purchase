@@ -780,6 +780,7 @@ async function setupPgDatabase() {
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billVerifiedBy" TEXT;
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billVerificationNotes" TEXT;
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "totalCartons" INTEGER;
+      ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoCompanyId" TEXT;
     `);
 
     // Clean up legacy cargos with phantom document filenames but empty/null data payloads
@@ -3748,8 +3749,8 @@ app.post("/api/cargos", async (req, res) => {
           "cbmPackingList", "totalCargoPrice", "modeOfTransport", "cargoShippingDate", "cargoEta",
           "packingListFile", "packingListData", "invoiceFile", "invoiceData", "cargoReceiptFile", "cargoReceiptData", "isMaterialRec", "receivedDate", "currency", "cargoEtaHistory",
           "billUploadedAt", "billUploadedBy", "billStatus", "billVerifiedAt", "billVerifiedBy", "billVerificationNotes",
-          "totalCartons"
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
+          "totalCartons", "cargoCompanyId"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
         ON CONFLICT ("id") DO UPDATE SET
           "vendorId" = EXCLUDED."vendorId",
           "cargoOrderDate" = EXCLUDED."cargoOrderDate",
@@ -3777,7 +3778,8 @@ app.post("/api/cargos", async (req, res) => {
           "billVerifiedAt" = EXCLUDED."billVerifiedAt",
           "billVerifiedBy" = EXCLUDED."billVerifiedBy",
           "billVerificationNotes" = EXCLUDED."billVerificationNotes",
-          "totalCartons" = COALESCE(EXCLUDED."totalCartons", cargos."totalCartons")
+          "totalCartons" = COALESCE(EXCLUDED."totalCartons", cargos."totalCartons"),
+          "cargoCompanyId" = EXCLUDED."cargoCompanyId"
       `;
       const effectiveTotal = getEffectiveTotalCargoPrice(c);
       const values = [
@@ -3789,7 +3791,8 @@ app.post("/api/cargos", async (req, res) => {
         c.packingListFile || "", c.packingListData || "", c.invoiceFile || "", c.invoiceData || "", c.cargoReceiptFile || "", c.cargoReceiptData || "", c.isMaterialRec || "No", c.receivedDate || "", c.currency || "RMB",
         Array.isArray(c.cargoEtaHistory) ? JSON.stringify(c.cargoEtaHistory) : (c.cargoEtaHistory || "[]"),
         c.billUploadedAt || "", c.billUploadedBy || "", c.billStatus || "", c.billVerifiedAt || "", c.billVerifiedBy || "", c.billVerificationNotes || "",
-        c.totalCartons != null && c.totalCartons !== "" ? parseInt(c.totalCartons) : null
+        c.totalCartons != null && c.totalCartons !== "" ? parseInt(c.totalCartons) : null,
+        c.cargoCompanyId || ""
       ];
       await pool.query(query, values);
       res.json({ success: true });
