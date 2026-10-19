@@ -182,6 +182,8 @@ export default function ItemCatalogPanel({
 
   // Merge Items Modal state (Super Admin only)
   const [showMergeModal, setShowMergeModal] = useState(false);
+  const [sourceText, setSourceText] = useState("");
+  const [targetText, setTargetText] = useState("");
   const [sourceId, setSourceId] = useState("");
   const [targetId, setTargetId] = useState("");
   const [mergeMsg, setMergeMsg] = useState("");
@@ -200,6 +202,19 @@ export default function ItemCatalogPanel({
   }, [items, categoryFilter, typeFilter, searchQuery]);
 
   const { items: sortedCatalogItems, RenderSortHeader } = useSortableData(filteredItems);
+
+  // Matched items for merge modal
+  const matchedMergeSource = useMemo(() => {
+    const q = (sourceText || "").trim().toLowerCase();
+    if (!q) return null;
+    return items.find(i => i.name.toLowerCase() === q || String(i.id).toLowerCase() === q);
+  }, [items, sourceText]);
+
+  const matchedMergeTarget = useMemo(() => {
+    const q = (targetText || "").trim().toLowerCase();
+    if (!q) return null;
+    return items.find(i => i.name.toLowerCase() === q || String(i.id).toLowerCase() === q);
+  }, [items, targetText]);
 
   // Paginated Catalog Slice (100 rows per page)
   const paginatedCatalogItems = useMemo(() => {
@@ -568,36 +583,49 @@ export default function ItemCatalogPanel({
     }
   };
 
-  // Confirm Merge 2 Items (Super Admin only)
+  // Confirm Merge / Rename Items (Super Admin only)
   const handleConfirmMerge = async (e) => {
     e.preventDefault();
     if (!isSuperAdmin) return;
     setMergeMsg("");
 
-    if (!sourceId || !targetId || sourceId === targetId) {
-      setMergeMsg("Please select 2 different items to merge.");
+    const sText = sourceText.trim();
+    const tText = targetText.trim();
+
+    if (!sText || !tText) {
+      setMergeMsg("Please specify both a Source item and a Target item.");
       return;
     }
 
-    const sourceItem = items.find(i => i.id === sourceId);
-    const targetItem = items.find(i => i.id === targetId);
-
-    if (!sourceItem || !targetItem) {
-      setMergeMsg("Selected items not found.");
+    if (sText.toLowerCase() === tText.toLowerCase()) {
+      setMergeMsg("Source and Target item cannot be identical.");
       return;
     }
 
-    if (!window.confirm(`⚠️ ARE YOU SURE? This will MERGE "${sourceItem.name}" (#${sourceId}) into "${targetItem.name}" (#${targetId}). "${sourceItem.name}" will be deleted and all existing orders will be updated to "${targetItem.name}".`)) {
+    const sItem = items.find(i => i.name.toLowerCase() === sText.toLowerCase() || String(i.id).toLowerCase() === sText.toLowerCase());
+    const tItem = items.find(i => i.name.toLowerCase() === tText.toLowerCase() || String(i.id).toLowerCase() === tText.toLowerCase());
+
+    const sName = sItem ? sItem.name : sText;
+    const tName = tItem ? tItem.name : tText;
+    const isNew = !tItem;
+
+    const confirmMessage = isNew
+      ? `⚠️ ARE YOU SURE?\n\nThis will create a NEW Master Item "${tName}" and MERGE "${sName}" into it.\n\nAll existing purchase orders, CRM orders, dispatches, and catalog entries pointing to "${sName}" will be updated to "${tName}".`
+      : `⚠️ ARE YOU SURE?\n\nThis will MERGE "${sName}" into "${tName}".\n\n"${sName}" will be deleted from master catalog and all existing purchase orders and related records will be updated to "${tName}".`;
+
+    if (!window.confirm(confirmMessage)) {
       return;
     }
 
     setMerging(true);
     try {
       if (onMergeItems) {
-        const res = await onMergeItems(sourceId, targetId);
+        const res = await onMergeItems(sItem ? sItem.id : "", tItem ? tItem.id : "", tName, sName, isNew);
         if (res && res.success) {
-          alert(res.message || `Successfully merged "${sourceItem.name}" into "${targetItem.name}".`);
+          alert(res.message || `Successfully merged "${sName}" into "${tName}".`);
           setShowMergeModal(false);
+          setSourceText("");
+          setTargetText("");
           setSourceId("");
           setTargetId("");
         } else {
@@ -842,11 +870,11 @@ export default function ItemCatalogPanel({
 
           {isSuperAdmin && (
             <button 
-              onClick={() => { setShowMergeModal(true); setMergeMsg(""); setSourceId(""); setTargetId(""); }}
+              onClick={() => { setShowMergeModal(true); setMergeMsg(""); setSourceText(""); setTargetText(""); setSourceId(""); setTargetId(""); }}
               className="btn btn-secondary"
               style={{ fontSize: "0.85rem", borderColor: "#818cf8", color: "#c7d2fe" }}
             >
-              <GitMerge size={16} style={{ color: "#818cf8" }} /> Merge 2 Items
+              <GitMerge size={16} style={{ color: "#818cf8" }} /> Merge / Rename Items
             </button>
           )}
 
@@ -1012,18 +1040,18 @@ export default function ItemCatalogPanel({
         </div>
       )}
 
-      {/* Merge 2 Items Modal (Super Admin only) */}
+      {/* Merge / Rename Items Modal (Super Admin only) */}
       {showMergeModal && isSuperAdmin && (
         <div className="glass-panel" style={{ padding: "24px", marginBottom: "24px", border: "1px solid #818cf8" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-            <h3 style={{ fontSize: "1.1rem", color: "#c7d2fe", display: "flex", alignItems: "center", gap: "8px" }}>
-              <GitMerge size={20} /> Merge 2 Master Items into 1
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+            <h3 style={{ fontSize: "1.1rem", color: "#c7d2fe", display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
+              <GitMerge size={20} /> Merge & Rename Master Items
             </h3>
             <button onClick={() => setShowMergeModal(false)} className="btn btn-secondary btn-sm">Close</button>
           </div>
 
           <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "16px" }}>
-            Select a <strong>Source Item</strong> (to delete & merge) and a <strong>Target Item</strong> (to keep). All existing purchase orders referencing the source item will be updated to point to the target item name automatically.
+            Type or select a <strong>Source Item</strong> to replace/delete, and enter or select a <strong>Target Item</strong> (keep existing or type a <strong>brand new name</strong>). All existing purchase orders and catalog references will be automatically updated!
           </p>
 
           {mergeMsg && (
@@ -1034,63 +1062,122 @@ export default function ItemCatalogPanel({
 
           <form onSubmit={handleConfirmMerge} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px" }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label" style={{ color: "var(--danger)" }}>1. Type or Select Item to MERGE & DELETE (Source)*</label>
+              <label className="form-label" style={{ color: "var(--danger)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>1. Type or Select Source Item to MERGE / REPLACE *</span>
+              </label>
               <input 
                 type="text" 
                 list="list-merge-source"
                 className="form-control" 
-                placeholder="Type or select Source Item..." 
-                value={items.find(i => i.id === sourceId)?.name || ""}
+                placeholder="Type any item name or select..." 
+                value={sourceText}
                 onChange={e => {
-                  const val = e.target.value;
-                  const matched = items.find(i => i.name.toLowerCase() === val.toLowerCase());
-                  setSourceId(matched ? matched.id : "");
+                  setSourceText(e.target.value);
+                  setMergeMsg("");
                 }}
                 required
               />
               <datalist id="list-merge-source">
                 {items.map(i => (
                   <option key={i.id} value={i.name}>
-                    {i.name}
+                    #{i.id} - {i.name}
                   </option>
                 ))}
               </datalist>
+              {matchedMergeSource ? (
+                <div style={{ marginTop: "6px", fontSize: "0.8rem", color: "#f87171", display: "flex", alignItems: "center", gap: "5px" }}>
+                  <Check size={13} /> Matched Catalog SKU: #{matchedMergeSource.id} - {matchedMergeSource.name}
+                </div>
+              ) : sourceText.trim() ? (
+                <div style={{ marginTop: "6px", fontSize: "0.8rem", color: "#fbbf24", display: "flex", alignItems: "center", gap: "5px" }}>
+                  <AlertCircle size={13} /> Custom / Order Name: "{sourceText.trim()}"
+                </div>
+              ) : null}
             </div>
 
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label" style={{ color: "#34d399" }}>2. Type or Select Master Item to KEEP (Target)*</label>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                <label className="form-label" style={{ color: "#34d399", margin: 0 }}>
+                  2. Type or Select Target Item (KEEP or NEW) *
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ fontSize: "0.75rem", padding: "2px 8px", color: "#38bdf8", border: "1px dashed rgba(56, 189, 248, 0.4)" }}
+                  onClick={() => {
+                    setTargetText("");
+                  }}
+                  title="Clear field to type a brand new item name"
+                >
+                  + Add New Name
+                </button>
+              </div>
               <input 
                 type="text" 
                 list="list-merge-target"
                 className="form-control" 
-                placeholder="Type or select Target Item..." 
-                value={items.find(i => i.id === targetId)?.name || ""}
+                placeholder="Type existing item or type a brand NEW name..." 
+                value={targetText}
                 onChange={e => {
-                  const val = e.target.value;
-                  const matched = items.filter(i => i.id !== sourceId).find(i => i.name.toLowerCase() === val.toLowerCase());
-                  setTargetId(matched ? matched.id : "");
+                  setTargetText(e.target.value);
+                  setMergeMsg("");
                 }}
                 required
               />
               <datalist id="list-merge-target">
-                {items.filter(i => i.id !== sourceId).map(i => (
+                {items.filter(i => matchedMergeSource ? i.id !== matchedMergeSource.id : true).map(i => (
                   <option key={i.id} value={i.name}>
-                    {i.name}
+                    #{i.id} - {i.name}
                   </option>
                 ))}
               </datalist>
+              {matchedMergeTarget ? (
+                <div style={{ marginTop: "6px", fontSize: "0.8rem", color: "#34d399", display: "flex", alignItems: "center", gap: "5px" }}>
+                  <Check size={13} /> Existing Master SKU: #{matchedMergeTarget.id} - {matchedMergeTarget.name}
+                </div>
+              ) : targetText.trim() ? (
+                <div style={{ marginTop: "6px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                  <span className="badge badge-success" style={{ background: "rgba(16, 185, 129, 0.18)", color: "#34d399", border: "1px solid rgba(16, 185, 129, 0.35)", fontWeight: 700, fontSize: "0.78rem" }}>
+                    ✨ NEW Master Item Name
+                  </span>
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                    Will create new catalog item & update all purchase orders
+                  </span>
+                </div>
+              ) : null}
             </div>
 
-            {sourceId && targetId && sourceId !== targetId && (
+            {sourceText.trim() && targetText.trim() && (
               <div style={{ gridColumn: "1 / -1", padding: "14px 18px", background: "rgba(129, 140, 248, 0.12)", border: "1px solid rgba(129, 140, 248, 0.3)", borderRadius: "8px", fontSize: "0.88rem" }}>
-                <strong>Merge Preview:</strong> Item <code>"{items.find(i => i.id === sourceId)?.name}"</code> will be combined into <code>"{items.find(i => i.id === targetId)?.name}"</code>. All purchase order records pointing to "{items.find(i => i.id === sourceId)?.name}" will update to "{items.find(i => i.id === targetId)?.name}".
+                <div style={{ fontWeight: 700, color: "#c7d2fe", marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <GitMerge size={16} /> Merge & Rename Summary:
+                </div>
+                <div style={{ color: "var(--text-main)", lineHeight: 1.5 }}>
+                  Item <strong>"{matchedMergeSource ? matchedMergeSource.name : sourceText.trim()}"</strong> 
+                  {matchedMergeSource && <span style={{ color: "var(--text-muted)" }}> (#{matchedMergeSource.id})</span>}
+                  {" "}will be merged into{" "}
+                  <strong style={{ color: "#34d399" }}>"{matchedMergeTarget ? matchedMergeTarget.name : targetText.trim()}"</strong>
+                  {matchedMergeTarget ? (
+                    <span style={{ color: "var(--text-muted)" }}> (Existing Master SKU #{matchedMergeTarget.id})</span>
+                  ) : (
+                    <span style={{ color: "#34d399", fontWeight: 700 }}> (✨ Brand New Master Item)</span>
+                  )}.
+                </div>
+                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "6px" }}>
+                  ⚡ <strong>Automatic Cascading:</strong> All purchase orders, CRM sales orders, CRM dispatches, IMS inventory, and prices referencing "{matchedMergeSource ? matchedMergeSource.name : sourceText.trim()}" will immediately update to "{matchedMergeTarget ? matchedMergeTarget.name : targetText.trim()}"!
+                </div>
               </div>
             )}
 
             <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: "10px" }}>
               <button type="button" onClick={() => setShowMergeModal(false)} className="btn btn-secondary">Cancel</button>
-              <button type="submit" disabled={merging || !sourceId || !targetId} className="btn btn-primary" style={{ background: "linear-gradient(135deg, #6366f1, #4f46e5)" }}>
-                {merging ? "Merging Items..." : "Confirm & Merge Items"}
+              <button 
+                type="submit" 
+                disabled={merging || !sourceText.trim() || !targetText.trim() || sourceText.trim().toLowerCase() === targetText.trim().toLowerCase()} 
+                className="btn btn-primary" 
+                style={{ background: "linear-gradient(135deg, #6366f1, #4f46e5)", fontWeight: 700 }}
+              >
+                {merging ? "Processing Merge & Updating Orders..." : (matchedMergeTarget ? "Confirm & Merge Items" : "Create New Item & Update All Orders")}
               </button>
             </div>
           </form>

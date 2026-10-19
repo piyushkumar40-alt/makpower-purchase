@@ -6572,10 +6572,24 @@ app.post("/api/items/update", async (req, res) => {
         });
       }
 
+      const currentItem = existingRes.rows.find(i => i.id === id);
+      const oldName = currentItem ? currentItem.name : null;
+      const cleanNewName = name.trim();
+
       await pool.query(
         `UPDATE items SET "name" = $1, "category" = $2, "itemType" = $3, "itemNature" = $4, "unit" = $5, "description" = $6 WHERE "id" = $7`,
-        [name.trim(), category || "", itemType || "RM", itemNature || "Non Consumables", unit || "Pcs", description || "", id]
+        [cleanNewName, category || "", itemType || "RM", itemNature || "Non Consumables", unit || "Pcs", description || "", id]
       );
+
+      // If item name changed, cascade to requests and related tables
+      if (oldName && oldName !== cleanNewName) {
+        await pool.query('UPDATE requests SET "model" = $1 WHERE "model" = $2 OR "model" = $3', [cleanNewName, oldName, id]);
+        try { await pool.query('UPDATE crm_sales_orders SET "itemModel" = $1 WHERE "itemModel" = $2 OR "itemModel" = $3', [cleanNewName, oldName, id]); } catch (e) {}
+        try { await pool.query('UPDATE crm_dispatches SET "itemModel" = $1 WHERE "itemModel" = $2 OR "itemModel" = $3', [cleanNewName, oldName, id]); } catch (e) {}
+        try { await pool.query('UPDATE ims_transactions SET "itemName" = $1 WHERE "itemName" = $2 OR "itemId" = $3', [cleanNewName, oldName, id]); } catch (e) {}
+        try { await pool.query('UPDATE item_prices SET "itemName" = $1 WHERE "itemName" = $2 OR "itemId" = $3', [cleanNewName, oldName, id]); } catch (e) {}
+      }
+
       res.json({ success: true });
     } catch (err) {
       console.error("POST /api/items/update error:", err.message);
@@ -6593,15 +6607,47 @@ app.post("/api/items/update", async (req, res) => {
 
     const idx = data.items.findIndex(i => i.id === id);
     if (idx !== -1) {
+      const oldName = data.items[idx].name;
+      const cleanNewName = name.trim();
+
       data.items[idx] = {
         ...data.items[idx],
-        name: name.trim(),
+        name: cleanNewName,
         category: category || "",
         itemType: itemType || "RM",
         itemNature: itemNature || "Non Consumables",
         unit: unit || "Pcs",
         description: description || ""
       };
+
+      if (oldName && oldName !== cleanNewName) {
+        if (data.requests) {
+          data.requests.forEach(r => {
+            if (r.model === oldName || r.model === id) r.model = cleanNewName;
+          });
+        }
+        if (data.crmSalesOrders) {
+          data.crmSalesOrders.forEach(o => {
+            if (o.itemModel === oldName || o.itemModel === id) o.itemModel = cleanNewName;
+          });
+        }
+        if (data.crmDispatches) {
+          data.crmDispatches.forEach(d => {
+            if (d.itemModel === oldName || d.itemModel === id) d.itemModel = cleanNewName;
+          });
+        }
+        if (data.imsTransactions) {
+          data.imsTransactions.forEach(t => {
+            if (t.itemName === oldName || t.itemId === id) t.itemName = cleanNewName;
+          });
+        }
+        if (data.itemPrices) {
+          data.itemPrices.forEach(p => {
+            if (p.itemName === oldName || p.itemId === id) p.itemName = cleanNewName;
+          });
+        }
+      }
+
       writeLocalJson(data);
       res.json({ success: true });
     } else {
@@ -6680,73 +6726,286 @@ app.post("/api/items/update-photo", async (req, res) => {
   }
 });
 
-// POST /api/items/merge - Merge 2 items into 1 (Super Admin only)
+// POST /api/items/merge - Merge 2 items into 1 or rename/create new item (Super Admin only)
 app.post("/api/items/merge", async (req, res) => {
-  const { sourceId, targetId } = req.body;
-  if (!sourceId || !targetId || sourceId === targetId) {
-    return res.status(400).json({ error: "Invalid source and target item IDs for merge." });
+  const { sourceId, targetId, targetName, newTargetName, sourceName, isNewTarget } = req.body;
+
+  const rawTargetName = (newTargetName || targetName || "").trim();
+  const rawSourceName = (sourceName || "").trim();
+
+  if (!sourceId && !rawSourceName) {
+    return res.status(400).json({ error: "Source item ID or name is required." });
+  }
+
+  if (!targetId && !rawTargetName) {
+    return res.status(400).json({ error: "Target item ID or name is required." });
   }
 
   if (isPg) {
     try {
-      const sourceRes = await pool.query("SELECT * FROM items WHERE id = $1", [sourceId]);
-      const targetRes = await pool.query("SELECT * FROM items WHERE id = $1", [targetId]);
-
-      if (sourceRes.rows.length === 0 || targetRes.rows.length === 0) {
-        return res.status(404).json({ error: "Source or Target item not found." });
+      // 1. Identify Source Item
+      let sourceItem = null;
+      if (sourceId) {
+        const sRes = await pool.query("SELECT * FROM items WHERE id = $1", [sourceId]);
+        if (sRes.rows.length > 0) sourceItem = sRes.rows[0];
+      }
+      if (!sourceItem && rawSourceName) {
+        const sRes = await pool.query("SELECT * FROM items WHERE LOWER(name) = LOWER($1)", [rawSourceName]);
+        if (sRes.rows.length > 0) sourceItem = sRes.rows[0];
       }
 
-      const sourceItem = sourceRes.rows[0];
-      const targetItem = targetRes.rows[0];
+      const actualSourceName = sourceItem ? sourceItem.name : rawSourceName;
+      const actualSourceId = sourceItem ? sourceItem.id : (sourceId || null);
 
-      // Update any orders/requests pointing to source item name to target item name
+      if (!actualSourceName && !actualSourceId) {
+        return res.status(404).json({ error: "Source item could not be determined." });
+      }
+
+      // 2. Identify or Create Target Item
+      let targetItem = null;
+      if (targetId && !isNewTarget) {
+        const tRes = await pool.query("SELECT * FROM items WHERE id = $1", [targetId]);
+        if (tRes.rows.length > 0) targetItem = tRes.rows[0];
+      }
+
+      if (!targetItem && rawTargetName) {
+        const tRes = await pool.query("SELECT * FROM items WHERE LOWER(name) = LOWER($1)", [rawTargetName]);
+        if (tRes.rows.length > 0) targetItem = tRes.rows[0];
+      }
+
+      // If target item doesn't exist yet in items, create it!
+      if (!targetItem && rawTargetName) {
+        // Generate next ID
+        let nextId = "1";
+        try {
+          const maxIdRes = await pool.query(`
+            SELECT id FROM items WHERE id ~ '^[0-9]+$' ORDER BY CAST(id AS INTEGER) DESC LIMIT 1
+          `);
+          if (maxIdRes.rows.length > 0 && maxIdRes.rows[0].id) {
+            nextId = String(parseInt(maxIdRes.rows[0].id, 10) + 1);
+          } else {
+            nextId = String(Date.now());
+          }
+        } catch (e) {
+          nextId = String(Date.now());
+        }
+
+        const idCheck = await pool.query("SELECT id FROM items WHERE id = $1", [nextId]);
+        if (idCheck.rows.length > 0) {
+          nextId = `item-${Date.now()}`;
+        }
+
+        const newCat = sourceItem?.category || "General";
+        const newType = sourceItem?.itemType || "FG";
+        const newNature = sourceItem?.itemNature || "Non Consumables";
+        const newUnit = sourceItem?.unit || "Pcs";
+        const newStock = sourceItem?.currentStock || 0;
+        const newDesc = sourceItem?.description || "";
+        const newPhoto = sourceItem?.photo || "";
+        const newCreatedBy = "Super Admin (Merged)";
+
+        const insertRes = await pool.query(`
+          INSERT INTO items ("id", "name", "category", "itemType", "itemNature", "unit", "description", "photo", "currentStock", "createdBy")
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          RETURNING *
+        `, [nextId, rawTargetName, newCat, newType, newNature, newUnit, newDesc, newPhoto, newStock, newCreatedBy]);
+        targetItem = insertRes.rows[0];
+      }
+
+      if (!targetItem) {
+        return res.status(404).json({ error: "Target item could not be created or found." });
+      }
+
+      const finalTargetName = targetItem.name;
+      const finalTargetId = targetItem.id;
+
+      if (actualSourceId && actualSourceId === finalTargetId) {
+        return res.status(400).json({ error: "Source and Target items are the same." });
+      }
+
+      // 3. Update all purchase orders (requests)
       const reqUpdateRes = await pool.query(
         'UPDATE requests SET "model" = $1 WHERE "model" = $2 OR "model" = $3',
-        [targetItem.name, sourceItem.name, sourceItem.id]
+        [finalTargetName, actualSourceName, actualSourceId || "__NONE__"]
       );
 
-      // Delete source item from items table
-      await pool.query("DELETE FROM items WHERE id = $1", [sourceId]);
+      // 4. Update CRM sales orders
+      try {
+        await pool.query(
+          'UPDATE crm_sales_orders SET "itemModel" = $1 WHERE "itemModel" = $2 OR "itemModel" = $3',
+          [finalTargetName, actualSourceName, actualSourceId || "__NONE__"]
+        );
+      } catch (e) {
+        console.warn("crm_sales_orders update warning:", e.message);
+      }
+
+      // 5. Update CRM dispatches
+      try {
+        await pool.query(
+          'UPDATE crm_dispatches SET "itemModel" = $1 WHERE "itemModel" = $2 OR "itemModel" = $3',
+          [finalTargetName, actualSourceName, actualSourceId || "__NONE__"]
+        );
+      } catch (e) {
+        console.warn("crm_dispatches update warning:", e.message);
+      }
+
+      // 6. Update IMS transactions
+      try {
+        await pool.query(
+          'UPDATE ims_transactions SET "itemName" = $1, "itemId" = $2 WHERE "itemName" = $3 OR "itemId" = $4',
+          [finalTargetName, finalTargetId, actualSourceName, actualSourceId || "__NONE__"]
+        );
+      } catch (e) {
+        console.warn("ims_transactions update warning:", e.message);
+      }
+
+      // 7. Update Item prices
+      try {
+        await pool.query(
+          'UPDATE item_prices SET "itemName" = $1, "itemId" = $2 WHERE "itemName" = $3 OR "itemId" = $4',
+          [finalTargetName, finalTargetId, actualSourceName, actualSourceId || "__NONE__"]
+        );
+      } catch (e) {
+        console.warn("item_prices update warning:", e.message);
+      }
+
+      // 8. Delete source item from items table if distinct
+      if (actualSourceId && actualSourceId !== finalTargetId) {
+        await pool.query("DELETE FROM items WHERE id = $1", [actualSourceId]);
+      }
 
       res.json({
         success: true,
-        message: `Successfully merged "${sourceItem.name}" (#${sourceId}) into "${targetItem.name}" (#${targetId}). Updated ${reqUpdateRes.rowCount || 0} order records.`
+        sourceItemName: actualSourceName,
+        sourceItemId: actualSourceId,
+        targetItemName: finalTargetName,
+        targetItemId: finalTargetId,
+        targetItem: targetItem,
+        updatedOrdersCount: reqUpdateRes.rowCount || 0,
+        message: `Successfully merged "${actualSourceName}" into "${finalTargetName}" (#${finalTargetId}). Updated ${reqUpdateRes.rowCount || 0} purchase order records.`
       });
     } catch (err) {
       console.error("POST /api/items/merge error:", err.message);
       res.status(500).json({ error: err.message });
     }
   } else {
+    // Local JSON fallback
     const data = readLocalJson();
     if (!data.items) data.items = [];
-    const sourceIdx = data.items.findIndex(i => i.id === sourceId);
-    const targetIdx = data.items.findIndex(i => i.id === targetId);
 
-    if (sourceIdx === -1 || targetIdx === -1) {
-      return res.status(404).json({ error: "Source or Target item not found." });
+    let sourceItem = null;
+    let sourceIdx = -1;
+    if (sourceId) {
+      sourceIdx = data.items.findIndex(i => i.id === sourceId);
+      if (sourceIdx !== -1) sourceItem = data.items[sourceIdx];
+    }
+    if (!sourceItem && rawSourceName) {
+      sourceIdx = data.items.findIndex(i => i.name.toLowerCase() === rawSourceName.toLowerCase());
+      if (sourceIdx !== -1) sourceItem = data.items[sourceIdx];
     }
 
-    const sourceItem = data.items[sourceIdx];
-    const targetItem = data.items[targetIdx];
+    const actualSourceName = sourceItem ? sourceItem.name : rawSourceName;
+    const actualSourceId = sourceItem ? sourceItem.id : (sourceId || null);
 
-    // Update requests
+    let targetItem = null;
+    let targetIdx = -1;
+    if (targetId && !isNewTarget) {
+      targetIdx = data.items.findIndex(i => i.id === targetId);
+      if (targetIdx !== -1) targetItem = data.items[targetIdx];
+    }
+    if (!targetItem && rawTargetName) {
+      targetIdx = data.items.findIndex(i => i.name.toLowerCase() === rawTargetName.toLowerCase());
+      if (targetIdx !== -1) targetItem = data.items[targetIdx];
+    }
+
+    // Create target item if it doesn't exist
+    if (!targetItem && rawTargetName) {
+      const numIds = data.items.map(i => parseInt(String(i.id).replace(/\D/g, ""), 10)).filter(n => !isNaN(n));
+      const nextId = numIds.length > 0 ? String(Math.max(...numIds) + 1) : `item-${Date.now()}`;
+      targetItem = {
+        id: nextId,
+        name: rawTargetName,
+        category: sourceItem?.category || "General",
+        itemType: sourceItem?.itemType || "FG",
+        itemNature: sourceItem?.itemNature || "Non Consumables",
+        unit: sourceItem?.unit || "Pcs",
+        description: sourceItem?.description || "",
+        photo: sourceItem?.photo || "",
+        currentStock: sourceItem?.currentStock || 0,
+        createdBy: "Super Admin (Merged)"
+      };
+      data.items.unshift(targetItem);
+    }
+
+    if (!targetItem) {
+      return res.status(404).json({ error: "Target item could not be created or found." });
+    }
+
+    const finalTargetName = targetItem.name;
+    const finalTargetId = targetItem.id;
+
     let updatedCount = 0;
     if (data.requests) {
       data.requests.forEach(r => {
-        if (r.model === sourceItem.name || r.model === sourceItem.id) {
-          r.model = targetItem.name;
+        if (r.model === actualSourceName || (actualSourceId && r.model === actualSourceId)) {
+          r.model = finalTargetName;
           updatedCount++;
         }
       });
     }
 
-    // Delete source item
-    data.items.splice(sourceIdx, 1);
+    if (data.crmSalesOrders) {
+      data.crmSalesOrders.forEach(o => {
+        if (o.itemModel === actualSourceName || (actualSourceId && o.itemModel === actualSourceId)) {
+          o.itemModel = finalTargetName;
+        }
+      });
+    }
+
+    if (data.crmDispatches) {
+      data.crmDispatches.forEach(d => {
+        if (d.itemModel === actualSourceName || (actualSourceId && d.itemModel === actualSourceId)) {
+          d.itemModel = finalTargetName;
+        }
+      });
+    }
+
+    if (data.imsTransactions) {
+      data.imsTransactions.forEach(t => {
+        if (t.itemName === actualSourceName || (actualSourceId && (t.itemId === actualSourceId || t.itemName === actualSourceId))) {
+          t.itemName = finalTargetName;
+          t.itemId = finalTargetId;
+        }
+      });
+    }
+
+    if (data.itemPrices) {
+      data.itemPrices.forEach(p => {
+        if (p.itemName === actualSourceName || (actualSourceId && (p.itemId === actualSourceId || p.itemName === actualSourceId))) {
+          p.itemName = finalTargetName;
+          p.itemId = finalTargetId;
+        }
+      });
+    }
+
+    if (actualSourceId && actualSourceId !== finalTargetId) {
+      const idxToDelete = data.items.findIndex(i => i.id === actualSourceId);
+      if (idxToDelete !== -1) {
+        data.items.splice(idxToDelete, 1);
+      }
+    }
+
     writeLocalJson(data);
 
     res.json({
       success: true,
-      message: `Successfully merged "${sourceItem.name}" (#${sourceId}) into "${targetItem.name}" (#${targetId}). Updated ${updatedCount} order records.`
+      sourceItemName: actualSourceName,
+      sourceItemId: actualSourceId,
+      targetItemName: finalTargetName,
+      targetItemId: finalTargetId,
+      targetItem: targetItem,
+      updatedOrdersCount: updatedCount,
+      message: `Successfully merged "${actualSourceName}" into "${finalTargetName}" (#${finalTargetId}). Updated ${updatedCount} purchase order records.`
     });
   }
 });

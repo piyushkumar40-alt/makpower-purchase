@@ -2549,9 +2549,19 @@ export default function App() {
   };
 
   const updateItem = async (itemObj) => {
+    const existing = items.find(i => i.id === itemObj.id);
     const res = await postData("/api/items/update", itemObj);
     if (res && res.success) {
       setItems(prev => prev.map(i => i.id === itemObj.id ? { ...i, ...itemObj } : i));
+      if (existing && existing.name !== itemObj.name) {
+        const oldName = existing.name;
+        const newName = itemObj.name;
+        setRequests(prev => prev.map(r => (r.model === oldName || r.model === itemObj.id) ? { ...r, model: newName } : r));
+        setCrmSalesOrders(prev => prev.map(o => (o.itemModel === oldName || o.itemModel === itemObj.id) ? { ...o, itemModel: newName } : o));
+        setCrmDispatches(prev => prev.map(d => (d.itemModel === oldName || d.itemModel === itemObj.id) ? { ...d, itemModel: newName } : d));
+        setImsTransactions(prev => prev.map(t => (t.itemName === oldName || t.itemId === itemObj.id) ? { ...t, itemName: newName } : t));
+        setItemPrices(prev => prev.map(p => (p.itemName === oldName || p.itemId === itemObj.id) ? { ...p, itemName: newName } : p));
+      }
     }
     return res;
   };
@@ -2582,10 +2592,72 @@ export default function App() {
     return res || { success: true };
   };
 
-  const mergeItems = async (sourceId, targetId) => {
-    const res = await postData("/api/items/merge", { sourceId, targetId });
+  const mergeItems = async (sourceId, targetId, targetName, sourceName, isNewTarget) => {
+    const res = await postData("/api/items/merge", { sourceId, targetId, targetName, sourceName, isNewTarget });
     if (res && res.success) {
-      setItems(prev => prev.filter(i => i.id !== sourceId));
+      const actualSourceName = res.sourceItemName || sourceName;
+      const actualTargetName = res.targetItemName || targetName;
+      const targetItem = res.targetItem;
+
+      // Update items state
+      setItems(prev => {
+        let updated = prev.filter(i => {
+          if (sourceId && i.id === sourceId) return false;
+          if (actualSourceName && i.name.toLowerCase() === actualSourceName.toLowerCase() && i.id !== targetItem?.id) return false;
+          return true;
+        });
+        if (targetItem) {
+          const exists = updated.some(i => i.id === targetItem.id);
+          if (exists) {
+            updated = updated.map(i => i.id === targetItem.id ? { ...i, ...targetItem } : i);
+          } else {
+            updated = [targetItem, ...updated];
+          }
+        }
+        return updated;
+      });
+
+      // Update requests (purchase orders) state
+      if (actualSourceName && actualTargetName) {
+        setRequests(prev => prev.map(r => {
+          if (r.model === actualSourceName || (sourceId && r.model === sourceId)) {
+            return { ...r, model: actualTargetName };
+          }
+          return r;
+        }));
+
+        // Update CRM sales orders
+        setCrmSalesOrders(prev => prev.map(o => {
+          if (o.itemModel === actualSourceName || (sourceId && o.itemModel === sourceId)) {
+            return { ...o, itemModel: actualTargetName };
+          }
+          return o;
+        }));
+
+        // Update CRM dispatches
+        setCrmDispatches(prev => prev.map(d => {
+          if (d.itemModel === actualSourceName || (sourceId && d.itemModel === sourceId)) {
+            return { ...d, itemModel: actualTargetName };
+          }
+          return d;
+        }));
+
+        // Update IMS transactions
+        setImsTransactions(prev => prev.map(t => {
+          if (t.itemName === actualSourceName || (sourceId && (t.itemId === sourceId || t.itemName === sourceId))) {
+            return { ...t, itemName: actualTargetName, ...(targetItem ? { itemId: targetItem.id } : {}) };
+          }
+          return t;
+        }));
+
+        // Update item prices
+        setItemPrices(prev => prev.map(p => {
+          if (p.itemName === actualSourceName || (sourceId && (p.itemId === sourceId || p.itemName === sourceId))) {
+            return { ...p, itemName: actualTargetName, ...(targetItem ? { itemId: targetItem.id } : {}) };
+          }
+          return p;
+        }));
+      }
     }
     return res;
   };
