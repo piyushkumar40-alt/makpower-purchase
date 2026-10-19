@@ -2592,18 +2592,30 @@ export default function App() {
     return res || { success: true };
   };
 
-  const mergeItems = async (sourceId, targetId, targetName, sourceName, isNewTarget) => {
-    const res = await postData("/api/items/merge", { sourceId, targetId, targetName, sourceName, isNewTarget });
+  const mergeItems = async (sourceIds, targetId, targetName, sourceNames, isNewTarget) => {
+    const sIdsList = Array.isArray(sourceIds) ? sourceIds : [sourceIds].filter(Boolean);
+    const sNamesList = Array.isArray(sourceNames) ? sourceNames : [sourceNames].filter(Boolean);
+
+    const res = await postData("/api/items/merge", {
+      sourceIds: sIdsList,
+      sourceNames: sNamesList,
+      sourceId: sIdsList[0] || "",
+      sourceName: sNamesList[0] || "",
+      targetId,
+      targetName,
+      isNewTarget
+    });
     if (res && res.success) {
-      const actualSourceName = res.sourceItemName || sourceName;
+      const mergedNames = res.sourceItemNames || sNamesList;
+      const mergedIds = res.sourceItemIds || sIdsList;
       const actualTargetName = res.targetItemName || targetName;
       const targetItem = res.targetItem;
 
       // Update items state
       setItems(prev => {
         let updated = prev.filter(i => {
-          if (sourceId && i.id === sourceId) return false;
-          if (actualSourceName && i.name.toLowerCase() === actualSourceName.toLowerCase() && i.id !== targetItem?.id) return false;
+          if (mergedIds.includes(i.id)) return false;
+          if (mergedNames.some(sn => sn && sn.toLowerCase() === i.name.toLowerCase()) && i.id !== targetItem?.id) return false;
           return true;
         });
         if (targetItem) {
@@ -2618,9 +2630,9 @@ export default function App() {
       });
 
       // Update requests (purchase orders) state
-      if (actualSourceName && actualTargetName) {
+      if (actualTargetName && (mergedNames.length > 0 || mergedIds.length > 0)) {
         setRequests(prev => prev.map(r => {
-          if (r.model === actualSourceName || (sourceId && r.model === sourceId)) {
+          if (mergedNames.includes(r.model) || mergedIds.includes(r.model)) {
             return { ...r, model: actualTargetName };
           }
           return r;
@@ -2628,7 +2640,7 @@ export default function App() {
 
         // Update CRM sales orders
         setCrmSalesOrders(prev => prev.map(o => {
-          if (o.itemModel === actualSourceName || (sourceId && o.itemModel === sourceId)) {
+          if (mergedNames.includes(o.itemModel) || mergedIds.includes(o.itemModel)) {
             return { ...o, itemModel: actualTargetName };
           }
           return o;
@@ -2636,7 +2648,7 @@ export default function App() {
 
         // Update CRM dispatches
         setCrmDispatches(prev => prev.map(d => {
-          if (d.itemModel === actualSourceName || (sourceId && d.itemModel === sourceId)) {
+          if (mergedNames.includes(d.itemModel) || mergedIds.includes(d.itemModel)) {
             return { ...d, itemModel: actualTargetName };
           }
           return d;
@@ -2644,7 +2656,7 @@ export default function App() {
 
         // Update IMS transactions
         setImsTransactions(prev => prev.map(t => {
-          if (t.itemName === actualSourceName || (sourceId && (t.itemId === sourceId || t.itemName === sourceId))) {
+          if (mergedNames.includes(t.itemName) || mergedIds.includes(t.itemId) || mergedIds.includes(t.itemName)) {
             return { ...t, itemName: actualTargetName, ...(targetItem ? { itemId: targetItem.id } : {}) };
           }
           return t;
@@ -2652,7 +2664,7 @@ export default function App() {
 
         // Update item prices
         setItemPrices(prev => prev.map(p => {
-          if (p.itemName === actualSourceName || (sourceId && (p.itemId === sourceId || p.itemName === sourceId))) {
+          if (mergedNames.includes(p.itemName) || mergedIds.includes(p.itemId) || mergedIds.includes(p.itemName)) {
             return { ...p, itemName: actualTargetName, ...(targetItem ? { itemId: targetItem.id } : {}) };
           }
           return p;

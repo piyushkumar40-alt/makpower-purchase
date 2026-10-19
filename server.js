@@ -6726,15 +6726,40 @@ app.post("/api/items/update-photo", async (req, res) => {
   }
 });
 
-// POST /api/items/merge - Merge 2 items into 1 or rename/create new item (Super Admin only)
+// POST /api/items/merge - Merge 1 or 2+ items into target item (Super Admin only)
 app.post("/api/items/merge", async (req, res) => {
-  const { sourceId, targetId, targetName, newTargetName, sourceName, isNewTarget } = req.body;
+  const { 
+    sourceId, 
+    sourceName, 
+    sourceIds, 
+    sourceNames, 
+    targetId, 
+    targetName, 
+    newTargetName, 
+    isNewTarget 
+  } = req.body;
+
+  // Build unified sources list
+  let rawSources = [];
+  if (Array.isArray(sourceIds) || Array.isArray(sourceNames)) {
+    const ids = Array.isArray(sourceIds) ? sourceIds : [];
+    const names = Array.isArray(sourceNames) ? sourceNames : [];
+    const maxLen = Math.max(ids.length, names.length);
+    for (let i = 0; i < maxLen; i++) {
+      const sId = ids[i] || "";
+      const sName = (names[i] || "").trim();
+      if (sId || sName) {
+        rawSources.push({ id: sId, name: sName });
+      }
+    }
+  } else if (sourceId || sourceName) {
+    rawSources.push({ id: sourceId || "", name: (sourceName || "").trim() });
+  }
 
   const rawTargetName = (newTargetName || targetName || "").trim();
-  const rawSourceName = (sourceName || "").trim();
 
-  if (!sourceId && !rawSourceName) {
-    return res.status(400).json({ error: "Source item ID or name is required." });
+  if (rawSources.length === 0) {
+    return res.status(400).json({ error: "At least one source item is required for merge." });
   }
 
   if (!targetId && !rawTargetName) {
@@ -6743,25 +6768,35 @@ app.post("/api/items/merge", async (req, res) => {
 
   if (isPg) {
     try {
-      // 1. Identify Source Item
-      let sourceItem = null;
-      if (sourceId) {
-        const sRes = await pool.query("SELECT * FROM items WHERE id = $1", [sourceId]);
-        if (sRes.rows.length > 0) sourceItem = sRes.rows[0];
-      }
-      if (!sourceItem && rawSourceName) {
-        const sRes = await pool.query("SELECT * FROM items WHERE LOWER(name) = LOWER($1)", [rawSourceName]);
-        if (sRes.rows.length > 0) sourceItem = sRes.rows[0];
+      // 1. Resolve all source items from database
+      const resolvedSources = [];
+      for (const s of rawSources) {
+        let sourceItem = null;
+        if (s.id) {
+          const sRes = await pool.query("SELECT * FROM items WHERE id = $1", [s.id]);
+          if (sRes.rows.length > 0) sourceItem = sRes.rows[0];
+        }
+        if (!sourceItem && s.name) {
+          const sRes = await pool.query("SELECT * FROM items WHERE LOWER(name) = LOWER($1)", [s.name]);
+          if (sRes.rows.length > 0) sourceItem = sRes.rows[0];
+        }
+
+        const actName = sourceItem ? sourceItem.name : s.name;
+        const actId = sourceItem ? sourceItem.id : (s.id || null);
+        if (actName || actId) {
+          resolvedSources.push({
+            item: sourceItem,
+            name: actName,
+            id: actId
+          });
+        }
       }
 
-      const actualSourceName = sourceItem ? sourceItem.name : rawSourceName;
-      const actualSourceId = sourceItem ? sourceItem.id : (sourceId || null);
-
-      if (!actualSourceName && !actualSourceId) {
-        return res.status(404).json({ error: "Source item could not be determined." });
+      if (resolvedSources.length === 0) {
+        return res.status(404).json({ error: "None of the specified source items could be found." });
       }
 
-      // 2. Identify or Create Target Item
+      // 2. Identify or Create Target Item (3rd Item)
       let targetItem = null;
       if (targetId && !isNewTarget) {
         const tRes = await pool.query("SELECT * FROM items WHERE id = $1", [targetId]);
@@ -6773,9 +6808,8 @@ app.post("/api/items/merge", async (req, res) => {
         if (tRes.rows.length > 0) targetItem = tRes.rows[0];
       }
 
-      // If target item doesn't exist yet in items, create it!
+      // If target item doesn't exist yet in items, create it as the 3rd new item!
       if (!targetItem && rawTargetName) {
-        // Generate next ID
         let nextId = "1";
         try {
           const maxIdRes = await pool.query(`
@@ -6795,20 +6829,22 @@ app.post("/api/items/merge", async (req, res) => {
           nextId = `item-${Date.now()}`;
         }
 
-        const newCat = sourceItem?.category || "General";
-        const newType = sourceItem?.itemType || "FG";
-        const newNature = sourceItem?.itemNature || "Non Consumables";
-        const newUnit = sourceItem?.unit || "Pcs";
-        const newStock = sourceItem?.currentStock || 0;
-        const newDesc = sourceItem?.description || "";
-        const newPhoto = sourceItem?.photo || "";
+        const primarySource = resolvedSources[0]?.item;
+        const newCat = primarySource?.category || "General";
+        const newType = primarySource?.itemType || "FG";
+        const newNature = primarySource?.itemNature || "Non Consumables";
+        const newUnit = primarySource?.unit || "Pcs";
+        // Combine current stock of all merged sources
+        const combinedStock = resolvedSources.reduce((acc, curr) => acc + (curr.item?.currentStock || 0), 0);
+        const newDesc = primarySource?.description || "";
+        const newPhoto = primarySource?.photo || "";
         const newCreatedBy = "Super Admin (Merged)";
 
         const insertRes = await pool.query(`
           INSERT INTO items ("id", "name", "category", "itemType", "itemNature", "unit", "description", "photo", "currentStock", "createdBy")
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
           RETURNING *
-        `, [nextId, rawTargetName, newCat, newType, newNature, newUnit, newDesc, newPhoto, newStock, newCreatedBy]);
+        `, [nextId, rawTargetName, newCat, newType, newNature, newUnit, newDesc, newPhoto, combinedStock, newCreatedBy]);
         targetItem = insertRes.rows[0];
       }
 
@@ -6819,21 +6855,25 @@ app.post("/api/items/merge", async (req, res) => {
       const finalTargetName = targetItem.name;
       const finalTargetId = targetItem.id;
 
-      if (actualSourceId && actualSourceId === finalTargetId) {
-        return res.status(400).json({ error: "Source and Target items are the same." });
-      }
+      // Extract all source names and IDs
+      const allSourceNames = Array.from(new Set(resolvedSources.map(s => s.name).filter(Boolean)));
+      const allSourceIds = Array.from(new Set(resolvedSources.map(s => s.id).filter(Boolean)));
+
+      // If target item is in source list, do not delete it
+      const sourcesToDelete = allSourceIds.filter(id => id !== finalTargetId);
 
       // 3. Update all purchase orders (requests)
+      const queryInClause = allSourceNames.concat(allSourceIds);
       const reqUpdateRes = await pool.query(
-        'UPDATE requests SET "model" = $1 WHERE "model" = $2 OR "model" = $3',
-        [finalTargetName, actualSourceName, actualSourceId || "__NONE__"]
+        'UPDATE requests SET "model" = $1 WHERE "model" = ANY($2::text[])',
+        [finalTargetName, queryInClause]
       );
 
       // 4. Update CRM sales orders
       try {
         await pool.query(
-          'UPDATE crm_sales_orders SET "itemModel" = $1 WHERE "itemModel" = $2 OR "itemModel" = $3',
-          [finalTargetName, actualSourceName, actualSourceId || "__NONE__"]
+          'UPDATE crm_sales_orders SET "itemModel" = $1 WHERE "itemModel" = ANY($2::text[])',
+          [finalTargetName, queryInClause]
         );
       } catch (e) {
         console.warn("crm_sales_orders update warning:", e.message);
@@ -6842,8 +6882,8 @@ app.post("/api/items/merge", async (req, res) => {
       // 5. Update CRM dispatches
       try {
         await pool.query(
-          'UPDATE crm_dispatches SET "itemModel" = $1 WHERE "itemModel" = $2 OR "itemModel" = $3',
-          [finalTargetName, actualSourceName, actualSourceId || "__NONE__"]
+          'UPDATE crm_dispatches SET "itemModel" = $1 WHERE "itemModel" = ANY($2::text[])',
+          [finalTargetName, queryInClause]
         );
       } catch (e) {
         console.warn("crm_dispatches update warning:", e.message);
@@ -6852,8 +6892,8 @@ app.post("/api/items/merge", async (req, res) => {
       // 6. Update IMS transactions
       try {
         await pool.query(
-          'UPDATE ims_transactions SET "itemName" = $1, "itemId" = $2 WHERE "itemName" = $3 OR "itemId" = $4',
-          [finalTargetName, finalTargetId, actualSourceName, actualSourceId || "__NONE__"]
+          'UPDATE ims_transactions SET "itemName" = $1, "itemId" = $2 WHERE "itemName" = ANY($3::text[]) OR "itemId" = ANY($4::text[])',
+          [finalTargetName, finalTargetId, allSourceNames, allSourceIds.length > 0 ? allSourceIds : ["__NONE__"]]
         );
       } catch (e) {
         console.warn("ims_transactions update warning:", e.message);
@@ -6862,27 +6902,31 @@ app.post("/api/items/merge", async (req, res) => {
       // 7. Update Item prices
       try {
         await pool.query(
-          'UPDATE item_prices SET "itemName" = $1, "itemId" = $2 WHERE "itemName" = $3 OR "itemId" = $4',
-          [finalTargetName, finalTargetId, actualSourceName, actualSourceId || "__NONE__"]
+          'UPDATE item_prices SET "itemName" = $1, "itemId" = $2 WHERE "itemName" = ANY($3::text[]) OR "itemId" = ANY($4::text[])',
+          [finalTargetName, finalTargetId, allSourceNames, allSourceIds.length > 0 ? allSourceIds : ["__NONE__"]]
         );
       } catch (e) {
         console.warn("item_prices update warning:", e.message);
       }
 
-      // 8. Delete source item from items table if distinct
-      if (actualSourceId && actualSourceId !== finalTargetId) {
-        await pool.query("DELETE FROM items WHERE id = $1", [actualSourceId]);
+      // 8. Delete source items from items table
+      if (sourcesToDelete.length > 0) {
+        await pool.query('DELETE FROM items WHERE id = ANY($1::text[])', [sourcesToDelete]);
       }
+
+      const mergedNamesStr = allSourceNames.map(n => `"${n}"`).join(" and ");
 
       res.json({
         success: true,
-        sourceItemName: actualSourceName,
-        sourceItemId: actualSourceId,
+        sourceItemNames: allSourceNames,
+        sourceItemIds: allSourceIds,
+        sourceItemName: allSourceNames[0] || "",
+        sourceItemId: allSourceIds[0] || "",
         targetItemName: finalTargetName,
         targetItemId: finalTargetId,
         targetItem: targetItem,
         updatedOrdersCount: reqUpdateRes.rowCount || 0,
-        message: `Successfully merged "${actualSourceName}" into "${finalTargetName}" (#${finalTargetId}). Updated ${reqUpdateRes.rowCount || 0} purchase order records.`
+        message: `Successfully merged ${mergedNamesStr} into "${finalTargetName}" (#${finalTargetId}). Updated ${reqUpdateRes.rowCount || 0} purchase order records.`
       });
     } catch (err) {
       console.error("POST /api/items/merge error:", err.message);
@@ -6893,19 +6937,33 @@ app.post("/api/items/merge", async (req, res) => {
     const data = readLocalJson();
     if (!data.items) data.items = [];
 
-    let sourceItem = null;
-    let sourceIdx = -1;
-    if (sourceId) {
-      sourceIdx = data.items.findIndex(i => i.id === sourceId);
-      if (sourceIdx !== -1) sourceItem = data.items[sourceIdx];
-    }
-    if (!sourceItem && rawSourceName) {
-      sourceIdx = data.items.findIndex(i => i.name.toLowerCase() === rawSourceName.toLowerCase());
-      if (sourceIdx !== -1) sourceItem = data.items[sourceIdx];
+    const resolvedSources = [];
+    for (const s of rawSources) {
+      let sourceItem = null;
+      let sourceIdx = -1;
+      if (s.id) {
+        sourceIdx = data.items.findIndex(i => i.id === s.id);
+        if (sourceIdx !== -1) sourceItem = data.items[sourceIdx];
+      }
+      if (!sourceItem && s.name) {
+        sourceIdx = data.items.findIndex(i => i.name.toLowerCase() === s.name.toLowerCase());
+        if (sourceIdx !== -1) sourceItem = data.items[sourceIdx];
+      }
+
+      const actName = sourceItem ? sourceItem.name : s.name;
+      const actId = sourceItem ? sourceItem.id : (s.id || null);
+      if (actName || actId) {
+        resolvedSources.push({
+          item: sourceItem,
+          name: actName,
+          id: actId
+        });
+      }
     }
 
-    const actualSourceName = sourceItem ? sourceItem.name : rawSourceName;
-    const actualSourceId = sourceItem ? sourceItem.id : (sourceId || null);
+    if (resolvedSources.length === 0) {
+      return res.status(404).json({ error: "None of the specified source items could be found." });
+    }
 
     let targetItem = null;
     let targetIdx = -1;
@@ -6922,16 +6980,19 @@ app.post("/api/items/merge", async (req, res) => {
     if (!targetItem && rawTargetName) {
       const numIds = data.items.map(i => parseInt(String(i.id).replace(/\D/g, ""), 10)).filter(n => !isNaN(n));
       const nextId = numIds.length > 0 ? String(Math.max(...numIds) + 1) : `item-${Date.now()}`;
+      const primarySource = resolvedSources[0]?.item;
+      const combinedStock = resolvedSources.reduce((acc, curr) => acc + (curr.item?.currentStock || 0), 0);
+
       targetItem = {
         id: nextId,
         name: rawTargetName,
-        category: sourceItem?.category || "General",
-        itemType: sourceItem?.itemType || "FG",
-        itemNature: sourceItem?.itemNature || "Non Consumables",
-        unit: sourceItem?.unit || "Pcs",
-        description: sourceItem?.description || "",
-        photo: sourceItem?.photo || "",
-        currentStock: sourceItem?.currentStock || 0,
+        category: primarySource?.category || "General",
+        itemType: primarySource?.itemType || "FG",
+        itemNature: primarySource?.itemNature || "Non Consumables",
+        unit: primarySource?.unit || "Pcs",
+        description: primarySource?.description || "",
+        photo: primarySource?.photo || "",
+        currentStock: combinedStock,
         createdBy: "Super Admin (Merged)"
       };
       data.items.unshift(targetItem);
@@ -6944,10 +7005,15 @@ app.post("/api/items/merge", async (req, res) => {
     const finalTargetName = targetItem.name;
     const finalTargetId = targetItem.id;
 
+    const allSourceNames = Array.from(new Set(resolvedSources.map(s => s.name).filter(Boolean)));
+    const allSourceIds = Array.from(new Set(resolvedSources.map(s => s.id).filter(Boolean)));
+
+    const matchCandidate = (val) => allSourceNames.includes(val) || allSourceIds.includes(val);
+
     let updatedCount = 0;
     if (data.requests) {
       data.requests.forEach(r => {
-        if (r.model === actualSourceName || (actualSourceId && r.model === actualSourceId)) {
+        if (matchCandidate(r.model)) {
           r.model = finalTargetName;
           updatedCount++;
         }
@@ -6956,7 +7022,7 @@ app.post("/api/items/merge", async (req, res) => {
 
     if (data.crmSalesOrders) {
       data.crmSalesOrders.forEach(o => {
-        if (o.itemModel === actualSourceName || (actualSourceId && o.itemModel === actualSourceId)) {
+        if (matchCandidate(o.itemModel)) {
           o.itemModel = finalTargetName;
         }
       });
@@ -6964,7 +7030,7 @@ app.post("/api/items/merge", async (req, res) => {
 
     if (data.crmDispatches) {
       data.crmDispatches.forEach(d => {
-        if (d.itemModel === actualSourceName || (actualSourceId && d.itemModel === actualSourceId)) {
+        if (matchCandidate(d.itemModel)) {
           d.itemModel = finalTargetName;
         }
       });
@@ -6972,7 +7038,7 @@ app.post("/api/items/merge", async (req, res) => {
 
     if (data.imsTransactions) {
       data.imsTransactions.forEach(t => {
-        if (t.itemName === actualSourceName || (actualSourceId && (t.itemId === actualSourceId || t.itemName === actualSourceId))) {
+        if (allSourceNames.includes(t.itemName) || allSourceIds.includes(t.itemId) || allSourceIds.includes(t.itemName)) {
           t.itemName = finalTargetName;
           t.itemId = finalTargetId;
         }
@@ -6981,31 +7047,34 @@ app.post("/api/items/merge", async (req, res) => {
 
     if (data.itemPrices) {
       data.itemPrices.forEach(p => {
-        if (p.itemName === actualSourceName || (actualSourceId && (p.itemId === actualSourceId || p.itemName === actualSourceId))) {
+        if (allSourceNames.includes(p.itemName) || allSourceIds.includes(p.itemId) || allSourceIds.includes(p.itemName)) {
           p.itemName = finalTargetName;
           p.itemId = finalTargetId;
         }
       });
     }
 
-    if (actualSourceId && actualSourceId !== finalTargetId) {
-      const idxToDelete = data.items.findIndex(i => i.id === actualSourceId);
-      if (idxToDelete !== -1) {
-        data.items.splice(idxToDelete, 1);
-      }
+    // Delete source items
+    const sourcesToDelete = allSourceIds.filter(id => id !== finalTargetId);
+    if (sourcesToDelete.length > 0) {
+      data.items = data.items.filter(i => !sourcesToDelete.includes(i.id));
     }
 
     writeLocalJson(data);
 
+    const mergedNamesStr = allSourceNames.map(n => `"${n}"`).join(" and ");
+
     res.json({
       success: true,
-      sourceItemName: actualSourceName,
-      sourceItemId: actualSourceId,
+      sourceItemNames: allSourceNames,
+      sourceItemIds: allSourceIds,
+      sourceItemName: allSourceNames[0] || "",
+      sourceItemId: allSourceIds[0] || "",
       targetItemName: finalTargetName,
       targetItemId: finalTargetId,
       targetItem: targetItem,
       updatedOrdersCount: updatedCount,
-      message: `Successfully merged "${actualSourceName}" into "${finalTargetName}" (#${finalTargetId}). Updated ${updatedCount} purchase order records.`
+      message: `Successfully merged ${mergedNamesStr} into "${finalTargetName}" (#${finalTargetId}). Updated ${updatedCount} purchase order records.`
     });
   }
 });
