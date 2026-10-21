@@ -580,6 +580,11 @@ export default function PurchaserDashboard({
   const [showExcelUpdateModal, setShowExcelUpdateModal] = useState(false);
   const [excelNotification, setExcelNotification] = useState(null); // { matchedCount, unmatchedCount, unmatchedList, timestamp }
 
+  // Step 5: Transit Tracking & Warehouse Receipting filters
+  const [shipmentStatusFilter, setShipmentStatusFilter] = useState("in_transit"); // autoselected default: 'in_transit' | 'received' | 'all'
+  const [shipmentVendorFilter, setShipmentVendorFilter] = useState("all");
+  const [shipmentCargoSearch, setShipmentCargoSearch] = useState("");
+
   const handleExecuteAdminDelete = async (reason) => {
     if (!adminDeleteConfirm) return;
     try {
@@ -849,6 +854,84 @@ export default function PurchaserDashboard({
       return cargoItems.some(r => isRequestForUser(r, currentUser, purchasers));
     });
   }, [cargos, requests, hasFullPurchaseAccess, currentUser, purchasers]);
+
+  // Step 5 shipments counts
+  const step5InTransitCount = useMemo(() => {
+    return (myCargos || []).filter(c => c.isMaterialRec !== "Yes").length;
+  }, [myCargos]);
+
+  const step5ReceivedCount = useMemo(() => {
+    return (myCargos || []).filter(c => c.isMaterialRec === "Yes").length;
+  }, [myCargos]);
+
+  // Unique vendors present in Step 5 cargos for the vendor filter dropdown
+  const step5VendorOptions = useMemo(() => {
+    const baseCargos = (myCargos || []).filter(cargo => {
+      if (shipmentStatusFilter === "in_transit" && cargo.isMaterialRec === "Yes") return false;
+      if (shipmentStatusFilter === "received" && cargo.isMaterialRec !== "Yes") return false;
+      return true;
+    });
+    const vendorMap = new Map();
+    baseCargos.forEach(cargo => {
+      if (cargo.vendorId) {
+        const v = (vendors || []).find(vend => vend.id === cargo.vendorId);
+        const name = v ? v.name : cargo.vendorName || "Unknown Vendor";
+        const currentCount = vendorMap.get(cargo.vendorId)?.count || 0;
+        vendorMap.set(cargo.vendorId, { id: cargo.vendorId, name, count: currentCount + 1 });
+      }
+    });
+    return Array.from(vendorMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [myCargos, shipmentStatusFilter, vendors]);
+
+  // Step 5 filtered cargos
+  const filteredStep5Cargos = useMemo(() => {
+    return (myCargos || []).filter(cargo => {
+      // 1. Status Filter (autoselected default: "in_transit")
+      if (shipmentStatusFilter === "in_transit" && cargo.isMaterialRec === "Yes") return false;
+      if (shipmentStatusFilter === "received" && cargo.isMaterialRec !== "Yes") return false;
+
+      // 2. Vendor Filter
+      if (shipmentVendorFilter !== "all" && cargo.vendorId !== shipmentVendorFilter) return false;
+
+      // 3. Cargo Name / Code / Detail / Item search
+      if (shipmentCargoSearch && shipmentCargoSearch.trim()) {
+        const q = shipmentCargoSearch.trim().toLowerCase();
+        const cargoCode = (cargo.id || "").toLowerCase();
+        const cargoDetail = (cargo.cargoDetail || "").toLowerCase();
+        const ccName = ((cargoCompanies || []).find(cc => cc.id === cargo.cargoCompanyId)?.name || cargo.cargoCompanyName || "").toLowerCase();
+        const vName = ((vendors || []).find(v => v.id === cargo.vendorId)?.name || "").toLowerCase();
+
+        const matchesCargo = cargoCode.includes(q) || cargoDetail.includes(q) || ccName.includes(q) || vName.includes(q);
+        if (!matchesCargo) {
+          const items = (requests || []).filter(r => r.cargoId === cargo.id && r.status !== "Cancelled");
+          const matchesItem = items.some(it => (it.model || "").toLowerCase().includes(q));
+          if (!matchesItem) return false;
+        }
+      }
+
+      return true;
+    });
+  }, [myCargos, shipmentStatusFilter, shipmentVendorFilter, shipmentCargoSearch, cargoCompanies, vendors, requests]);
+
+  // Aggregate metrics for filtered Step 5
+  const step5FilteredMetrics = useMemo(() => {
+    let totalPieces = 0;
+    let totalCartons = 0;
+    let totalCost = 0;
+
+    filteredStep5Cargos.forEach(cargo => {
+      const cargoItems = hasFullPurchaseAccess
+        ? (requests || []).filter(r => r.cargoId === cargo.id && r.status !== "Cancelled")
+        : (requests || []).filter(r => r.cargoId === cargo.id && isRequestForUser(r, currentUser, purchasers) && r.status !== "Cancelled");
+
+      const pcs = cargoItems.reduce((acc, r) => acc + (Number(r.vendorOrderQuantity || r.orderQuantity) || 0), 0);
+      totalPieces += pcs;
+      totalCartons += calculateCargoTotalCartons(cargo, requests);
+      totalCost += Number(calculateTotalCargoPrice(cargo) || 0);
+    });
+
+    return { totalPieces, totalCartons, totalCost };
+  }, [filteredStep5Cargos, requests, hasFullPurchaseAccess, currentUser, purchasers]);
 
   // Step 1: Unpriced pending requests sorting at top level
   const step1PendingReqs = useMemo(() => {
@@ -4587,24 +4670,202 @@ export default function PurchaserDashboard({
         {/* ==================== CARGO SHIPMENTS (STEP 5) TAB ==================== */}
         {activeTab === "shipments" && (
           <div className="card-fade-in">
-            <h3 style={{ fontSize: "1.4rem", marginBottom: "16px" }}>Step 5: Transit Tracking & Warehouse Receipting</h3>
-
-            {(() => {
-              const inTransitCargos = myCargos.filter(c => c.isMaterialRec !== "Yes");
-              return inTransitCargos.length === 0 ? (
-                <div className="glass-panel" style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
-                  No active in-transit cargo shipments registered yet. Go to the Cargo Planner to combine requests.
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
+              <div>
+                <h3 style={{ fontSize: "1.4rem", margin: 0 }}>Step 5: Transit Tracking & Warehouse Receipting</h3>
+                <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "4px" }}>
+                  Track active cargo movements, review carrier details, and process warehouse receipts.
                 </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-                  {inTransitCargos.map(cargo => {
-                  const vName = vendors.find(v => v.id === cargo.vendorId)?.name || "Unknown Vendor";
+              </div>
+
+              {/* Status Segment / Filter Pills */}
+              <div style={{ display: "inline-flex", background: "rgba(255, 255, 255, 0.04)", padding: "4px", borderRadius: "10px", border: "1px solid var(--border-glass)", gap: "4px" }}>
+                <button
+                  type="button"
+                  onClick={() => setShipmentStatusFilter("in_transit")}
+                  className={`btn btn-sm ${shipmentStatusFilter === "in_transit" ? "btn-primary" : "btn-secondary"}`}
+                  style={{
+                    borderRadius: "7px",
+                    padding: "6px 14px",
+                    fontWeight: shipmentStatusFilter === "in_transit" ? 700 : 500,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px"
+                  }}
+                >
+                  <Truck size={14} /> In Transit ({step5InTransitCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShipmentStatusFilter("received")}
+                  className={`btn btn-sm ${shipmentStatusFilter === "received" ? "btn-primary" : "btn-secondary"}`}
+                  style={{
+                    borderRadius: "7px",
+                    padding: "6px 14px",
+                    fontWeight: shipmentStatusFilter === "received" ? 700 : 500,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px"
+                  }}
+                >
+                  <CheckCircle2 size={14} /> Received ({step5ReceivedCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShipmentStatusFilter("all")}
+                  className={`btn btn-sm ${shipmentStatusFilter === "all" ? "btn-primary" : "btn-secondary"}`}
+                  style={{
+                    borderRadius: "7px",
+                    padding: "6px 14px",
+                    fontWeight: shipmentStatusFilter === "all" ? 700 : 500,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px"
+                  }}
+                >
+                  All Shipments ({myCargos.length})
+                </button>
+              </div>
+            </div>
+
+            {/* Filter Toolbar: Vendor, Cargo Name / Search, Reset */}
+            <div className="glass-panel" style={{ padding: "16px 20px", marginBottom: "20px" }}>
+              <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
+                {/* Vendor Filter */}
+                <div className="form-group" style={{ minWidth: "260px", marginBottom: 0, flex: "1 1 280px" }}>
+                  <label className="form-label" style={{ fontWeight: 600, fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Building2 size={14} style={{ color: "var(--primary)" }} /> Filter by Vendor
+                  </label>
+                  <select
+                    className="form-control"
+                    value={shipmentVendorFilter}
+                    onChange={e => setShipmentVendorFilter(e.target.value)}
+                    style={{ fontWeight: 600, borderColor: shipmentVendorFilter !== "all" ? "var(--primary)" : undefined }}
+                  >
+                    <option value="all">🏢 All Vendors ({step5VendorOptions.length})</option>
+                    {step5VendorOptions.map(opt => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name} ({opt.count} {opt.count === 1 ? "shipment" : "shipments"})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Cargo Name / Code Search */}
+                <div className="form-group" style={{ minWidth: "260px", marginBottom: 0, flex: "1 1 280px", position: "relative" }}>
+                  <label className="form-label" style={{ fontWeight: 600, fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Search size={14} style={{ color: "var(--primary)" }} /> Filter by Cargo Name / Code
+                  </label>
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Search cargo name, code, detail, or item..."
+                      value={shipmentCargoSearch}
+                      onChange={e => setShipmentCargoSearch(e.target.value)}
+                      style={{ paddingRight: shipmentCargoSearch ? "32px" : "12px", borderColor: shipmentCargoSearch ? "var(--primary)" : undefined }}
+                    />
+                    {shipmentCargoSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setShipmentCargoSearch("")}
+                        style={{
+                          position: "absolute",
+                          right: "8px",
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          background: "none",
+                          border: "none",
+                          color: "var(--text-muted)",
+                          cursor: "pointer",
+                          padding: "2px"
+                        }}
+                        title="Clear search"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Reset Filters button */}
+                {(shipmentVendorFilter !== "all" || shipmentCargoSearch || shipmentStatusFilter !== "in_transit") && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShipmentStatusFilter("in_transit");
+                      setShipmentVendorFilter("all");
+                      setShipmentCargoSearch("");
+                    }}
+                    className="btn btn-secondary btn-sm"
+                    style={{ height: "38px", display: "inline-flex", alignItems: "center", gap: "6px", alignSelf: "flex-end" }}
+                  >
+                    <RotateCcw size={13} /> Reset Filters
+                  </button>
+                )}
+              </div>
+
+              {/* Summary Stats Row */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--border-glass)", flexWrap: "wrap", gap: "10px", fontSize: "0.83rem", color: "var(--text-muted)" }}>
+                <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "center" }}>
+                  <span>Showing: <strong style={{ color: "var(--text-main)" }}>{filteredStep5Cargos.length}</strong> shipments</span>
+                  <span>|</span>
+                  <span>Total Order Qty: <strong style={{ color: "var(--primary, #38bdf8)" }}>{step5FilteredMetrics.totalPieces.toLocaleString()} Pcs</strong></span>
+                  <span>|</span>
+                  <span>Total Cartons: <strong style={{ color: "var(--warning, #f59e0b)" }}>📦 {step5FilteredMetrics.totalCartons} Cartons</strong></span>
+                  {step5FilteredMetrics.totalCost > 0 && (
+                    <>
+                      <span>|</span>
+                      <span>Total Cargo Cost: <strong style={{ color: "var(--text-main)" }}>₹{Number(step5FilteredMetrics.totalCost).toLocaleString()}</strong></span>
+                    </>
+                  )}
+                </div>
+
+                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic" }}>
+                  Filter status: <strong style={{ color: "var(--primary)" }}>{shipmentStatusFilter === "in_transit" ? "In Transit (Default)" : shipmentStatusFilter === "received" ? "Received Orders" : "All Shipments"}</strong>
+                </div>
+              </div>
+            </div>
+
+            {/* List of Shipments */}
+            {filteredStep5Cargos.length === 0 ? (
+              <div className="glass-panel" style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
+                {myCargos.length === 0 ? (
+                  "No cargo shipments registered yet. Go to the Cargo Planner to combine requests."
+                ) : (
+                  <div>
+                    <p style={{ margin: "0 0 12px 0", fontSize: "1rem" }}>
+                      No {shipmentStatusFilter === "in_transit" ? "in-transit" : shipmentStatusFilter === "received" ? "received" : ""} cargo shipments match the selected filters.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShipmentStatusFilter("in_transit");
+                        setShipmentVendorFilter("all");
+                        setShipmentCargoSearch("");
+                      }}
+                      className="btn btn-secondary btn-sm"
+                      style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+                    >
+                      <RotateCcw size={13} /> Reset Filters
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                {filteredStep5Cargos.map(cargo => {
+                  const vName = vendors.find(v => v.id === cargo.vendorId)?.name || cargo.vendorName || "Unknown Vendor";
                   // Isolate items: only show items belonging to this purchaser if not admin
                   const cargoItems = hasFullPurchaseAccess
                     ? requests.filter(r => r.cargoId === cargo.id && r.status !== "Cancelled")
                     : requests.filter(r => r.cargoId === cargo.id && isRequestForUser(r, currentUser, purchasers) && r.status !== "Cancelled");
                   
                   if (cargoItems.length === 0) return null;
+
+                  const cargoName = cargoCompanies.find(cc => cc.id === cargo.cargoCompanyId)?.name || cargo.cargoDetail || cargo.cargoCompanyName || "—";
+                  const cargoTotalQuantity = cargoItems.reduce((acc, r) => acc + (Number(r.vendorOrderQuantity || r.orderQuantity) || 0), 0);
+                  const isReceived = cargo.isMaterialRec === "Yes";
                   
                   return (
                     <div key={cargo.id} className="glass-panel" style={{ padding: "24px" }}>
@@ -4612,43 +4873,70 @@ export default function PurchaserDashboard({
                       {/* Cargo Header Info */}
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid var(--border-glass)", paddingBottom: "16px", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
                         <div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                            <h4 style={{ fontSize: "1.2rem", fontWeight: 700 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                            <h4 style={{ fontSize: "1.2rem", fontWeight: 700, margin: 0 }}>
                               Cargo Code: {cargo.id}
                             </h4>
-                            <span className={`badge ${cargo.isMaterialRec === "Yes" ? "badge-received" : "badge-cargo"}`}>
-                              {cargo.isMaterialRec === "Yes" ? "Received" : "In Transit"}
+                            <span className={`badge ${isReceived ? "badge-received" : "badge-cargo"}`}>
+                              {isReceived ? "✓ Received" : "In Transit"}
+                            </span>
+                            <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary, #38bdf8)", background: "rgba(56, 189, 248, 0.12)", padding: "2px 10px", borderRadius: "6px", border: "1px solid rgba(56, 189, 248, 0.25)" }}>
+                              📦 Qty: {cargoTotalQuantity.toLocaleString()} Pcs ({cargoItems.length} items)
                             </span>
                           </div>
-                          <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "4px" }}>
-                            Vendor: <strong>{vName}</strong> | Transport Mode: <strong>{cargo.modeOfTransport}</strong>
-                            {cargo.cargoCompanyId && (
-                              <>
-                                {" "}| Cargo Company: <strong>{cargoCompanies.find(cc => cc.id === cargo.cargoCompanyId)?.name || "—"}</strong>
-                              </>
-                            )}
+                          <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "6px", display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
+                            <span>Vendor: <strong style={{ color: "var(--text-main)" }}>{vName}</strong></span>
+                            <span>|</span>
+                            <span>Transport Mode: <strong>{cargo.modeOfTransport}</strong></span>
+                            <span>|</span>
+                            <span>Cargo Name / Company: <strong style={{ color: "var(--primary, #38bdf8)" }}>{cargoName}</strong></span>
                             {cargo.createdByName && (
                               <>
-                                {" "}| Assigned By: <strong style={{ color: "var(--text-main)" }}>{cargo.createdByName}</strong>
+                                <span>|</span>
+                                <span>Assigned By: <strong style={{ color: "var(--text-main)" }}>{cargo.createdByName}</strong></span>
                               </>
                             )}
                             {cargo.receivedByName && (
                               <>
-                                {" "}| Received By: <strong style={{ color: "var(--success)" }}>{cargo.receivedByName}</strong>
+                                <span>|</span>
+                                <span>Received By: <strong style={{ color: "var(--success)" }}>{cargo.receivedByName}</strong></span>
+                              </>
+                            )}
+                            {isReceived && (cargo.receivedDate || cargo.actualReceivedDate) && (
+                              <>
+                                <span>|</span>
+                                <span>Received Date: <strong style={{ color: "var(--success)" }}>{cargo.receivedDate || cargo.actualReceivedDate}</strong></span>
                               </>
                             )}
                           </div>
                         </div>
 
                         {/* Quick actions for cargo */}
-                        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                          {cargo.isMaterialRec !== "Yes" && (
+                        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+                          {!isReceived ? (
                             <button 
                               onClick={() => setReceivingCargo(cargo)}
                               className="btn btn-success btn-sm"
                             >
                               <Check size={14} /> Bulk Receive ({cargoItems.length} items)
                             </button>
+                          ) : (
+                            <span
+                              style={{
+                                background: "rgba(34, 197, 94, 0.15)",
+                                color: "var(--success, #22c55e)",
+                                border: "1px solid rgba(34, 197, 94, 0.35)",
+                                padding: "5px 12px",
+                                borderRadius: "6px",
+                                fontWeight: 700,
+                                fontSize: "0.85rem",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px"
+                              }}
+                            >
+                              <CheckCircle2 size={15} /> Material Received
+                            </span>
                           )}
                           <button onClick={() => setEditingCargo(cargo)} className="btn btn-secondary btn-sm">
                             <Edit3 size={14} /> Edit Shipping Details
@@ -4659,8 +4947,17 @@ export default function PurchaserDashboard({
                       {/* Cargo Detail grids */}
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px", marginBottom: "16px", fontSize: "0.85rem" }}>
                         <div>
-                          <div style={{ color: "var(--text-muted)" }}>Cargo Detail:</div>
-                          <div style={{ fontWeight: 500 }}>{cargo.cargoDetail || "—"}</div>
+                          <div style={{ color: "var(--text-muted)" }}>Cargo Name / Detail:</div>
+                          <div style={{ fontWeight: 600, color: "var(--text-main)" }}>{cargoName}</div>
+                          {cargo.cargoDetail && cargo.cargoDetail !== cargoName && (
+                            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "2px" }}>{cargo.cargoDetail}</div>
+                          )}
+                        </div>
+                        <div>
+                          <div style={{ color: "var(--text-muted)" }}>Total Order Qty:</div>
+                          <div style={{ fontWeight: 700, color: "var(--primary, #38bdf8)" }}>
+                            {cargoTotalQuantity.toLocaleString()} Pcs
+                          </div>
                         </div>
                         <div>
                           <div style={{ color: "var(--text-muted)" }}>Shipping / ETA Dates:</div>
@@ -4684,7 +4981,7 @@ export default function PurchaserDashboard({
                           </div>
                         </div>
                         <div>
-                          <div style={{ color: "var(--text-muted)" }}>{cargo.cargoPriceUom === "per Pc" ? "Total Pieces:" : cargo.cargoPriceUom === "per KG" ? "Weight (KG):" : "Volume (CBM):"}</div>
+                          <div style={{ color: "var(--text-muted)" }}>{cargo.cargoPriceUom === "per Pc" ? "Billing Qty (Pcs):" : cargo.cargoPriceUom === "per KG" ? "Weight (KG):" : "Volume (CBM):"}</div>
                           <div style={{ fontWeight: 500 }}>{cargo.cbmPackingList ? `${cargo.cbmPackingList} ${cargo.cargoPriceUom === "per Pc" ? "Pcs" : cargo.cargoPriceUom === "per KG" ? "KG" : "CBM"}` : "—"}</div>
                         </div>
                         <div>
@@ -4883,7 +5180,7 @@ export default function PurchaserDashboard({
                           <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "10px" }}>
                             {cargoItems.map(item => {
                               const undoHrs = hoursRemaining48(item.cargoAssignedAt);
-                              const canUndo = cargo.isMaterialRec !== "Yes" && undoHrs > 0;
+                              const canUndo = !isReceived && undoHrs > 0;
                               return (
                                 <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(255, 255, 255, 0.01)", border: "1px solid var(--border-glass)", padding: "8px 14px", borderRadius: "6px", fontSize: "0.85rem", flexWrap: "wrap", gap: "8px" }}>
                                   <div>
@@ -4973,7 +5270,7 @@ export default function PurchaserDashboard({
                                       >
                                         <RotateCcw size={12} /> Undo Cargo ({undoHrs}h left)
                                       </button>
-                                    ) : cargo.isMaterialRec !== "Yes" && item.cargoAssignedAt ? (
+                                    ) : !isReceived && item.cargoAssignedAt ? (
                                       <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", opacity: 0.55 }}>Undo window expired</span>
                                     ) : null}
                                   </div>
@@ -4988,8 +5285,7 @@ export default function PurchaserDashboard({
                   );
                 })}
               </div>
-            );
-          })()}
+            )}
           </div>
         )}
 
