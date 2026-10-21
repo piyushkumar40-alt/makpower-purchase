@@ -320,9 +320,13 @@ export default function HomePage({
                 <Calendar size={26} />
               </div>
               <div>
-                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Upcoming Tasks (Next 14 Days)</div>
-                <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--text-main)" }}>{upcomingTasks.length}</div>
-                <div style={{ fontSize: "0.75rem", color: "var(--primary)" }}>Action required soon</div>
+                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Upcoming Schedules (Next 14 Days)</div>
+                <div style={{ fontSize: "1.45rem", fontWeight: 700, color: "var(--text-main)" }}>
+                  {upcomingCargoLots.length + upcomingVendorLots.filter(l => l.diffDays !== null && l.diffDays <= 14).length} <span style={{ fontSize: "0.82rem", fontWeight: 600 }}>Orders (Lots)</span>
+                </div>
+                <div style={{ fontSize: "0.75rem", color: "var(--primary)" }}>
+                  {upcomingCargoLots.reduce((acc, c) => acc + c.cargoItems.length, 0) + upcomingVendorLots.filter(l => l.diffDays !== null && l.diffDays <= 14).reduce((acc, l) => acc + l.items.length, 0)} Items requiring action
+                </div>
               </div>
             </div>
 
@@ -332,7 +336,9 @@ export default function HomePage({
               </div>
               <div>
                 <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>My Delayed Tasks</div>
-                <div style={{ fontSize: "1.6rem", fontWeight: 700, color: purchaserDelayedCount > 0 ? "var(--danger)" : "var(--success)" }}>{purchaserDelayedCount}</div>
+                <div style={{ fontSize: "1.45rem", fontWeight: 700, color: purchaserDelayedCount > 0 ? "var(--danger)" : "var(--success)" }}>
+                  {purchaserDelayedCount > 0 ? `${purchaserDelayedCount} Items` : "0 (Good)"}
+                </div>
                 <div style={{ fontSize: "0.75rem", color: purchaserDelayedCount > 0 ? "var(--danger)" : "var(--success)" }}>
                   {purchaserDelayedCount > 0 ? "Missed vendor EDD target" : "All orders on track"}
                 </div>
@@ -345,8 +351,8 @@ export default function HomePage({
               </div>
               <div>
                 <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Pending Pricing / Specs</div>
-                <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--text-main)" }}>
-                  {myRequests.filter(r => !r.priceRmb && r.isMaterialRec !== "Yes").length}
+                <div style={{ fontSize: "1.45rem", fontWeight: 700, color: "var(--text-main)" }}>
+                  {myRequests.filter(r => !r.priceRmb && r.isMaterialRec !== "Yes").length} <span style={{ fontSize: "0.82rem", fontWeight: 600 }}>Items</span>
                 </div>
                 <div style={{ fontSize: "0.75rem", color: "#f59e0b" }}>Awaiting supplier quotation</div>
               </div>
@@ -358,8 +364,8 @@ export default function HomePage({
               </div>
               <div>
                 <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Completed / Received</div>
-                <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--success)" }}>
-                  {myRequests.filter(r => r.isMaterialRec === "Yes").length}
+                <div style={{ fontSize: "1.45rem", fontWeight: 700, color: "var(--success)" }}>
+                  {myRequests.filter(r => r.isMaterialRec === "Yes").length} <span style={{ fontSize: "0.82rem", fontWeight: 600 }}>Items</span>
                 </div>
                 <div style={{ fontSize: "0.75rem", color: "var(--success)" }}>Successfully delivered</div>
               </div>
@@ -418,7 +424,7 @@ export default function HomePage({
               <div style={{ marginBottom: homeUpcomingTab === "all" ? "28px" : 0 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "8px" }}>
                   <h4 style={{ fontSize: "1.05rem", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px", color: "#38bdf8" }}>
-                    <Truck size={17} /> Upcoming Cargo Shipments (In-Transit & ETAs) ({upcomingCargoLots.length})
+                    <Truck size={17} /> Upcoming Cargo Shipments (In-Transit & ETAs) ({upcomingCargoLots.length} Cargo Orders)
                   </h4>
                   <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
                     Total: <strong style={{ color: "var(--text-main)" }}>{upcomingCargoLots.reduce((acc, c) => acc + c.totalPcs, 0).toLocaleString()} Pcs</strong> | <strong style={{ color: "var(--warning, #f59e0b)" }}>📦 {upcomingCargoLots.reduce((acc, c) => acc + c.totalCartons, 0)} Cartons</strong>
@@ -439,7 +445,7 @@ export default function HomePage({
                           <th>Shipped Date</th>
                           <th>Upcoming Cargo ETA</th>
                           <th>Arrival Countdown</th>
-                          <th>Total Qty</th>
+                          <th>Items & Quantity</th>
                           <th>Action</th>
                         </tr>
                       </thead>
@@ -539,7 +545,7 @@ export default function HomePage({
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "8px" }}>
                   <h4 style={{ fontSize: "1.05rem", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px", color: "var(--primary)" }}>
-                    <Building2 size={17} /> Upcoming Vendor Ready Dates (Lot-wise) ({upcomingVendorLots.length})
+                    <Building2 size={17} /> Upcoming Vendor Ready Dates (Lot-wise) ({upcomingVendorLots.length} Orders / Lots)
                   </h4>
                   <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
                     Total: <strong style={{ color: "var(--text-main)" }}>{upcomingVendorLots.reduce((acc, l) => acc + l.totalQty, 0).toLocaleString()} Pcs</strong> pending with vendors
@@ -559,7 +565,7 @@ export default function HomePage({
                           <th>Order Lot Date</th>
                           <th>Upcoming Vendor EDD</th>
                           <th>Ready Status</th>
-                          <th>Total Lot Qty</th>
+                          <th>Items & Quantity</th>
                           <th>Action</th>
                         </tr>
                       </thead>
@@ -702,7 +708,7 @@ export default function HomePage({
               </div>
 
               <span className="badge badge-secondary" style={{ fontSize: "0.8rem", padding: "6px 12px" }}>
-                Total Active Orders: {activeRequests.length}
+                Total Active Items: {activeRequests.length} Items
               </span>
             </div>
 
@@ -712,7 +718,7 @@ export default function HomePage({
                   <tr>
                     <th>Person / Purchaser Name</th>
                     <th>Total Assigned</th>
-                    <th>Pending Orders</th>
+                    <th>Pending Items</th>
                     <th>In-Transit Cargo</th>
                     <th>Delayed Tasks (Target Missed)</th>
                     <th>On-Time Rate %</th>

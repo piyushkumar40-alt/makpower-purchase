@@ -1651,14 +1651,14 @@ export default function PurchaserDashboard({
                 style={{ padding: "14px 18px", cursor: "pointer", border: upcomingViewMode === "vendor_lots" ? "1px solid var(--primary)" : undefined }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>🏭 UPCOMING VENDOR LOTS</span>
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>🏭 UPCOMING VENDOR ORDERS (LOTS)</span>
                   <Package size={16} style={{ color: "var(--primary)" }} />
                 </div>
                 <div style={{ fontSize: "1.4rem", fontWeight: 700, marginTop: "4px" }}>
-                  {upcomingVendorLots.length} Lots
+                  {upcomingVendorLots.length} Orders (Lots)
                 </div>
                 <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                  {upcomingVendorLots.reduce((acc, l) => acc + l.totalPcs, 0).toLocaleString()} Pcs pending with vendors
+                  {upcomingVendorLots.reduce((acc, l) => acc + l.items.length, 0)} Items ({upcomingVendorLots.reduce((acc, l) => acc + l.totalPcs, 0).toLocaleString()} Pcs)
                 </div>
               </div>
 
@@ -1668,14 +1668,14 @@ export default function PurchaserDashboard({
                 style={{ padding: "14px 18px", cursor: "pointer", border: upcomingViewMode === "cargos" ? "1px solid var(--primary)" : undefined }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>🚢 IN-TRANSIT CARGO LOTS</span>
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>🚢 IN-TRANSIT CARGO ORDERS</span>
                   <Truck size={16} style={{ color: "#38bdf8" }} />
                 </div>
                 <div style={{ fontSize: "1.4rem", fontWeight: 700, marginTop: "4px" }}>
-                  {upcomingCargoLots.length} Shipments
+                  {upcomingCargoLots.length} Cargo Orders
                 </div>
                 <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                  {upcomingCargoLots.reduce((acc, c) => acc + c.totalPcs, 0).toLocaleString()} Pcs | 📦 {upcomingCargoLots.reduce((acc, c) => acc + c.totalCartons, 0)} Cartons
+                  {upcomingCargoLots.reduce((acc, c) => acc + c.cargoItems.length, 0)} Items ({upcomingCargoLots.reduce((acc, c) => acc + c.totalPcs, 0).toLocaleString()} Pcs | 📦 {upcomingCargoLots.reduce((acc, c) => acc + c.totalCartons, 0)} Cartons)
                 </div>
               </div>
 
@@ -1928,7 +1928,7 @@ export default function PurchaserDashboard({
                   <div>
                     <h4 style={{ fontSize: "1.2rem", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
                       <Building2 size={18} style={{ color: "var(--primary)" }} />
-                      Upcoming Vendor Ready Dates (Lot-wise) ({filteredUpcomingVendorLots.length} Lots)
+                      Upcoming Vendor Ready Dates (Lot-wise) ({filteredUpcomingVendorLots.length} Orders / Lots)
                     </h4>
                     <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "2px" }}>
                       Orders grouped by Vendor and Order Lot Date, tracking vendor delivery commitments before cargo assignment.
@@ -1958,7 +1958,7 @@ export default function PurchaserDashboard({
                             <th style={{ width: "14%" }}>Order Lot Date</th>
                             <th style={{ width: "16%" }}>Upcoming Vendor EDD</th>
                             <th style={{ width: "14%" }}>Timeline Status</th>
-                            <th style={{ width: "14%" }}>Total Lot Qty</th>
+                            <th style={{ width: "14%" }}>Items & Quantity</th>
                             <th style={{ width: "12%" }}>Current Stage</th>
                             <th style={{ width: "10%", textAlign: "right" }}>Actions</th>
                           </tr>
@@ -2164,7 +2164,7 @@ export default function PurchaserDashboard({
                   <div>
                     <h4 style={{ fontSize: "1.2rem", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
                       <Truck size={18} style={{ color: "#38bdf8" }} />
-                      Upcoming Cargo Shipments (In-Transit & ETAs) ({filteredUpcomingCargoLots.length} Shipments)
+                      Upcoming Cargo Shipments (In-Transit & ETAs) ({filteredUpcomingCargoLots.length} Cargo Orders)
                     </h4>
                     <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "2px" }}>
                       Active dispatched shipments in transit with carrier company, tracking departure and warehouse arrival ETAs.
@@ -2195,7 +2195,7 @@ export default function PurchaserDashboard({
                             <th style={{ width: "13%" }}>Dispatched Date</th>
                             <th style={{ width: "15%" }}>Upcoming Cargo ETA</th>
                             <th style={{ width: "14%" }}>Arrival Status</th>
-                            <th style={{ width: "12%" }}>Total Qty / Cartons</th>
+                            <th style={{ width: "12%" }}>Items & Cartons</th>
                             <th style={{ width: "10%", textAlign: "right" }}>Actions</th>
                           </tr>
                         </thead>
@@ -5742,7 +5742,7 @@ export default function PurchaserDashboard({
               {/* Summary Stats Row */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--border-glass)", flexWrap: "wrap", gap: "10px", fontSize: "0.83rem", color: "var(--text-muted)" }}>
                 <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "center" }}>
-                  <span>Showing: <strong style={{ color: "var(--text-main)" }}>{filteredStep5Cargos.length}</strong> shipments</span>
+                  <span>Showing: <strong style={{ color: "var(--text-main)" }}>{filteredStep5Cargos.length}</strong> Cargo Orders</span>
                   <span>|</span>
                   <span>Total Order Qty: <strong style={{ color: "var(--primary, #38bdf8)" }}>{step5FilteredMetrics.totalPieces.toLocaleString()} Pcs</strong></span>
                   <span>|</span>
