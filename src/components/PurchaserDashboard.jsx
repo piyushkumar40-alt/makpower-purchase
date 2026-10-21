@@ -193,7 +193,7 @@ export const calculateVendorMetrics = (vendor, requests = []) => {
     }
 
     let delay = 0;
-    const systemDate = "2026-06-11";
+    const systemDate = new Date().toISOString().split("T")[0];
     if (r.isMaterialRec === "Yes") {
       const recDate = r.actualReceivedDate || systemDate;
       delay = getDelayDays(recDate, r.vendorEdd);
@@ -329,7 +329,7 @@ export const calculateCargoCompanyMetrics = (company, cargos = [], requests = []
     }
 
     let delay = 0;
-    const systemDate = "2026-06-11";
+    const systemDate = new Date().toISOString().split("T")[0];
     if (c.isMaterialRec === "Yes") {
       const recDate = c.receivedDate || systemDate;
       delay = getDelayDays(recDate, c.cargoEta);
@@ -826,8 +826,9 @@ export default function PurchaserDashboard({
   };
 
   // Calculate today's date for alerts & missed target checks
-  const todayStr = "2026-06-11"; // Mock system date
-  const today = new Date(todayStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().split("T")[0];
 
   // Filter requests based on user role (Admin, Purchase Manager, and Himanshi see all purchase requests)
   const isSearchAdmin = hasFullPurchaseAccess;

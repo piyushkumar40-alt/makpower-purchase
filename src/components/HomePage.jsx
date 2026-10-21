@@ -2,10 +2,11 @@ import React, { useState, useEffect } from "react";
 import { 
   Home, Clock, AlertTriangle, CheckCircle2, User, Users, HardDrive, 
   Database, RefreshCw, BarChart2, Package, ArrowRight, ShieldCheck, 
-  Sparkles, Calendar, FileText, Activity, Layers, AlertCircle
+  Sparkles, Calendar, FileText, Activity, Layers, AlertCircle,
+  Truck, Building2, Eye, Check
 } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
-import { isRequestForUser } from "../utils/formatters";
+import { isRequestForUser, calculateCargoTotalCartons } from "../utils/formatters";
 
 export default function HomePage({
   currentUser,
@@ -44,15 +45,154 @@ export default function HomePage({
     fetchMetrics();
   }, []);
 
-  const mockTodayStr = "2026-06-11";
-  const today = new Date(mockTodayStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().split("T")[0];
+
+  const [homeUpcomingTab, setHomeUpcomingTab] = useState("all"); // 'all' | 'cargos' | 'vendor_lots'
+  const [homeExpandedCargos, setHomeExpandedCargos] = useState({});
+  const [homeExpandedLots, setHomeExpandedLots] = useState({});
 
   // Active non-cancelled requests
   const activeRequests = requests.filter(r => r.status !== "Cancelled");
 
   // Purchaser-specific data
-  const myRequests = activeRequests.filter(r => isRequestForUser(r, currentUser, users));
-  
+  const isAdminOrManager = currentUser?.role === "superadmin" || currentUser?.role === "owner" || currentUser?.role === "purchase_manager";
+  const myRequests = activeRequests.filter(r => isAdminOrManager || isRequestForUser(r, currentUser, users));
+
+  // Purchaser-specific in-transit cargos
+  const myCargos = (cargos || []).filter(c => {
+    const cargoItems = (requests || []).filter(r => r.cargoId === c.id && r.status !== "Cancelled");
+    if (cargoItems.length === 0) return false;
+    if (isAdminOrManager) return true;
+    return cargoItems.some(r => isRequestForUser(r, currentUser, users));
+  });
+
+  const inTransitCargos = myCargos.filter(c => c.isMaterialRec !== "Yes");
+
+  // Upcoming in-transit cargo consignments
+  const upcomingCargoLots = inTransitCargos.map(cargo => {
+    const vName = (vendors || []).find(v => v.id === cargo.vendorId)?.name || cargo.vendorName || "Unknown Vendor";
+    const cargoName = (cargoCompanies || []).find(cc => cc.id === cargo.cargoCompanyId)?.name || cargo.cargoDetail || cargo.cargoCompanyName || "—";
+    const cargoItems = (requests || []).filter(r => r.cargoId === cargo.id && r.status !== "Cancelled");
+    const totalPcs = cargoItems.reduce((acc, r) => acc + (Number(r.vendorOrderQuantity || r.orderQuantity) || 0), 0);
+    const totalCartons = calculateCargoTotalCartons(cargo, requests);
+
+    let diffDays = null;
+    let statusLabel = "In Transit";
+    let statusBadge = "badge-cargo";
+
+    if (cargo.cargoEta) {
+      const eta = new Date(cargo.cargoEta);
+      diffDays = Math.ceil((eta - today) / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) {
+        statusLabel = `Overdue by ${Math.abs(diffDays)}d`;
+        statusBadge = "badge-rejected";
+      } else if (diffDays === 0) {
+        statusLabel = "Arriving Today!";
+        statusBadge = "badge-pending";
+      } else if (diffDays === 1) {
+        statusLabel = "Arriving Tomorrow";
+        statusBadge = "badge-pending";
+      } else if (diffDays <= 14) {
+        statusLabel = `Arriving in ${diffDays} days (${diffDays}d left)`;
+        statusBadge = "badge-cargo";
+      } else {
+        statusLabel = `In Transit (${diffDays}d left)`;
+        statusBadge = "badge-received";
+      }
+    }
+
+    return {
+      ...cargo,
+      vendorName: vName,
+      cargoName,
+      cargoItems,
+      totalPcs,
+      totalCartons,
+      diffDays,
+      statusLabel,
+      statusBadge
+    };
+  }).sort((a, b) => {
+    if (a.cargoEta && b.cargoEta) return a.cargoEta.localeCompare(b.cargoEta);
+    if (a.cargoEta) return -1;
+    if (b.cargoEta) return 1;
+    return 0;
+  });
+
+  // Upcoming vendor ready lots (grouped by vendor + order date)
+  const pendingVendorOrders = myRequests.filter(r => r.isMaterialRec !== "Yes" && !r.cargoId);
+  const vendorLotMap = new Map();
+
+  pendingVendorOrders.forEach(r => {
+    const vId = r.vendorId || "unknown";
+    const lotDate = r.orderDate || "No Date";
+    const lotKey = `${vId}__${lotDate}`;
+
+    if (!vendorLotMap.has(lotKey)) {
+      const vName = (vendors || []).find(v => v.id === vId)?.name || r.vendorName || "Unknown Vendor";
+      vendorLotMap.set(lotKey, {
+        lotKey,
+        vendorId: vId,
+        vendorName: vName,
+        orderDate: lotDate,
+        items: [],
+        totalQty: 0,
+        edds: new Set(),
+        models: []
+      });
+    }
+
+    const lot = vendorLotMap.get(lotKey);
+    lot.items.push(r);
+    lot.totalQty += Number(r.vendorOrderQuantity || r.orderQuantity) || 0;
+    if (r.vendorEdd) lot.edds.add(r.vendorEdd);
+    if (!lot.models.includes(r.model)) lot.models.push(r.model);
+  });
+
+  const upcomingVendorLots = Array.from(vendorLotMap.values()).map(lot => {
+    const eddList = Array.from(lot.edds).filter(Boolean).sort();
+    const primaryEdd = eddList[0] || "";
+    let diffDays = null;
+    let statusLabel = "Awaiting EDD";
+    let statusBadge = "badge-pending";
+
+    if (primaryEdd) {
+      const edd = new Date(primaryEdd);
+      diffDays = Math.ceil((edd - today) / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) {
+        statusLabel = `Overdue by ${Math.abs(diffDays)}d`;
+        statusBadge = "badge-rejected";
+      } else if (diffDays === 0) {
+        statusLabel = "Ready Today";
+        statusBadge = "badge-pending";
+      } else if (diffDays === 1) {
+        statusLabel = "Ready Tomorrow";
+        statusBadge = "badge-pending";
+      } else if (diffDays <= 14) {
+        statusLabel = `Due in ${diffDays} days`;
+        statusBadge = "badge-cargo";
+      } else {
+        statusLabel = `In ${diffDays} days`;
+        statusBadge = "badge-received";
+      }
+    }
+
+    return {
+      ...lot,
+      primaryEdd,
+      diffDays,
+      statusLabel,
+      statusBadge
+    };
+  }).sort((a, b) => {
+    if (a.primaryEdd && b.primaryEdd) return a.primaryEdd.localeCompare(b.primaryEdd);
+    if (a.primaryEdd) return -1;
+    if (b.primaryEdd) return 1;
+    return b.orderDate.localeCompare(a.orderDate);
+  });
+
   // Upcoming tasks for Purchaser (required/EDD within 14 days or pending action)
   const upcomingTasks = myRequests.filter(r => {
     if (r.isMaterialRec === "Yes") return false;
@@ -226,82 +366,290 @@ export default function HomePage({
             </div>
           </div>
 
-          {/* Upcoming Tasks Table */}
+          {/* ==================== UPCOMING SCHEDULES & CARGO IN-TRANSIT ==================== */}
           <div className="glass-panel" style={{ padding: "24px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
-              <h3 style={{ fontSize: "1.2rem", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
-                <Clock size={18} /> My Upcoming Tasks & Action Schedule
-              </h3>
-              <button onClick={() => onNavigateView("dashboard")} className="btn btn-secondary btn-sm">
-                Go to Full Purchaser Workboard <ArrowRight size={14} />
-              </button>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
+              <div>
+                <h3 style={{ fontSize: "1.25rem", color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px", margin: 0, fontWeight: 700 }}>
+                  <Clock size={20} /> My Upcoming Tasks & Action Schedule
+                </h3>
+                <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "3px" }}>
+                  Active shipments in transit (with live ETAs) and upcoming vendor ready dates (lot-wise).
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                {/* View Pills */}
+                <div style={{ display: "inline-flex", background: "rgba(255, 255, 255, 0.04)", padding: "3px", borderRadius: "8px", border: "1px solid var(--border-glass)", gap: "4px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setHomeUpcomingTab("all")}
+                    className={`btn btn-sm ${homeUpcomingTab === "all" ? "btn-primary" : "btn-secondary"}`}
+                    style={{ padding: "4px 10px", fontSize: "0.78rem", fontWeight: homeUpcomingTab === "all" ? 700 : 500 }}
+                  >
+                    All Schedules ({upcomingCargoLots.length + upcomingVendorLots.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHomeUpcomingTab("cargos")}
+                    className={`btn btn-sm ${homeUpcomingTab === "cargos" ? "btn-primary" : "btn-secondary"}`}
+                    style={{ padding: "4px 10px", fontSize: "0.78rem", fontWeight: homeUpcomingTab === "cargos" ? 700 : 500 }}
+                  >
+                    🚢 Cargo In-Transit ({upcomingCargoLots.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHomeUpcomingTab("vendor_lots")}
+                    className={`btn btn-sm ${homeUpcomingTab === "vendor_lots" ? "btn-primary" : "btn-secondary"}`}
+                    style={{ padding: "4px 10px", fontSize: "0.78rem", fontWeight: homeUpcomingTab === "vendor_lots" ? 700 : 500 }}
+                  >
+                    🏭 Vendor Lots ({upcomingVendorLots.length})
+                  </button>
+                </div>
+
+                <button onClick={() => onNavigateView("dashboard")} className="btn btn-secondary btn-sm" style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                  Go to Full Purchaser Workboard <ArrowRight size={14} />
+                </button>
+              </div>
             </div>
 
-            {upcomingTasks.length === 0 ? (
-              <div style={{ padding: "30px", textAlign: "center", color: "var(--text-muted)" }}>
-                <CheckCircle2 size={32} style={{ color: "var(--success)", marginBottom: "10px" }} /><br />
-                You have no pending or upcoming tasks due in the next 14 days!
-              </div>
-            ) : (
-              <div className="table-container">
-                <table className="custom-table">
-                  <thead>
-                    <tr>
-                      <th>Logged Date</th>
-                      <th>Model / Item</th>
-                      <th>Quantity</th>
-                      <th>Vendor</th>
-                      <th>Target / EDD</th>
-                      <th>Status</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {upcomingTasks.map(req => {
-                      const vName = vendors.find(v => v.id === req.vendorId)?.name || "Unassigned";
-                      const eddStr = req.vendorEdd || req.requiredByDate || "Not Set";
-                      const isOverdue = req.vendorEdd && new Date(req.vendorEdd) < today;
+            {/* UPCOMING CARGO SHIPMENTS SECTION */}
+            {(homeUpcomingTab === "all" || homeUpcomingTab === "cargos") && (
+              <div style={{ marginBottom: homeUpcomingTab === "all" ? "28px" : 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "8px" }}>
+                  <h4 style={{ fontSize: "1.05rem", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px", color: "#38bdf8" }}>
+                    <Truck size={17} /> Upcoming Cargo Shipments (In-Transit & ETAs) ({upcomingCargoLots.length})
+                  </h4>
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                    Total: <strong style={{ color: "var(--text-main)" }}>{upcomingCargoLots.reduce((acc, c) => acc + c.totalPcs, 0).toLocaleString()} Pcs</strong> | <strong style={{ color: "var(--warning, #f59e0b)" }}>📦 {upcomingCargoLots.reduce((acc, c) => acc + c.totalCartons, 0)} Cartons</strong>
+                  </span>
+                </div>
 
-                      return (
-                        <tr key={req.id}>
-                          <td><strong>{req.orderDate || "—"}</strong></td>
-                          <td style={{ fontWeight: 600 }}>{req.model}</td>
-                          <td>{req.orderQuantity} units</td>
-                          <td>{vName}</td>
-                          <td>
-                            <span style={{ color: isOverdue ? "var(--danger)" : "var(--text-main)", fontWeight: isOverdue ? 700 : 400 }}>
-                              {eddStr} {isOverdue && "(OVERDUE)"}
-                            </span>
-                          </td>
-                          <td>
-                            {req.isMaterialRec === "Yes" ? (
-                              <span className="badge badge-received">Received</span>
-                            ) : req.cargoId ? (
-                              <span className="badge badge-cargo">In Transit</span>
-                            ) : req.priceRmb ? (
-                              <span className="badge badge-approved">Priced</span>
-                            ) : (
-                              <span className="badge badge-pending">Needs Pricing</span>
-                            )}
-                          </td>
-                          <td>
-                            <button onClick={() => onNavigateView("dashboard")} className="btn btn-secondary btn-sm" style={{ padding: "4px 10px", fontSize: "0.78rem" }}>
-                              Open Task
-                            </button>
-                          </td>
+                {upcomingCargoLots.length === 0 ? (
+                  <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.88rem" }}>
+                    No active in-transit cargo shipments found.
+                  </div>
+                ) : (
+                  <div className="table-container">
+                    <table className="custom-table">
+                      <thead>
+                        <tr>
+                          <th>Cargo Company / Name</th>
+                          <th>Vendor</th>
+                          <th>Shipped Date</th>
+                          <th>Upcoming Cargo ETA</th>
+                          <th>Arrival Countdown</th>
+                          <th>Total Qty</th>
+                          <th>Action</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody>
+                        {upcomingCargoLots.map(cargo => {
+                          const isExpanded = !!homeExpandedCargos[cargo.id];
+                          return (
+                            <React.Fragment key={cargo.id}>
+                              <tr>
+                                <td>
+                                  <div style={{ fontWeight: 700, color: "var(--text-main)", display: "flex", alignItems: "center", gap: "6px" }}>
+                                    <span>📦 {cargo.cargoName}</span>
+                                    <span className="badge badge-cargo" style={{ fontSize: "0.68rem", padding: "1px 5px" }}>
+                                      {cargo.modeOfTransport || "Sea"}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontFamily: "monospace" }}>
+                                    {cargo.id}
+                                  </div>
+                                </td>
+                                <td><strong>{cargo.vendorName}</strong></td>
+                                <td>{cargo.cargoShippingDate || "—"}</td>
+                                <td>
+                                  <strong style={{ color: "var(--primary)" }}>
+                                    🏁 {cargo.cargoEta || "No ETA"}
+                                  </strong>
+                                </td>
+                                <td>
+                                  <span className={`badge ${cargo.statusBadge}`} style={{ fontWeight: 700 }}>
+                                    {cargo.statusLabel}
+                                  </span>
+                                </td>
+                                <td>
+                                  <div style={{ fontWeight: 700 }}>
+                                    {cargo.totalPcs.toLocaleString()} Pcs
+                                  </div>
+                                  <div style={{ fontSize: "0.74rem", color: "var(--warning, #f59e0b)", fontWeight: 600 }}>
+                                    📦 {cargo.totalCartons} Cartons
+                                  </div>
+                                </td>
+                                <td>
+                                  <div style={{ display: "inline-flex", gap: "6px" }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setHomeExpandedCargos(prev => ({
+                                          ...prev,
+                                          [cargo.id]: !prev[cargo.id]
+                                        }));
+                                      }}
+                                      className="btn btn-secondary btn-sm"
+                                      style={{ padding: "3px 8px", fontSize: "0.74rem" }}
+                                    >
+                                      {isExpanded ? "Hide" : "Items"}
+                                    </button>
+                                    <button 
+                                      onClick={() => onNavigateView("dashboard")} 
+                                      className="btn btn-primary btn-sm" 
+                                      style={{ padding: "3px 8px", fontSize: "0.74rem" }}
+                                    >
+                                      Open Cargo
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                              {isExpanded && (
+                                <tr style={{ background: "rgba(56, 189, 248, 0.02)" }}>
+                                  <td colSpan="7" style={{ padding: "10px 16px" }}>
+                                    <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--primary)", marginBottom: "6px" }}>
+                                      Bundled Items in Cargo ({cargo.cargoName} - {cargo.id}):
+                                    </div>
+                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "8px" }}>
+                                      {cargo.cargoItems.map(item => (
+                                        <div key={item.id} style={{ background: "rgba(0,0,0,0.12)", padding: "6px 10px", borderRadius: "6px", border: "1px solid var(--border-glass)", fontSize: "0.78rem" }}>
+                                          <strong style={{ color: "var(--text-main)" }}>{item.model}</strong>
+                                          <div style={{ color: "var(--text-muted)", fontSize: "0.72rem" }}>
+                                            Qty: {item.vendorOrderQuantity || item.orderQuantity} Pcs
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* UPCOMING VENDOR READY DATES (LOT-WISE) SECTION */}
+            {(homeUpcomingTab === "all" || homeUpcomingTab === "vendor_lots") && (
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "8px" }}>
+                  <h4 style={{ fontSize: "1.05rem", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px", color: "var(--primary)" }}>
+                    <Building2 size={17} /> Upcoming Vendor Ready Dates (Lot-wise) ({upcomingVendorLots.length})
+                  </h4>
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                    Total: <strong style={{ color: "var(--text-main)" }}>{upcomingVendorLots.reduce((acc, l) => acc + l.totalQty, 0).toLocaleString()} Pcs</strong> pending with vendors
+                  </span>
+                </div>
+
+                {upcomingVendorLots.length === 0 ? (
+                  <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.88rem" }}>
+                    No upcoming vendor lots pending.
+                  </div>
+                ) : (
+                  <div className="table-container">
+                    <table className="custom-table">
+                      <thead>
+                        <tr>
+                          <th>Vendor Name</th>
+                          <th>Order Lot Date</th>
+                          <th>Upcoming Vendor EDD</th>
+                          <th>Ready Status</th>
+                          <th>Total Lot Qty</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {upcomingVendorLots.map(lot => {
+                          const isExpanded = !!homeExpandedLots[lot.lotKey];
+                          return (
+                            <React.Fragment key={lot.lotKey}>
+                              <tr>
+                                <td>
+                                  <strong style={{ color: "var(--text-main)" }}>{lot.vendorName}</strong>
+                                  <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>
+                                    {lot.items.length} item line(s)
+                                  </div>
+                                </td>
+                                <td>📅 {lot.orderDate}</td>
+                                <td>
+                                  <strong style={{ color: lot.primaryEdd ? "var(--primary)" : "var(--text-muted)" }}>
+                                    {lot.primaryEdd || "Not Set"}
+                                  </strong>
+                                </td>
+                                <td>
+                                  <span className={`badge ${lot.statusBadge}`} style={{ fontWeight: 700 }}>
+                                    {lot.statusLabel}
+                                  </span>
+                                </td>
+                                <td>
+                                  <strong style={{ color: "var(--text-main)" }}>
+                                    {lot.totalQty.toLocaleString()} Pcs
+                                  </strong>
+                                </td>
+                                <td>
+                                  <div style={{ display: "inline-flex", gap: "6px" }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setHomeExpandedLots(prev => ({
+                                          ...prev,
+                                          [lot.lotKey]: !prev[lot.lotKey]
+                                        }));
+                                      }}
+                                      className="btn btn-secondary btn-sm"
+                                      style={{ padding: "3px 8px", fontSize: "0.74rem" }}
+                                    >
+                                      {isExpanded ? "Hide" : "Models"}
+                                    </button>
+                                    <button 
+                                      onClick={() => onNavigateView("dashboard")} 
+                                      className="btn btn-primary btn-sm" 
+                                      style={{ padding: "3px 8px", fontSize: "0.74rem" }}
+                                    >
+                                      Open Lot
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                              {isExpanded && (
+                                <tr style={{ background: "rgba(56, 189, 248, 0.02)" }}>
+                                  <td colSpan="6" style={{ padding: "10px 16px" }}>
+                                    <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--primary)", marginBottom: "6px" }}>
+                                      Models in Lot ({lot.orderDate} - {lot.vendorName}):
+                                    </div>
+                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "8px" }}>
+                                      {lot.items.map(item => (
+                                        <div key={item.id} style={{ background: "rgba(0,0,0,0.12)", padding: "6px 10px", borderRadius: "6px", border: "1px solid var(--border-glass)", fontSize: "0.78rem" }}>
+                                          <strong style={{ color: "var(--text-main)" }}>{item.model}</strong>
+                                          <div style={{ color: "var(--text-muted)", fontSize: "0.72rem" }}>
+                                            Qty: {item.vendorOrderQuantity || item.orderQuantity} Pcs
+                                            {item.priceRmb ? ` • ¥${item.priceRmb}` : " • Unpriced"}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
           </div>
-
         </div>
       )}
 
-      {/* ==================== ROLE VIEW 2: PC / COORDINATOR HOME DASHBOARD ==================== */}
+{/* ==================== ROLE VIEW 2: PC / COORDINATOR HOME DASHBOARD ==================== */}
       {(currentUser?.role === "coordinator" || currentUser?.role === "nitin" || currentUser?.role === "rahul") && (
         <div className="card-fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           
