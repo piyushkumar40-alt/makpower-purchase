@@ -7,7 +7,8 @@ import {
   DollarSign, 
   Package, 
   FileText, 
-  CheckCircle2, 
+  CheckCircle2,
+  XCircle, 
   Clock, 
   ArrowRight, 
   Search, 
@@ -26,7 +27,7 @@ import {
   CheckSquare,
   RotateCcw
 } from "lucide-react";
-import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons } from "../utils/formatters";
+import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, formatCancelDate, formatCancelTime } from "../utils/formatters";
 import { uploadToCloudinary } from "../utils/upload";
 import CustomSelect from "./CustomSelect";
 import CargoDocumentModal from "./CargoDocumentModal";
@@ -1302,6 +1303,42 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
             <X size={16} />
           </button>
         </div>
+
+        {/* CANCELLATION DETAILS (IF CANCELLED) */}
+        {order.status === "Cancelled" && (
+          <div style={{
+            background: "rgba(239, 68, 68, 0.12)",
+            border: "1px solid rgba(239, 68, 68, 0.4)",
+            borderRadius: "8px",
+            padding: "12px 16px",
+            marginBottom: "18px"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#f87171", fontWeight: 700, fontSize: "0.95rem", marginBottom: "8px" }}>
+              <XCircle size={18} />
+              <span>Status: Cancelled Order</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "10px", fontSize: "0.85rem", background: "rgba(0,0,0,0.25)", padding: "10px 12px", borderRadius: "6px" }}>
+              <div>
+                <span style={{ color: "var(--text-muted)", display: "block", fontSize: "0.75rem" }}>📅 Cancel Date:</span>
+                <strong style={{ color: "#f87171" }}>{formatCancelDate(order.cancelledAt)}</strong>
+              </div>
+              <div>
+                <span style={{ color: "var(--text-muted)", display: "block", fontSize: "0.75rem" }}>⏰ Cancel Time:</span>
+                <strong style={{ color: "var(--text-main)" }}>{formatCancelTime(order.cancelledAt)}</strong>
+              </div>
+              <div>
+                <span style={{ color: "var(--text-muted)", display: "block", fontSize: "0.75rem" }}>👤 Cancelled By:</span>
+                <strong style={{ color: "var(--text-main)" }}>{order.cancelledByName || order.cancelledBy || "—"}</strong>
+              </div>
+            </div>
+            {order.cancellationReason && (
+              <div style={{ marginTop: "8px", fontSize: "0.85rem", borderTop: "1px solid rgba(239, 68, 68, 0.2)", paddingTop: "6px" }}>
+                <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>Cancel Reason: </span>
+                <span style={{ color: "var(--text-main)", fontWeight: 500 }}>{order.cancellationReason}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Commercial Section (Crucial for Accounts) */}
         <div style={{ marginBottom: "20px" }}>

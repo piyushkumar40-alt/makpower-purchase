@@ -20,12 +20,13 @@ import {
   Ban,
   FileSpreadsheet,
   Trash2,
-  CheckSquare
+  CheckSquare,
+  XCircle
 } from "lucide-react";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
 import { OrderInspectionModal } from "./BundledUpcomingShipments";
 import CustomSelect from "./CustomSelect";
-import { isRequestForUser, getPurchaserDisplayName } from "../utils/formatters";
+import { isRequestForUser, getPurchaserDisplayName, formatCancelDate, formatCancelTime } from "../utils/formatters";
 
 export function getOrderStage(r, cargo) {
   if (r.status === "Cancelled") {
@@ -126,6 +127,7 @@ export default function MasterOrderTracker({
   onEditRequest,
   onNavigateStep,
   onDeleteRequests,
+  onCancelRequests,
   onUpdateCargo
 }) {
   const isViewOnly = Boolean(propIsViewOnly || currentUser?.role === "rahul");
@@ -150,9 +152,9 @@ export default function MasterOrderTracker({
   const [sortField, setSortField] = useState("orderDate");
   const [sortDirection, setSortDirection] = useState("desc");
 
-  // Selection & Admin Delete state
+  // Selection & Admin Cancel state
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
-  const [adminDeleteConfirm, setAdminDeleteConfirm] = useState(null);
+  const [cancelConfirm, setCancelConfirm] = useState(null);
   const [inspectedOrder, setInspectedOrder] = useState(null);
 
   const accessibleRequests = useMemo(() => {
@@ -633,27 +635,37 @@ export default function MasterOrderTracker({
     setSelectedOrderIds([]);
   };
 
-  const handleTriggerBatchDelete = () => {
+  const handleTriggerBatchCancel = () => {
     if (selectedOrderIds.length === 0) return;
-    setAdminDeleteConfirm({
-      title: `Delete Selected Orders (${selectedOrderIds.length})`,
-      description: `Permanently delete ${selectedOrderIds.length} selected order(s) across all stages from the Master Tracker. This action is irreversible.`,
+    const activeSelected = selectedRequests.filter(r => r.status !== "Cancelled");
+    if (activeSelected.length === 0) {
+      alert("All selected orders are already cancelled.");
+      return;
+    }
+    setCancelConfirm({
+      actionType: "cancel",
+      title: `Cancel Selected Orders (${selectedOrderIds.length})`,
+      description: `Mark ${selectedOrderIds.length} selected order(s) across all stages as Cancelled. They will move to the Cancelled Orders ledger and will not appear in active workflow steps.`,
       requestIds: selectedOrderIds,
       targets: selectedRequests
     });
   };
 
-  const handleConfirmDelete = async (reason) => {
-    if (!adminDeleteConfirm || !onDeleteRequests) return;
+  const handleConfirmCancel = async (reason) => {
+    if (!cancelConfirm) return;
     try {
-      const { requestIds } = adminDeleteConfirm;
-      await onDeleteRequests(requestIds, reason || `Admin deleted ${requestIds.length} order(s) from Master Order Tracker`);
-      const deletedSet = new Set(requestIds);
-      setSelectedOrderIds(prev => prev.filter(id => !deletedSet.has(id)));
-      setAdminDeleteConfirm(null);
+      const { requestIds } = cancelConfirm;
+      if (onCancelRequests) {
+        await onCancelRequests(requestIds, reason || `Cancelled ${requestIds.length} order(s) from Master Order Tracker`);
+      } else if (onDeleteRequests) {
+        await onDeleteRequests(requestIds, reason);
+      }
+      const cancelledSet = new Set(requestIds);
+      setSelectedOrderIds(prev => prev.filter(id => !cancelledSet.has(id)));
+      setCancelConfirm(null);
     } catch (err) {
-      console.error("Batch delete failed:", err);
-      alert("Failed to delete orders: " + (err.message || "Unknown error"));
+      console.error("Batch cancel failed:", err);
+      alert("Failed to cancel orders: " + (err.message || "Unknown error"));
     }
   };
 
@@ -963,7 +975,7 @@ export default function MasterOrderTracker({
                     </button>
                     <button
                       type="button"
-                      onClick={handleTriggerBatchDelete}
+                      onClick={handleTriggerBatchCancel}
                       className="btn btn-danger btn-sm"
                       style={{
                         display: "inline-flex",
@@ -978,9 +990,9 @@ export default function MasterOrderTracker({
                         boxShadow: "0 2px 8px rgba(239, 68, 68, 0.35)",
                         cursor: "pointer"
                       }}
-                      title={`Permanently delete ${selectedOrderIds.length} selected orders`}
+                      title={`Cancel ${selectedOrderIds.length} selected orders`}
                     >
-                      <Trash2 size={13} /> Delete Selected ({selectedOrderIds.length})
+                      <XCircle size={13} /> Cancel Selected ({selectedOrderIds.length})
                     </button>
                   </>
                 ) : (
@@ -1227,34 +1239,50 @@ export default function MasterOrderTracker({
                       </td>
 
                       <td style={{ fontSize: "0.76rem" }}>
-                        {r.vendorEdd && (
-                          <div>
-                            <span style={{ color: "var(--text-muted)" }}>Vendor EDD:</span> <strong>{r.vendorEdd}</strong>
-                            {(() => {
-                              const hist = Array.isArray(r.vendorEddHistory) ? r.vendorEddHistory : (typeof r.vendorEddHistory === "string" ? JSON.parse(r.vendorEddHistory || "[]") : []);
-                              return hist.length > 0 ? (
-                                <span style={{ marginLeft: "4px", color: "#f87171", fontWeight: 700 }} title={`${hist.length} EDD reschedule(s) logged`}>({hist.length} revs)</span>
-                              ) : null;
-                            })()}
+                        {r.status === "Cancelled" ? (
+                          <div style={{ color: "#f87171" }}>
+                            <div><span>Cancelled:</span> <strong>{formatCancelDate(r.cancelledAt)}</strong></div>
+                            {formatCancelTime(r.cancelledAt) !== "—" && (
+                              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Time: {formatCancelTime(r.cancelledAt)}</div>
+                            )}
+                            {r.cancellationReason && (
+                              <div style={{ fontSize: "0.7rem", color: "#fca5a5", fontStyle: "italic", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.cancellationReason}>
+                                Reason: {r.cancellationReason}
+                              </div>
+                            )}
                           </div>
-                        )}
-                        {r.vendorReadyDate && (
-                          <div style={{ color: "var(--success)" }}>
-                            <span>Ready:</span> <strong>{r.vendorReadyDate}</strong>
-                          </div>
-                        )}
-                        {r.cargoPickupDate && (
-                          <div style={{ color: "#6366f1" }}>
-                            <span>Picked Up:</span> <strong>{r.cargoPickupDate}</strong>
-                          </div>
-                        )}
-                        {(r.receivedDate || r._cargo?.receivedDate) && (
-                          <div style={{ color: "var(--success)" }}>
-                            <span>Received:</span> <strong>{r.receivedDate || r._cargo?.receivedDate}</strong>
-                          </div>
-                        )}
-                        {!r.vendorEdd && !r.vendorReadyDate && !r.cargoPickupDate && !r.receivedDate && (
-                          <span style={{ color: "var(--text-muted)" }}>Dates Pending</span>
+                        ) : (
+                          <>
+                            {r.vendorEdd && (
+                              <div>
+                                <span style={{ color: "var(--text-muted)" }}>Vendor EDD:</span> <strong>{r.vendorEdd}</strong>
+                                {(() => {
+                                  const hist = Array.isArray(r.vendorEddHistory) ? r.vendorEddHistory : (typeof r.vendorEddHistory === "string" ? JSON.parse(r.vendorEddHistory || "[]") : []);
+                                  return hist.length > 0 ? (
+                                    <span style={{ marginLeft: "4px", color: "#f87171", fontWeight: 700 }} title={`${hist.length} EDD reschedule(s) logged`}>({hist.length} revs)</span>
+                                  ) : null;
+                                })()}
+                              </div>
+                            )}
+                            {r.vendorReadyDate && (
+                              <div style={{ color: "var(--success)" }}>
+                                <span>Ready:</span> <strong>{r.vendorReadyDate}</strong>
+                              </div>
+                            )}
+                            {r.cargoPickupDate && (
+                              <div style={{ color: "#6366f1" }}>
+                                <span>Picked Up:</span> <strong>{r.cargoPickupDate}</strong>
+                              </div>
+                            )}
+                            {(r.receivedDate || r._cargo?.receivedDate) && (
+                              <div style={{ color: "var(--success)" }}>
+                                <span>Received:</span> <strong>{r.receivedDate || r._cargo?.receivedDate}</strong>
+                              </div>
+                            )}
+                            {!r.vendorEdd && !r.vendorReadyDate && !r.cargoPickupDate && !r.receivedDate && (
+                              <span style={{ color: "var(--text-muted)" }}>Dates Pending</span>
+                            )}
+                          </>
                         )}
                       </td>
 
@@ -1299,22 +1327,35 @@ export default function MasterOrderTracker({
                           >
                             <Eye size={12} /> View
                           </button>
-                          {onDeleteRequests && isAdmin && (
+                          {(onCancelRequests || onDeleteRequests) && (
                             <button
                               type="button"
                               onClick={() => {
-                                setAdminDeleteConfirm({
-                                  title: `Delete Order #${r.id} (${r.model})`,
-                                  description: `Permanently delete complete order #${r.id} (${r.model}, ${r._effectiveQty.toLocaleString()} Pcs, Order Date: ${r._effectiveOrderDate || "—"}). This action is irreversible.`,
+                                if (r.status === "Cancelled") return;
+                                setCancelConfirm({
+                                  actionType: "cancel",
+                                  title: `Cancel Order #${r.id} (${r.model})`,
+                                  description: `Mark order #${r.id} (${r.model}, ${r._effectiveQty.toLocaleString()} Pcs, Order Date: ${r._effectiveOrderDate || "—"}). It will move to the Cancelled Orders ledger.`,
                                   requestIds: [r.id],
                                   targets: [r]
                                 });
                               }}
-                              className="btn btn-danger btn-sm"
-                              style={{ padding: "4px 6px", display: "inline-flex", alignItems: "center", gap: "3px", fontSize: "0.75rem", background: "rgba(239, 68, 68, 0.18)", border: "1px solid rgba(239, 68, 68, 0.4)", color: "#f87171" }}
-                              title="Permanently Delete Complete Order (Admin only)"
+                              className="btn btn-sm"
+                              style={{
+                                padding: "4px 8px",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "3px",
+                                fontSize: "0.75rem",
+                                background: r.status === "Cancelled" ? "rgba(148, 163, 184, 0.12)" : "rgba(239, 68, 68, 0.18)",
+                                border: `1px solid ${r.status === "Cancelled" ? "rgba(148, 163, 184, 0.25)" : "rgba(239, 68, 68, 0.4)"}`,
+                                color: r.status === "Cancelled" ? "#94a3b8" : "#f87171",
+                                cursor: r.status === "Cancelled" ? "default" : "pointer"
+                              }}
+                              title={r.status === "Cancelled" ? "This order is already cancelled" : "Cancel this Order"}
+                              disabled={r.status === "Cancelled"}
                             >
-                              <Trash2 size={12} />
+                              <XCircle size={12} /> {r.status === "Cancelled" ? "Cancelled" : "Cancel"}
                             </button>
                           )}
                         </div>
@@ -1328,11 +1369,11 @@ export default function MasterOrderTracker({
         )}
       </div>
 
-      {adminDeleteConfirm && (
+      {cancelConfirm && (
         <AdminDeleteConfirmModal
-          confirmData={adminDeleteConfirm}
-          onClose={() => setAdminDeleteConfirm(null)}
-          onConfirm={handleConfirmDelete}
+          confirmData={cancelConfirm}
+          onClose={() => setCancelConfirm(null)}
+          onConfirm={handleConfirmCancel}
         />
       )}
 

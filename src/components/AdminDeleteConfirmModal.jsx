@@ -1,10 +1,9 @@
 import React, { useState } from "react";
 import useModalEscape from "../utils/useModalEscape";
-import { Trash2 } from "lucide-react";
+import { Trash2, XCircle } from "lucide-react";
 
 /**
- * Admin Permanent Delete Confirmation Modal
- * Reusable modal for confirming permanent deletion of purchase orders.
+ * Admin Action Confirmation Modal (Supports both Cancel and Delete modes)
  */
 export function AdminDeleteConfirmModal({ confirmData, onClose, onConfirm }) {
   useModalEscape(onClose);
@@ -13,7 +12,8 @@ export function AdminDeleteConfirmModal({ confirmData, onClose, onConfirm }) {
 
   if (!confirmData) return null;
 
-  const { title, description, requestIds = [], orderDate, targets = [] } = confirmData;
+  const { title, description, requestIds = [], orderDate, targets = [], actionType = "delete" } = confirmData;
+  const isCancel = actionType === "cancel" || (title && title.toLowerCase().includes("cancel"));
   const count = requestIds.length || targets.length;
   const totalQty = targets.reduce((sum, r) => sum + parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10), 0);
 
@@ -32,14 +32,14 @@ export function AdminDeleteConfirmModal({ confirmData, onClose, onConfirm }) {
       <div className="glass-panel modal-content" style={{ maxWidth: "560px", width: "95%", border: "1px solid rgba(239, 68, 68, 0.4)", boxShadow: "0 20px 40px rgba(0, 0, 0, 0.5)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "12px", borderBottom: "1px solid rgba(239, 68, 68, 0.2)", paddingBottom: "14px", marginBottom: "16px" }}>
           <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "rgba(239, 68, 68, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "#ef4444", flexShrink: 0 }}>
-            <Trash2 size={22} />
+            {isCancel ? <XCircle size={24} /> : <Trash2 size={22} />}
           </div>
           <div>
             <h3 style={{ margin: 0, fontSize: "1.25rem", color: "#f87171", fontWeight: 700 }}>
-              {title || "Confirm Permanent Order Deletion"}
+              {title || (isCancel ? "Confirm Order Cancellation" : "Confirm Permanent Order Deletion")}
             </h3>
             <p style={{ margin: "3px 0 0 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-              Admin Action • Irreversible Operation
+              {isCancel ? "Audit Action • Moves to Cancelled Orders Ledger" : "Admin Action • Irreversible Operation"}
             </p>
           </div>
         </div>
@@ -54,7 +54,7 @@ export function AdminDeleteConfirmModal({ confirmData, onClose, onConfirm }) {
         <div style={{ background: "var(--bg-card, rgba(30, 41, 59, 0.5))", borderRadius: "8px", padding: "12px 14px", marginBottom: "16px", border: "1px solid var(--border-glass)" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "10px", marginBottom: targets.length > 0 ? "10px" : 0 }}>
             <div>
-              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "block" }}>Orders to Delete</span>
+              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "block" }}>Orders to {isCancel ? "Cancel" : "Delete"}</span>
               <strong style={{ fontSize: "1.1rem", color: "#f87171" }}>{count} Order{count !== 1 ? "s" : ""}</strong>
             </div>
             {totalQty > 0 && (
@@ -93,12 +93,12 @@ export function AdminDeleteConfirmModal({ confirmData, onClose, onConfirm }) {
         <form onSubmit={handleSubmit}>
           <div className="form-group" style={{ marginBottom: "18px" }}>
             <label className="form-label" style={{ fontSize: "0.82rem" }}>
-              Reason for Deletion (Optional):
+              {isCancel ? "Reason for Cancellation (Optional):" : "Reason for Deletion (Optional):"}
             </label>
             <input
               type="text"
               className="form-control"
-              placeholder="e.g. Uploaded by mistake, duplicate entry, customer cancelled..."
+              placeholder={isCancel ? "e.g. Procurement halted, duplicate order, vendor non-compliance..." : "e.g. Uploaded by mistake, duplicate entry, customer cancelled..."}
               value={reason}
               onChange={e => setReason(e.target.value)}
               disabled={isSubmitting}
@@ -113,7 +113,7 @@ export function AdminDeleteConfirmModal({ confirmData, onClose, onConfirm }) {
               className="btn btn-secondary"
               disabled={isSubmitting}
             >
-              Cancel
+              Keep Active
             </button>
             <button
               type="submit"
@@ -122,7 +122,11 @@ export function AdminDeleteConfirmModal({ confirmData, onClose, onConfirm }) {
               style={{ display: "flex", alignItems: "center", gap: "6px", background: "#ef4444", fontWeight: 700 }}
             >
               {isSubmitting ? (
-                <>Deleting...</>
+                <>{isCancel ? "Cancelling..." : "Deleting..."}</>
+              ) : isCancel ? (
+                <>
+                  <XCircle size={15} /> Yes, Cancel Orders
+                </>
               ) : (
                 <>
                   <Trash2 size={15} /> Yes, Permanently Delete
@@ -136,4 +140,5 @@ export function AdminDeleteConfirmModal({ confirmData, onClose, onConfirm }) {
   );
 }
 
+export const AdminCancelConfirmModal = AdminDeleteConfirmModal;
 export default AdminDeleteConfirmModal;

@@ -10,7 +10,7 @@ import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
-import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons } from "../utils/formatters";
+import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons, formatCancelDate, formatCancelTime } from "../utils/formatters";
 import { useModalEscape } from "../utils/useModalEscape";
 import MasterOrderTracker from "./MasterOrderTracker";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
@@ -422,6 +422,7 @@ export default function PurchaserDashboard({
   onUpdateRequest,
   batchUpdateRequests,
   onCancelOrder,
+  onCancelRequests,
   onDeleteRequests,
   onDeleteRequestsByDate,
   onUndoCargoAssignment,
@@ -2374,6 +2375,7 @@ export default function PurchaserDashboard({
             onEditRequest={(r) => setEditingRequest(r)}
             onNavigateStep={(stepKey) => setActiveTab(stepKey)}
             onDeleteRequests={onDeleteRequests}
+            onCancelRequests={onCancelRequests}
           />
         )}
 
@@ -6533,6 +6535,10 @@ export default function PurchaserDashboard({
             onUpdateRequest(updated);
             setEditingRequest(null);
           }}
+          onCancelOrder={(reqId, reason) => {
+            if (onCancelOrder) onCancelOrder(reqId, reason);
+            setEditingRequest(null);
+          }}
         />
       )}
 
@@ -6934,7 +6940,7 @@ export const getEffectivePhoto = (request, items = [], requests = []) => {
 
 // 1. STEP 2: EDIT REQUEST DETAILS MODAL
 // 1. EDIT REQUEST DETAILS MODAL (FULL ORDER EDITING ACROSS ALL STEPS)
-function EditRequestModal({ request, requests, vendors, cargos = [], currentUser, onAddVendor, items = [], onUpdateItem, onAddItem, onClose, onSave }) {
+function EditRequestModal({ request, requests, vendors, cargos = [], currentUser, onAddVendor, items = [], onUpdateItem, onAddItem, onClose, onSave, onCancelOrder }) {
   useModalEscape(onClose);
   const [model, setModel] = useState(request.model || "");
   const [orderDate, setOrderDate] = useState(request.orderDate || "");
@@ -6961,6 +6967,10 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
   const [category, setCategory] = useState(cleanCategoryName(request.category) || "");
   const [itemsPerCarton, setItemsPerCarton] = useState(request.itemsPerCarton || "");
   const [showQuickVendorModal, setShowQuickVendorModal] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [inlineCancelReason, setInlineCancelReason] = useState("");
+  const [editableCancelReason, setEditableCancelReason] = useState(request.cancellationReason || "");
+  const isAlreadyCancelled = request.status === "Cancelled";
 
   // Lock order parameters if goods are currently in transit till received (Super Admin can override Vendor & Price)
   const isInTransit = Boolean(request.cargoId && request.isMaterialRec !== "Yes");
@@ -7031,6 +7041,11 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
 
     onSave({
       ...request,
+      status: isAlreadyCancelled ? "Cancelled" : (request.status || "Active"),
+      cancellationReason: isAlreadyCancelled ? editableCancelReason : (request.cancellationReason || ""),
+      cancelledAt: isAlreadyCancelled ? request.cancelledAt : "",
+      cancelledBy: isAlreadyCancelled ? request.cancelledBy : "",
+      cancelledByName: isAlreadyCancelled ? request.cancelledByName : "",
       model: model.trim() || request.model,
       orderDate: orderDate || request.orderDate,
       orderQuantity: origQty,
@@ -7093,8 +7108,13 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
         {/* Modal Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px", marginBottom: "16px" }}>
           <div>
-            <h3 style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--primary)", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+            <h3 style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--primary)", margin: 0, display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
               Edit Order Details — {request.model}
+              {isAlreadyCancelled && (
+                <span className="badge badge-rejected" style={{ fontSize: "0.75rem", padding: "4px 10px", background: "#ef4444", color: "#fff" }}>
+                  CANCELLED
+                </span>
+              )}
               {isInTransit && (
                 isSuperAdmin ? (
                   <span className="badge badge-warning" style={{ fontSize: "0.72rem", background: "rgba(245, 158, 11, 0.2)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.4)", display: "inline-flex", alignItems: "center", gap: "4px" }}>
@@ -7124,6 +7144,73 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
               <span>This order is currently In Transit in Cargo <strong>{request.cargoId}</strong>. Order parameters are locked and cannot be modified until received at the warehouse.</span>
             </div>
           )
+        )}
+
+        {/* CANCELLATION DETAILS SECTION (IF CANCELLED) */}
+        {isAlreadyCancelled && (
+          <div style={{
+            background: "rgba(239, 68, 68, 0.12)",
+            border: "1px solid rgba(239, 68, 68, 0.4)",
+            borderRadius: "8px",
+            padding: "14px 16px",
+            marginBottom: "16px"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", marginBottom: "10px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#f87171", fontWeight: 700, fontSize: "1rem" }}>
+                <XCircle size={20} />
+                <span>Cancelled Order Information</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Do you want to re-activate this cancelled order back to Active status?")) {
+                    onSave({
+                      ...request,
+                      status: "Active",
+                      cancellationReason: "",
+                      cancelledAt: "",
+                      cancelledBy: "",
+                      cancelledByName: ""
+                    });
+                  }
+                }}
+                className="btn btn-secondary btn-sm"
+                style={{ fontSize: "0.75rem", padding: "3px 10px", background: "rgba(16, 185, 129, 0.15)", color: "#10b981", border: "1px solid rgba(16, 185, 129, 0.3)" }}
+                title="Restore order to Active"
+              >
+                Reactivate Order
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px", fontSize: "0.86rem", background: "rgba(0,0,0,0.25)", padding: "10px 14px", borderRadius: "6px", border: "1px solid rgba(239, 68, 68, 0.2)" }}>
+              <div>
+                <span style={{ color: "var(--text-muted)", display: "block", fontSize: "0.75rem" }}>📅 Cancel Date:</span>
+                <strong style={{ color: "#f87171", fontSize: "0.95rem" }}>{formatCancelDate(request.cancelledAt)}</strong>
+              </div>
+              <div>
+                <span style={{ color: "var(--text-muted)", display: "block", fontSize: "0.75rem" }}>⏰ Cancel Time:</span>
+                <strong style={{ color: "var(--text-main)", fontSize: "0.95rem" }}>{formatCancelTime(request.cancelledAt)}</strong>
+              </div>
+              <div>
+                <span style={{ color: "var(--text-muted)", display: "block", fontSize: "0.75rem" }}>👤 Cancelled By:</span>
+                <strong style={{ color: "var(--text-main)", fontSize: "0.95rem" }}>{request.cancelledByName || request.cancelledBy || "—"}</strong>
+              </div>
+            </div>
+
+            <div style={{ marginTop: "10px" }}>
+              <label className="form-label" style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: "4px" }}>
+                Cancel Reason:
+              </label>
+              <input
+                type="text"
+                className="form-control"
+                value={editableCancelReason}
+                onChange={e => setEditableCancelReason(e.target.value)}
+                placeholder="Reason for cancellation..."
+                style={{ fontSize: "0.85rem" }}
+              />
+            </div>
+          </div>
         )}
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -7396,18 +7483,82 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
             </div>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-            <button type="button" onClick={onClose} className="btn btn-secondary">Close</button>
-            {(!isInTransit || isSuperAdmin) ? (
-              <button type="submit" className="btn btn-primary" style={{ padding: "8px 24px", fontWeight: 700 }}>
-                {isInTransit && isSuperAdmin ? "Save Changes (Super Admin Override)" : "Save All Changes"}
-              </button>
-            ) : (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "#f59e0b", fontSize: "0.85rem", fontWeight: 600, padding: "8px 14px", background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.25)", borderRadius: "6px" }}>
-                <Lock size={14} /> Locked While In Freight Transit
-              </span>
-            )}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginTop: "12px", borderTop: "1px solid var(--border-glass)", paddingTop: "14px" }}>
+            <div>
+              {!isAlreadyCancelled && !isInTransit && (
+                <button
+                  type="button"
+                  onClick={() => setIsCancelling(prev => !prev)}
+                  className="btn btn-danger btn-sm"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(239, 68, 68, 0.18)", border: "1px solid rgba(239, 68, 68, 0.4)", color: "#f87171" }}
+                  title="Cancel this order item"
+                >
+                  <XCircle size={14} /> {isCancelling ? "Cancel Action" : "Cancel This Item"}
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+              <button type="button" onClick={onClose} className="btn btn-secondary">Close</button>
+              {(!isInTransit || isSuperAdmin) ? (
+                <button type="submit" className="btn btn-primary" style={{ padding: "8px 24px", fontWeight: 700 }}>
+                  {isInTransit && isSuperAdmin ? "Save Changes (Super Admin Override)" : "Save All Changes"}
+                </button>
+              ) : (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "#f59e0b", fontSize: "0.85rem", fontWeight: 600, padding: "8px 14px", background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.25)", borderRadius: "6px" }}>
+                  <Lock size={14} /> Locked While In Freight Transit
+                </span>
+              )}
+            </div>
           </div>
+
+          {/* Inline Cancel Reason Prompt if user clicked Cancel This Item */}
+          {isCancelling && !isAlreadyCancelled && (
+            <div style={{ background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.35)", borderRadius: "8px", padding: "14px", marginTop: "4px" }}>
+              <div style={{ fontWeight: 700, color: "#f87171", fontSize: "0.92rem", marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <XCircle size={16} /> Confirm Order Cancellation
+              </div>
+              <p style={{ margin: "0 0 10px 0", fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                This order will be marked as Cancelled, removed from active workflows, and moved to the Cancelled Orders ledger.
+              </p>
+              <div style={{ marginBottom: "10px" }}>
+                <label className="form-label" style={{ fontSize: "0.78rem" }}>Cancellation Reason (Optional):</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="e.g. Budget cut, vendor out of stock, duplicate order..."
+                  value={inlineCancelReason}
+                  onChange={e => setInlineCancelReason(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+                <button type="button" onClick={() => setIsCancelling(false)} className="btn btn-secondary btn-sm">Nevermind</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nowIso = new Date().toISOString();
+                    if (onCancelOrder) {
+                      onCancelOrder(request.id, inlineCancelReason);
+                    } else {
+                      onSave({
+                        ...request,
+                        status: "Cancelled",
+                        cancellationReason: inlineCancelReason || "Cancelled in Order Details",
+                        cancelledAt: nowIso,
+                        cancelledBy: currentUser?.id || "",
+                        cancelledByName: currentUser?.name || currentUser?.role || "Purchaser"
+                      });
+                    }
+                  }}
+                  className="btn btn-danger btn-sm"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
+                >
+                  <XCircle size={14} /> Yes, Confirm Cancellation
+                </button>
+              </div>
+            </div>
+          )}
         </form>
 
         <QuickCreateVendorModal
@@ -7470,25 +7621,50 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
                 <Edit3 size={14} /> Edit Order
               </button>
             )}
-            {onCancelOrder && (
+            {onCancelOrder && request.status !== "Cancelled" && (
               <button onClick={() => onCancelOrder(request)} className="btn btn-danger btn-sm">
                 <XCircle size={14} /> Cancel Order
-              </button>
-            )}
-            {isAdmin && onDeleteOrder && (
-              <button
-                type="button"
-                onClick={() => onDeleteOrder(request)}
-                className="btn btn-danger btn-sm"
-                style={{ display: "inline-flex", alignItems: "center", gap: "4px", background: "#ef4444" }}
-                title="Permanently Delete Complete Order (Admin only)"
-              >
-                <Trash2 size={14} /> Delete Order
               </button>
             )}
             <button onClick={onClose} className="btn btn-secondary btn-sm">Close</button>
           </div>
         </div>
+
+        {/* Cancellation Details Section if Cancelled */}
+        {request.status === "Cancelled" && (
+          <div style={{
+            background: "rgba(239, 68, 68, 0.12)",
+            border: "1px solid rgba(239, 68, 68, 0.35)",
+            borderRadius: "8px",
+            padding: "12px 16px",
+            marginBottom: "18px"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#f87171", fontWeight: 700, fontSize: "0.95rem", marginBottom: "8px" }}>
+              <XCircle size={18} />
+              <span>Status: Cancelled Order</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px", fontSize: "0.85rem", background: "rgba(0,0,0,0.2)", padding: "8px 12px", borderRadius: "6px" }}>
+              <div>
+                <span style={{ color: "var(--text-muted)", display: "block", fontSize: "0.75rem" }}>📅 Cancel Date:</span>
+                <strong style={{ color: "#f87171" }}>{formatCancelDate(request.cancelledAt)}</strong>
+              </div>
+              <div>
+                <span style={{ color: "var(--text-muted)", display: "block", fontSize: "0.75rem" }}>⏰ Cancel Time:</span>
+                <strong style={{ color: "var(--text-main)" }}>{formatCancelTime(request.cancelledAt)}</strong>
+              </div>
+              <div>
+                <span style={{ color: "var(--text-muted)", display: "block", fontSize: "0.75rem" }}>👤 Cancelled By:</span>
+                <strong style={{ color: "var(--text-main)" }}>{request.cancelledByName || request.cancelledBy || "—"}</strong>
+              </div>
+            </div>
+            {request.cancellationReason && (
+              <div style={{ marginTop: "8px", fontSize: "0.85rem", borderTop: "1px solid rgba(239, 68, 68, 0.2)", paddingTop: "6px" }}>
+                <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>Cancel Reason: </span>
+                <span style={{ color: "var(--text-main)", fontWeight: 500 }}>{request.cancellationReason}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Stepper progress */}
         <div className="stepper">

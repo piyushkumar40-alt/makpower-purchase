@@ -1173,15 +1173,56 @@ export default function App() {
   const cancelRequest = async (requestId, reason = "") => {
     const target = requests.find(r => r.id === requestId);
     if (!target) return;
+    const nowIso = new Date().toISOString();
     const updated = {
       ...target,
       status: "Cancelled",
-      cancellationReason: reason,
-      cancelledAt: new Date().toISOString().split("T")[0]
+      cancellationReason: reason || "Cancelled by user",
+      cancelledAt: nowIso,
+      cancelledBy: currentUser?.id || "",
+      cancelledByName: currentUser?.name || currentUser?.role || "Purchaser"
     };
     await postData("/api/requests", updated);
     setRequests(prev => prev.map(r => r.id === requestId ? updated : r));
     logSystemActivity("CANCEL_ORDER", `Cancelled purchase order ${target.model} (#${target.id}) ${reason ? `- Reason: ${reason}` : ""}`, "Requisition", target.id, target, updated);
+  };
+
+  const cancelRequests = async (requestIds, reason = "") => {
+    const ids = Array.isArray(requestIds) ? requestIds : [requestIds];
+    if (ids.length === 0) return { success: false, count: 0 };
+    const nowIso = new Date().toISOString();
+    const targets = requests.filter(r => ids.includes(r.id));
+    const updatedList = targets.map(r => ({
+      ...r,
+      status: "Cancelled",
+      cancellationReason: reason || "Cancelled by user",
+      cancelledAt: nowIso,
+      cancelledBy: currentUser?.id || "",
+      cancelledByName: currentUser?.name || currentUser?.role || "Purchaser"
+    }));
+
+    try {
+      await postData("/api/requests/batch", updatedList);
+    } catch (err) {
+      console.error("Failed to batch cancel requests on server:", err);
+    }
+
+    setRequests(prev => prev.map(r => {
+      const match = updatedList.find(u => u.id === r.id);
+      return match ? match : r;
+    }));
+
+    const targetModels = targets.map(r => r.model).filter(Boolean).slice(0, 5).join(", ");
+    const moreSuffix = targets.length > 5 ? ` and ${targets.length - 5} more` : "";
+    logSystemActivity(
+      "CANCEL_ORDERS",
+      `Cancelled ${ids.length} purchase order(s) [${targetModels}${moreSuffix}]${reason ? ` - Reason: ${reason}` : ""}`,
+      "Requisition",
+      ids[0],
+      null,
+      updatedList
+    );
+    return { success: true, count: ids.length };
   };
 
   const deleteRequests = async (requestIds, reason = "") => {
@@ -3357,6 +3398,8 @@ export default function App() {
             settings={settings}
             onUpdateSettings={handleUpdateSystemSettings}
             onBatchUpdateRequests={batchUpdateRequests}
+            onCancelOrder={cancelRequest}
+            onCancelRequests={cancelRequests}
             onDeleteRequests={deleteRequests}
             onDeleteRequestsByDate={deleteRequestsByDate}
             items={items}
@@ -3487,6 +3530,7 @@ export default function App() {
             onUpdateRequest={updateRequest}
             batchUpdateRequests={batchUpdateRequests}
             onCancelOrder={cancelRequest}
+            onCancelRequests={cancelRequests}
             onDeleteRequests={deleteRequests}
             onDeleteRequestsByDate={deleteRequestsByDate}
             onUndoCargoAssignment={undoCargoAssignment}

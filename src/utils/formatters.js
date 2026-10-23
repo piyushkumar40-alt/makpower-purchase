@@ -761,3 +761,29 @@ export const calculateItemCartons = (item) => {
   }
   return 0;
 };
+
+
+export const formatCancelDate = (val) => {
+  if (!val) return "—";
+  try {
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    }
+  } catch (e) {}
+  return String(val).split("T")[0] || "—";
+};
+
+export const formatCancelTime = (val) => {
+  if (!val) return "—";
+  try {
+    if (typeof val === "string" && !val.includes("T") && !val.includes(":")) {
+      return "—";
+    }
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
+    }
+  } catch (e) {}
+  return "—";
+};
