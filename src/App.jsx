@@ -144,93 +144,38 @@ export default function App() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
 
-  // Load initial data from localStorage cache for 0ms instant startup with EOD validation
-  const cachedState = React.useMemo(() => {
-    try {
-      const saved = localStorage.getItem("makpower_app_state_cache");
-      if (!saved) return null;
-      const parsed = JSON.parse(saved);
-      const todayStr = getTodayEodString();
-      // If the cache was stored on a previous day, it has expired at End Of Day (EOD)
-      if (parsed && parsed.eodDate && parsed.eodDate !== todayStr) {
-        console.log(`🌅 [EOD Cache] New day detected (${todayStr} vs cached ${parsed.eodDate}). Expiring yesterday's cache.`);
-        localStorage.removeItem("makpower_app_state_cache");
-        return null;
-      }
-      return parsed;
-    } catch (e) {
-      return null;
-    }
-  }, []);
+  // Guarantee clean state on every device to eliminate multi-laptop desync
+  try {
+    localStorage.removeItem("makpower_app_state_cache");
+  } catch (e) {}
 
-  const [users, setUsers] = useState(() => {
-    if (cachedState?.users && Array.isArray(cachedState.users) && cachedState.users.length > 0) {
-      const loaded = cachedState.users.map(normalizeUserData);
-      // Ensure all initial essential purchasers exist in cached state
-      initialUsers.forEach(initU => {
-        if (!loaded.some(u => u.id === initU.id || (u.email && u.email.toLowerCase() === initU.email.toLowerCase()))) {
-          loaded.push(normalizeUserData(initU));
-        }
-      });
-      return loaded;
-    }
-    return initialUsers.map(normalizeUserData);
-  });
-  const [vendors, setVendors] = useState(() => cachedState?.vendors || []);
-  const [requests, setRequests] = useState(() => cachedState?.requests || []);
-  const [cargos, setCargos] = useState(() => cachedState?.cargos || []);
-  const [cargoCompanies, setCargoCompanies] = useState(() => cachedState?.cargoCompanies || []);
-  const [items, setItems] = useState(() => cachedState?.items || []);
-  const [designations, setDesignations] = useState(() => cachedState?.designations || []);
-  const [crmParties, setCrmParties] = useState(() => deduplicatePartiesKeepLast(cachedState?.crmParties || []));
-  const [crmSalesOrders, setCrmSalesOrders] = useState(() => cachedState?.crmSalesOrders || []);
-  const [crmDispatches, setCrmDispatches] = useState(() => cachedState?.crmDispatches || []);
+  const [users, setUsers] = useState(() => initialUsers.map(normalizeUserData));
+  const [vendors, setVendors] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [cargos, setCargos] = useState([]);
+  const [cargoCompanies, setCargoCompanies] = useState([]);
+  const [items, setItems] = useState([]);
+  const [designations, setDesignations] = useState([]);
+  const [crmParties, setCrmParties] = useState([]);
+  const [crmSalesOrders, setCrmSalesOrders] = useState([]);
+  const [crmDispatches, setCrmDispatches] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
-  const [imsTransactions, setImsTransactions] = useState(() => {
-    if (cachedState?.imsTransactions && Array.isArray(cachedState.imsTransactions)) {
-      return cachedState.imsTransactions;
-    }
-    return [];
-  });
-  const [imsSummary, setImsSummary] = useState(() => cachedState?.imsSummary || null);
+  const [imsTransactions, setImsTransactions] = useState([]);
+  const [imsSummary, setImsSummary] = useState(null);
   const [imsPeriodSummary, setImsPeriodSummary] = useState(null);
-  const [imsItemStocks, setImsItemStocks] = useState(() => cachedState?.imsSummary?.itemStocks || []);
+  const [imsItemStocks, setImsItemStocks] = useState([]);
   const [imsRange, setImsRange] = useState("3days");
-  const [itemPrices, setItemPrices] = useState(() => {
-    if (cachedState?.itemPrices && Array.isArray(cachedState.itemPrices)) {
-      return cachedState.itemPrices;
-    }
-    return [];
-  });
-  const [crmPartyRemarks, setCrmPartyRemarks] = useState(() => {
-    if (cachedState?.crmPartyRemarks && Array.isArray(cachedState.crmPartyRemarks)) {
-      return cachedState.crmPartyRemarks;
-    }
-    return [];
-  });
-  const [partyCategoryMonthlySales, setPartyCategoryMonthlySales] = useState(() => cachedState?.partyCategoryMonthlySales || []);
-  const [partyCategoryMonths, setPartyCategoryMonths] = useState(() => cachedState?.partyCategoryMonths || []);
-  const [schemes, setSchemes] = useState(() => {
-    if (cachedState?.schemes && Array.isArray(cachedState.schemes) && cachedState.schemes.length > 0) {
-      return cachedState.schemes;
-    }
-    return initialSchemes;
-  });
-  const [settings, setSettings] = useState(() => cachedState?.settings || { isHidden: false, redirectUrl: "https://www.google.com" });
-  const hasValidEodCache = Boolean(
-    cachedState && 
-    Array.isArray(cachedState.users) && 
-    cachedState.users.length > 0 &&
-    Array.isArray(cachedState.requests) &&
-    cachedState.requests.length > 0 &&
-    Array.isArray(cachedState.vendors) &&
-    cachedState.vendors.length > 0
-  );
+  const [itemPrices, setItemPrices] = useState([]);
+  const [crmPartyRemarks, setCrmPartyRemarks] = useState([]);
+  const [partyCategoryMonthlySales, setPartyCategoryMonthlySales] = useState([]);
+  const [partyCategoryMonths, setPartyCategoryMonths] = useState([]);
+  const [schemes, setSchemes] = useState(initialSchemes);
+  const [settings, setSettings] = useState({ isHidden: false, redirectUrl: "https://www.google.com" });
 
-  const [loading, setLoading] = useState(() => !hasValidEodCache);
-  const [initialLoadComplete, setInitialLoadComplete] = useState(() => hasValidEodCache);
+  const [loading, setLoading] = useState(true);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [isMasterDataSilentlyLoading, setIsMasterDataSilentlyLoading] = useState(false);
-  const currentDataVersionRef = useRef(cachedState?.version || null);
+  const currentDataVersionRef = useRef(null);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
 
   const handleHardCacheRefresh = async () => {
@@ -788,7 +733,7 @@ export default function App() {
 
   const unreadNotificationsCount = userNotifications.filter(n => !n.read).length;
 
-  // Fetch full state on mount & set up 15-second background sync
+  // Fetch full state on mount & set up 10-second real-time multi-laptop background sync
   useEffect(() => {
     let isMounted = true;
 
@@ -801,50 +746,28 @@ export default function App() {
 
     async function loadData(isInterval = false) {
       try {
-        // Delta Check: Query lightweight /api/state/meta (< 50 bytes) to see if data changed
+        const cacheBuster = Date.now();
+
+        // Delta Check: In interval polling, query lightweight /api/state/meta (< 50 bytes)
         let serverMeta = null;
-        try {
-          const metaRes = await fetch("/api/state/meta");
-          if (metaRes.ok) {
-            serverMeta = await metaRes.json();
+        if (isInterval && currentDataVersionRef.current !== null) {
+          try {
+            const metaRes = await fetch(`/api/state/meta?_t=${cacheBuster}`);
+            if (metaRes.ok) {
+              serverMeta = await metaRes.json();
+              if (serverMeta && serverMeta.version && serverMeta.version === currentDataVersionRef.current) {
+                return; // Server version unchanged; skip full fetch
+              }
+            }
+          } catch (me) {
+            console.warn("Could not query /api/state/meta:", me);
           }
-        } catch (me) {
-          console.warn("Could not query /api/state/meta:", me);
         }
 
-        const cachedVersion = cachedState?.version || currentDataVersionRef.current || null;
-        const todayStr = getTodayEodString();
-        const isCacheFromToday = cachedState?.eodDate === todayStr;
+        const q = currentUser 
+          ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(currentUser.role)}&userName=${encodeURIComponent(currentUser.name || '')}&_t=${cacheBuster}`
+          : `?_t=${cacheBuster}`;
 
-        // If user already has valid EOD cache from today and server version has not changed, do NOT pull full state again!
-        if (
-          !isInterval &&
-          hasValidEodCache &&
-          isCacheFromToday &&
-          serverMeta?.version &&
-          cachedVersion &&
-          serverMeta.version <= cachedVersion &&
-          requests.length > 0
-        ) {
-          console.log(`⚡ [EOD Delta Sync] Data is already up-to-date with server version ${serverMeta.version}. Skipping heavy database fetch.`);
-          clearTimeout(safetyTimer);
-          setLoading(false);
-          setInitialLoadComplete(true);
-          finishLoading();
-          return;
-        }
-
-        // If 30-second interval polling: if server version has not changed, skip poll pull completely!
-        if (
-          isInterval &&
-          serverMeta?.version &&
-          currentDataVersionRef.current &&
-          serverMeta.version <= currentDataVersionRef.current
-        ) {
-          return; // No mutations on server; save bandwidth & DB query
-        }
-
-        const q = currentUser ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(currentUser.role)}&userName=${encodeURIComponent(currentUser.name || '')}` : "";
         const res = await fetch(`/api/state${q}`);
         let data = {};
         if (res.ok) {
@@ -873,15 +796,14 @@ export default function App() {
         let effectiveItems = Array.isArray(data.items) ? data.items : [];
 
         // Direct Fallback Pull for Purchasing System:
-        // Guarantee purchase requests and vendors are populated even if /api/state had issues
         const isPurchaseUser = !currentUser || ["superadmin", "owner", "admin", "purchase_manager", "purchaser", "requester", "coordinator", "nitin", "rahul", "warehouse", "packing", "accounts"].includes(currentUser.role);
         if (isPurchaseUser && (effectiveRequests.length === 0 || effectiveVendors.length === 0 || effectiveCargos.length === 0)) {
           try {
             const fetches = [
-              effectiveRequests.length === 0 ? fetch("/api/requests").then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null),
-              effectiveVendors.length === 0 ? fetch("/api/vendors").then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null),
-              effectiveCargos.length === 0 ? fetch("/api/cargos").then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null),
-              effectiveCargoCompanies.length === 0 ? fetch("/api/cargo-companies").then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null)
+              effectiveRequests.length === 0 ? fetch(`/api/requests?_t=${cacheBuster}`).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null),
+              effectiveVendors.length === 0 ? fetch(`/api/vendors?_t=${cacheBuster}`).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null),
+              effectiveCargos.length === 0 ? fetch(`/api/cargos?_t=${cacheBuster}`).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null),
+              effectiveCargoCompanies.length === 0 ? fetch(`/api/cargo-companies?_t=${cacheBuster}`).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null)
             ];
             const [reqRes, venRes, carRes, ccRes] = await Promise.all(fetches);
             if (Array.isArray(reqRes) && reqRes.length > 0) {
@@ -943,52 +865,18 @@ export default function App() {
               lastRefreshTsRef.current = incomingTs;
             } else if (incomingTs > lastRefreshTsRef.current) {
               lastRefreshTsRef.current = incomingTs;
-              console.log("⚡ New update signal received from server. Showing red banner...");
               setShowUpdateBanner(true);
             }
           }
         }
 
-        setTimeout(() => {
-          try {
-            const existingCache = (() => {
-              try {
-                const s = localStorage.getItem("makpower_app_state_cache");
-                return s ? JSON.parse(s) : {};
-              } catch (e) { return {}; }
-            })();
-
-            const serverVersion = (data && data.version) || (serverMeta && serverMeta.version) || Date.now();
-            currentDataVersionRef.current = serverVersion;
-
-            localStorage.setItem("makpower_app_state_cache", JSON.stringify({
-              eodDate: getTodayEodString(),
-              version: serverVersion,
-              savedAt: Date.now(),
-              users: effectiveUsers || (existingCache.users || []),
-              vendors: effectiveVendors.length > 0 ? effectiveVendors : (existingCache.vendors || []),
-              requests: effectiveRequests.length > 0 ? effectiveRequests : (existingCache.requests || []),
-              cargos: effectiveCargos.length > 0 ? effectiveCargos : (existingCache.cargos || []),
-              cargoCompanies: effectiveCargoCompanies.length > 0 ? effectiveCargoCompanies : (existingCache.cargoCompanies || []),
-              items: effectiveItems.length > 0 ? effectiveItems : (existingCache.items || []),
-              designations: (Array.isArray(data.designations) && data.designations.length > 0) ? data.designations : (existingCache.designations || []),
-              crmParties: (Array.isArray(data.crmParties) && data.crmParties.length > 0) ? deduplicatePartiesKeepLast(data.crmParties) : (existingCache.crmParties || []),
-              crmSalesOrders: (Array.isArray(data.crmSalesOrders) && data.crmSalesOrders.length > 0) ? data.crmSalesOrders : (existingCache.crmSalesOrders || []),
-              crmDispatches: (Array.isArray(data.crmDispatches) && data.crmDispatches.length > 0) ? data.crmDispatches : (existingCache.crmDispatches || []),
-              imsTransactions: (Array.isArray(data.imsTransactions) && data.imsTransactions.length > 0) ? data.imsTransactions.slice(0, 1000) : (existingCache.imsTransactions || []),
-              imsSummary: data.imsSummary || existingCache.imsSummary || null,
-              itemPrices: (Array.isArray(data.itemPrices) && data.itemPrices.length > 0) ? data.itemPrices : (existingCache.itemPrices || []),
-              crmPartyRemarks: (Array.isArray(data.crmPartyRemarks) && data.crmPartyRemarks.length > 0) ? data.crmPartyRemarks : (existingCache.crmPartyRemarks || []),
-              schemes: (Array.isArray(data.schemes) && data.schemes.length > 0) ? data.schemes : (existingCache.schemes || initialSchemes),
-              settings: data.settings || existingCache.settings || {}
-            }));
-          } catch (e) {
-            console.warn("Local cache save warning:", e);
-          }
-        }, 50);
+        const serverVersion = (data && data.version) || (serverMeta && serverMeta.version) || null;
+        if (serverVersion) {
+          currentDataVersionRef.current = serverVersion;
+        }
 
         if (!isInterval) {
-          fetch("/api/audit-logs")
+          fetch(`/api/audit-logs?_t=${cacheBuster}`)
             .then(r => r.json())
             .then(logs => { if (isMounted && Array.isArray(logs)) setAuditLogs(logs); })
             .catch(() => {});
@@ -1007,17 +895,28 @@ export default function App() {
     
     loadData();
 
-    // Smart background sync: every 30s when active/visible
+    // High-performance background sync across all laptops: poll every 10s
     const intervalId = setInterval(() => {
       if (document.visibilityState === "visible") {
         loadData(true);
       }
-    }, 30000);
+    }, 10000);
+
+    // Instant sync when switching back to tab/window
+    const handleFocusSync = () => {
+      if (document.visibilityState === "visible") {
+        loadData(true);
+      }
+    };
+    document.addEventListener("visibilitychange", handleFocusSync);
+    window.addEventListener("focus", handleFocusSync);
 
     return () => {
       isMounted = false;
       clearTimeout(safetyTimer);
       clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleFocusSync);
+      window.removeEventListener("focus", handleFocusSync);
     };
   }, [currentUser]);
 
@@ -1974,11 +1873,7 @@ export default function App() {
           next = [...prev, savedParty];
         }
         const deduped = deduplicatePartiesKeepLast(next);
-        try {
-          const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-          cached.crmParties = deduped;
-          localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-        } catch (e) {}
+        
         return deduped;
       });
       logSystemActivity("CRM_PARTY_SAVED", `Saved party "${res.party.name}" (${res.party.city})`, "CRM Party", res.party.name);
@@ -1994,11 +1889,7 @@ export default function App() {
     const targetClean = (id || "").trim().toLowerCase();
     setCrmParties(prev => {
       const next = prev.filter(p => (p.id || "").trim().toLowerCase() !== targetClean && (p.name || "").trim().toLowerCase() !== targetClean);
-      try {
-        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-        cached.crmParties = next;
-        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-      } catch (e) {}
+      
       return next;
     });
     try {
@@ -2013,11 +1904,7 @@ export default function App() {
     const idSet = new Set((ids || []).map(x => (x || "").trim().toLowerCase()));
     setCrmParties(prev => {
       let next = purgeAll ? [] : prev.filter(p => !idSet.has((p.id || "").trim().toLowerCase()) && !idSet.has((p.name || "").trim().toLowerCase()));
-      try {
-        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-        cached.crmParties = next;
-        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-      } catch (e) {}
+      
       return next;
     });
     try {
@@ -2057,11 +1944,7 @@ export default function App() {
       if (res && res.success) {
         if (Array.isArray(res.sales)) {
           setPartyCategoryMonthlySales(res.sales);
-          try {
-            const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-            cached.partyCategoryMonthlySales = res.sales;
-            localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-          } catch (e) {}
+          
         }
         return res;
       }
@@ -2183,11 +2066,7 @@ export default function App() {
           } else {
             next = [res.remark, ...prev];
           }
-          try {
-            const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-            cached.crmPartyRemarks = next;
-            localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-          } catch (e) {}
+          
           return next;
         });
         logSystemActivity("CRM_PARTY_REMARK_SAVED", `Remark added by ${res.remark.authorName} on "${res.remark.partyName}" [${res.remark.category} / ${res.remark.month}]`, "Party Remark", res.remark.id);
@@ -2202,11 +2081,7 @@ export default function App() {
   const handleDeletePartyRemark = async (id) => {
     setCrmPartyRemarks(prev => {
       const next = prev.filter(r => r.id !== id);
-      try {
-        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-        cached.crmPartyRemarks = next;
-        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-      } catch (e) {}
+      
       return next;
     });
     try {
@@ -2247,11 +2122,7 @@ export default function App() {
   const handleDeletePrice = async (id) => {
     setItemPrices(prev => {
       const next = prev.filter(p => p.id !== id);
-      try {
-        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-        cached.itemPrices = next;
-        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-      } catch (e) {}
+      
       return next;
     });
     try {
@@ -2288,11 +2159,7 @@ export default function App() {
   const handleBulkDeletePrices = async (ids, purgeAll = false) => {
     setItemPrices(prev => {
       let next = purgeAll ? [] : prev.filter(p => !ids.includes(p.id));
-      try {
-        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-        cached.itemPrices = next;
-        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-      } catch (e) {}
+      
       return next;
     });
     try {
@@ -2321,11 +2188,7 @@ export default function App() {
           } else {
             next = [...prev, res.scheme];
           }
-          try {
-            const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-            cached.schemes = next;
-            localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-          } catch (e) {}
+          
           return next;
         });
         logSystemActivity("CRM_SCHEME_CREATED", `Created sales scheme "${res.scheme.name}"`, "Sales Scheme", res.scheme.id);
@@ -2348,11 +2211,7 @@ export default function App() {
       if (data && data.success && data.scheme) {
         setSchemes(prev => {
           const next = prev.map(s => s.id === data.scheme.id ? data.scheme : s);
-          try {
-            const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-            cached.schemes = next;
-            localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-          } catch (e) {}
+          
           return next;
         });
         logSystemActivity("CRM_SCHEME_UPDATED", `Updated sales scheme "${data.scheme.name}"`, "Sales Scheme", data.scheme.id);
@@ -2367,11 +2226,7 @@ export default function App() {
   const handleDeleteScheme = async (schemeId) => {
     setSchemes(prev => {
       const next = prev.filter(s => s.id !== schemeId);
-      try {
-        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-        cached.schemes = next;
-        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-      } catch (e) {}
+      
       return next;
     });
     try {
@@ -2405,11 +2260,7 @@ export default function App() {
         });
         return { ...s, items: existingItems };
       });
-      try {
-        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-        cached.schemes = next;
-        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-      } catch (e) {}
+      
       return next;
     });
 
@@ -2418,11 +2269,7 @@ export default function App() {
       if (res && res.success && res.scheme) {
         setSchemes(prev => {
           const next = prev.map(s => s.id === res.scheme.id ? res.scheme : s);
-          try {
-            const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-            cached.schemes = next;
-            localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-          } catch (e) {}
+          
           return next;
         });
         logSystemActivity("CRM_SCHEME_ITEMS_BULK", `Added ${itemsList.length} items to scheme "${res.scheme.name}"`, "Sales Scheme", schemeId);
@@ -2445,11 +2292,7 @@ export default function App() {
           items: (s.items || []).filter(i => (i.itemName || "").trim().toLowerCase() !== cleanTarget)
         };
       });
-      try {
-        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-        cached.schemes = next;
-        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-      } catch (e) {}
+      
       return next;
     });
 
@@ -2459,11 +2302,7 @@ export default function App() {
       if (data && data.success && data.scheme) {
         setSchemes(prev => {
           const next = prev.map(s => s.id === data.scheme.id ? data.scheme : s);
-          try {
-            const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-            cached.schemes = next;
-            localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-          } catch (e) {}
+          
           return next;
         });
         logSystemActivity("CRM_SCHEME_ITEM_REMOVED", `Removed item "${itemName}" from scheme #${schemeId}`, "Sales Scheme", schemeId);
@@ -2486,11 +2325,7 @@ export default function App() {
           items: (s.items || []).filter(i => !targetSet.has((i.itemName || "").trim().toLowerCase()))
         };
       });
-      try {
-        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-        cached.schemes = next;
-        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-      } catch (e) {}
+      
       return next;
     });
 
@@ -2499,11 +2334,7 @@ export default function App() {
       if (res && res.success && res.scheme) {
         setSchemes(prev => {
           const next = prev.map(s => s.id === res.scheme.id ? res.scheme : s);
-          try {
-            const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-            cached.schemes = next;
-            localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-          } catch (e) {}
+          
           return next;
         });
         logSystemActivity("CRM_SCHEME_ITEMS_BULK_DELETE", `Batch removed ${itemNames.length} items from scheme #${schemeId}`, "Sales Scheme", schemeId);
@@ -2564,11 +2395,7 @@ export default function App() {
     // 1. Instant Optimistic UI Update (0ms lag)
     setImsTransactions(prev => {
       const next = prev.filter(t => t.id !== txId);
-      try {
-        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-        cached.imsTransactions = next;
-        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-      } catch (e) {}
+      
       return next;
     });
     try {
@@ -2604,11 +2431,7 @@ export default function App() {
           return !(inRange && inLoc);
         });
       }
-      try {
-        const cached = JSON.parse(localStorage.getItem("makpower_app_state_cache") || "{}");
-        cached.imsTransactions = next;
-        localStorage.setItem("makpower_app_state_cache", JSON.stringify(cached));
-      } catch (e) {}
+      
       return next;
     });
 

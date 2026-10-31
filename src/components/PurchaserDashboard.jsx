@@ -554,11 +554,10 @@ export default function PurchaserDashboard({
   const [step3SelectedCategory, setStep3SelectedCategory] = useState("");
   const [step3ModelSearch, setStep3ModelSearch] = useState("");
 
-  // Accessible vendors: Full access for Admin, Purchase Manager, and Himanshi
+  // Accessible vendors: In Makpower, all purchasers can view and select any vendor
   const accessibleVendors = useMemo(() => {
-    if (hasFullPurchaseAccess) return vendors || [];
-    return (vendors || []).filter(v => isVendorForUser(v, currentUser, requests));
-  }, [vendors, currentUser, requests, hasFullPurchaseAccess]);
+    return vendors || [];
+  }, [vendors]);
 
   React.useEffect(() => {
     localStorage.setItem("makpower_purchaser_tab", activeTab);
@@ -10787,15 +10786,10 @@ function MyVendorsPanel({ currentUser, vendors, requests = [], onAddVendor, onUp
   const [error, setError] = useState("");
   const [showInactive, setShowInactive] = useState(false);
 
-  const isAllVendorsAccess = currentUser?.role === "superadmin" || 
-    currentUser?.role === "owner" || 
-    currentUser?.role === "admin" || 
-    currentUser?.role === "purchase_manager" || 
-    currentUser?.role === "purchase-manager" ||
-    (currentUser?.designation && currentUser.designation.toLowerCase().includes("purchase manager")) ||
-    (currentUser?.name && currentUser.name.toLowerCase().includes("anees"));
+  // In Makpower, all purchasers have full access to company vendor records
+  const isAllVendorsAccess = true;
 
-  const myVendors = isAllVendorsAccess ? (vendors || []) : (vendors || []).filter(v => isVendorForUser(v, currentUser, requests));
+  const myVendors = vendors || [];
   const displayedVendors = myVendors.filter(v => showInactive || v.status !== "Inactive");
 
   const handleSubmit = (e) => {

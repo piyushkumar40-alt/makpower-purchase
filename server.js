@@ -26,6 +26,15 @@ const app = express();
 app.use(express.json({ limit: "200mb" }));
 app.use(express.urlencoded({ limit: "200mb", extended: true }));
 
+// HTTP Cache-Busting: Guarantee fresh, non-stale data across all browsers/devices
+app.use("/api", (req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  res.setHeader("Surrogate-Control", "no-store");
+  next();
+});
+
 // High-performance State Cache to prevent DB pool exhaustion
 let stateCache = null;
 let stateCacheTimestamp = 0;
@@ -2791,14 +2800,16 @@ app.get("/api/state", async (req, res) => {
         priceRmb: r.priceRmb ? parseFloat(r.priceRmb) : "",
         totalRmb: r.totalRmb ? parseFloat(r.totalRmb) : "",
         advancePayment: r.advancePayment ? parseFloat(r.advancePayment) : "",
-        balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : ""
+        balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : "",
+        vendorEddHistory: safeJsonParse(r.vendorEddHistory, [])
       }));
 
       const cargos = (cargosRes.rows || []).map(c => sanitizeCargoDocuments({
         ...c,
         cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
         cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
-        totalCargoPrice: getEffectiveTotalCargoPrice(c)
+        totalCargoPrice: getEffectiveTotalCargoPrice(c),
+        cargoEtaHistory: safeJsonParse(c.cargoEtaHistory, [])
       }));
 
       const settings = {};
@@ -7975,10 +7986,23 @@ app.post("/api/settings/force-refresh", async (req, res) => {
 });
 
 // Serve frontend compiled client assets in production
-app.use(express.static(path.join(__dirname, "dist")));
+app.use(express.static(path.join(__dirname, "dist"), {
+  setHeaders: (res, filePath) => {
+    if (filePath.includes(path.sep + "assets" + path.sep)) {
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    } else {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+    }
+  }
+}));
 
 // SPA Router Fallback - routes all other routes to React SPA index.html
 app.get("*", (req, res) => {
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
