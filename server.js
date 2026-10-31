@@ -2557,7 +2557,7 @@ app.get("/api/state", async (req, res) => {
           pool.query("SELECT * FROM cargos").catch(e => { console.error("cargos query err:", e.message); return { rows: [] }; }),
           pool.query("SELECT * FROM requests").catch(e => { console.error("requests query err:", e.message); return { rows: [] }; }),
           pool.query("SELECT * FROM settings").catch(e => { console.error("settings query err:", e.message); return { rows: [] }; }),
-          pool.query("SELECT * FROM items ORDER BY LENGTH(\"id\") ASC, \"id\" ASC").catch(e => { console.error("items query err:", e.message); return { rows: [] }; }),
+          pool.query("SELECT * FROM items ORDER BY \"id\" ASC").catch(e => { console.error("items query err:", e.message); return { rows: [] }; }),
           pool.query("SELECT * FROM designations").catch(e => { console.error("designations query err:", e.message); return { rows: [] }; }),
           pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC").catch(e => { console.error("item_prices query err:", e.message); return { rows: [] }; })
         ]);

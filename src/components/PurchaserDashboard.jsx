@@ -477,12 +477,20 @@ export default function PurchaserDashboard({
   onUpdateEdd,
   onNavigateView,
   loading = false,
-  initialLoadComplete = true,
+  initialLoadComplete = false,
   isMasterDataSilentlyLoading = false,
   loadingModules = {}
 }) {
   const [eddModalConfig, setEddModalConfig] = useState(null);
-  const isDataLoading = Boolean(loading || (!initialLoadComplete && (!requests || requests.length === 0)));
+  const isDataLoading = Boolean(
+    loading || 
+    !initialLoadComplete || 
+    isMasterDataSilentlyLoading ||
+    loadingModules?.requests ||
+    loadingModules?.cargos ||
+    loadingModules?.vendors ||
+    (!requests || requests.length === 0)
+  );
 
   const renderTabLoader = (tabTitle, tabSubtitle) => (
     <div className="card-fade-in" style={{ padding: "56px 24px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "16px", border: "1px dashed var(--border-glass)", background: "rgba(15, 23, 42, 0.4)", borderRadius: "16px", margin: "16px 0" }}>
@@ -533,7 +541,10 @@ export default function PurchaserDashboard({
     currentUser?.role === "purchase-manager" || 
     (currentUser?.designation && currentUser.designation.toLowerCase().trim().includes("purchase manager")) ||
     (currentUser?.name && currentUser.name.toLowerCase().includes("anees"));
-  const hasFullPurchaseAccess = isAdmin || isPurchaseManager;
+  const isHimanshi = currentUser?.id === "u-himanshi" || 
+    (currentUser?.name && currentUser.name.toLowerCase().includes("himanshi")) ||
+    (currentUser?.email && currentUser.email.toLowerCase().includes("himanshi"));
+  const hasFullPurchaseAccess = isAdmin || isPurchaseManager || isHimanshi;
 
   // Admin delete confirmation modal state
   const [adminDeleteConfirm, setAdminDeleteConfirm] = useState(null);

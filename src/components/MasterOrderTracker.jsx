@@ -172,12 +172,17 @@ export default function MasterOrderTracker({
   const [cancelConfirm, setCancelConfirm] = useState(null);
   const [inspectedOrder, setInspectedOrder] = useState(null);
 
+  const isHimanshi = currentUser?.id === "u-himanshi" || 
+    (currentUser?.name && currentUser.name.toLowerCase().includes("himanshi")) ||
+    (currentUser?.email && currentUser.email.toLowerCase().includes("himanshi"));
+  const canSeeAllOrders = isAdmin || isPurchaseManager || isHimanshi || isViewOnly || currentUser?.role === "rahul";
+
   const accessibleRequests = useMemo(() => {
-    if (isAdmin || isPurchaseManager || isViewOnly || currentUser?.role === "rahul") {
+    if (canSeeAllOrders) {
       return requests || [];
     }
     return (requests || []).filter(r => isRequestForUser(r, currentUser, purchasers));
-  }, [requests, isAdmin, isPurchaseManager, isViewOnly, currentUser, purchasers]);
+  }, [requests, canSeeAllOrders, currentUser, purchasers]);
 
   const vendorMap = useMemo(() => {
     const map = {};
@@ -273,7 +278,7 @@ export default function MasterOrderTracker({
   // Helper to test if a request matches current filters (allowing one filter key to be excluded for calculating facet options)
   const matchesFilter = (r, excludeKey = "") => {
     // 1. Purchaser Filter
-    const canFilterPurchasers = isAdmin || isPurchaseManager || isViewOnly || currentUser?.role === "rahul";
+    const canFilterPurchasers = canSeeAllOrders;
     if (excludeKey !== "purchaser" && canFilterPurchasers && purchaserFilter !== "all") {
       const targetPurchaser = (purchasers || []).find(p => p.id === purchaserFilter) || { id: purchaserFilter };
       if (!isRequestForUser(r, targetPurchaser, purchasers)) return false;
@@ -1021,7 +1026,7 @@ export default function MasterOrderTracker({
             />
           </div>
 
-          {(isAdmin || isPurchaseManager || isViewOnly || currentUser?.role === "rahul") && (
+          {canSeeAllOrders && (
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <User size={14} /> Filter by Purchaser
@@ -1279,7 +1284,7 @@ export default function MasterOrderTracker({
                       Commercials <ArrowUpDown size={12} />
                     </div>
                   </th>
-                  {(isPurchaseManager || isSearchAdmin) && (
+                  {(isPurchaseManager || isSearchAdmin || isHimanshi) && (
                     <th style={{ minWidth: "110px" }}>Purchaser</th>
                   )}
                   <th style={{ minWidth: "80px", textAlign: "center" }}>Action</th>
@@ -1517,7 +1522,7 @@ export default function MasterOrderTracker({
                         )}
                       </td>
 
-                      {(isPurchaseManager || isSearchAdmin || isViewOnly || currentUser?.role === "rahul") && (
+                      {canSeeAllOrders && (
                         <td>
                           <span 
                             className="badge" 

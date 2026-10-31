@@ -222,7 +222,9 @@ export default function App() {
     Array.isArray(cachedState.users) && 
     cachedState.users.length > 0 &&
     Array.isArray(cachedState.requests) &&
-    cachedState.requests.length > 0
+    cachedState.requests.length > 0 &&
+    Array.isArray(cachedState.vendors) &&
+    cachedState.vendors.length > 0
   );
 
   const [loading, setLoading] = useState(() => !hasValidEodCache);
@@ -873,14 +875,15 @@ export default function App() {
         // Direct Fallback Pull for Purchasing System:
         // Guarantee purchase requests and vendors are populated even if /api/state had issues
         const isPurchaseUser = !currentUser || ["superadmin", "owner", "admin", "purchase_manager", "purchaser", "requester", "coordinator", "nitin", "rahul", "warehouse", "packing", "accounts"].includes(currentUser.role);
-        if (isPurchaseUser && (effectiveRequests.length === 0 || effectiveVendors.length === 0)) {
+        if (isPurchaseUser && (effectiveRequests.length === 0 || effectiveVendors.length === 0 || effectiveCargos.length === 0)) {
           try {
-            const [reqRes, venRes, carRes, ccRes] = await Promise.all([
-              fetch("/api/requests").then(r => r.ok ? r.json() : null).catch(() => null),
-              fetch("/api/vendors").then(r => r.ok ? r.json() : null).catch(() => null),
-              fetch("/api/cargos").then(r => r.ok ? r.json() : null).catch(() => null),
-              fetch("/api/cargo-companies").then(r => r.ok ? r.json() : null).catch(() => null)
-            ]);
+            const fetches = [
+              effectiveRequests.length === 0 ? fetch("/api/requests").then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null),
+              effectiveVendors.length === 0 ? fetch("/api/vendors").then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null),
+              effectiveCargos.length === 0 ? fetch("/api/cargos").then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null),
+              effectiveCargoCompanies.length === 0 ? fetch("/api/cargo-companies").then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null)
+            ];
+            const [reqRes, venRes, carRes, ccRes] = await Promise.all(fetches);
             if (Array.isArray(reqRes) && reqRes.length > 0) {
               effectiveRequests = reqRes.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" }));
             }
