@@ -31,7 +31,8 @@ export default function ItemCatalogPanel({
   cargoCompanies = [],
   onViewItemDetail,
   imsTransactions = [],
-  crmDispatches = []
+  crmDispatches = [],
+  loading = false
 }) {
   const isSuperAdmin = currentUser && currentUser.role === "superadmin";
 
@@ -1750,7 +1751,17 @@ export default function ItemCatalogPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredItems.length === 0 ? (
+                  {loading && items.length === 0 ? (
+                    <tr>
+                      <td colSpan={isSuperAdmin ? "11" : "9"} style={{ textAlign: "center", padding: "50px 20px" }}>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+                          <div style={{ width: "36px", height: "36px", border: "3px solid rgba(56, 189, 248, 0.2)", borderTopColor: "#38bdf8", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                          <div style={{ fontWeight: 600, color: "var(--text-main)" }}>Loading Master Item Catalog...</div>
+                          <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Retrieving item catalog specifications from server...</div>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredItems.length === 0 ? (
                     <tr>
                       <td colSpan={isSuperAdmin ? "11" : "9"} style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
                         {searchQuery || categoryFilter !== "all" || typeFilter !== "all"

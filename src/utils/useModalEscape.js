@@ -3,6 +3,92 @@ import { useEffect } from "react";
 // Global stack of active modal close handlers (LIFO: Last In, First Out)
 const modalCloseStack = [];
 
+// Global stack of custom back-button handlers (e.g. for tabs or complex views)
+const backHandlerStack = [];
+
+export function pushBackHandler(fn) {
+  if (typeof fn === "function") {
+    backHandlerStack.push(fn);
+  }
+  return () => {
+    const idx = backHandlerStack.lastIndexOf(fn);
+    if (idx !== -1) {
+      backHandlerStack.splice(idx, 1);
+    }
+  };
+}
+
+export function executeTopBackHandler() {
+  for (let i = backHandlerStack.length - 1; i >= 0; i--) {
+    const handler = backHandlerStack[i];
+    if (typeof handler === "function") {
+      try {
+        const handled = handler();
+        if (handled) return true;
+      } catch (err) {
+        console.error("Back handler error:", err);
+      }
+    }
+  }
+  return false;
+}
+
+export function closeTopModal() {
+  // 1. Check registered modalCloseStack
+  if (modalCloseStack.length > 0) {
+    const topHandler = modalCloseStack.pop();
+    if (typeof topHandler === "function") {
+      try {
+        topHandler();
+        return true;
+      } catch (e) {
+        console.error("Error executing modal close handler:", e);
+      }
+    }
+  }
+
+  // 2. Check for visible DOM modals
+  if (typeof document !== "undefined") {
+    const visibleModals = Array.from(
+      document.querySelectorAll(".modal-overlay, .modal-backdrop, .modal, [role='dialog']")
+    ).filter((el) => {
+      const style = window.getComputedStyle(el);
+      return (
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        parseFloat(style.opacity || "1") > 0
+      );
+    });
+
+    if (visibleModals.length > 0) {
+      const topModal = visibleModals[visibleModals.length - 1];
+      const closeBtn =
+        topModal.querySelector(
+          ".modal-close, button.modal-close, button.close, [data-dismiss='modal'], button[aria-label*='close' i], button[title*='close' i]"
+        ) ||
+        Array.from(topModal.querySelectorAll("button")).find((btn) => {
+          const text = (btn.textContent || "").trim().toLowerCase();
+          return (
+            text === "close" ||
+            text === "cancel" ||
+            text === "✕" ||
+            text === "×" ||
+            text.includes("cancel")
+          );
+        });
+
+      if (closeBtn) {
+        closeBtn.click();
+        return true;
+      }
+      topModal.click();
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function pushModalCloseHandler(onClose) {
   if (typeof onClose === "function") {
     modalCloseStack.push(onClose);
@@ -44,57 +130,9 @@ if (typeof window !== "undefined") {
     "keydown",
     (e) => {
       if (e.key === "Escape" || e.key === "Esc") {
-        // 1. If we have registered modals on the stack, call the top-most handler
-        if (modalCloseStack.length > 0) {
+        if (closeTopModal()) {
           e.preventDefault();
           e.stopPropagation();
-          const topHandler = modalCloseStack[modalCloseStack.length - 1];
-          if (typeof topHandler === "function") {
-            topHandler();
-          }
-          return;
-        }
-
-        // 2. Fallback for unhooked modals, popups, or backdrops in the DOM
-        const visibleModals = Array.from(
-          document.querySelectorAll(".modal-overlay, .modal-backdrop, .modal, [role='dialog']")
-        ).filter((el) => {
-          const style = window.getComputedStyle(el);
-          return (
-            style.display !== "none" &&
-            style.visibility !== "hidden" &&
-            parseFloat(style.opacity || "1") > 0
-          );
-        });
-
-        if (visibleModals.length > 0) {
-          const topModal = visibleModals[visibleModals.length - 1];
-
-          // Check for close button inside topModal
-          const closeBtn =
-            topModal.querySelector(
-              ".modal-close, button.modal-close, button.close, [data-dismiss='modal'], button[aria-label*='close' i], button[title*='close' i]"
-            ) ||
-            Array.from(topModal.querySelectorAll("button")).find((btn) => {
-              const text = (btn.textContent || "").trim().toLowerCase();
-              return (
-                text === "close" ||
-                text === "cancel" ||
-                text === "✕" ||
-                text === "×" ||
-                text.includes("cancel")
-              );
-            });
-
-          if (closeBtn) {
-            e.preventDefault();
-            e.stopPropagation();
-            closeBtn.click();
-            return;
-          }
-
-          // Trigger backdrop click if supported
-          topModal.click();
         }
       }
     },

@@ -1,7 +1,7 @@
 import React from "react";
 import { Clock, Truck, AlertCircle, Award } from "lucide-react";
 
-export default function AnalyticsPanel({ requests = [], vendors = [], cargos = [], onSelectTab }) {
+export default function AnalyticsPanel({ requests = [], vendors = [], cargos = [], onSelectTab, loading = false }) {
   // 1. Dynamic Reference Date
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -31,7 +31,7 @@ export default function AnalyticsPanel({ requests = [], vendors = [], cargos = [
 
   // Price delays
   pendingItems.forEach(r => {
-    if (r.requiredByDate && new Date(r.requiredByDate) < today && isCurrentMonth(r.requiredByDate)) {
+    if (r.requiredByDate && new Date(r.requiredByDate) < today) {
       delayedItemsCount++;
     }
   });
@@ -39,15 +39,17 @@ export default function AnalyticsPanel({ requests = [], vendors = [], cargos = [
   // Cargo assignment delays
   awaitingCargoItems.forEach(r => {
     const delayDate = r.vendorReadyDate || r.vendorEdd;
-    if (delayDate && new Date(delayDate) < today && isCurrentMonth(delayDate)) {
+    if (delayDate && new Date(delayDate) < today) {
       delayedItemsCount++;
     }
   });
 
   // Cargo transit delays
-  myCargos.forEach(c => {
+  inTransitItems.forEach(r => {
+    const c = (cargos || []).find(cg => cg.id === r.cargoId || String(cg.id) === String(r.cargoId));
+    if (!c) return;
     if (c.isMaterialRec !== "Yes") {
-      if (c.cargoEta && new Date(c.cargoEta) < today && isCurrentMonth(c.cargoEta)) {
+      if (c.cargoEta && new Date(c.cargoEta) < today) {
         delayedItemsCount++;
       }
     }
@@ -82,6 +84,48 @@ export default function AnalyticsPanel({ requests = [], vendors = [], cargos = [
       });
     }
   });
+
+  if (loading) {
+    return (
+      <div className="card-fade-in" style={{ marginBottom: "24px" }}>
+        <div className="dashboard-grid">
+          {[
+            { label: "Delayed Items (Month)", color: "#38bdf8", icon: Clock },
+            { label: "Step 1: Awaiting Price", color: "#a855f7", icon: AlertCircle },
+            { label: "Step 2: Awaiting Cargo", color: "#3b82f6", icon: Award },
+            { label: "Step 3: Cargo In-Transit", color: "#06b6d4", icon: Truck }
+          ].map((item, idx) => {
+            const Icon = item.icon;
+            return (
+              <div 
+                key={idx} 
+                className="metric-card" 
+                style={{ 
+                  opacity: 0.85, 
+                  pointerEvents: "none",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  background: "var(--bg-card)"
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: "var(--text-muted)", fontSize: "0.8rem", textTransform: "uppercase", fontWeight: 700, marginBottom: "8px" }}>
+                    {item.label}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                    <div style={{ width: "65px", height: "22px", background: "var(--border-glass)", borderRadius: "4px", animation: "pulse 1.5s infinite" }} />
+                  </div>
+                  <div style={{ width: "100px", height: "12px", background: "var(--border-glass)", borderRadius: "3px", animation: "pulse 1.5s infinite" }} />
+                </div>
+                <div style={{ padding: "10px", background: "rgba(255, 255, 255, 0.05)", borderRadius: "12px", color: item.color }}>
+                  <Icon size={24} style={{ opacity: 0.6 }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="card-fade-in" style={{ marginBottom: "24px" }}>

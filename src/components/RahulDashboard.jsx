@@ -48,9 +48,12 @@ export default function RahulDashboard({
   purchasers = [], 
   users = [],
   items = [],
-  onBatchUpdateRequests, 
+  onBatchUpdateRequests,
   onUpdateCargo,
-  onLogout 
+  onLogout,
+  loading = false,
+  initialLoadComplete = true,
+  isMasterDataSilentlyLoading = false
 }) {
   const getPurchaserName = (r) => getPurchaserDisplayName(r, purchasers);
 
@@ -1269,6 +1272,9 @@ export default function RahulDashboard({
             purchasers={purchasers}
             currentUser={currentUser}
             isViewOnly={true}
+            loading={loading}
+            initialLoadComplete={initialLoadComplete}
+            isMasterDataSilentlyLoading={isMasterDataSilentlyLoading}
           />
         </div>
       )}

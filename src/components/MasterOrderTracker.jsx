@@ -128,7 +128,10 @@ export default function MasterOrderTracker({
   onNavigateStep,
   onDeleteRequests,
   onCancelRequests,
-  onUpdateCargo
+  onUpdateCargo,
+  loading = false,
+  initialLoadComplete = true,
+  isMasterDataSilentlyLoading = false
 }) {
   const isViewOnly = Boolean(propIsViewOnly || currentUser?.role === "rahul");
   const isAdmin = Boolean(
@@ -148,6 +151,12 @@ export default function MasterOrderTracker({
   const [purchaserFilter, setPurchaserFilter] = useState("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+
+  const today = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
   
   const [sortField, setSortField] = useState("orderDate");
   const [sortDirection, setSortDirection] = useState("desc");
@@ -203,6 +212,40 @@ export default function MasterOrderTracker({
       const unitPrice = parseFloat(r.priceRmb || 0);
       const totalRmb = parseFloat(r.totalRmb || (unitPrice > 0 ? unitPrice * effectiveQty : 0));
 
+      let isDelayed = false;
+      let delayReason = "";
+      let targetDate = "";
+      let daysOverdue = 0;
+
+      if (r.status !== "Cancelled" && r.isMaterialRec !== "Yes") {
+        if (r.cargoId) {
+          const c = cargo || (cargos || []).find(cg => cg.id === r.cargoId || String(cg.id) === String(r.cargoId));
+          if (c && c.isMaterialRec !== "Yes" && c.cargoEta) {
+            targetDate = c.cargoEta;
+            if (new Date(c.cargoEta) < today) {
+              isDelayed = true;
+              delayReason = `Cargo ETA Missed (${c.cargoEta})`;
+            }
+          }
+        } else if (r.priceRmb) {
+          targetDate = r.vendorReadyDate || r.vendorEdd;
+          if (targetDate && new Date(targetDate) < today) {
+            isDelayed = true;
+            delayReason = r.vendorReadyDate ? `Ready Date Passed (${r.vendorReadyDate})` : `Vendor EDD Missed (${r.vendorEdd})`;
+          }
+        } else if (r.requiredByDate) {
+          targetDate = r.requiredByDate;
+          if (new Date(r.requiredByDate) < today) {
+            isDelayed = true;
+            delayReason = `Required Date Passed (${r.requiredByDate})`;
+          }
+        }
+        if (isDelayed && targetDate) {
+          const diffTime = today - new Date(targetDate);
+          daysOverdue = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+        }
+      }
+
       return {
         ...r,
         _cargo: cargo,
@@ -212,7 +255,11 @@ export default function MasterOrderTracker({
         _effectiveOrderDate: effectiveOrderDate,
         _effectiveQty: effectiveQty,
         _unitPrice: unitPrice,
-        _totalRmb: totalRmb
+        _totalRmb: totalRmb,
+        _isDelayed: isDelayed,
+        _delayReason: delayReason,
+        _daysOverdue: daysOverdue,
+        _targetDate: targetDate
       };
     });
   }, [accessibleRequests, cargoMap, vendorMap, purchaserMap]);
@@ -230,6 +277,8 @@ export default function MasterOrderTracker({
     if (excludeKey !== "stage" && stageFilter !== "all") {
       if (stageFilter === "in_progress") {
         if (r._stage.key === "received" || r._stage.key === "cancelled") return false;
+      } else if (stageFilter === "delayed") {
+        if (!r._isDelayed) return false;
       } else if (r._stage.key !== stageFilter) {
         return false;
       }
@@ -282,6 +331,7 @@ export default function MasterOrderTracker({
     const counts = {
       total: candidateForStage.length,
       totalPcs: 0,
+      delayed: 0,
       step1: 0,
       priced: 0,
       vendorready: 0,
@@ -293,6 +343,9 @@ export default function MasterOrderTracker({
 
     candidateForStage.forEach(r => {
       counts.totalPcs += r._effectiveQty;
+      if (r._isDelayed) {
+        counts.delayed++;
+      }
       if (counts[r._stage.key] !== undefined) {
         counts[r._stage.key]++;
       }
@@ -455,6 +508,7 @@ export default function MasterOrderTracker({
   const stageOptions = useMemo(() => [
     { value: "all", label: `All Stages (${stageCounts.total})` },
     { value: "in_progress", label: `All Active / In Progress (${stageCounts.total - stageCounts.received - stageCounts.cancelled})` },
+    { value: "delayed", label: `⚠️ Delayed Items (${stageCounts.delayed})` },
     { value: "step1", label: `Step 1: Starting (Unpriced) (${stageCounts.step1})` },
     { value: "priced", label: `Priced (Production Pending) (${stageCounts.priced})` },
     { value: "vendorready", label: `Step 2: Ready at Vendor (${stageCounts.vendorready})` },
@@ -669,6 +723,59 @@ export default function MasterOrderTracker({
     }
   };
 
+  const isDataLoading = Boolean(loading || isMasterDataSilentlyLoading || (!initialLoadComplete && (!requests || requests.length === 0)));
+
+  if (isDataLoading) {
+    return (
+      <div className="card-fade-in" style={{ paddingBottom: "40px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px", marginBottom: "20px" }}>
+          <div>
+            <h3 style={{ fontSize: "1.5rem", fontWeight: 800, margin: 0, display: "flex", alignItems: "center", gap: "10px" }}>
+              <Layers size={24} style={{ color: "#38bdf8" }} /> Master Order Tracker
+            </h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.88rem", marginTop: "4px", marginBottom: 0 }}>
+              Track every purchase order item-wise from initial placement, vendor readiness, cargo consolidation, to warehouse receipt.
+            </p>
+          </div>
+        </div>
+
+        {/* Shimmer Placeholder Metric Cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px", marginBottom: "24px" }}>
+          {[
+            { label: "Total Orders", color: "var(--text-muted)" },
+            { label: "Delayed (Month)", color: "#ef4444" },
+            { label: "Step 1: Unpriced", color: "#94a3b8" },
+            { label: "Priced (In Prod)", color: "#f59e0b" },
+            { label: "Step 2: Ready At Vendor", color: "#10b981" },
+            { label: "Step 3: In Cargo Batch", color: "#06b6d4" },
+            { label: "Step 4: Picked Up", color: "#818cf8" },
+            { label: "Step 5: Received", color: "#22c55e" }
+          ].map((card, idx) => (
+            <div key={idx} className="glass-panel" style={{ padding: "14px 16px", opacity: 0.85, pointerEvents: "none" }}>
+              <div style={{ fontSize: "0.75rem", textTransform: "uppercase", fontWeight: 700, color: card.color, marginBottom: "8px" }}>
+                {card.label}
+              </div>
+              <div style={{ width: "60px", height: "24px", background: "var(--border-glass)", borderRadius: "4px", animation: "pulse 1.5s infinite" }} />
+            </div>
+          ))}
+        </div>
+
+        {/* Interactive Loading Hero */}
+        <div className="card" style={{ padding: "56px 24px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "16px", border: "1px dashed var(--border-glass)", background: "rgba(15, 23, 42, 0.4)", borderRadius: "16px" }}>
+          <div style={{ width: "48px", height: "48px", border: "4px solid rgba(56, 189, 248, 0.2)", borderTopColor: "#38bdf8", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+          <div>
+            <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "6px" }}>
+              Loading Master Order Database...
+            </div>
+            <div style={{ fontSize: "0.88rem", color: "var(--text-muted)", maxWidth: "520px", lineHeight: "1.5" }}>
+              Synchronizing order line items, vendor production commitments, and logistics cargo batches. All stages will display automatically.
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="card-fade-in" style={{ paddingBottom: "40px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px", marginBottom: "20px" }}>
@@ -712,6 +819,25 @@ export default function MasterOrderTracker({
           <div style={{ fontSize: "0.75rem", textTransform: "uppercase", fontWeight: 700, color: "var(--text-muted)" }}>Total Orders</div>
           <div style={{ fontSize: "1.5rem", fontWeight: 800, marginTop: "4px", color: "var(--text-main)" }}>
             {stageCounts.total} <span style={{ fontSize: "0.8rem", fontWeight: 500, color: "var(--text-muted)" }}>({stageCounts.totalPcs.toLocaleString()} Pcs)</span>
+          </div>
+        </div>
+
+        <div 
+          onClick={() => setStageFilter(stageFilter === "delayed" ? "all" : "delayed")}
+          className="glass-panel" 
+          style={{ 
+            padding: "14px 16px", 
+            cursor: "pointer", 
+            border: stageFilter === "delayed" ? "2px solid #ef4444" : (stageCounts.delayed > 0 ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid var(--border-glass)"),
+            background: stageFilter === "delayed" ? "rgba(239, 68, 68, 0.12)" : (stageCounts.delayed > 0 ? "rgba(239, 68, 68, 0.04)" : undefined)
+          }}
+          title="Click to view all delayed order lines that missed target dates"
+        >
+          <div style={{ fontSize: "0.75rem", textTransform: "uppercase", fontWeight: 700, color: stageCounts.delayed > 0 ? "#ef4444" : "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
+            <Clock size={12} /> Delayed (Month)
+          </div>
+          <div style={{ fontSize: "1.5rem", fontWeight: 800, marginTop: "4px", color: stageCounts.delayed > 0 ? "#ef4444" : "var(--text-main)" }}>
+            {stageCounts.delayed} <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-muted)" }}>Items</span>
           </div>
         </div>
 
@@ -1190,6 +1316,27 @@ export default function MasterOrderTracker({
                         <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px" }}>
                           {stage.desc}
                         </div>
+                        {r._isDelayed && (
+                          <div style={{ marginTop: "6px" }}>
+                            <span 
+                              className="badge" 
+                              style={{ 
+                                background: "rgba(239, 68, 68, 0.15)", 
+                                color: "#f87171", 
+                                border: "1px solid rgba(239, 68, 68, 0.35)", 
+                                fontWeight: 700, 
+                                fontSize: "0.72rem", 
+                                padding: "2px 6px",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px"
+                              }}
+                              title={r._delayReason}
+                            >
+                              <Clock size={11} /> Overdue by {r._daysOverdue}d
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       <td>
@@ -1254,7 +1401,7 @@ export default function MasterOrderTracker({
                         ) : (
                           <>
                             {r.vendorEdd && (
-                              <div>
+                              <div style={{ color: (new Date(r.vendorEdd) < today && !r.cargoId && r.isMaterialRec !== "Yes") ? "#f87171" : undefined }}>
                                 <span style={{ color: "var(--text-muted)" }}>Vendor EDD:</span> <strong>{r.vendorEdd}</strong>
                                 {(() => {
                                   const hist = Array.isArray(r.vendorEddHistory) ? r.vendorEddHistory : (typeof r.vendorEddHistory === "string" ? JSON.parse(r.vendorEddHistory || "[]") : []);
@@ -1280,7 +1427,13 @@ export default function MasterOrderTracker({
                               </div>
                             )}
                             {!r.vendorEdd && !r.vendorReadyDate && !r.cargoPickupDate && !r.receivedDate && (
-                              <span style={{ color: "var(--text-muted)" }}>Dates Pending</span>
+                              r.requiredByDate ? (
+                                <div style={{ color: (new Date(r.requiredByDate) < today && !r.priceRmb) ? "#f87171" : "var(--text-muted)" }}>
+                                  <span>Required By:</span> <strong>{r.requiredByDate}</strong>
+                                </div>
+                              ) : (
+                                <span style={{ color: "var(--text-muted)" }}>Dates Pending</span>
+                              )
                             )}
                           </>
                         )}

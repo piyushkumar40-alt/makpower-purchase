@@ -6,7 +6,7 @@ import CustomSelect from "./CustomSelect";
 import { useSortableData } from "../utils/useSortableData";
 import { getPurchaserDisplayName } from "../utils/formatters";
 
-export default function NitinDashboard({ currentUser = {}, requests = [], vendors = [], cargos = [], items = [], purchasers = [], onBatchUpdateRequests, onLogout }) {
+export default function NitinDashboard({ currentUser = {}, requests = [], vendors = [], cargos = [], items = [], purchasers = [], onBatchUpdateRequests, onLogout, loading = false, initialLoadComplete = true }) {
   const getPurchaserName = (r) => getPurchaserDisplayName(r, purchasers);
 
   const [activeTab, setActiveTab] = useState(() => {
@@ -198,7 +198,13 @@ export default function NitinDashboard({ currentUser = {}, requests = [], vendor
       )}
 
       {/* Requisitions List Table */}
-      {filteredRequests.length === 0 ? (
+      {loading || (!initialLoadComplete && requests.length === 0) ? (
+        <div className="glass-panel" style={{ padding: "50px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "14px" }}>
+          <div style={{ width: "40px", height: "40px", border: "4px solid rgba(236,72,153,0.2)", borderTopColor: "#ec4899", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+          <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--text-main)" }}>Loading Packing Orders...</div>
+          <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Synchronizing purchase requests and packing statuses from server...</div>
+        </div>
+      ) : filteredRequests.length === 0 ? (
         <div className="glass-panel" style={{ padding: "50px", textAlign: "center", color: "var(--text-muted)" }}>
           <PackageOpen size={36} style={{ color: "var(--primary)", marginBottom: "12px", display: "inline" }} /><br />
           No requests match the selected filters.

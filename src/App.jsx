@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { LogIn, ShoppingCart, ShieldAlert, LogOut, Settings, BarChart2, Package, Sun, Moon, Home, Menu, X, Building2, RefreshCw, Search, Bell, Briefcase, Layers, Key } from "lucide-react";
+import { LogIn, ShoppingCart, ShieldAlert, LogOut, Settings, BarChart2, Package, Sun, Moon, Home, Menu, X, Building2, RefreshCw, Search, Bell, Briefcase, Layers, Key, ArrowLeft } from "lucide-react";
 import LoginPage from "./components/LoginPage";
 import RequesterForm from "./components/RequesterForm";
 import PurchaserDashboard from "./components/PurchaserDashboard";
@@ -25,7 +25,7 @@ import {
 import { isDateInBetween } from "./components/DateRangeFilter";
 import { cleanCategoryName, isRequestForUser } from "./utils/formatters";
 import { useLoading } from "./context/LoadingContext";
-import "./utils/useModalEscape";
+import { closeTopModal, executeTopBackHandler } from "./utils/useModalEscape";
 
 // Helper to ensure party name acts as primary key and duplicates above the last party are deleted
 export function deduplicatePartiesKeepLast(parties) {
@@ -138,12 +138,26 @@ export default function App() {
     };
   };
 
-  // Load initial data from localStorage or mockData
-  // Load initial data from localStorage cache for 0ms instant startup
+  // Helper to get local date string YYYY-MM-DD for End-Of-Day (EOD) expiration
+  const getTodayEodString = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+
+  // Load initial data from localStorage cache for 0ms instant startup with EOD validation
   const cachedState = React.useMemo(() => {
     try {
       const saved = localStorage.getItem("makpower_app_state_cache");
-      return saved ? JSON.parse(saved) : null;
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      const todayStr = getTodayEodString();
+      // If the cache was stored on a previous day, it has expired at End Of Day (EOD)
+      if (parsed && parsed.eodDate && parsed.eodDate !== todayStr) {
+        console.log(`🌅 [EOD Cache] New day detected (${todayStr} vs cached ${parsed.eodDate}). Expiring yesterday's cache.`);
+        localStorage.removeItem("makpower_app_state_cache");
+        return null;
+      }
+      return parsed;
     } catch (e) {
       return null;
     }
@@ -203,19 +217,18 @@ export default function App() {
     return initialSchemes;
   });
   const [settings, setSettings] = useState(() => cachedState?.settings || { isHidden: false, redirectUrl: "https://www.google.com" });
-  const [loading, setLoading] = useState(() => {
-    try {
-      const saved = localStorage.getItem("makpower_app_state_cache");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && Array.isArray(parsed.users) && parsed.users.length > 0) {
-          return false; // Instant 0ms startup from local cache!
-        }
-      }
-    } catch (e) {}
-    return true;
-  });
-  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const hasValidEodCache = Boolean(
+    cachedState && 
+    Array.isArray(cachedState.users) && 
+    cachedState.users.length > 0 &&
+    Array.isArray(cachedState.requests) &&
+    cachedState.requests.length > 0
+  );
+
+  const [loading, setLoading] = useState(() => !hasValidEodCache);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(() => hasValidEodCache);
+  const [isMasterDataSilentlyLoading, setIsMasterDataSilentlyLoading] = useState(false);
+  const currentDataVersionRef = useRef(cachedState?.version || null);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
 
   const handleHardCacheRefresh = async () => {
@@ -577,6 +590,124 @@ export default function App() {
     setActiveView("home");
   };
 
+  // ==================== BROWSER BACK BUTTON & HISTORY CONTROLLER ====================
+  const [backExitToast, setBackExitToast] = useState(false);
+  const activeViewRef = useRef(activeView);
+  activeViewRef.current = activeView;
+
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
+
+  const mobileMenuOpenRef = useRef(mobileMenuOpen);
+  mobileMenuOpenRef.current = mobileMenuOpen;
+
+  const showPasswordModalRef = useRef(showPasswordModal);
+  showPasswordModalRef.current = showPasswordModal;
+
+  const isPopStateRef = useRef(false);
+  const viewHistoryRef = useRef([activeView]);
+  const lastBackPressTimeRef = useRef(0);
+
+  // Sync activeView changes into viewHistory and push browser history state
+  useEffect(() => {
+    if (isPopStateRef.current) {
+      isPopStateRef.current = false;
+      return;
+    }
+    const stack = viewHistoryRef.current;
+    if (stack[stack.length - 1] !== activeView) {
+      stack.push(activeView);
+      try {
+        window.history.pushState({ app: "makpower", view: activeView, ts: Date.now() }, "");
+      } catch (e) {}
+    }
+  }, [activeView]);
+
+  // Initial mount: setup barrier entry in browser history and listen to popstate
+  useEffect(() => {
+    try {
+      window.history.replaceState({ app: "makpower", view: activeView, isRoot: true, ts: Date.now() }, "");
+      window.history.pushState({ app: "makpower", view: activeView, ts: Date.now() }, "");
+    } catch (e) {}
+
+    const handlePopState = () => {
+      // 1. If mobile menu drawer is open, close it
+      if (mobileMenuOpenRef.current) {
+        setMobileMenuOpen(false);
+        try { window.history.pushState({ app: "makpower", view: activeViewRef.current }, ""); } catch (err) {}
+        return;
+      }
+
+      // 2. If change password modal is open, close it
+      if (showPasswordModalRef.current) {
+        setShowPasswordModal(false);
+        setIsWeakPasswordPrompt(false);
+        try { window.history.pushState({ app: "makpower", view: activeViewRef.current }, ""); } catch (err) {}
+        return;
+      }
+
+      // 3. If any modal dialog in the application is open, close it
+      if (closeTopModal()) {
+        try { window.history.pushState({ app: "makpower", view: activeViewRef.current }, ""); } catch (err) {}
+        return;
+      }
+
+      // 4. If any custom component back handler (e.g. dashboard tab) wants to handle it
+      if (executeTopBackHandler()) {
+        try { window.history.pushState({ app: "makpower", view: activeViewRef.current }, ""); } catch (err) {}
+        return;
+      }
+
+      // 5. If currently viewing itemdetail, return to previous view
+      if (activeViewRef.current === "itemdetail") {
+        handleBackFromItemDetail();
+        return;
+      }
+
+      // 6. Navigate back through the in-app view history stack
+      const stack = viewHistoryRef.current;
+      if (stack.length > 1) {
+        stack.pop(); // remove current view
+        const prevView = stack[stack.length - 1];
+        if (prevView && prevView !== activeViewRef.current) {
+          isPopStateRef.current = true;
+          setActiveView(prevView);
+          return;
+        }
+      }
+
+      // 7. If currently on a non-root view (e.g. dashboard, itemcatalog, crm), return to Home
+      const rootDefault = currentUserRef.current ? "home" : "login";
+      if (activeViewRef.current !== rootDefault) {
+        isPopStateRef.current = true;
+        setActiveView(rootDefault);
+        viewHistoryRef.current = [rootDefault];
+        return;
+      }
+
+      // 8. At root view (Home / Login): Double-back to exit guard
+      const now = Date.now();
+      if (now - lastBackPressTimeRef.current < 2000) {
+        // User deliberately tapped Back twice within 2 seconds: Allow exit!
+        window.removeEventListener("popstate", handlePopState);
+        window.history.back();
+      } else {
+        // First press: prevent exit and show toast
+        lastBackPressTimeRef.current = now;
+        try {
+          window.history.pushState({ app: "makpower", view: rootDefault, isRoot: true }, "");
+        } catch (err) {}
+        setBackExitToast(true);
+        setTimeout(() => setBackExitToast(false), 2000);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
+
   const lastRefreshTsRef = React.useRef(null);
 
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
@@ -668,6 +799,49 @@ export default function App() {
 
     async function loadData(isInterval = false) {
       try {
+        // Delta Check: Query lightweight /api/state/meta (< 50 bytes) to see if data changed
+        let serverMeta = null;
+        try {
+          const metaRes = await fetch("/api/state/meta");
+          if (metaRes.ok) {
+            serverMeta = await metaRes.json();
+          }
+        } catch (me) {
+          console.warn("Could not query /api/state/meta:", me);
+        }
+
+        const cachedVersion = cachedState?.version || currentDataVersionRef.current || null;
+        const todayStr = getTodayEodString();
+        const isCacheFromToday = cachedState?.eodDate === todayStr;
+
+        // If user already has valid EOD cache from today and server version has not changed, do NOT pull full state again!
+        if (
+          !isInterval &&
+          hasValidEodCache &&
+          isCacheFromToday &&
+          serverMeta?.version &&
+          cachedVersion &&
+          serverMeta.version <= cachedVersion &&
+          requests.length > 0
+        ) {
+          console.log(`⚡ [EOD Delta Sync] Data is already up-to-date with server version ${serverMeta.version}. Skipping heavy database fetch.`);
+          clearTimeout(safetyTimer);
+          setLoading(false);
+          setInitialLoadComplete(true);
+          finishLoading();
+          return;
+        }
+
+        // If 30-second interval polling: if server version has not changed, skip poll pull completely!
+        if (
+          isInterval &&
+          serverMeta?.version &&
+          currentDataVersionRef.current &&
+          serverMeta.version <= currentDataVersionRef.current
+        ) {
+          return; // No mutations on server; save bandwidth & DB query
+        }
+
         const q = currentUser ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(currentUser.role)}&userName=${encodeURIComponent(currentUser.name || '')}` : "";
         const res = await fetch(`/api/state${q}`);
         let data = {};
@@ -781,7 +955,13 @@ export default function App() {
               } catch (e) { return {}; }
             })();
 
+            const serverVersion = (data && data.version) || (serverMeta && serverMeta.version) || Date.now();
+            currentDataVersionRef.current = serverVersion;
+
             localStorage.setItem("makpower_app_state_cache", JSON.stringify({
+              eodDate: getTodayEodString(),
+              version: serverVersion,
+              savedAt: Date.now(),
               users: effectiveUsers || (existingCache.users || []),
               vendors: effectiveVendors.length > 0 ? effectiveVendors : (existingCache.vendors || []),
               requests: effectiveRequests.length > 0 ? effectiveRequests : (existingCache.requests || []),
@@ -3284,6 +3464,8 @@ export default function App() {
               cargoCompanies={cargoCompanies}
               onNavigateView={setActiveView}
               onLogout={handleLogout}
+              loading={loading}
+              initialLoadComplete={initialLoadComplete}
             />
           )}
 
@@ -3315,6 +3497,8 @@ export default function App() {
             purchasers={users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active")}
             onBatchUpdateRequests={batchUpdateRequests}
             onLogout={handleLogout}
+            loading={loading}
+            initialLoadComplete={initialLoadComplete}
           />
         )}
 
@@ -3331,6 +3515,9 @@ export default function App() {
             onBatchUpdateRequests={batchUpdateRequests}
             onUpdateCargo={updateCargo}
             onLogout={handleLogout}
+            loading={loading}
+            initialLoadComplete={initialLoadComplete}
+            isMasterDataSilentlyLoading={isMasterDataSilentlyLoading}
           />
         )}
 
@@ -3553,6 +3740,10 @@ export default function App() {
             onMergeItems={mergeItems}
             onUpdateEdd={handleUpdateEdd}
             onNavigateView={setActiveView}
+            loading={loading}
+            initialLoadComplete={initialLoadComplete}
+            isMasterDataSilentlyLoading={isMasterDataSilentlyLoading}
+            loadingModules={loadingModules}
           />
         )}
 
@@ -3575,6 +3766,7 @@ export default function App() {
               onUpdateItemPhoto={updateItemPhoto}
               imsTransactions={imsTransactions}
               crmDispatches={crmDispatches}
+              loading={loading}
             />
           </div>
         )}
@@ -3599,7 +3791,36 @@ export default function App() {
       </main>
       )}
 
-      {/* Self-Service & Weak Password Security Alert Modal */}
+{/* Back Exit Toast Notification */}
+      {backExitToast && (
+        <div 
+          style={{
+            position: "fixed",
+            bottom: "28px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 99999,
+            background: "rgba(15, 23, 42, 0.95)",
+            color: "#f8fafc",
+            padding: "10px 22px",
+            borderRadius: "30px",
+            border: "1px solid rgba(56, 189, 248, 0.4)",
+            boxShadow: "0 8px 30px rgba(0, 0, 0, 0.45), 0 0 15px rgba(56, 189, 248, 0.2)",
+            fontSize: "0.88rem",
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            pointerEvents: "none",
+            animation: "fadeInUp 0.2s ease-out"
+          }}
+        >
+          <ArrowLeft size={16} style={{ color: "#38bdf8" }} />
+          <span>Press back again to exit application</span>
+        </div>
+      )}
+
+            {/* Self-Service & Weak Password Security Alert Modal */}
       {showPasswordModal && currentUser && (
         <ChangePasswordModal
           isOpen={showPasswordModal}

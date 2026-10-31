@@ -35,8 +35,10 @@ let livePartyCategorySalesCache = null;
 let livePartyCategorySalesTimestamp = 0;
 const STATE_CACHE_TTL_MS = 5000;
 const LIVE_PARTY_CAT_CACHE_TTL_MS = 30000;
+let lastServerMutationTimestamp = Date.now();
 
 function invalidateStateCache() {
+  lastServerMutationTimestamp = Date.now();
   stateCache = null;
   stateCacheTimestamp = 0;
   purchaserStateCache = null;
@@ -44,6 +46,16 @@ function invalidateStateCache() {
   livePartyCategorySalesCache = null;
   livePartyCategorySalesTimestamp = 0;
 }
+
+// GET /api/state/meta - Lightweight endpoint returning mutation version & current server date (for EOD delta sync)
+app.get("/api/state/meta", (req, res) => {
+  const today = new Date().toISOString().split("T")[0];
+  res.json({
+    version: lastServerMutationTimestamp,
+    serverDate: today,
+    serverTime: Date.now()
+  });
+});
 
 function safeJsonParse(val, fallback = []) {
   if (!val) return fallback;
@@ -2602,7 +2614,8 @@ app.get("/api/state", async (req, res) => {
           })),
           crmPartyRemarks: [],
           partyCategoryMonths: [],
-          partyCategoryMonthlySales: []
+          partyCategoryMonthlySales: [],
+          version: lastServerMutationTimestamp
         };
 
         purchaserStateCache = purchaserState;
@@ -2838,7 +2851,8 @@ app.get("/api/state", async (req, res) => {
         })),
         crmPartyRemarks: crmPartyRemarksRes?.rows || [],
         partyCategoryMonths: get4TargetMonths(),
-        partyCategoryMonthlySales: partyCatSalesList || []
+        partyCategoryMonthlySales: partyCatSalesList || [],
+        version: lastServerMutationTimestamp
       };
 
       if (!isRestrictedRole) {

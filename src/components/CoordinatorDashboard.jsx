@@ -4,7 +4,7 @@ import ItemMasterView from "./ItemMasterView";
 import CustomSelect from "./CustomSelect";
 import { useSortableData } from "../utils/useSortableData";
 
-export default function CoordinatorDashboard({ currentUser = {}, requests = [], vendors = [], cargos = [], users = [], onLogout }) {
+export default function CoordinatorDashboard({ currentUser = {}, requests = [], vendors = [], cargos = [], users = [], onLogout, loading = false, initialLoadComplete = true }) {
   const [activeTab, setActiveTab] = useState("pending"); // "pending" | "delayed"
   const [filterAssignee, setFilterAssignee] = useState("");
   const [filterType, setFilterType] = useState("");
@@ -309,7 +309,13 @@ export default function CoordinatorDashboard({ currentUser = {}, requests = [], 
       </div>
 
       {/* Task List Table */}
-      {filteredTasks.length === 0 ? (
+      {loading || (!initialLoadComplete && requests.length === 0) ? (
+        <div className="glass-panel" style={{ padding: "50px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "14px" }}>
+          <div style={{ width: "40px", height: "40px", border: "4px solid rgba(56, 189, 248, 0.2)", borderTopColor: "#38bdf8", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+          <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--text-main)" }}>Loading Coordination Tasks...</div>
+          <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Evaluating workflow progress and stage timelines from database...</div>
+        </div>
+      ) : filteredTasks.length === 0 ? (
           <div className="glass-panel" style={{ padding: "50px", textAlign: "center", color: "var(--text-muted)" }}>
             <CheckCircle size={36} style={{ color: "var(--success)", marginBottom: "12px", display: "inline" }} /><br />
             No pending or overdue tasks found matching your filters.

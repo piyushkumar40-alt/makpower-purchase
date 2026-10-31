@@ -557,7 +557,7 @@ select optgroup {
 /* Header UI - Floating Rounded Glass Pill Navbar */
 .app-header {
   border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(15, 23, 42, 0.75);
+  background: #0f172a !important;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   position: sticky;
@@ -2006,7 +2006,7 @@ table th {
 }
 
 [data-theme="light"] .app-header {
-  background: rgba(255, 255, 255, 0.85) !important;
+  background: #ffffff !important;
   border: 1px solid #cbd5e1 !important;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08) !important;
 }
@@ -3037,6 +3037,18 @@ table th {
 [data-theme="light"] .custom-select-empty {
   color: #94a3b8 !important;
 }
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 15px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
 
 
 

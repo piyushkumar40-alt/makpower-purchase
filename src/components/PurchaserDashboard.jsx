@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download, FileSpreadsheet, UploadCloud, CheckSquare, Calendar, Trash2, Search, ArrowUpDown, Filter, Building2, Package, Lock, X, ExternalLink, ShieldAlert, ShieldCheck } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import { uploadToCloudinary } from "../utils/upload";
@@ -11,7 +11,7 @@ import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
 import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons, formatCancelDate, formatCancelTime } from "../utils/formatters";
-import { useModalEscape } from "../utils/useModalEscape";
+import { useModalEscape, pushBackHandler } from "../utils/useModalEscape";
 import MasterOrderTracker from "./MasterOrderTracker";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
 import AddEddModal from "./AddEddModal";
@@ -444,12 +444,56 @@ export default function PurchaserDashboard({
   onUpdateItem,
   onMergeItems,
   onUpdateEdd,
-  onNavigateView
+  onNavigateView,
+  loading = false,
+  initialLoadComplete = true,
+  isMasterDataSilentlyLoading = false,
+  loadingModules = {}
 }) {
   const [eddModalConfig, setEddModalConfig] = useState(null);
+  const isDataLoading = Boolean(loading || (!initialLoadComplete && (!requests || requests.length === 0)));
+
+  const renderTabLoader = (tabTitle, tabSubtitle) => (
+    <div className="card-fade-in" style={{ padding: "56px 24px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "16px", border: "1px dashed var(--border-glass)", background: "rgba(15, 23, 42, 0.4)", borderRadius: "16px", margin: "16px 0" }}>
+      <div style={{ width: "44px", height: "44px", border: "4px solid rgba(56, 189, 248, 0.2)", borderTopColor: "#38bdf8", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+      <div>
+        <div style={{ fontSize: "1.2rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "6px" }}>
+          {tabTitle || "Loading Records..."}
+        </div>
+        <div style={{ fontSize: "0.88rem", color: "var(--text-muted)", maxWidth: "460px", lineHeight: "1.5" }}>
+          {tabSubtitle || "Synchronizing records with database. Content will appear automatically."}
+        </div>
+      </div>
+    </div>
+  );
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem("makpower_purchaser_tab") || "alerts";
   });
+
+  // Workflow tab history for back button navigation
+  const tabHistoryRef = useRef([localStorage.getItem("makpower_purchaser_tab") || "alerts"]);
+  useEffect(() => {
+    const last = tabHistoryRef.current[tabHistoryRef.current.length - 1];
+    if (last !== activeTab) {
+      tabHistoryRef.current.push(activeTab);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    const unregister = pushBackHandler(() => {
+      // Step back one tab if history exists
+      if (tabHistoryRef.current.length > 1) {
+        tabHistoryRef.current.pop();
+        const prevTab = tabHistoryRef.current[tabHistoryRef.current.length - 1];
+        if (prevTab) {
+          setActiveTab(prevTab);
+          return true; // Handled!
+        }
+      }
+      return false; // Let parent handle view back navigation
+    });
+    return unregister;
+  }, []);
 
   // Admin and Purchase Manager role flags (Only manager/admin can see all orders)
   const isAdmin = currentUser?.role === "superadmin" || currentUser?.role === "owner" || currentUser?.role === "admin";
@@ -1226,8 +1270,10 @@ export default function PurchaserDashboard({
 
   // Helper: check due status for pricing items
   const getEddAlertStatus = (r) => {
-    if (!r.vendorEdd || r.isMaterialRec === "Yes" || r.cargoId) return null;
-    const edd = new Date(r.vendorEdd);
+    if (r.isMaterialRec === "Yes" || r.status === "Cancelled" || r.cargoId) return null;
+    const targetDate = r.vendorReadyDate || r.vendorEdd || (!r.priceRmb ? r.requiredByDate : null);
+    if (!targetDate) return null;
+    const edd = new Date(targetDate);
     const diffTime = edd - today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
@@ -1585,10 +1631,10 @@ export default function PurchaserDashboard({
 
       <div className="main-content" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
         {/* Core Analytics bar visible across all panels */}
-        <AnalyticsPanel requests={myRequests} vendors={vendors} cargos={myCargos} onSelectTab={setActiveTab} />
+        <AnalyticsPanel requests={myRequests} vendors={vendors} cargos={myCargos} onSelectTab={setActiveTab} loading={isDataLoading} />
 
         {/* ==================== ALERTS & UPCOMING TIMELINES TAB ==================== */}
-        {activeTab === "alerts" && (
+        {activeTab === "alerts" && (isDataLoading ? renderTabLoader("Loading Action Alerts & Timelines...", "Evaluating required dates, EDDs, and pending purchase operations...") : (
           <div className="card-fade-in">
             {/* Header with Title and Mode Switcher */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
@@ -1816,8 +1862,8 @@ export default function PurchaserDashboard({
                               <strong>{req.model}</strong> ({req.orderQuantity} units) — Vendor: <strong>{vName}</strong>
                               <div style={{ fontSize: "0.8rem", opacity: 0.85, marginTop: "3px" }}>
                                 {alert.type === "danger" 
-                                  ? `Overdue by ${alert.days} days (Vendor EDD: ${req.vendorEdd})`
-                                  : `Due in ${alert.days} days (Vendor EDD: ${req.vendorEdd})`
+                                  ? `Overdue by ${alert.days} days (${req.vendorEdd ? `Vendor EDD: ${req.vendorEdd}` : (req.vendorReadyDate ? `Ready Date: ${req.vendorReadyDate}` : `Required By: ${req.requiredByDate}`)})`
+                                  : `Due in ${alert.days} days (${req.vendorEdd ? `Vendor EDD: ${req.vendorEdd}` : (req.vendorReadyDate ? `Ready Date: ${req.vendorReadyDate}` : `Required By: ${req.requiredByDate}`)})`
                                 }
                               </div>
                             </div>
@@ -2358,7 +2404,7 @@ export default function PurchaserDashboard({
               </div>
             )}
           </div>
-        )}
+        ))}
 
 {/* ==================== MASTER ORDER TRACKER TAB ==================== */}
         {activeTab === "masterorder" && (
@@ -2376,11 +2422,14 @@ export default function PurchaserDashboard({
             onNavigateStep={(stepKey) => setActiveTab(stepKey)}
             onDeleteRequests={onDeleteRequests}
             onCancelRequests={onCancelRequests}
+            loading={loading}
+            initialLoadComplete={initialLoadComplete}
+            isMasterDataSilentlyLoading={isMasterDataSilentlyLoading}
           />
         )}
 
         {/* ==================== AWAITING DETAILS (STEP 1) TAB ==================== */}
-        {activeTab === "pending" && (
+        {activeTab === "pending" && (isDataLoading ? renderTabLoader("Loading Step 1 Commercial & Timeline Orders...", "Retrieving unpriced order requests from server...") : (
           <div className="card-fade-in">
               {/* Header controls & Batch Edit toolbar */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
@@ -2796,10 +2845,10 @@ export default function PurchaserDashboard({
                         <RenderStep1SortHeader colKey="model" title="Model / Description" style={{ minWidth: "150px" }} />
                         <RenderStep1SortHeader colKey="orderQuantity" title="Qty" style={{ width: "80px", minWidth: "80px", textAlign: "center" }} />
                         <RenderStep1SortHeader colKey="vendorId" title="Vendor / Supplier" getValue={r => accessibleVendors.find(v => v.id === (step1InlineEdits[r.id]?.vendorId || r.vendorId))?.name || ""} style={{ width: "185px", minWidth: "185px" }} />
-                        <RenderStep1SortHeader colKey="priceRmb" title="Price / Currency" style={{ width: "195px", minWidth: "195px", maxWidth: "195px" }} />
+                        <RenderStep1SortHeader colKey="priceRmb" title="Price / Currency" style={{ width: "205px", minWidth: "205px", maxWidth: "205px" }} />
                         <RenderStep1SortHeader colKey="totalRmb" title="Total Amount" style={{ width: "125px", minWidth: "125px", textAlign: "right" }} />
-                        <RenderStep1SortHeader colKey="vendorEdd" title="Vendor EDD" style={{ width: "140px", minWidth: "140px" }} />
-                        <th style={{ width: "85px", minWidth: "85px", textAlign: "center" }}>Actions</th>
+                        <RenderStep1SortHeader colKey="vendorEdd" title="Vendor EDD" style={{ width: "185px", minWidth: "185px" }} />
+                        <th style={{ width: "90px", minWidth: "90px", textAlign: "center" }}>Actions</th>
                         <th style={{ width: "70px", minWidth: "70px", textAlign: "center" }}>Cancel</th>
                       </tr>
                     </thead>
@@ -3043,11 +3092,11 @@ export default function PurchaserDashboard({
                               </td>
 
                               {/* Price & Currency Input with Paste Handler */}
-                              <td style={{ width: "195px", minWidth: "195px", maxWidth: "195px", boxSizing: "border-box", overflow: "hidden" }}>
+                              <td style={{ width: "205px", minWidth: "205px", maxWidth: "205px", boxSizing: "border-box", overflow: "hidden" }}>
                                 <div style={{ display: "flex", gap: "6px", alignItems: "center", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
                                   <select
                                     className="form-control"
-                                    style={{ width: "72px", minWidth: "72px", maxWidth: "72px", padding: "4px 2px", fontSize: "0.78rem", height: "32px", fontWeight: 700, flexShrink: 0, boxSizing: "border-box" }}
+                                    style={{ width: "82px", minWidth: "82px", maxWidth: "82px", padding: "4px 4px", fontSize: "0.8rem", height: "32px", fontWeight: 700, flexShrink: 0, boxSizing: "border-box" }}
                                     value={currentCurrency}
                                     onChange={e => {
                                       const val = e.target.value;
@@ -3135,8 +3184,8 @@ export default function PurchaserDashboard({
                               </td>
 
                               {/* EDD Date Selector (Inline) & Revision History */}
-                              <td style={{ width: "175px", minWidth: "175px", boxSizing: "border-box" }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                              <td style={{ width: "185px", minWidth: "185px", maxWidth: "185px", boxSizing: "border-box" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", width: "100%" }}>
                                   <input 
                                     type="date"
                                     className="form-control"
@@ -3161,7 +3210,7 @@ export default function PurchaserDashboard({
                                         handleStep1FillDown(index, "edd");
                                       }
                                     }}
-                                    style={{ padding: "4px 6px", fontSize: "0.82rem", height: "32px", width: "100%", boxSizing: "border-box" }}
+                                    style={{ flex: "1 1 0%", minWidth: 0, width: "auto", padding: "4px 6px", fontSize: "0.82rem", height: "32px", boxSizing: "border-box" }}
                                   />
                                   <button
                                     type="button"
@@ -3182,12 +3231,12 @@ export default function PurchaserDashboard({
                               </td>
 
                               {/* Actions */}
-                              <td style={{ width: "85px", minWidth: "85px", textAlign: "center" }}>
+                              <td style={{ width: "90px", minWidth: "90px", textAlign: "center", boxSizing: "border-box" }}>
                                 <button 
                                   onClick={() => handleSaveStep1Batch(pendingReqs, [r.id])} 
                                   disabled={!currentPrice || !currentEdd || (!currentVendorId && !currentVendorText)}
                                   className="btn btn-primary btn-sm"
-                                  style={{ padding: "4px 10px", fontSize: "0.78rem" }}
+                                  style={{ padding: "4px 12px", fontSize: "0.78rem" }}
                                 >
                                   Save
                                 </button>
@@ -3273,10 +3322,10 @@ export default function PurchaserDashboard({
                 </div>
               </div>
             </div>
-        )}
+        ))}
 
         {/* ==================== CARGO PLANNER (STEP 3) TAB ==================== */}
-        {activeTab === "planner" && (
+        {activeTab === "planner" && (isDataLoading ? renderTabLoader("Loading Step 3 Cargo Consolidation...", "Retrieving available orders and cargo batches...") : (
           <div className="card-fade-in">
             <h3 style={{ fontSize: "1.4rem", marginBottom: "16px" }}>Step 3: Cargo Consolidation</h3>
             
@@ -4588,10 +4637,10 @@ export default function PurchaserDashboard({
               );
             })()}
           </div>
-        )}
+        ))}
 
         {/* ==================== STEP 2: VENDOR READY TAB ==================== */}
-        {activeTab === "vendorready" && (
+        {activeTab === "vendorready" && (isDataLoading ? renderTabLoader("Loading Step 2 Vendor Ready Orders...", "Retrieving vendor order lots and confirmation timelines...") : (
           <div className="card-fade-in">
             <h3 style={{ fontSize: "1.4rem", marginBottom: "6px" }}>Step 2: Vendor Ready Confirmation</h3>
             <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "20px" }}>
@@ -5411,10 +5460,10 @@ export default function PurchaserDashboard({
               ) : null;
             })()}
           </div>
-        )}
+        ))}
 
         {/* ==================== STEP 4: CARGO PICKUP TAB ==================== */}
-        {activeTab === "cargopickup" && (
+        {activeTab === "cargopickup" && (isDataLoading ? renderTabLoader("Loading Step 4 Cargo Pickup Orders...", "Retrieving carrier pickup status and shipments...") : (
           <div className="card-fade-in">
             <h3 style={{ fontSize: "1.4rem", marginBottom: "6px" }}>Step 4: Cargo Pickup Confirmation</h3>
             <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "20px" }}>
@@ -5601,10 +5650,10 @@ export default function PurchaserDashboard({
               ) : null;
             })()}
           </div>
-        )}
+        ))}
 
         {/* ==================== CARGO SHIPMENTS (STEP 5) TAB ==================== */}
-        {activeTab === "shipments" && (
+        {activeTab === "shipments" && (isDataLoading ? renderTabLoader("Loading Step 5 Cargo Transit Tracking...", "Retrieving active shipment cargos and warehouse receipt status...") : (
           <div className="card-fade-in">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
               <div>
@@ -6223,10 +6272,10 @@ export default function PurchaserDashboard({
               </div>
             )}
           </div>
-        )}
+        ))}
 
         {/* ==================== ALL LEDGER LOGS TAB ==================== */}
-        {activeTab === "all" && (
+        {activeTab === "all" && (isDataLoading ? renderTabLoader("Loading Received Order History...", "Retrieving warehouse archive and fulfillment ledger...") : (
           <div className="card-fade-in">
             <h3 style={{ fontSize: "1.4rem", marginBottom: "16px" }}>Received Order History</h3>
             
@@ -6340,7 +6389,7 @@ export default function PurchaserDashboard({
               </div>
             </div>
           </div>
-        )}
+        ))}
 
         {/* ==================== SYSTEM AUDIT LOGS & VERSION HISTORY TAB ==================== */}
         {activeTab === "auditlogs" && isAdmin && (
