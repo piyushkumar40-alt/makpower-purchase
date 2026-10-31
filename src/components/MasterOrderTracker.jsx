@@ -21,7 +21,8 @@ import {
   FileSpreadsheet,
   Trash2,
   CheckSquare,
-  XCircle
+  XCircle,
+  RotateCcw
 } from "lucide-react";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
 import { OrderInspectionModal } from "./BundledUpcomingShipments";
@@ -129,6 +130,11 @@ export default function MasterOrderTracker({
   onDeleteRequests,
   onCancelRequests,
   onUpdateCargo,
+  onUndoPricing,
+  onBatchUndoPricing,
+  onUndoCargoAssignment,
+  onBatchUndoCargo,
+  onBatchUndoVendorReady,
   loading = false,
   initialLoadComplete = true,
   isMasterDataSilentlyLoading = false
@@ -1120,6 +1126,63 @@ export default function MasterOrderTracker({
                     >
                       <XCircle size={13} /> Cancel Selected ({selectedOrderIds.length})
                     </button>
+                    {isAdmin && onBatchUndoPricing && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const count = selectedOrderIds.length;
+                          if (window.confirm(`⚠️ Reset ${count} selected order(s) back to Step 1 (Unpriced)?\n\nThis will remove assigned vendors, prices, EDDs, and cargo allocations, allowing new vendors to be assigned.`)) {
+                            onBatchUndoPricing(selectedOrderIds);
+                            handleClearSelection();
+                          }
+                        }}
+                        className="btn btn-sm"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          fontWeight: 700,
+                          fontSize: "0.8rem",
+                          padding: "5px 12px",
+                          background: "rgba(245, 158, 11, 0.2)",
+                          color: "#fbbf24",
+                          border: "1px solid rgba(245, 158, 11, 0.45)",
+                          boxShadow: "0 2px 8px rgba(245, 158, 11, 0.25)",
+                          cursor: "pointer"
+                        }}
+                        title={`Admin Bulk Undo: Reset ${selectedOrderIds.length} orders back to Step 1`}
+                      >
+                        <RotateCcw size={13} /> Reset to Step 1 ({selectedOrderIds.length})
+                      </button>
+                    )}
+                    {isAdmin && onBatchUndoCargo && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const count = selectedOrderIds.length;
+                          if (window.confirm(`⚠️ Remove cargo assignment for ${count} selected order(s)?\n\nItems will return to ready for cargo consolidation.`)) {
+                            onBatchUndoCargo(selectedOrderIds);
+                            handleClearSelection();
+                          }
+                        }}
+                        className="btn btn-sm"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          fontWeight: 700,
+                          fontSize: "0.8rem",
+                          padding: "5px 12px",
+                          background: "rgba(6, 182, 212, 0.2)",
+                          color: "#38bdf8",
+                          border: "1px solid rgba(6, 182, 212, 0.45)",
+                          cursor: "pointer"
+                        }}
+                        title={`Admin Bulk Undo: Remove ${selectedOrderIds.length} orders from cargo batches`}
+                      >
+                        <RotateCcw size={13} /> Remove from Cargo ({selectedOrderIds.length})
+                      </button>
+                    )}
                   </>
                 ) : (
                   sortedRequests.length > 0 && (
@@ -1480,6 +1543,56 @@ export default function MasterOrderTracker({
                           >
                             <Eye size={12} /> View
                           </button>
+                          {isAdmin && r.status !== "Cancelled" && (r.vendorId || r.priceRmb) && onUndoPricing && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`⚠️ Reset "${r.model}" back to Step 1 (Unpriced)?\n\nThis will remove vendor and pricing.`)) {
+                                  onUndoPricing(r.id);
+                                }
+                              }}
+                              className="btn btn-sm"
+                              style={{
+                                padding: "4px 8px",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "3px",
+                                fontSize: "0.75rem",
+                                background: "rgba(245, 158, 11, 0.18)",
+                                border: "1px solid rgba(245, 158, 11, 0.4)",
+                                color: "#fbbf24",
+                                cursor: "pointer"
+                              }}
+                              title="Admin Undo: Remove Vendor & Price (Send back to Step 1)"
+                            >
+                              <RotateCcw size={12} /> Reset to Step 1
+                            </button>
+                          )}
+                          {isAdmin && r.status !== "Cancelled" && r.cargoId && onUndoCargoAssignment && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`Remove cargo assignment for "${r.model}"? Item will return to ready for cargo consolidation.`)) {
+                                  onUndoCargoAssignment(r.id);
+                                }
+                              }}
+                              className="btn btn-sm"
+                              style={{
+                                padding: "4px 8px",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "3px",
+                                fontSize: "0.75rem",
+                                background: "rgba(6, 182, 212, 0.18)",
+                                border: "1px solid rgba(6, 182, 212, 0.4)",
+                                color: "#38bdf8",
+                                cursor: "pointer"
+                              }}
+                              title="Admin Undo: Remove from Cargo"
+                            >
+                              <RotateCcw size={12} /> Undo Cargo
+                            </button>
+                          )}
                           {(onCancelRequests || onDeleteRequests) && (
                             <button
                               type="button"

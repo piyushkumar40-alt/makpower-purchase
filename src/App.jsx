@@ -1456,11 +1456,85 @@ export default function App() {
       vendorEdd: "",
       currency: "",
       pricedAt: "",
-      photo: ""
+      photo: "",
+      vendorReadyDate: "",
+      cargoId: "",
+      cargoAssignedAt: "",
+      cargoPickedQty: null,
+      vendorEddHistory: "[]",
+      purchaseUpdated: "No"
     };
     await postData("/api/requests", updated);
     setRequests(prev => prev.map(r => r.id === requestId ? updated : r));
-    logSystemActivity("UNDO_PRICING", `Undid pricing for ${target.model} (#${target.id})`, "Requisition", target.id, target, updated);
+    logSystemActivity("UNDO_PRICING", `Reset order ${target.model} (#${target.id}) back to Step 1 (Removed vendor & pricing)`, "Requisition", target.id, target, updated);
+  };
+
+  const batchUndoPricing = async (requestIds) => {
+    const ids = Array.isArray(requestIds) ? requestIds : [requestIds];
+    if (ids.length === 0) return;
+    const targets = requests.filter(r => ids.includes(r.id));
+    if (targets.length === 0) return;
+    const mapped = targets.map(target => ({
+      ...target,
+      vendorId: "",
+      priceRmb: "",
+      totalRmb: "",
+      advancePayment: "",
+      balancePayment: "",
+      vendorEdd: "",
+      currency: "",
+      pricedAt: "",
+      photo: "",
+      vendorReadyDate: "",
+      cargoId: "",
+      cargoAssignedAt: "",
+      cargoPickedQty: null,
+      vendorEddHistory: "[]",
+      purchaseUpdated: "No"
+    }));
+    await postData("/api/requests/batch", mapped);
+    setRequests(prev => prev.map(r => {
+      const match = mapped.find(x => x.id === r.id);
+      return match ? match : r;
+    }));
+    const modelsList = mapped.map(r => r.model).filter(Boolean).slice(0, 5).join(", ");
+    logSystemActivity("BATCH_UNDO_PRICING", `Reset ${mapped.length} order(s) back to Step 1 (Removed vendor & pricing)${modelsList ? `: ${modelsList}` : ""}`, "Requisition", mapped[0]?.id, null, mapped);
+  };
+
+  const batchUndoCargo = async (requestIds) => {
+    const ids = Array.isArray(requestIds) ? requestIds : [requestIds];
+    if (ids.length === 0) return;
+    const targets = requests.filter(r => ids.includes(r.id));
+    if (targets.length === 0) return;
+    const mapped = targets.map(target => ({
+      ...target,
+      cargoId: "",
+      cargoAssignedAt: "",
+      cargoPickedQty: null
+    }));
+    await postData("/api/requests/batch", mapped);
+    setRequests(prev => prev.map(r => {
+      const match = mapped.find(x => x.id === r.id);
+      return match ? match : r;
+    }));
+    logSystemActivity("BATCH_UNDO_CARGO", `Removed cargo assignment for ${mapped.length} order(s)`, "Requisition", mapped[0]?.id, null, mapped);
+  };
+
+  const batchUndoVendorReady = async (requestIds) => {
+    const ids = Array.isArray(requestIds) ? requestIds : [requestIds];
+    if (ids.length === 0) return;
+    const targets = requests.filter(r => ids.includes(r.id));
+    if (targets.length === 0) return;
+    const mapped = targets.map(target => ({
+      ...target,
+      vendorReadyDate: ""
+    }));
+    await postData("/api/requests/batch", mapped);
+    setRequests(prev => prev.map(r => {
+      const match = mapped.find(x => x.id === r.id);
+      return match ? match : r;
+    }));
+    logSystemActivity("BATCH_UNDO_VENDOR_READY", `Reset vendor ready status for ${mapped.length} order(s)`, "Requisition", mapped[0]?.id, null, mapped);
   };
 
   const addCargo = async (cargoDetails, selectedRequestIds, itemPickedQtyMap = {}, itemPickedPriceMap = {}, itemPickedCartonMap = {}) => {
@@ -3722,6 +3796,9 @@ export default function App() {
             onDeleteRequestsByDate={deleteRequestsByDate}
             onUndoCargoAssignment={undoCargoAssignment}
             onUndoPricing={undoPricing}
+            onBatchUndoPricing={batchUndoPricing}
+            onBatchUndoCargo={batchUndoCargo}
+            onBatchUndoVendorReady={batchUndoVendorReady}
             onAddCargo={addCargo}
             onUpdateCargo={updateCargo}
             onDeleteCargo={deleteCargo}

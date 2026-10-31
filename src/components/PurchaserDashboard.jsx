@@ -427,6 +427,9 @@ export default function PurchaserDashboard({
   onDeleteRequestsByDate,
   onUndoCargoAssignment,
   onUndoPricing,
+  onBatchUndoPricing,
+  onBatchUndoCargo,
+  onBatchUndoVendorReady,
   onAddCargo,
   onUpdateCargo,
   onDeleteCargo,
@@ -2422,6 +2425,11 @@ export default function PurchaserDashboard({
             onNavigateStep={(stepKey) => setActiveTab(stepKey)}
             onDeleteRequests={onDeleteRequests}
             onCancelRequests={onCancelRequests}
+            onUndoPricing={onUndoPricing}
+            onBatchUndoPricing={onBatchUndoPricing}
+            onUndoCargoAssignment={onUndoCargoAssignment}
+            onBatchUndoCargo={onBatchUndoCargo}
+            onBatchUndoVendorReady={onBatchUndoVendorReady}
             loading={loading}
             initialLoadComplete={initialLoadComplete}
             isMasterDataSilentlyLoading={isMasterDataSilentlyLoading}
@@ -3857,6 +3865,34 @@ export default function PurchaserDashboard({
                         <Trash2 size={12} /> Delete Selected ({checkedRequestIds.length})
                       </button>
                     )}
+                    {isAdmin && checkedRequestIds.length > 0 && onBatchUndoPricing && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const count = checkedRequestIds.length;
+                          if (window.confirm(`⚠️ Reset ${count} selected order(s) back to Step 1 (Unpriced)?\n\nThis will remove assigned vendors, prices, and EDDs, allowing fresh pricing & vendor assignment.`)) {
+                            onBatchUndoPricing(checkedRequestIds);
+                            setCheckedRequestIds([]);
+                          }
+                        }}
+                        className="btn btn-sm"
+                        style={{
+                          padding: "4px 10px",
+                          fontSize: "0.76rem",
+                          whiteSpace: "nowrap",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          background: "rgba(245, 158, 11, 0.2)",
+                          border: "1px solid rgba(245, 158, 11, 0.45)",
+                          color: "#fbbf24",
+                          cursor: "pointer"
+                        }}
+                        title="Admin Bulk Undo: Reset selected orders back to Step 1 (Remove vendor & pricing)"
+                      >
+                        <RotateCcw size={12} /> Reset to Step 1 ({checkedRequestIds.length})
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -4447,18 +4483,27 @@ export default function PurchaserDashboard({
                                 </button>
                               </td>
                               <td>
-                                {undoHours > 0 ? (
+                                {(isAdmin || undoHours > 0) ? (
                                   <button
                                     onClick={() => {
-                                      if (window.confirm(`Undo pricing & vendor for "${r.model}"? Item will return to Step 1 (unpriced).`)) {
+                                      if (window.confirm(`Reset "${r.model}" back to Step 1 (Unpriced)? This will remove assigned vendor and pricing.`)) {
                                         onUndoPricing(r.id);
                                       }
                                     }}
                                     className="btn btn-sm"
-                                    style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.3)", display: "flex", alignItems: "center", gap: "5px" }}
-                                    title={`Undo window: ${undoHours}h remaining`}
+                                    style={{
+                                      background: isAdmin ? "rgba(245, 158, 11, 0.2)" : "rgba(251,191,36,0.15)",
+                                      color: "#fbbf24",
+                                      border: "1px solid rgba(251,191,36,0.35)",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                      fontSize: "0.75rem",
+                                      padding: "3px 8px"
+                                    }}
+                                    title={isAdmin ? "Admin: Reset to Step 1 (Remove vendor & pricing)" : `Undo window: ${undoHours}h remaining`}
                                   >
-                                    <RotateCcw size={13} /> Undo ({undoHours}h)
+                                    <RotateCcw size={12} /> {isAdmin ? "↺ Reset to Step 1" : `Undo (${undoHours}h)`}
                                   </button>
                                 ) : r.pricedAt ? (
                                   <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", opacity: 0.6 }}>Undo expired</span>
@@ -5126,6 +5171,32 @@ export default function PurchaserDashboard({
                             <Trash2 size={12} /> Delete Selected ({vrChecked.length})
                           </button>
                         )}
+                        {isAdmin && onBatchUndoPricing && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const count = vrChecked.length;
+                              if (window.confirm(`⚠️ Reset ${count} vendor ready order(s) back to Step 1 (Unpriced)?\n\nThis will remove vendor, price, EDD, and ready status.`)) {
+                                onBatchUndoPricing(vrChecked);
+                                setVrChecked([]);
+                              }
+                            }}
+                            className="btn btn-sm"
+                            style={{
+                              fontSize: "0.75rem",
+                              padding: "3px 10px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              background: "rgba(245, 158, 11, 0.2)",
+                              border: "1px solid rgba(245, 158, 11, 0.45)",
+                              color: "#fbbf24"
+                            }}
+                            title="Admin Bulk Undo: Reset selected vendor ready orders back to Step 1"
+                          >
+                            <RotateCcw size={12} /> Reset to Step 1 ({vrChecked.length})
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -5370,20 +5441,37 @@ export default function PurchaserDashboard({
                               </td>
                               {isAdmin && (
                                 <td style={{ textAlign: "center" }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => setAdminDeleteConfirm({
-                                      title: `Delete Complete Order: ${r.model}`,
-                                      description: `Permanently delete vendor ready order #${r.id} (${r.model}, ${r.orderQuantity} Pcs, Order Date: ${r.orderDate}). This action cannot be undone.`,
-                                      requestIds: [r.id],
-                                      targets: [r]
-                                    })}
-                                    className="btn btn-danger btn-sm"
-                                    style={{ padding: "3px 6px" }}
-                                    title="Permanently Delete Complete Order (Admin only)"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
+                                  <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                    {onUndoPricing && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (window.confirm(`Reset "${r.model}" back to Step 1 (Unpriced)? This will remove vendor and pricing.`)) {
+                                            onUndoPricing(r.id);
+                                          }
+                                        }}
+                                        className="btn btn-sm"
+                                        style={{ padding: "3px 6px", background: "rgba(245, 158, 11, 0.2)", border: "1px solid rgba(245, 158, 11, 0.35)", color: "#fbbf24" }}
+                                        title="Admin: Reset item back to Step 1 (Remove vendor & pricing)"
+                                      >
+                                        <RotateCcw size={12} />
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => setAdminDeleteConfirm({
+                                        title: `Delete Complete Order: ${r.model}`,
+                                        description: `Permanently delete vendor ready order #${r.id} (${r.model}, ${r.orderQuantity} Pcs, Order Date: ${r.orderDate}). This action cannot be undone.`,
+                                        requestIds: [r.id],
+                                        targets: [r]
+                                      })}
+                                      className="btn btn-danger btn-sm"
+                                      style={{ padding: "3px 6px" }}
+                                      title="Permanently Delete Complete Order (Admin only)"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
                                 </td>
                               )}
                             </tr>
@@ -6165,7 +6253,7 @@ export default function PurchaserDashboard({
                           <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "10px" }}>
                             {cargoItems.map(item => {
                               const undoHrs = hoursRemaining48(item.cargoAssignedAt);
-                              const canUndo = !isReceived && undoHrs > 0;
+                              const canUndo = !isReceived && (isAdmin || undoHrs > 0);
                               return (
                                 <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(255, 255, 255, 0.01)", border: "1px solid var(--border-glass)", padding: "8px 14px", borderRadius: "6px", fontSize: "0.85rem", flexWrap: "wrap", gap: "8px" }}>
                                   <div>
