@@ -20,7 +20,7 @@ import CargoDocumentModal from "./CargoDocumentModal";
 export { isRequestForUser, isVendorForUser, getPurchaserDisplayName };
 
 // ==================== TOP-LEVEL UTILITIES & METRIC CALCULATION HELPERS ====================
-export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange, placeholder, accentColor = "var(--primary)" }) {
+export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange, placeholder, accentColor = "var(--primary)", style }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = React.useRef(null);
 
@@ -46,23 +46,51 @@ export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange,
   const selectedOpt = options.find(o => o.value === value);
 
   return (
-    <div ref={dropdownRef} style={{ display: "flex", alignItems: "center", gap: "10px", flex: "1 1 280px", minWidth: "250px", position: "relative" }}>
+    <div 
+      ref={dropdownRef} 
+      style={{ 
+        display: "flex", 
+        alignItems: "center", 
+        gap: "10px", 
+        flex: "1 1 300px", 
+        minWidth: 0, 
+        position: "relative",
+        ...style 
+      }}
+    >
       {label && (
-        <label style={{ fontSize: "0.85rem", fontWeight: 700, color: accentColor, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "6px" }}>
+        <label 
+          style={{ 
+            fontSize: "0.85rem", 
+            fontWeight: 700, 
+            color: accentColor, 
+            whiteSpace: "nowrap", 
+            display: "flex", 
+            alignItems: "center", 
+            gap: "6px",
+            flexShrink: 0 
+          }}
+        >
           {Icon && <Icon size={16} />} {label}:
         </label>
       )}
-      <div style={{ position: "relative", flex: 1 }}>
+      <div style={{ position: "relative", flex: "1 1 auto", minWidth: 0 }}>
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
           className="form-control mdb-custom-dropdown-btn"
+          title={selectedOpt ? selectedOpt.label : placeholder}
           style={{
             border: selectedOpt ? `1px solid ${accentColor}` : undefined,
-            boxShadow: selectedOpt ? `0 0 10px ${accentColor}25` : undefined
+            boxShadow: selectedOpt ? `0 0 10px ${accentColor}25` : undefined,
+            minWidth: 0,
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between"
           }}
         >
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, textAlign: "left" }}>
             {selectedOpt ? selectedOpt.label : placeholder}
           </span>
           <ChevronDown size={14} style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease", color: "var(--text-muted)", flexShrink: 0, marginLeft: "8px" }} />
@@ -88,7 +116,7 @@ export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange,
                     }}
                   >
                     <span>{opt.label}</span>
-                    {isSelected && <Check size={14} style={{ color: accentColor }} />}
+                    {isSelected && <Check size={14} style={{ color: accentColor, flexShrink: 0 }} />}
                   </button>
                 </li>
               );
@@ -1566,7 +1594,8 @@ export default function PurchaserDashboard({
               padding: "8px 14px",
               background: activeTab === "masterorder" ? "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)" : undefined,
               borderColor: activeTab === "masterorder" ? "#38bdf8" : "rgba(56, 189, 248, 0.4)",
-              color: activeTab === "masterorder" ? "#fff" : "#38bdf8"
+              color: activeTab === "masterorder" ? "#fff" : "#38bdf8",
+              flexShrink: 0
             }}
             title="Open Master Order Tracker to see all orders item-wise across every stage"
           >
@@ -1593,6 +1622,9 @@ export default function PurchaserDashboard({
             placeholder="-- Select Workflow Step --"
             accentColor="#0284c7"
           />
+
+          {/* Clean Vertical Divider */}
+          <div className="nav-separator" />
 
           {/* Dropdown 2: Directories, Records & Modules */}
           <MdbCustomDropdown
@@ -1622,7 +1654,7 @@ export default function PurchaserDashboard({
           <button 
             onClick={() => setMissedTargetOnly(!missedTargetOnly)}
             className={`btn btn-sm ${missedTargetOnly ? "btn-danger" : "btn-secondary"}`}
-            style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "6px", fontWeight: 600, padding: "8px 14px" }}
+            style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "6px", fontWeight: 600, padding: "8px 14px", flexShrink: 0 }}
             title="Filter dashboard to show only items that missed target dates"
           >
             <AlertTriangle size={14} style={{ color: missedTargetOnly ? "#fff" : "var(--danger)" }} />

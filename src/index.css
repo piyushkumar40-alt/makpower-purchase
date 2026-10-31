@@ -2292,6 +2292,7 @@ table th {
 /* ==================== MDB CUSTOM DROPDOWN (WORKFLOW & DIRECTORIES) ==================== */
 .mdb-custom-dropdown-btn {
   width: 100%;
+  min-width: 0;
   text-align: left;
   display: flex;
   align-items: center;
@@ -2306,13 +2307,16 @@ table th {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
 }
 
 .mdb-custom-dropdown-menu {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  right: 0;
+  min-width: 100%;
+  width: max-content;
+  max-width: min(520px, 90vw);
   z-index: 9999;
   background: #0f172a;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -2339,6 +2343,7 @@ table th {
   border: none;
   width: 100%;
   text-align: left;
+  gap: 12px;
 }
 
 .mdb-custom-dropdown-item:hover {
@@ -2348,9 +2353,9 @@ table th {
 
 [data-theme="light"] .mdb-custom-dropdown-btn {
   background: #ffffff !important;
-  border: 1px solid #cbd5e1 !important;
+  border: 1px solid #cbd5e1;
   color: #334155 !important;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04) !important;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
 }
 
 [data-theme="light"] .mdb-custom-dropdown-menu {
@@ -2367,6 +2372,20 @@ table th {
 [data-theme="light"] .mdb-custom-dropdown-item:hover {
   background: #f1f5f9 !important;
   color: #0284c7 !important;
+}
+
+.nav-separator {
+  width: 1px;
+  height: 24px;
+  background: var(--border-glass);
+  flex-shrink: 0;
+  margin: 0 4px;
+}
+
+@media (max-width: 900px) {
+  .nav-separator {
+    display: none;
+  }
 }
 
 /* ==================== REQUESTER FORM POPUP DROPDOWNS & BADGES ==================== */
