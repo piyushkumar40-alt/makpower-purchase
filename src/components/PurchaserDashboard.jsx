@@ -3427,11 +3427,12 @@ export default function PurchaserDashboard({
                     <option value="">{plannerAvailableVendors.length === 0 ? "No Vendors with Pending Orders in Step 3" : "Select Vendor..."}</option>
                     {plannerAvailableVendors.map(v => {
                       const readyOrders = plannerCandidateRequests.filter(r => r.vendorId === v.id);
-                      const orderCount = readyOrders.length;
+                      const uniqueOrdersCount = new Set(readyOrders.map(r => r.orderDate || "no_date")).size;
+                      const itemCount = readyOrders.length;
                       const orderQty = readyOrders.reduce((sum, r) => sum + parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10), 0);
                       return (
                         <option key={v.id} value={v.id}>
-                          {v.name} ({orderCount} {orderCount === 1 ? "order" : "orders"}, {orderQty.toLocaleString()} Pcs)
+                          {v.name} ({uniqueOrdersCount} {uniqueOrdersCount === 1 ? "order" : "orders"}, {itemCount} {itemCount === 1 ? "item" : "items"}, {orderQty.toLocaleString()} Pcs)
                         </option>
                       );
                     })}
@@ -3536,9 +3537,21 @@ export default function PurchaserDashboard({
               return (
               <div className="glass-panel card-fade-in" style={{ padding: "24px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
-                  <h4 style={{ fontSize: "1.1rem", margin: 0, color: "var(--primary)" }}>
-                    Available Items ready for Shipping (No active Cargo)
-                  </h4>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                    <h4 style={{ fontSize: "1.1rem", margin: 0, color: "var(--primary)" }}>
+                      Available Items ready for Shipping (No active Cargo)
+                    </h4>
+                    {(() => {
+                      const selVendor = plannerAvailableVendors.find(v => v.id === plannerVendorId);
+                      const selOrdersCount = new Set(readyRequests.map(r => r.orderDate || "no_date")).size;
+                      const selTotalQty = readyRequests.reduce((sum, r) => sum + parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10), 0);
+                      return selVendor ? (
+                        <span className="badge" style={{ background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)", padding: "4px 10px", fontSize: "0.82rem", fontWeight: 600 }}>
+                          {selVendor.name}: {selOrdersCount} {selOrdersCount === 1 ? "Order" : "Orders"} | {readyRequests.length} {readyRequests.length === 1 ? "Item" : "Items"} | {selTotalQty.toLocaleString()} Pcs
+                        </span>
+                      ) : null;
+                    })()}
+                  </div>
                   <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
                     <button 
                       type="button"
