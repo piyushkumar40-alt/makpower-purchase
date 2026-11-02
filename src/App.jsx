@@ -1187,6 +1187,9 @@ export default function App() {
         vendorEdd: "",
         packingOrderedByNitin: "No",
         purchaseUpdated: "No",
+        purchaseUpdatedAt: "",
+        purchaseUpdatedBy: "",
+        purchaseUpdatedById: "",
         notes: req.notes || "",
         itemNature: req.itemNature || "Non Consumables",
         category: req.category || "",
@@ -1364,7 +1367,10 @@ export default function App() {
       cargoAssignedAt: "",
       cargoPickedQty: null,
       vendorEddHistory: "[]",
-      purchaseUpdated: "No"
+      purchaseUpdated: "No",
+      purchaseUpdatedAt: "",
+      purchaseUpdatedBy: "",
+      purchaseUpdatedById: ""
     };
     await postData("/api/requests", updated);
     setRequests(prev => prev.map(r => r.id === requestId ? updated : r));
@@ -1392,7 +1398,10 @@ export default function App() {
       cargoAssignedAt: "",
       cargoPickedQty: null,
       vendorEddHistory: "[]",
-      purchaseUpdated: "No"
+      purchaseUpdated: "No",
+      purchaseUpdatedAt: "",
+      purchaseUpdatedBy: "",
+      purchaseUpdatedById: ""
     }));
     await postData("/api/requests/batch", mapped);
     setRequests(prev => prev.map(r => {

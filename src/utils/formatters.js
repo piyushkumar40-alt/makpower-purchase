@@ -787,3 +787,39 @@ export const formatCancelTime = (val) => {
   } catch (e) {}
   return "—";
 };
+
+export const formatPunchDateTime = (val) => {
+  if (!val) return "—";
+  try {
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      const datePart = d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+      const timePart = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+      return `${datePart}, ${timePart}`;
+    }
+  } catch (e) {}
+  return String(val) || "—";
+};
+
+export const formatPunchDate = (val) => {
+  if (!val) return "—";
+  try {
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    }
+  } catch (e) {}
+  return String(val).split("T")[0] || "—";
+};
+
+export const formatPunchTime = (val) => {
+  if (!val) return "—";
+  try {
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+    }
+  } catch (e) {}
+  return "—";
+};
+

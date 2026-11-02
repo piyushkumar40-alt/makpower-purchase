@@ -37,7 +37,7 @@ import RequesterForm from "./RequesterForm";
 import CustomSelect from "./CustomSelect";
 import CargoDocumentModal from "./CargoDocumentModal";
 import { useSortableData } from "../utils/useSortableData";
-import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons } from "../utils/formatters";
+import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, formatPunchDateTime } from "../utils/formatters";
 
 export default function RahulDashboard({ 
   currentUser = {}, 
@@ -500,9 +500,15 @@ export default function RahulDashboard({
 
   const handleSubmitUpdate = () => {
     if (checkedIds.length === 0) return;
+    const now = new Date().toISOString();
+    const punchByName = currentUser?.name || "Mr. Rahul Mann";
+    const punchById = currentUser?.id || "u-rahul";
     const updated = pendingRequests.filter(r => checkedIds.includes(r.id)).map(r => ({
       ...r,
-      purchaseUpdated: "Yes"
+      purchaseUpdated: "Yes",
+      purchaseUpdatedAt: now,
+      purchaseUpdatedBy: punchByName,
+      purchaseUpdatedById: punchById
     }));
     onBatchUpdateRequests(updated);
     setCheckedIds([]);
@@ -512,7 +518,10 @@ export default function RahulDashboard({
     if (checkedIds.length === 0) return;
     const updated = submittedRequests.filter(r => checkedIds.includes(r.id)).map(r => ({
       ...r,
-      purchaseUpdated: "No"
+      purchaseUpdated: "No",
+      purchaseUpdatedAt: "",
+      purchaseUpdatedBy: "",
+      purchaseUpdatedById: ""
     }));
     onBatchUpdateRequests(updated);
     setCheckedIds([]);
@@ -1218,8 +1227,11 @@ export default function RahulDashboard({
                                 <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                                   <span style={{ color: "var(--text-muted)" }}>Unit: <strong style={{ color: "var(--text-main)" }}>¥{unitPrice}</strong></span>
                                   <span style={{ color: "#10b981", fontWeight: 700 }}>Total: ¥{totalVal.toLocaleString()}</span>
-                                  <span style={{ fontSize: "0.72rem", padding: "1px 6px", borderRadius: "4px", background: item.purchaseUpdated === "Yes" ? "rgba(16, 185, 129, 0.15)" : "rgba(236, 72, 153, 0.15)", color: item.purchaseUpdated === "Yes" ? "#10b981" : "#ec4899" }}>
-                                    {item.purchaseUpdated === "Yes" ? "✓ Purchase Marked" : "⏳ Pending Purchase"}
+                                  <span 
+                                    style={{ fontSize: "0.72rem", padding: "1px 6px", borderRadius: "4px", background: item.purchaseUpdated === "Yes" ? "rgba(16, 185, 129, 0.15)" : "rgba(236, 72, 153, 0.15)", color: item.purchaseUpdated === "Yes" ? "#10b981" : "#ec4899" }}
+                                    title={item.purchaseUpdated === "Yes" ? `Punched by ${item.purchaseUpdatedBy || "Mr. Rahul Mann"}${item.purchaseUpdatedAt ? ` on ${formatPunchDateTime(item.purchaseUpdatedAt)}` : ""}` : "Pending mark purchase in ledger"}
+                                  >
+                                    {item.purchaseUpdated === "Yes" ? `✓ Purchase Marked${item.purchaseUpdatedAt ? ` (${formatPunchDateTime(item.purchaseUpdatedAt)})` : ""}` : "⏳ Pending Purchase"}
                                   </span>
                                 </div>
                               </div>
@@ -1681,6 +1693,12 @@ export default function RahulDashboard({
                       />
                       <RenderSortHeader colKey="isMaterialRec" title="Material Rec" />
                       <th>Cargo Documents</th>
+                      {activeTab === "submitted" && (
+                        <>
+                          <RenderSortHeader colKey="purchaseUpdatedAt" title="Punched Timestamp" getValue={r => r.purchaseUpdatedAt || ""} />
+                          <RenderSortHeader colKey="purchaseUpdatedBy" title="Punch By" getValue={r => r.purchaseUpdatedBy || "Mr. Rahul Mann"} />
+                        </>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -1924,6 +1942,17 @@ export default function RahulDashboard({
                               <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>—</span>
                             )}
                           </td>
+
+                          {activeTab === "submitted" && (
+                            <>
+                              <td style={{ fontSize: "0.78rem", whiteSpace: "nowrap", color: "var(--text-main)" }}>
+                                {r.purchaseUpdatedAt ? formatPunchDateTime(r.purchaseUpdatedAt) : "—"}
+                              </td>
+                              <td style={{ fontSize: "0.82rem", fontWeight: 700, color: "#10b981", whiteSpace: "nowrap" }}>
+                                👤 {r.purchaseUpdatedBy || (r.purchaseUpdatedAt ? "Mr. Rahul Mann" : "Rahul Accounts")}
+                              </td>
+                            </>
+                          )}
                         </tr>
                       );
                     })}

@@ -891,7 +891,10 @@ export default function PurchaserDashboard({
         advancePayment: advance,
         balancePayment: totalRmb - advance,
         vendorEdd: finalEdd,
-        purchaseUpdated: "Yes",
+        purchaseUpdated: r.purchaseUpdated || "No",
+        purchaseUpdatedAt: r.purchaseUpdatedAt || "",
+        purchaseUpdatedBy: r.purchaseUpdatedBy || "",
+        purchaseUpdatedById: r.purchaseUpdatedById || "",
         pricedAt: r.pricedAt || new Date().toISOString()
       });
     });
@@ -7288,7 +7291,10 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
         : request.totalCartons,
       photo: activePhoto,
       notes: notes,
-      purchaseUpdated: "Yes",
+      purchaseUpdated: request.purchaseUpdated || "No",
+      purchaseUpdatedAt: request.purchaseUpdatedAt || "",
+      purchaseUpdatedBy: request.purchaseUpdatedBy || "",
+      purchaseUpdatedById: request.purchaseUpdatedById || "",
       pricedAt: priceNum ? (request.pricedAt || new Date().toISOString()) : ""
     });
   };

@@ -874,6 +874,9 @@ async function setupPgDatabase() {
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "totalCartons" INTEGER;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "cancelledBy" TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "cancelledByName" TEXT;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "purchaseUpdatedAt" TEXT;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "purchaseUpdatedBy" TEXT;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "purchaseUpdatedById" TEXT;
       UPDATE requests SET "timestamp" = "orderDate" WHERE ("timestamp" IS NULL OR "timestamp" = '') AND "orderDate" IS NOT NULL;
     `);
 
@@ -1107,15 +1110,17 @@ async function setupPgDatabase() {
             "priceRmb", "totalRmb", "advancePayment", "balancePayment", "photo", "vendorEdd",
             "cargoId", "isMaterialRec", "actualReceivedDate", "notes", "itemNature", "category",
             "requiredByDate", "entryBy", "packingOrderedByNitin", "purchaseUpdated", "status",
-            "cancellationReason", "cancelledAt", "cargoAssignedAt"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)`,
+            "cancellationReason", "cancelledAt", "cargoAssignedAt",
+            "purchaseUpdatedAt", "purchaseUpdatedBy", "purchaseUpdatedById"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)`,
           [
             r.id, r.purchaserId, r.vendorId, r.orderDate, r.type, r.model, r.orderQuantity,
             r.priceRmb || null, r.totalRmb || null, r.advancePayment || null, r.balancePayment || null,
             r.photo || "", r.vendorEdd || "", r.cargoId || "", r.isMaterialRec || "No",
             r.actualReceivedDate || "", r.notes || "", r.itemNature || "Non Consumables", r.category || "",
             r.requiredByDate || "", r.entryBy || "", r.packingOrderedByNitin || "No", r.purchaseUpdated || "No",
-            r.status || "Active", r.cancellationReason || "", r.cancelledAt || "", r.cargoAssignedAt || ""
+            r.status || "Active", r.cancellationReason || "", r.cancelledAt || "", r.cargoAssignedAt || "",
+            r.purchaseUpdatedAt || "", r.purchaseUpdatedBy || "", r.purchaseUpdatedById || ""
           ]
         );
       }
@@ -1611,7 +1616,9 @@ async function formatAllRequestsForGoogleSheets() {
       isMaterialRec: r.isMaterialRec || cargo.isMaterialRec || "",
       packingSlip: cargo.packingListFile || "",
       packingOrderedByNitin: r.packingOrderedByNitin === "Yes" ? true : "",
-      purchaseUpdated: r.purchaseUpdated === "Yes" ? true : ""
+      purchaseUpdated: r.purchaseUpdated === "Yes" ? true : "",
+      purchaseUpdatedAt: r.purchaseUpdatedAt || "",
+      purchaseUpdatedBy: r.purchaseUpdatedBy || ""
     };
   });
 
@@ -3321,8 +3328,9 @@ app.post("/api/requests", async (req, res) => {
           "requiredByDate", "entryBy", "packingOrderedByNitin", "purchaseUpdated", "status",
             "cancellationReason", "cancelledAt", "cargoAssignedAt",
             "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency", "timestamp", "vendorEddHistory",
-            "itemsPerCarton", "totalCartons", "cancelledBy", "cancelledByName"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40)
+            "itemsPerCarton", "totalCartons", "cancelledBy", "cancelledByName",
+            "purchaseUpdatedAt", "purchaseUpdatedBy", "purchaseUpdatedById"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43)
           ON CONFLICT ("id") DO UPDATE SET
             "purchaserId" = EXCLUDED."purchaserId",
             "vendorId" = EXCLUDED."vendorId",
@@ -3362,7 +3370,10 @@ app.post("/api/requests", async (req, res) => {
             "itemsPerCarton" = COALESCE(EXCLUDED."itemsPerCarton", requests."itemsPerCarton"),
             "totalCartons" = COALESCE(EXCLUDED."totalCartons", requests."totalCartons"),
             "cancelledBy" = COALESCE(EXCLUDED."cancelledBy", requests."cancelledBy"),
-            "cancelledByName" = COALESCE(EXCLUDED."cancelledByName", requests."cancelledByName")
+            "cancelledByName" = COALESCE(EXCLUDED."cancelledByName", requests."cancelledByName"),
+            "purchaseUpdatedAt" = EXCLUDED."purchaseUpdatedAt",
+            "purchaseUpdatedBy" = EXCLUDED."purchaseUpdatedBy",
+            "purchaseUpdatedById" = EXCLUDED."purchaseUpdatedById"
         `;
         const calculatedCartons = (r.itemsPerCarton && parseInt(r.itemsPerCarton) > 0)
           ? Math.ceil(parseInt(r.vendorOrderQuantity || r.orderQuantity || 0) / parseInt(r.itemsPerCarton))
@@ -3387,7 +3398,10 @@ app.post("/api/requests", async (req, res) => {
           r.itemsPerCarton != null && r.itemsPerCarton !== "" ? parseInt(r.itemsPerCarton) : null,
           calculatedCartons,
           r.cancelledBy || "",
-          r.cancelledByName || ""
+          r.cancelledByName || "",
+          r.purchaseUpdatedAt || "",
+          r.purchaseUpdatedBy || "",
+          r.purchaseUpdatedById || ""
         ];
         await pool.query(query, values);
         markAppActivity();
@@ -3596,8 +3610,9 @@ app.post("/api/requests/batch", async (req, res) => {
             "requiredByDate", "entryBy", "packingOrderedByNitin", "purchaseUpdated", "status",
             "cancellationReason", "cancelledAt", "cargoAssignedAt",
             "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency", "timestamp",
-            "itemsPerCarton", "totalCartons", "cancelledBy", "cancelledByName"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39)
+            "itemsPerCarton", "totalCartons", "cancelledBy", "cancelledByName",
+            "purchaseUpdatedAt", "purchaseUpdatedBy", "purchaseUpdatedById"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42)
           ON CONFLICT ("id") DO UPDATE SET
             "purchaserId" = EXCLUDED."purchaserId",
             "vendorId" = EXCLUDED."vendorId",
@@ -3636,7 +3651,10 @@ app.post("/api/requests/batch", async (req, res) => {
             "itemsPerCarton" = COALESCE(EXCLUDED."itemsPerCarton", requests."itemsPerCarton"),
             "totalCartons" = COALESCE(EXCLUDED."totalCartons", requests."totalCartons"),
             "cancelledBy" = COALESCE(EXCLUDED."cancelledBy", requests."cancelledBy"),
-            "cancelledByName" = COALESCE(EXCLUDED."cancelledByName", requests."cancelledByName")
+            "cancelledByName" = COALESCE(EXCLUDED."cancelledByName", requests."cancelledByName"),
+            "purchaseUpdatedAt" = EXCLUDED."purchaseUpdatedAt",
+            "purchaseUpdatedBy" = EXCLUDED."purchaseUpdatedBy",
+            "purchaseUpdatedById" = EXCLUDED."purchaseUpdatedById"
         `;
         const calculatedCartons = (r.itemsPerCarton && parseInt(r.itemsPerCarton) > 0)
           ? Math.ceil(parseInt(r.vendorOrderQuantity || r.orderQuantity || 0) / parseInt(r.itemsPerCarton))
@@ -3660,7 +3678,10 @@ app.post("/api/requests/batch", async (req, res) => {
           r.itemsPerCarton != null && r.itemsPerCarton !== "" ? parseInt(r.itemsPerCarton) : null,
           calculatedCartons,
           r.cancelledBy || "",
-          r.cancelledByName || ""
+          r.cancelledByName || "",
+          r.purchaseUpdatedAt || "",
+          r.purchaseUpdatedBy || "",
+          r.purchaseUpdatedById || ""
         ];
         await pool.query(query, values);
       }

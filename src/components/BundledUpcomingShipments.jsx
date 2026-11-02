@@ -27,7 +27,7 @@ import {
   CheckSquare,
   RotateCcw
 } from "lucide-react";
-import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, formatCancelDate, formatCancelTime } from "../utils/formatters";
+import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, formatCancelDate, formatCancelTime, formatPunchDateTime } from "../utils/formatters";
 import { uploadToCloudinary } from "../utils/upload";
 import CustomSelect from "./CustomSelect";
 import CargoDocumentModal from "./CargoDocumentModal";
@@ -244,9 +244,15 @@ export default function BundledUpcomingShipments({
       ? (cargoObj.items || []).filter(it => it.purchaseUpdated !== "Yes")
       : (cargoObj.items || []).filter(it => it.purchaseUpdated === "Yes");
     if (targetItems.length === 0) return;
+    const now = new Date().toISOString();
+    const punchByName = currentUser?.name || "Mr. Rahul Mann";
+    const punchById = currentUser?.id || "u-rahul";
     const updated = targetItems.map(it => ({
       ...it,
-      purchaseUpdated: status
+      purchaseUpdated: status,
+      purchaseUpdatedAt: status === "Yes" ? now : "",
+      purchaseUpdatedBy: status === "Yes" ? punchByName : "",
+      purchaseUpdatedById: status === "Yes" ? punchById : ""
     }));
     await onBatchUpdateRequests(updated);
   };
@@ -254,9 +260,15 @@ export default function BundledUpcomingShipments({
   // Action: Toggle mark purchase for a single item (item-wise)
   const handleToggleItemPurchase = async (itemObj, status = "Yes") => {
     if (!onBatchUpdateRequests) return;
+    const now = new Date().toISOString();
+    const punchByName = currentUser?.name || "Mr. Rahul Mann";
+    const punchById = currentUser?.id || "u-rahul";
     const updated = {
       ...itemObj,
-      purchaseUpdated: status
+      purchaseUpdated: status,
+      purchaseUpdatedAt: status === "Yes" ? now : "",
+      purchaseUpdatedBy: status === "Yes" ? punchByName : "",
+      purchaseUpdatedById: status === "Yes" ? punchById : ""
     };
     await onBatchUpdateRequests([updated]);
   };
@@ -1082,7 +1094,7 @@ export default function BundledUpcomingShipments({
 
                               {/* Item-wise Mark Purchase */}
                               {isPurchaseMarked ? (
-                                <div style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                                <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
                                   <span style={{ 
                                     padding: "3px 8px", 
                                     borderRadius: "4px", 
@@ -1094,9 +1106,16 @@ export default function BundledUpcomingShipments({
                                     display: "inline-flex",
                                     alignItems: "center",
                                     gap: "4px"
-                                  }}>
+                                  }}
+                                  title={item.purchaseUpdatedAt ? `Punched by ${item.purchaseUpdatedBy || "Mr. Rahul Mann"} on ${formatPunchDateTime(item.purchaseUpdatedAt)}` : `Punched by ${item.purchaseUpdatedBy || "Mr. Rahul Mann"}`}
+                                  >
                                     <CheckCircle2 size={12} /> Purchase Marked
                                   </span>
+                                  {item.purchaseUpdatedAt && (
+                                    <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                                      ({formatPunchDateTime(item.purchaseUpdatedAt)})
+                                    </span>
+                                  )}
                                   <button 
                                     type="button" 
                                     onClick={() => handleToggleItemPurchase(item, "No")}
@@ -1234,8 +1253,9 @@ export function EtaHistoryModal({ cargo, onClose }) {
 }
 
 // Read-only Order Inspection Modal
-export function OrderInspectionModal({ order, cargos = [], vendors = [], purchasers = [], cargoCompanies = [], onClose, onUpdateCargo, requests = [] }) {
-  if (!order) return null;
+export function OrderInspectionModal({ order: initialOrder, cargos = [], vendors = [], purchasers = [], cargoCompanies = [], onClose, onUpdateCargo, requests = [] }) {
+  if (!initialOrder) return null;
+  const order = (requests || []).find(r => r.id === initialOrder.id) || initialOrder;
 
   const [viewingDoc, setViewingDoc] = useState(null);
 
@@ -1382,7 +1402,47 @@ export function OrderInspectionModal({ order, cargos = [], vendors = [], purchas
                 </span>
               </div>
             </div>
+
+            {order.purchaseUpdated === "Yes" && (
+              <>
+                <div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Punch By</div>
+                  <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#10b981", marginTop: "2px" }}>
+                    👤 {order.purchaseUpdatedBy || (order.purchaseUpdatedAt ? "Mr. Rahul Mann" : "Rahul Accounts")}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Punch Timestamp</div>
+                  <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-main)", marginTop: "2px" }}>
+                    ⏰ {order.purchaseUpdatedAt ? formatPunchDateTime(order.purchaseUpdatedAt) : "—"}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
+
+          {order.purchaseUpdated === "Yes" && (
+            <div style={{
+              marginTop: "12px",
+              padding: "10px 14px",
+              borderRadius: "8px",
+              background: "rgba(16, 185, 129, 0.08)",
+              border: "1px solid rgba(16, 185, 129, 0.25)",
+              fontSize: "0.84rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              flexWrap: "wrap"
+            }}>
+              <CheckCircle2 size={16} style={{ color: "#10b981", flexShrink: 0 }} />
+              <span style={{ color: "var(--text-main)" }}>
+                Purchase updated & punched in ledger by <strong style={{ color: "#10b981" }}>{order.purchaseUpdatedBy || "Mr. Rahul Mann"}</strong>
+                {order.purchaseUpdatedAt ? (
+                  <> on <strong style={{ color: "#38bdf8" }}>{formatPunchDateTime(order.purchaseUpdatedAt)}</strong></>
+                ) : ""}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Vendor & Logistics Section */}
