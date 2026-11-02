@@ -543,6 +543,18 @@ export default function RahulDashboard({
 
   const hasActiveFilters = quickStatus !== "all" || filterStage !== "all" || filterVendor || filterPurchaser || filterCategory || filterCargo || filterTransport || filterType !== "all" || searchQuery || fromDate || toDate;
 
+  if (loading && (!requests || requests.length === 0)) {
+    return (
+      <div style={{ padding: "80px 24px", maxWidth: "600px", margin: "80px auto", textAlign: "center" }}>
+        <div className="glass-panel" style={{ padding: "40px 30px" }}>
+          <RefreshCw size={36} className="spin-animation" style={{ color: "var(--primary)", margin: "0 auto 16px" }} />
+          <h3 style={{ fontSize: "1.25rem", color: "var(--text-main)", marginBottom: "8px" }}>Synchronizing Accounts & Commercial Ledgers</h3>
+          <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: 0 }}>Connecting to real-time purchase updates, orders, and shipments...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: "24px", maxWidth: "1680px", margin: "0 auto", width: "100%" }}>
       

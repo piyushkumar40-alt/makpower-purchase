@@ -823,11 +823,36 @@ export default function App() {
           }
         }
 
-        if (effectiveUsers) setUsers(effectiveUsers);
-        setVendors(effectiveVendors);
-        setRequests(effectiveRequests);
-        setCargos(effectiveCargos);
-        setCargoCompanies(effectiveCargoCompanies);
+        if (effectiveUsers && effectiveUsers.length > 0) setUsers(effectiveUsers);
+        setVendors(prev => {
+          if (effectiveVendors.length > 0) return effectiveVendors;
+          if (prev.length > 0 && effectiveVendors.length === 0) {
+            console.warn("[Data Guard] Preserved in-memory vendors to prevent zero flash");
+            return prev;
+          }
+          return effectiveVendors;
+        });
+        setRequests(prev => {
+          if (effectiveRequests.length > 0) return effectiveRequests;
+          if (prev.length > 0 && effectiveRequests.length === 0) {
+            console.warn("[Data Guard] Preserved in-memory requests to prevent zero flash");
+            return prev;
+          }
+          return effectiveRequests;
+        });
+        setCargos(prev => {
+          if (effectiveCargos.length > 0) return effectiveCargos;
+          if (prev.length > 0 && effectiveCargos.length === 0) {
+            console.warn("[Data Guard] Preserved in-memory cargos to prevent zero flash");
+            return prev;
+          }
+          return effectiveCargos;
+        });
+        setCargoCompanies(prev => {
+          if (effectiveCargoCompanies.length > 0) return effectiveCargoCompanies;
+          if (prev.length > 0 && effectiveCargoCompanies.length === 0) return prev;
+          return effectiveCargoCompanies;
+        });
         if (effectiveItems.length > 0) setItems(effectiveItems);
         if (Array.isArray(data.designations) && data.designations.length > 0) setDesignations(data.designations);
         if (Array.isArray(data.crmParties) && data.crmParties.length > 0) setCrmParties(deduplicatePartiesKeepLast(data.crmParties));
@@ -900,10 +925,14 @@ export default function App() {
       if (document.visibilityState === "visible") {
         loadData(true);
       }
-    }, 10000);
+    }, 5000);
 
     // Instant sync when switching back to tab/window
+    let lastFocusSyncTime = 0;
     const handleFocusSync = () => {
+      const now = Date.now();
+      if (now - lastFocusSyncTime < 4000) return; // Debounce 4s to prevent double-fires
+      lastFocusSyncTime = now;
       if (document.visibilityState === "visible") {
         loadData(true);
       }

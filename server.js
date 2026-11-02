@@ -40,14 +40,18 @@ let stateCache = null;
 let stateCacheTimestamp = 0;
 let purchaserStateCache = null;
 let purchaserStateCacheTimestamp = 0;
+let lastKnownGoodPurchaserState = null;
+let lastKnownGoodFullState = null;
 let livePartyCategorySalesCache = null;
 let livePartyCategorySalesTimestamp = 0;
-const STATE_CACHE_TTL_MS = 5000;
+const STATE_CACHE_TTL_MS = 600000; // 10 minutes cache ceiling (mutation-driven invalidation handles real-time updates)
 const LIVE_PARTY_CAT_CACHE_TTL_MS = 30000;
 let lastServerMutationTimestamp = Date.now();
 
 function invalidateStateCache() {
   lastServerMutationTimestamp = Date.now();
+  if (stateCache) lastKnownGoodFullState = stateCache;
+  if (purchaserStateCache) lastKnownGoodPurchaserState = purchaserStateCache;
   stateCache = null;
   stateCacheTimestamp = 0;
   purchaserStateCache = null;
@@ -173,6 +177,9 @@ async function initDatabase() {
     try {
       pool = new pg.Pool({
         connectionString,
+        max: 20,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 8000,
         ssl: connectionString.includes("localhost") ? false : { rejectUnauthorized: false }
       });
       // Test connection
@@ -2578,12 +2585,21 @@ app.get("/api/state", async (req, res) => {
           pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC").catch(e => { console.error("item_prices query err:", e.message); return { rows: [] }; })
         ]);
 
-        const vendors = (vendorsRes.rows || []).map(v => ({
+        // Fail-safe protection: if query returned empty due to connection glitch, preserve last known good state
+        let effectiveVendorRows = vendorsRes.rows || [];
+        if (effectiveVendorRows.length === 0 && (purchaserStateCache?.vendors?.length > 0 || lastKnownGoodPurchaserState?.vendors?.length > 0)) {
+          effectiveVendorRows = (purchaserStateCache?.vendors || lastKnownGoodPurchaserState?.vendors || []);
+        }
+        const vendors = effectiveVendorRows.map(v => ({
           ...v,
           purchaserIds: safeJsonParse(v.purchaserIds, [])
         }));
 
-        const requests = requestsRes.rows.map(r => ({
+        let effectiveReqRows = requestsRes.rows || [];
+        if (effectiveReqRows.length === 0 && (purchaserStateCache?.requests?.length > 0 || lastKnownGoodPurchaserState?.requests?.length > 0)) {
+          effectiveReqRows = (purchaserStateCache?.requests || lastKnownGoodPurchaserState?.requests || []);
+        }
+        const requests = effectiveReqRows.map(r => ({
           ...r,
           orderQuantity: r.orderQuantity ? parseInt(r.orderQuantity) : 0,
           priceRmb: r.priceRmb ? parseFloat(r.priceRmb) : "",
@@ -2593,7 +2609,11 @@ app.get("/api/state", async (req, res) => {
           vendorEddHistory: safeJsonParse(r.vendorEddHistory, [])
         }));
 
-        const cargos = cargosRes.rows.map(c => sanitizeCargoDocuments({
+        let effectiveCargoRows = cargosRes.rows || [];
+        if (effectiveCargoRows.length === 0 && (purchaserStateCache?.cargos?.length > 0 || lastKnownGoodPurchaserState?.cargos?.length > 0)) {
+          effectiveCargoRows = (purchaserStateCache?.cargos || lastKnownGoodPurchaserState?.cargos || []);
+        }
+        const cargos = effectiveCargoRows.map(c => sanitizeCargoDocuments({
           ...c,
           cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
           cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
@@ -2881,11 +2901,11 @@ app.get("/api/state", async (req, res) => {
       res.json(fullState);
     } catch (err) {
       console.error("GET /api/state error:", err.message);
-      if (isPurchaseOnlyRole && purchaserStateCache) {
-        return res.json(purchaserStateCache);
+      if (isPurchaseOnlyRole && (purchaserStateCache || lastKnownGoodPurchaserState)) {
+        return res.json(purchaserStateCache || lastKnownGoodPurchaserState);
       }
-      if (stateCache && !isRestrictedRole) {
-        return res.json(stateCache);
+      if ((stateCache || lastKnownGoodFullState) && !isRestrictedRole) {
+        return res.json(stateCache || lastKnownGoodFullState);
       }
       try {
         const [uR, vR, rR, cR] = await Promise.all([
@@ -3404,6 +3424,7 @@ app.post("/api/requests", async (req, res) => {
           r.purchaseUpdatedById || ""
         ];
         await pool.query(query, values);
+        invalidateStateCache();
         markAppActivity();
         res.json({ success: true });
     } catch (err) {
@@ -3421,6 +3442,7 @@ app.post("/api/requests", async (req, res) => {
       data.requests.unshift(r); // Add to top
     }
     writeLocalJson(data);
+    invalidateStateCache();
     markAppActivity();
     res.json({ success: true });
   }
@@ -3686,6 +3708,7 @@ app.post("/api/requests/batch", async (req, res) => {
         await pool.query(query, values);
       }
       await pool.query("COMMIT");
+      invalidateStateCache();
       markAppActivity();
       res.json({ success: true });
     } catch (err) {
@@ -3705,6 +3728,7 @@ app.post("/api/requests/batch", async (req, res) => {
       }
     });
     writeLocalJson(data);
+    invalidateStateCache();
     markAppActivity();
     res.json({ success: true });
   }
@@ -3851,6 +3875,7 @@ app.post("/api/cargos", async (req, res) => {
         c.cargoCompanyId || ""
       ];
       await pool.query(query, values);
+      invalidateStateCache();
       res.json({ success: true });
     } catch (err) {
       console.error("POST /api/cargos error:", err.message);
@@ -3869,6 +3894,7 @@ app.post("/api/cargos", async (req, res) => {
       data.cargos.unshift(c);
     }
     writeLocalJson(data);
+    invalidateStateCache();
     res.json({ success: true });
   }
 });
@@ -4068,6 +4094,7 @@ app.post("/api/vendors", async (req, res) => {
       await pool.query(query, [
         v.id, v.name, v.location, v.phone, v.history, v.status, JSON.stringify(v.purchaserIds || [])
       ]);
+      invalidateStateCache();
       res.json({ success: true });
     } catch (err) {
       console.error("POST /api/vendors error:", err.message);
@@ -4082,6 +4109,7 @@ app.post("/api/vendors", async (req, res) => {
       data.vendors.unshift(v);
     }
     writeLocalJson(data);
+    invalidateStateCache();
     res.json({ success: true });
   }
 });
