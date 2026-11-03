@@ -5,6 +5,7 @@ process.on("uncaughtException", (err) => {
   console.error("Global uncaughtException safely handled:", err.message);
 });
 import express from "express";
+import compression from "compression";
 import pg from "pg";
 import path from "path";
 import fs from "fs";
@@ -29,8 +30,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(express.json({ limit: "200mb" }));
-app.use(express.urlencoded({ limit: "200mb", extended: true }));
+
+// High-Performance HTTP Response Compression (reduces payload by 75-90% to save bandwidth & memory)
+app.use(compression({
+  threshold: 1024,
+  level: 6,
+  filter: (req, res) => {
+    if (req.headers["x-no-compression"]) return false;
+    return compression.filter(req, res);
+  }
+}));
+
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // HTTP Cache-Busting: Guarantee fresh, non-stale data across all browsers/devices
 app.use("/api", (req, res, next) => {
@@ -48,16 +60,31 @@ let purchaserStateCache = null;
 let purchaserStateCacheTimestamp = 0;
 let inFlightPurchaserStatePromise = null;
 let lastKnownGoodPurchaserState = null;
-let lastKnownGoodFullState = null;
 let livePartyCategorySalesCache = null;
 let livePartyCategorySalesTimestamp = 0;
 const STATE_CACHE_TTL_MS = 600000; // 10 minutes cache ceiling (mutation-driven invalidation handles real-time updates)
-const LIVE_PARTY_CAT_CACHE_TTL_MS = 30000;
+const LIVE_PARTY_CAT_CACHE_TTL_MS = 300000; // 5 minutes cache ceiling
 let lastServerMutationTimestamp = Date.now();
+
+// ⚡ Active Memory Governor: Proactively prevents Render 512MB container OOM crashes
+setInterval(() => {
+  const mem = process.memoryUsage();
+  const heapUsedMB = Math.round(mem.heapUsed / 1024 / 1024);
+  const rssMB = Math.round(mem.rss / 1024 / 1024);
+  if (heapUsedMB > 260 || rssMB > 350) {
+    console.warn(`[Memory Governor] High memory threshold reached (Heap: ${heapUsedMB}MB, RSS: ${rssMB}MB). Purging heavy caches...`);
+    stateCache = null;
+    stateCacheTimestamp = 0;
+    livePartyCategorySalesCache = null;
+    livePartyCategorySalesTimestamp = 0;
+    if (global.gc) {
+      try { global.gc(); } catch (e) {}
+    }
+  }
+}, 20000);
 
 function invalidateStateCache() {
   lastServerMutationTimestamp = Date.now();
-  if (stateCache?.requests?.length > 0) lastKnownGoodFullState = stateCache;
   if (purchaserStateCache?.requests?.length > 0) lastKnownGoodPurchaserState = purchaserStateCache;
   stateCache = null;
   stateCacheTimestamp = 0;
@@ -2034,7 +2061,7 @@ app.post("/api/storage/delete-all-cloudinary", async (req, res) => {
 // High-Performance Full Stock Calculation across all transactions in PostgreSQL (with In-Memory Cache)
 let imsFullSummaryCache = null;
 let imsFullSummaryCacheTime = 0;
-const IMS_FULL_SUMMARY_TTL_MS = 60 * 1000; // 60s memory cache
+const IMS_FULL_SUMMARY_TTL_MS = 300 * 1000; // 60s memory cache
 
 async function calculateImsFullSummary(forceFresh = false) {
   const now = Date.now();
@@ -2319,27 +2346,29 @@ async function getLivePartyCategoryMonthlySales() {
         pool.query(`
           SELECT 
             TRIM("partyName") AS "partyName",
-            "itemName",
-            "itemId",
-            "date",
-            ABS("stockQty") AS "qty"
+            LOWER(TRIM("itemName")) AS "itemName",
+            LOWER(TRIM(REPLACE(COALESCE("itemId", ''), '#', ''))) AS "itemId",
+            SUBSTRING("date" FROM 1 FOR 7) AS "month",
+            SUM(ABS("stockQty")) AS "qty",
+            COUNT(*)::int AS "orderCount"
           FROM ims_transactions
           WHERE "partyName" IS NOT NULL 
             AND TRIM("partyName") <> '' 
             AND TRIM("partyName") <> '—'
             AND "stockQty" < 0
             AND ("date" >= $1 OR "date" IS NULL)
+          GROUP BY TRIM("partyName"), LOWER(TRIM("itemName")), LOWER(TRIM(REPLACE(COALESCE("itemId", ''), '#', ''))), SUBSTRING("date" FROM 1 FOR 7)
         `, [earliestDateStr]),
         pool.query(`
           SELECT 
             TRIM("partyName") AS "partyName",
-            "category",
-            "itemModel",
-            "orderDate",
-            "orderQty",
-            "totalInr"
+            LOWER(TRIM("itemModel")) AS "itemModel",
+            SUBSTRING("orderDate" FROM 1 FOR 7) AS "month",
+            SUM(COALESCE("orderQty", 0)) AS "orderQty",
+            SUM(COALESCE("totalInr", 0)) AS "totalInr"
           FROM crm_sales_orders
           WHERE ("orderDate" >= $1 OR "orderDate" IS NULL)
+          GROUP BY TRIM("partyName"), LOWER(TRIM("itemModel")), SUBSTRING("orderDate" FROM 1 FOR 7)
         `, [earliestDateStr])
       ]);
 
@@ -2371,7 +2400,7 @@ async function getLivePartyCategoryMonthlySales() {
       (imsRes.rows || []).forEach(r => {
         const pName = (r.partyName || "").trim();
         if (!pName) return;
-        const month = extractYearMonthFromAnyDate(r.date);
+        const month = r.month || extractYearMonthFromAnyDate(r.date);
         if (!targetMonthKeys.has(month)) return;
 
         const rawName = (r.itemName || "").trim().toLowerCase();
@@ -2389,13 +2418,13 @@ async function getLivePartyCategoryMonthlySales() {
         }
         const entry = agg.get(key);
         entry.qty += parseInt(r.qty) || 0;
-        entry.orderCount += 1;
+        entry.orderCount += parseInt(r.orderCount) || 1;
       });
 
       (ordersRes.rows || []).forEach(o => {
         const pName = (o.partyName || "").trim();
         if (!pName) return;
-        const month = extractYearMonthFromAnyDate(o.orderDate);
+        const month = o.month || extractYearMonthFromAnyDate(o.orderDate);
         if (!targetMonthKeys.has(month)) return;
 
         const rawModel = (o.itemModel || "").trim().toLowerCase();
@@ -2978,8 +3007,8 @@ app.get("/api/state", async (req, res) => {
       if (isPurchaseOnlyRole && (purchaserStateCache?.requests?.length > 0 || lastKnownGoodPurchaserState?.requests?.length > 0)) {
         return res.json(purchaserStateCache || lastKnownGoodPurchaserState);
       }
-      if ((stateCache?.requests?.length > 0 || lastKnownGoodFullState?.requests?.length > 0) && !isRestrictedRole) {
-        return res.json(stateCache || lastKnownGoodFullState);
+      if (stateCache?.requests?.length > 0 && !isRestrictedRole) {
+        return res.json(stateCache);
       }
       try {
         const [uR, vR, rR, cR] = await Promise.all([

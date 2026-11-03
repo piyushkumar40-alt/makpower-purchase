@@ -783,6 +783,13 @@ export default function App() {
       if (isFetchingDataRef.current) return;
       isFetchingDataRef.current = true;
 
+      let effectiveUsers = null;
+      let effectiveVendors = [];
+      let effectiveRequests = [];
+      let effectiveCargos = [];
+      let effectiveCargoCompanies = [];
+      let effectiveItems = [];
+
       try {
         const cacheBuster = Date.now();
 
@@ -805,6 +812,9 @@ export default function App() {
         // Delta Check: In interval polling, query lightweight /api/state/meta (< 50 bytes)
         let serverMeta = null;
         if (isInterval) {
+          if (document.visibilityState !== "visible") {
+            return; // Completely pause polling when tab is not active in browser
+          }
           if (currentDataVersionRef.current === null) {
             return; // Wait until initial load has completed before doing interval delta polling
           }
@@ -837,7 +847,7 @@ export default function App() {
         }
         if (!isMounted) return;
 
-        let effectiveUsers = (Array.isArray(data.users) && data.users.length > 0) ? data.users.map(normalizeUserData) : null;
+        effectiveUsers = (Array.isArray(data.users) && data.users.length > 0) ? data.users.map(normalizeUserData) : null;
         if (effectiveUsers) {
           initialUsers.forEach(initU => {
             if (!effectiveUsers.some(u => u.id === initU.id || (u.email && u.email.toLowerCase() === initU.email.toLowerCase()))) {
@@ -845,11 +855,11 @@ export default function App() {
             }
           });
         }
-        let effectiveVendors = Array.isArray(data.vendors) ? data.vendors : [];
-        let effectiveRequests = Array.isArray(data.requests) ? data.requests.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })) : [];
-        let effectiveCargos = Array.isArray(data.cargos) ? data.cargos : [];
-        let effectiveCargoCompanies = Array.isArray(data.cargoCompanies) ? data.cargoCompanies : [];
-        let effectiveItems = Array.isArray(data.items) ? data.items : [];
+        effectiveVendors = Array.isArray(data.vendors) ? data.vendors : [];
+        effectiveRequests = Array.isArray(data.requests) ? data.requests.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })) : [];
+        effectiveCargos = Array.isArray(data.cargos) ? data.cargos : [];
+        effectiveCargoCompanies = Array.isArray(data.cargoCompanies) ? data.cargoCompanies : [];
+        effectiveItems = Array.isArray(data.items) ? data.items : [];
 
         // Direct Fallback Pull for Purchasing System:
         const desigClean = String(currentUser?.designation || "").trim().toLowerCase();
@@ -985,21 +995,20 @@ export default function App() {
       } finally {
         isFetchingDataRef.current = false;
         clearTimeout(safetyTimer);
-        const hasLoadedRequests = effectiveRequests && effectiveRequests.length > 0;
-        if (hasLoadedRequests || !currentUser) {
-          setLoading(false);
-          setInitialLoadComplete(true);
-          if (!isInterval) {
+        if (!isInterval) {
+          const hasLoadedRequests = effectiveRequests && effectiveRequests.length > 0;
+          if (hasLoadedRequests || !currentUser) {
+            setLoading(false);
+            setInitialLoadComplete(true);
             finishLoading();
+          } else {
+            console.warn("[Data Safety] Requests not populated yet. Triggering initial auto-rescue direct pull...");
+            setTimeout(() => {
+              if (isMounted) {
+                handleDirectPull();
+              }
+            }, 1200);
           }
-        } else {
-          // Data not arrived yet: do not dismiss loading!
-          console.warn("[Data Safety] Requests not populated yet. Triggering auto-rescue direct pull...");
-          setTimeout(() => {
-            if (isMounted) {
-              handleDirectPull();
-            }
-          }, 1200);
         }
       }
     }
@@ -1007,12 +1016,12 @@ export default function App() {
     loadDataRef.current = loadData;
     loadData();
 
-    // High-performance background sync across all laptops: poll every 12s
+    // High-performance background sync across all laptops: poll every 60s with lightweight delta check
     const intervalId = setInterval(() => {
       if (document.visibilityState === "visible" && currentUser) {
         loadData(true);
       }
-    }, 12000);
+    }, 60000);
 
     // Instant sync when switching back to tab/window
     let lastFocusSyncTime = 0;
@@ -1196,7 +1205,7 @@ export default function App() {
       }
     }
 
-    const checkTimer = setInterval(checkSessionStatus, 15000);
+    const checkTimer = setInterval(checkSessionStatus, 60000);
     return () => clearInterval(checkTimer);
   }, [currentUser]);
 
