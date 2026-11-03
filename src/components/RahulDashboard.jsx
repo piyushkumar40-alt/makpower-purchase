@@ -548,7 +548,7 @@ export default function RahulDashboard({
   const hasActiveFilters = quickStatus !== "all" || filterStage !== "all" || filterVendor || filterPurchaser || filterCategory || filterCargo || filterTransport || filterType !== "all" || searchQuery || fromDate || toDate;
 
   // When data is not pulled yet, show the full-page, dedicated Rahul Accounts loading screen
-  const isDataNotPulledYet = (!requests || requests.length === 0) && (loading || !initialLoadComplete);
+  const isDataNotPulledYet = (!requests || requests.length === 0);
   if (isDataNotPulledYet) {
     return (
       <RahulDashboardLoading 

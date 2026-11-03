@@ -51,8 +51,8 @@ let lastServerMutationTimestamp = Date.now();
 
 function invalidateStateCache() {
   lastServerMutationTimestamp = Date.now();
-  if (stateCache) lastKnownGoodFullState = stateCache;
-  if (purchaserStateCache) lastKnownGoodPurchaserState = purchaserStateCache;
+  if (stateCache?.requests?.length > 0) lastKnownGoodFullState = stateCache;
+  if (purchaserStateCache?.requests?.length > 0) lastKnownGoodPurchaserState = purchaserStateCache;
   stateCache = null;
   stateCacheTimestamp = 0;
   purchaserStateCache = null;
@@ -1207,7 +1207,7 @@ app.use("/api", async (req, res, next) => {
     try {
       await Promise.race([
         dbInitPromise,
-        new Promise(resolve => setTimeout(resolve, 2000))
+        new Promise(resolve => setTimeout(resolve, 12000))
       ]);
     } catch (err) {
       console.warn("DB init wait notice:", err.message);
@@ -2557,10 +2557,10 @@ app.get("/api/state", async (req, res) => {
     (!cleanRole && !cleanId); // Fast default: unauthenticated / role-less requests always take lightweight purchase state
 
   const now = Date.now();
-  if (isPurchaseOnlyRole && purchaserStateCache && (now - purchaserStateCacheTimestamp < STATE_CACHE_TTL_MS)) {
+  if (isPurchaseOnlyRole && purchaserStateCache?.requests?.length > 0 && (now - purchaserStateCacheTimestamp < STATE_CACHE_TTL_MS)) {
     return res.json(purchaserStateCache);
   }
-  if (!isRestrictedRole && !isPurchaseOnlyRole && stateCache && (now - stateCacheTimestamp < STATE_CACHE_TTL_MS)) {
+  if (!isRestrictedRole && !isPurchaseOnlyRole && stateCache?.requests?.length > 0 && (now - stateCacheTimestamp < STATE_CACHE_TTL_MS)) {
     return res.json(stateCache);
   }
 
@@ -2604,6 +2604,14 @@ app.get("/api/state", async (req, res) => {
 
             // Fail-safe protection: if query returned empty due to connection glitch, preserve last known good state
             let effectiveVendorRows = vendorsRes.rows || [];
+            if (effectiveVendorRows.length === 0 && isPg) {
+              try {
+                const retryVendor = await pool.query('SELECT * FROM vendors ORDER BY "name" ASC');
+                if (retryVendor.rows && retryVendor.rows.length > 0) effectiveVendorRows = retryVendor.rows;
+              } catch (retryErr) {
+                console.error("Dedicated vendors retry query err:", retryErr.message);
+              }
+            }
             if (effectiveVendorRows.length === 0 && (purchaserStateCache?.vendors?.length > 0 || lastKnownGoodPurchaserState?.vendors?.length > 0)) {
               effectiveVendorRows = (purchaserStateCache?.vendors || lastKnownGoodPurchaserState?.vendors || []);
             }
@@ -2613,6 +2621,14 @@ app.get("/api/state", async (req, res) => {
             }));
 
             let effectiveReqRows = requestsRes.rows || [];
+            if (effectiveReqRows.length === 0 && isPg) {
+              try {
+                const retryRes = await pool.query('SELECT * FROM requests ORDER BY "orderDate" DESC');
+                if (retryRes.rows && retryRes.rows.length > 0) effectiveReqRows = retryRes.rows;
+              } catch (retryErr) {
+                console.error("Dedicated requests retry query err:", retryErr.message);
+              }
+            }
             if (effectiveReqRows.length === 0 && (purchaserStateCache?.requests?.length > 0 || lastKnownGoodPurchaserState?.requests?.length > 0)) {
               effectiveReqRows = (purchaserStateCache?.requests || lastKnownGoodPurchaserState?.requests || []);
             }
@@ -2627,6 +2643,14 @@ app.get("/api/state", async (req, res) => {
             }));
 
             let effectiveCargoRows = cargosRes.rows || [];
+            if (effectiveCargoRows.length === 0 && isPg) {
+              try {
+                const retryCargo = await pool.query('SELECT * FROM cargos ORDER BY "cargoOrderDate" DESC');
+                if (retryCargo.rows && retryCargo.rows.length > 0) effectiveCargoRows = retryCargo.rows;
+              } catch (retryErr) {
+                console.error("Dedicated cargos retry query err:", retryErr.message);
+              }
+            }
             if (effectiveCargoRows.length === 0 && (purchaserStateCache?.cargos?.length > 0 || lastKnownGoodPurchaserState?.cargos?.length > 0)) {
               effectiveCargoRows = (purchaserStateCache?.cargos || lastKnownGoodPurchaserState?.cargos || []);
             }
@@ -2671,8 +2695,12 @@ app.get("/api/state", async (req, res) => {
               version: lastServerMutationTimestamp
             };
 
-            purchaserStateCache = purchaserState;
-            purchaserStateCacheTimestamp = Date.now();
+            const hasRealData = requests.length > 0 || cargos.length > 0 || vendors.length > 0;
+            if (hasRealData) {
+              purchaserStateCache = purchaserState;
+              purchaserStateCacheTimestamp = Date.now();
+              lastKnownGoodPurchaserState = purchaserState;
+            }
 
             return purchaserState;
           } finally {
@@ -2925,10 +2953,10 @@ app.get("/api/state", async (req, res) => {
       res.json(fullState);
     } catch (err) {
       console.error("GET /api/state error:", err.message);
-      if (isPurchaseOnlyRole && (purchaserStateCache || lastKnownGoodPurchaserState)) {
+      if (isPurchaseOnlyRole && (purchaserStateCache?.requests?.length > 0 || lastKnownGoodPurchaserState?.requests?.length > 0)) {
         return res.json(purchaserStateCache || lastKnownGoodPurchaserState);
       }
-      if ((stateCache || lastKnownGoodFullState) && !isRestrictedRole) {
+      if ((stateCache?.requests?.length > 0 || lastKnownGoodFullState?.requests?.length > 0) && !isRestrictedRole) {
         return res.json(stateCache || lastKnownGoodFullState);
       }
       try {
@@ -3072,15 +3100,23 @@ app.get("/api/cargos", async (req, res) => {
   if (isPg) {
     try {
       const result = await pool.query('SELECT * FROM cargos ORDER BY "cargoOrderDate" DESC');
-      const cargos = result.rows.map(c => sanitizeCargoDocuments({
+      let rows = result.rows || [];
+      if (rows.length === 0 && (purchaserStateCache?.cargos?.length > 0 || lastKnownGoodPurchaserState?.cargos?.length > 0)) {
+        rows = purchaserStateCache?.cargos || lastKnownGoodPurchaserState?.cargos || [];
+      }
+      const cargos = rows.map(c => sanitizeCargoDocuments({
         ...c,
         cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
         cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
-        totalCargoPrice: getEffectiveTotalCargoPrice(c)
+        totalCargoPrice: getEffectiveTotalCargoPrice(c),
+        cargoEtaHistory: safeJsonParse(c.cargoEtaHistory, [])
       }));
       res.json(cargos);
     } catch (err) {
       console.error("GET /api/cargos error:", err.message);
+      if (purchaserStateCache?.cargos?.length > 0 || lastKnownGoodPurchaserState?.cargos?.length > 0) {
+        return res.json(purchaserStateCache?.cargos || lastKnownGoodPurchaserState?.cargos || []);
+      }
       res.status(500).json({ error: "Failed to fetch cargos." });
     }
   } else {
@@ -3094,17 +3130,25 @@ app.get("/api/requests", async (req, res) => {
   if (isPg) {
     try {
       const result = await pool.query('SELECT * FROM requests ORDER BY "orderDate" DESC');
-      const requests = result.rows.map(r => ({
+      let rows = result.rows || [];
+      if (rows.length === 0 && (purchaserStateCache?.requests?.length > 0 || lastKnownGoodPurchaserState?.requests?.length > 0)) {
+        rows = purchaserStateCache?.requests || lastKnownGoodPurchaserState?.requests || [];
+      }
+      const requests = rows.map(r => ({
         ...r,
         orderQuantity: r.orderQuantity ? parseInt(r.orderQuantity) : 0,
         priceRmb: r.priceRmb ? parseFloat(r.priceRmb) : "",
         totalRmb: r.totalRmb ? parseFloat(r.totalRmb) : "",
         advancePayment: r.advancePayment ? parseFloat(r.advancePayment) : "",
-        balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : ""
+        balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : "",
+        vendorEddHistory: safeJsonParse(r.vendorEddHistory, [])
       }));
       res.json(requests);
     } catch (err) {
       console.error("GET /api/requests error:", err.message);
+      if (purchaserStateCache?.requests?.length > 0 || lastKnownGoodPurchaserState?.requests?.length > 0) {
+        return res.json(purchaserStateCache?.requests || lastKnownGoodPurchaserState?.requests || []);
+      }
       res.status(500).json({ error: "Failed to fetch requests." });
     }
   } else {

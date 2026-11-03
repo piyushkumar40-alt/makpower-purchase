@@ -34,6 +34,16 @@ export default function GlobalDataLoadingOverlay({ currentUser, onDirectPull, ac
     progress = Math.min(97, 94 + Math.round((secondsNum - 7.0) * 0.5)); // crawls up to 97%
   }
 
+  // Auto-launch direct pull if initial state load takes longer than 3.5s
+  useEffect(() => {
+    const autoRescue = setTimeout(() => {
+      if (onDirectPull && !isPullingDirect) {
+        handleDirectPull();
+      }
+    }, 3500);
+    return () => clearTimeout(autoRescue);
+  }, [onDirectPull]);
+
   // Format real-time duration in mm:ss.s or s.ss format
   const formatDuration = (totalSec) => {
     const mins = Math.floor(totalSec / 60);

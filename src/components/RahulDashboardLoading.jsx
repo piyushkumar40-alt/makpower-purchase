@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { RefreshCw, Shield, Database, Truck, FileSpreadsheet, CheckCircle2, ArrowRight, Zap, LogOut } from "lucide-react";
 
 export default function RahulDashboardLoading({ 

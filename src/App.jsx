@@ -767,23 +767,17 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
 
-    // Safety timeout: auto-resolve loading modal after 8 seconds and attempt fast snapshot if empty
+    // Safety timeout: if data is still empty after 6s, trigger immediate parallel direct snapshot pull
     const safetyTimer = setTimeout(async () => {
-      if (requests.length === 0 && currentUser) {
-        console.warn("[Network Safety] /api/state took >8s. Attempting fast direct snapshot...");
+      if (currentUser) {
+        console.warn("[Network Safety] /api/state taking longer. Triggering immediate direct parallel pull...");
         try {
-          const [rRes, cRes] = await Promise.all([
-            fetch(`/api/requests?_t=${Date.now()}`).then(r => r.ok ? r.json() : null),
-            fetch(`/api/cargos?_t=${Date.now()}`).then(r => r.ok ? r.json() : null)
-          ]);
-          if (Array.isArray(rRes) && rRes.length > 0) setRequests(rRes);
-          if (Array.isArray(cRes) && cRes.length > 0) setCargos(cRes);
-        } catch (e) {}
+          await handleDirectPull();
+        } catch (e) {
+          console.warn("Direct pull in safety timer err:", e);
+        }
       }
-      setLoading(false);
-      setInitialLoadComplete(true);
-      finishLoading();
-    }, 8000);
+    }, 6000);
 
     async function loadData(isInterval = false) {
       if (isFetchingDataRef.current) return;
@@ -858,7 +852,11 @@ export default function App() {
         let effectiveItems = Array.isArray(data.items) ? data.items : [];
 
         // Direct Fallback Pull for Purchasing System:
-        const isPurchaseUser = !currentUser || ["superadmin", "owner", "admin", "purchase_manager", "purchaser", "requester", "coordinator", "nitin", "rahul", "warehouse", "packing", "accounts"].includes(currentUser.role);
+        const desigClean = String(currentUser?.designation || "").trim().toLowerCase();
+        const isPurchaseUser = !currentUser || [
+          "superadmin", "owner", "admin", "purchase_manager", "purchaser", 
+          "requester", "coordinator", "nitin", "rahul", "warehouse", "packing", "accounts"
+        ].includes(roleClean) || roleClean.includes("rahul") || roleClean.includes("mark") || roleClean.includes("purchas") || roleClean.includes("account") || desigClean.includes("mark purchase") || currentUser?.id === "u-rahul" || activeView === "rahul";
         if (isPurchaseUser && (effectiveRequests.length === 0 || effectiveVendors.length === 0 || effectiveCargos.length === 0)) {
           try {
             const fetches = [
@@ -987,10 +985,21 @@ export default function App() {
       } finally {
         isFetchingDataRef.current = false;
         clearTimeout(safetyTimer);
-        setLoading(false);
-        setInitialLoadComplete(true);
-        if (!isInterval) {
-          finishLoading();
+        const hasLoadedRequests = effectiveRequests && effectiveRequests.length > 0;
+        if (hasLoadedRequests || !currentUser) {
+          setLoading(false);
+          setInitialLoadComplete(true);
+          if (!isInterval) {
+            finishLoading();
+          }
+        } else {
+          // Data not arrived yet: do not dismiss loading!
+          console.warn("[Data Safety] Requests not populated yet. Triggering auto-rescue direct pull...");
+          setTimeout(() => {
+            if (isMounted) {
+              handleDirectPull();
+            }
+          }, 1200);
         }
       }
     }

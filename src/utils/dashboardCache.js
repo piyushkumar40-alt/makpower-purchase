@@ -64,7 +64,9 @@ export function getInitialSyncCache(userOrRole = "rahul") {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object") {
-      return parsed;
+      if ((Array.isArray(parsed.requests) && parsed.requests.length > 0) || (Array.isArray(parsed.cargos) && parsed.cargos.length > 0)) {
+        return parsed;
+      }
     }
   } catch (err) {
     console.warn("[DashboardCache] Sync cache read notice:", err);
@@ -102,6 +104,8 @@ export async function getAsyncDashboardCache(userOrRole = "rahul") {
  */
 export async function saveDashboardCache(userOrRole, data) {
   if (!data || typeof data !== "object") return;
+  const hasData = (Array.isArray(data.requests) && data.requests.length > 0) || (Array.isArray(data.cargos) && data.cargos.length > 0);
+  if (!hasData) return;
   const key = getNormalizedCacheKey(userOrRole);
   const now = Date.now();
 
