@@ -59,7 +59,7 @@ export const initialUsers = [
     email: "rahul@makpowerindia.com",
     password: "Demo#Rahul2026!",
     role: "rahul",
-    designation: "Mark Purchases",
+    designation: "Accounts",
     status: "active"
   },
   {
@@ -135,7 +135,7 @@ export const initialDesignations = [
   { id: "d-asm", title: "Area Sales Manager (ASM)", role: "asm", description: "Area Sales Team & Regional Party Network" },
   { id: "d-tsm", title: "Territory Sales Manager (TSM)", role: "tsm", description: "Territory Sales & Direct Dealer Relations" },
   { id: "d-rsm", title: "Regional Sales Manager (RSM)", role: "rsm", description: "Regional Sales & Territory Oversight" },
-  { id: "d-mark-purchases", title: "Mark Purchases", role: "rahul", description: "Review and Mark Purchases as Updated in Ledger" },
+  { id: "d-mark-purchases", title: "Accounts", role: "rahul", description: "Review and Mark Purchases as Updated in Ledger & Commercial Audit" },
   { id: "d-purchase-manager", title: "Purchase Manager", role: "purchase_manager", description: "Purchase Requisitions & Cross-Purchaser Cargo Logistics Management" },
   { id: "d-purchaser", title: "Purchaser", role: "purchaser", description: "Purchase Requisitions & Vendor Management" },
   { id: "d-packing", title: "Packing", role: "nitin", description: "Packing & Production Tracking" },

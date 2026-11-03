@@ -240,26 +240,7 @@ export default function GlobalDataLoadingOverlay({ currentUser, onDirectPull, ac
           <span>Secure Cloud Syncing...</span>
         </div>
 
-        {/* Quick Rescue Fast Direct Pull (Appears if duration > 3.5s) */}
-        {secondsNum >= 3.5 && onDirectPull && (
-          <div style={{ marginTop: "4px", paddingTop: "12px", borderTop: "1px solid rgba(255, 255, 255, 0.08)", width: "100%", display: "flex", justifyContent: "center", gap: "10px" }}>
-            <button
-              onClick={handleDirectPull}
-              disabled={isPullingDirect}
-              className="btn btn-primary btn-sm"
-              style={{ fontSize: "0.8rem", padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: "6px" }}
-            >
-              <Zap size={13} /> {isPullingDirect ? "Pulling..." : "⚡ Fast Direct Pull"}
-            </button>
-            <button
-              onClick={() => window.location.reload()}
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: "0.8rem", padding: "6px 12px" }}
-            >
-              Reload
-            </button>
-          </div>
-        )}
+        
 
         <style>{`
           @keyframes globalSpin {

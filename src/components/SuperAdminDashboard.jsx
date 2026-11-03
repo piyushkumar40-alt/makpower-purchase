@@ -1482,7 +1482,7 @@ export default function SuperAdminDashboard({
                     const getRoleLabel = (role) => {
                       if (role === "purchase_manager") return "Purchase Manager";
                       if (role === "nitin") return "Packing";
-                      if (role === "rahul") return "Mark Purchases";
+                      if (role === "rahul") return "Accounts";
                       if (role === "coordinator") return "Coordinator";
                       if (role === "crm") return "CRM Executive";
                       if (role === "asm") return "Area Sales Manager";
@@ -1623,7 +1623,7 @@ export default function SuperAdminDashboard({
                                 setEditSalutationVal(sal);
                                 setEditNameVal(nm);
                                 setEditPasswordVal("");
-                                setEditDesignationVal(staff.designation || (staff.role === "rahul" ? "Mark Purchases" : staff.role === "nitin" ? "Packing" : "Purchaser"));
+                                setEditDesignationVal(staff.designation || (staff.role === "rahul" ? "Accounts" : staff.role === "nitin" ? "Packing" : "Purchaser"));
                                 setEditRoleVal(staff.role || ((staff.name?.toLowerCase().includes("rahul") && staff.name?.toLowerCase().includes("mann")) ? "rahul" : "purchaser"));
                                 const defaultPid = staff.parentCrmId || ((staff.name || "").toLowerCase().includes("ashutosh") ? "u-ankita" : "u-ankita");
                                 setEditParentCrmIdVal(defaultPid);
@@ -1742,7 +1742,7 @@ export default function SuperAdminDashboard({
                                   else if (r === "purchase_manager") setEditDesignationVal("Purchase Manager");
                                   else if (r === "purchaser") setEditDesignationVal("Purchaser");
                                   else if (r === "nitin") setEditDesignationVal("Packing");
-                                  else if (r === "rahul") setEditDesignationVal("Mark Purchases");
+                                  else if (r === "rahul") setEditDesignationVal("Accounts");
                                   else if (r === "coordinator") setEditDesignationVal("Logistics");
                                   else if (r === "crm") setEditDesignationVal("CRM Executive");
                                   else if (r === "asm") setEditDesignationVal("Area Sales Manager (ASM)");
@@ -1758,7 +1758,7 @@ export default function SuperAdminDashboard({
                                 <option value="purchase_manager">🎖️ Purchase Manager (Cross-Cargo Logistics)</option>
                                 <option value="purchaser">🛒 Purchaser (Order Processing)</option>
                                 <option value="nitin">📦 Packing</option>
-                                <option value="rahul">📝 Mark Purchases (Rahul)</option>
+                                <option value="rahul">📊 Accounts (Rahul)</option>
                                 <option value="coordinator">🚚 Logistics Coordinator</option>
                                 <option value="superadmin">⚡ System Admin</option>
                               </select>
@@ -1778,7 +1778,7 @@ export default function SuperAdminDashboard({
                                 <option value="Area Sales Manager (ASM)">Area Sales Manager (ASM)</option>
                                 <option value="Territory Sales Manager (TSM)">Territory Sales Manager (TSM)</option>
                                 <option value="Purchaser">Purchaser</option>
-                                <option value="Mark Purchases">Mark Purchases</option>
+                                <option value="Accounts">Accounts</option>
                                 <option value="Packing">Packing</option>
                                 <option value="Accounts and Updates">Accounts and Updates</option>
                                 <option value="Accounts">Accounts</option>
@@ -1952,7 +1952,7 @@ export default function SuperAdminDashboard({
                         else if (r === "tsm") setPDesignation("Territory Sales Manager (TSM)");
                         else if (r === "purchaser") setPDesignation("Purchaser");
                         else if (r === "nitin") setPDesignation("Packing");
-                        else if (r === "rahul") setPDesignation("Mark Purchases");
+                        else if (r === "rahul") setPDesignation("Accounts");
                         else if (r === "coordinator") setPDesignation("Logistics");
                         else if (r === "owner") setPDesignation("Owner");
                       }}
@@ -1965,7 +1965,7 @@ export default function SuperAdminDashboard({
                       <option value="purchase_manager">🎖️ Purchase Manager (Cross-Cargo Logistics)</option>
                       <option value="purchaser">🛒 Purchaser</option>
                       <option value="nitin">📦 Packing (Nitin)</option>
-                      <option value="rahul">📝 Mark Purchases (Rahul)</option>
+                      <option value="rahul">📊 Accounts (Rahul)</option>
                       <option value="coordinator">🚚 Logistics PC</option>
                       <option value="owner">👑 Owner (Executive Dashboard)</option>
                     </select>
@@ -2024,7 +2024,7 @@ export default function SuperAdminDashboard({
                       <option value="Area Sales Manager (ASM)">🟢 Area Sales Manager (ASM)</option>
                       <option value="Territory Sales Manager (TSM)">🟡 Territory Sales Manager (TSM)</option>
                       <option value="Purchaser">🛒 Purchaser</option>
-                      <option value="Mark Purchases">📝 Mark Purchases</option>
+                      <option value="Accounts">📊 Accounts</option>
                       <option value="Packing">📦 Packing</option>
                       <option value="Accounts and Updates">💰 Accounts and Updates</option>
                       <option value="Accounts">Accounts</option>

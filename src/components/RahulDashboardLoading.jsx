@@ -183,34 +183,7 @@ export default function RahulDashboardLoading({
           </div>
         </div>
 
-        {/* Quick Rescue Actions (Appears after 3 seconds) */}
-        {elapsed >= 3 && (
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap", paddingTop: "14px", borderTop: "1px solid var(--border-glass)" }}>
-            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-              Elapsed: {elapsed}s
-            </div>
-
-            <div style={{ display: "flex", gap: "8px" }}>
-              {onDirectPull && (
-                <button
-                  onClick={handleFastPull}
-                  disabled={isPullingDirect}
-                  className="btn btn-primary btn-sm"
-                  style={{ fontSize: "0.8rem", padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: "6px" }}
-                >
-                  <Zap size={13} /> {isPullingDirect ? "Pulling..." : "⚡ Fast Direct Data Pull"}
-                </button>
-              )}
-              <button
-                onClick={() => window.location.reload()}
-                className="btn btn-secondary btn-sm"
-                style={{ fontSize: "0.8rem", padding: "6px 12px" }}
-              >
-                Reload
-              </button>
-            </div>
-          </div>
-        )}
+        
 
       </div>
     </div>

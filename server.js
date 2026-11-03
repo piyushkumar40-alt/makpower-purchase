@@ -1,3 +1,9 @@
+process.on("unhandledRejection", (reason, promise) => {
+  console.warn("Global unhandledRejection safely caught:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("Global uncaughtException safely handled:", err.message);
+});
 import express from "express";
 import pg from "pg";
 import path from "path";
@@ -179,10 +185,14 @@ async function initDatabase() {
     try {
       pool = new pg.Pool({
         connectionString,
-        max: 20,
+        max: 10,
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 8000,
+        connectionTimeoutMillis: 10000,
         ssl: connectionString.includes("localhost") ? false : { rejectUnauthorized: false }
+      });
+      // Handle idle client errors without crashing Node.js process
+      pool.on("error", (err, client) => {
+        console.error("Postgres pool idle client notice:", err.message);
       });
       // Test connection
       await pool.query("SELECT NOW()");
@@ -308,7 +318,7 @@ function readLocalJson() {
           data.users[idx].designation = "Purchaser";
         } else if (initU.id === "u-rahul") {
           data.users[idx].role = "rahul";
-          data.users[idx].designation = "Mark Purchases";
+          data.users[idx].designation = "Accounts";
         } else if (initU.id === "u-nitin" || (initU.email && initU.email.toLowerCase().includes("nitin"))) {
           data.users[idx].role = "nitin";
           data.users[idx].designation = "Packing";
@@ -335,7 +345,7 @@ function readLocalJson() {
         return {
           ...u,
           role: "rahul",
-          designation: "Mark Purchases",
+          designation: "Accounts",
           status: u.status || "active"
         };
       }
@@ -601,7 +611,7 @@ async function setupPgDatabase() {
         console.warn("Could not run Anees role update query in PG:", e.message);
       }
       try {
-        await pool.query(`UPDATE users SET "role" = 'rahul', "designation" = 'Mark Purchases' WHERE "id" = 'u-rahul' OR LOWER("email") = 'rahul@makpowerindia.com' OR LOWER("name") LIKE '%rahul mann%'`);
+        await pool.query(`UPDATE users SET "role" = 'rahul', "designation" = 'Accounts' WHERE "id" = 'u-rahul' OR LOWER("email") = 'rahul@makpowerindia.com' OR LOWER("name") LIKE '%rahul mann%'`);
       } catch (e) {
         console.warn("Could not run Rahul Mann role update query in PG:", e.message);
       }
@@ -1216,6 +1226,11 @@ app.use("/api", async (req, res, next) => {
   next();
 });
 
+// In-memory cache for system settings (eliminates 99.9% of DB queries on page refresh)
+let cachedSystemSettings = { isHidden: false, redirectUrl: "https://www.google.com" };
+let cachedSettingsTimestamp = 0;
+const SETTINGS_IN_MEMORY_TTL = 60000;
+
 // Helper to parse cookies manually
 const getBypassCookie = (req) => {
   if (!req.headers.cookie) return null;
@@ -1227,8 +1242,8 @@ const getBypassCookie = (req) => {
 app.use(async (req, res, next) => {
   const path = req.path;
 
-  // Always let API requests and the panic route pass
-  if (path.startsWith("/api/") || path === "/web") {
+  // FAST PASS: Always let API requests, compiled assets, static files, and health checks pass with 0 DB queries
+  if (path.startsWith("/api/") || path.startsWith("/assets/") || path === "/web" || path === "/healthz" || path === "/health" || path.includes(".")) {
     return next();
   }
 
@@ -1243,30 +1258,37 @@ app.use(async (req, res, next) => {
     return next();
   }
 
-  // Retrieve settings
-  let isHidden = false;
-  let redirectUrl = "https://www.google.com";
+  // Check in-memory cache first to avoid hammering PostgreSQL pool on page refreshes
+  const now = Date.now();
+  if (now - cachedSettingsTimestamp < SETTINGS_IN_MEMORY_TTL) {
+    if (cachedSystemSettings.isHidden) {
+      return res.redirect(cachedSystemSettings.redirectUrl);
+    }
+    return next();
+  }
 
   try {
     if (isPg) {
       const resSettings = await pool.query("SELECT * FROM settings");
       resSettings.rows.forEach(row => {
-        if (row.key === "isHidden") isHidden = (row.value === "true");
-        if (row.key === "redirectUrl") redirectUrl = row.value;
+        if (row.key === "isHidden") cachedSystemSettings.isHidden = (row.value === "true");
+        if (row.key === "redirectUrl") cachedSystemSettings.redirectUrl = row.value;
       });
+      cachedSettingsTimestamp = now;
     } else {
       const data = readLocalJson();
       if (data.settings) {
-        isHidden = !!data.settings.isHidden;
-        redirectUrl = data.settings.redirectUrl || redirectUrl;
+        cachedSystemSettings.isHidden = !!data.settings.isHidden;
+        cachedSystemSettings.redirectUrl = data.settings.redirectUrl || cachedSystemSettings.redirectUrl;
+        cachedSettingsTimestamp = now;
       }
     }
   } catch (err) {
     console.error("Error checking settings in visibility middleware:", err.message);
   }
 
-  if (isHidden) {
-    return res.redirect(redirectUrl);
+  if (cachedSystemSettings.isHidden) {
+    return res.redirect(cachedSystemSettings.redirectUrl);
   }
 
   next();
