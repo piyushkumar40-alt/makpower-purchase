@@ -856,7 +856,7 @@ export default function App() {
         const isPurchaseUser = !currentUser || [
           "superadmin", "owner", "admin", "purchase_manager", "purchaser", 
           "requester", "coordinator", "nitin", "rahul", "warehouse", "packing", "accounts"
-        ].includes(roleClean) || roleClean.includes("rahul") || roleClean.includes("mark") || roleClean.includes("purchas") || roleClean.includes("account") || desigClean.includes("mark purchase") || currentUser?.id === "u-rahul" || activeView === "rahul";
+        ].includes(roleClean) || roleClean.includes("rahul") || roleClean.includes("mark") || roleClean.includes("purchas") || roleClean.includes("account") || roleClean.includes("acct") || desigClean.includes("acct") || desigClean.includes("mark purchase") || currentUser?.id === "u-rahul" || activeView === "rahul";
         if (isPurchaseUser && (effectiveRequests.length === 0 || effectiveVendors.length === 0 || effectiveCargos.length === 0)) {
           try {
             const fetches = [
@@ -1945,7 +1945,7 @@ export default function App() {
       email,
       password,
       role,
-      designation: designation || (role === "rahul" ? "Accounts" : role === "nitin" ? "Packing" : "Purchaser"),
+      designation: designation || (role === "rahul" ? "Accts" : role === "nitin" ? "Packing" : "Purchaser"),
       phone: phone || "",
       territory: territory || "",
       parentCrmId: parentCrmId || "",
@@ -3292,7 +3292,7 @@ export default function App() {
                     {currentUser.role === "superadmin" ? "Admin" : currentUser.name}
                   </span>
                   <span style={{ fontSize: "0.66rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-                    ({currentUser.role === "rahul" ? "ACCOUNTS" : currentUser.role === "nitin" ? "PACKING" : (currentUser.role?.toUpperCase() || "STAFF")})
+                    ({currentUser.role === "rahul" ? "Accts" : currentUser.role === "nitin" ? "PACKING" : (currentUser.role?.toUpperCase() || "STAFF")})
                   </span>
                 </div>
                 <button 
@@ -3371,7 +3371,7 @@ export default function App() {
                 <div className="mobile-user-details">
                   <span className="mobile-user-name">{currentUser.name}</span>
                   <span className="mobile-user-role">
-                    {currentUser.role === "superadmin" ? "Super Admin" : currentUser.role === "crm" ? "CRM Executive" : currentUser.role === "asm" ? "Area Sales Manager" : currentUser.role === "tsm" ? "Territory Sales Manager" : currentUser.role === "rsm" ? "Regional Sales Manager" : currentUser.role === "nitin" ? "Packing" : currentUser.role === "rahul" ? (currentUser.designation === "Mark Purchases" ? "Accounts" : (currentUser.designation || "Accounts")) : (currentUser.designation || "Purchaser")}
+                    {currentUser.role === "superadmin" ? "Super Admin" : currentUser.role === "crm" ? "CRM Executive" : currentUser.role === "asm" ? "Area Sales Manager" : currentUser.role === "tsm" ? "Territory Sales Manager" : currentUser.role === "rsm" ? "Regional Sales Manager" : currentUser.role === "nitin" ? "Packing" : currentUser.role === "rahul" ? "Accts" : (currentUser.designation || "Purchaser")}
                   </span>
                 </div>
               </div>

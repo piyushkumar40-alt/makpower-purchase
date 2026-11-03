@@ -318,7 +318,7 @@ function readLocalJson() {
           data.users[idx].designation = "Purchaser";
         } else if (initU.id === "u-rahul") {
           data.users[idx].role = "rahul";
-          data.users[idx].designation = "Accounts";
+          data.users[idx].designation = "Accts";
         } else if (initU.id === "u-nitin" || (initU.email && initU.email.toLowerCase().includes("nitin"))) {
           data.users[idx].role = "nitin";
           data.users[idx].designation = "Packing";
@@ -345,7 +345,7 @@ function readLocalJson() {
         return {
           ...u,
           role: "rahul",
-          designation: "Accounts",
+          designation: "Accts",
           status: u.status || "active"
         };
       }
@@ -611,7 +611,7 @@ async function setupPgDatabase() {
         console.warn("Could not run Anees role update query in PG:", e.message);
       }
       try {
-        await pool.query(`UPDATE users SET "role" = 'rahul', "designation" = 'Accounts' WHERE "id" = 'u-rahul' OR LOWER("email") = 'rahul@makpowerindia.com' OR LOWER("name") LIKE '%rahul mann%'`);
+        await pool.query(`UPDATE users SET "role" = 'rahul', "designation" = 'Accts' WHERE "id" = 'u-rahul' OR LOWER("email") = 'rahul@makpowerindia.com' OR LOWER("name") LIKE '%rahul mann%'`);
       } catch (e) {
         console.warn("Could not run Rahul Mann role update query in PG:", e.message);
       }
@@ -2574,7 +2574,7 @@ app.get("/api/state", async (req, res) => {
   const isPurchaserRole = cleanRole === "purchaser" || cleanRole === "purchase_manager" || cleanRole === "purchase-manager" || cleanRole.includes("purchas");
   const isPurchaseOnlyRole = isPurchaserRole || 
     ["requester", "coordinator", "nitin", "rahul", "warehouse", "packing", "accounts"].includes(cleanRole) ||
-    cleanRole.includes("rahul") || cleanRole.includes("account") || cleanRole.includes("mark purchase") || cleanRole.includes("nitin") || cleanRole.includes("pack") || cleanRole.includes("coord") ||
+    cleanRole.includes("rahul") || cleanRole.includes("account") || cleanRole.includes("acct") || cleanRole.includes("mark purchase") || cleanRole.includes("nitin") || cleanRole.includes("pack") || cleanRole.includes("coord") ||
     cleanId === "u-rahul" || cleanId === "u-nitin" || cleanName.includes("rahul") || cleanName.includes("nitin") ||
     (!cleanRole && !cleanId); // Fast default: unauthenticated / role-less requests always take lightweight purchase state
 

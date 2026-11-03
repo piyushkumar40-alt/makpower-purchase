@@ -570,7 +570,7 @@ export default function RahulDashboard({
               Accounts & Purchase Marking Panel
             </h2>
             <span className="user-badge" style={{ padding: "5px 12px", background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)", color: "var(--success)", fontWeight: 700, fontSize: "0.82rem" }}>
-              Mr. Rahul Mann (Accounts)
+              Mr. Rahul Mann (Accts)
             </span>
           </div>
           <p style={{ color: "var(--text-muted)", fontSize: "0.86rem", marginTop: "4px", marginBottom: 0 }}>

@@ -39,7 +39,7 @@ export function getNormalizedCacheKey(userOrRole) {
   if (!userOrRole) return "rahul";
   if (typeof userOrRole === "string") {
     const s = userOrRole.trim().toLowerCase();
-    if (s.includes("rahul") || s.includes("account") || s.includes("mark purchase")) return "rahul";
+    if (s.includes("rahul") || s.includes("account") || s.includes("acct") || s.includes("mark purchase")) return "rahul";
     if (s.includes("nitin") || s.includes("pack")) return "nitin";
     if (s.includes("coord")) return "coordinator";
     return s;
@@ -47,7 +47,7 @@ export function getNormalizedCacheKey(userOrRole) {
   const role = String(userOrRole.role || "").trim().toLowerCase();
   const id = String(userOrRole.id || "").trim().toLowerCase();
   const name = String(userOrRole.name || "").trim().toLowerCase();
-  if (role === "rahul" || id === "u-rahul" || name.includes("rahul") || role.includes("account")) return "rahul";
+  if (role === "rahul" || id === "u-rahul" || name.includes("rahul") || role.includes("account") || role.includes("acct")) return "rahul";
   if (role === "nitin" || id === "u-nitin" || name.includes("nitin")) return "nitin";
   if (role === "coordinator" || id === "u-coordinator") return "coordinator";
   return role || id || "rahul";
