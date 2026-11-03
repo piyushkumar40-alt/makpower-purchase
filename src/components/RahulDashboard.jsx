@@ -28,7 +28,8 @@ import {
   User,
   ExternalLink,
   ChevronRight,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Zap
 } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
 import BundledUpcomingShipments, { OrderInspectionModal } from "./BundledUpcomingShipments";
@@ -36,6 +37,7 @@ import MasterOrderTracker, { getOrderStage } from "./MasterOrderTracker";
 import RequesterForm from "./RequesterForm";
 import CustomSelect from "./CustomSelect";
 import CargoDocumentModal from "./CargoDocumentModal";
+import RahulDashboardLoading from "./RahulDashboardLoading";
 import { useSortableData } from "../utils/useSortableData";
 import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, formatPunchDateTime } from "../utils/formatters";
 
@@ -51,6 +53,8 @@ export default function RahulDashboard({
   onBatchUpdateRequests,
   onUpdateCargo,
   onLogout,
+  onRefreshData,
+  onDirectPull,
   loading = false,
   initialLoadComplete = true,
   isMasterDataSilentlyLoading = false
@@ -543,15 +547,15 @@ export default function RahulDashboard({
 
   const hasActiveFilters = quickStatus !== "all" || filterStage !== "all" || filterVendor || filterPurchaser || filterCategory || filterCargo || filterTransport || filterType !== "all" || searchQuery || fromDate || toDate;
 
-  if (loading && (!requests || requests.length === 0)) {
+  // When data is not pulled yet, show the full-page, dedicated Rahul Accounts loading screen
+  const isDataNotPulledYet = (!requests || requests.length === 0) && (loading || !initialLoadComplete);
+  if (isDataNotPulledYet) {
     return (
-      <div style={{ padding: "80px 24px", maxWidth: "600px", margin: "80px auto", textAlign: "center" }}>
-        <div className="glass-panel" style={{ padding: "40px 30px" }}>
-          <RefreshCw size={36} className="spin-animation" style={{ color: "var(--primary)", margin: "0 auto 16px" }} />
-          <h3 style={{ fontSize: "1.25rem", color: "var(--text-main)", marginBottom: "8px" }}>Synchronizing Accounts & Commercial Ledgers</h3>
-          <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: 0 }}>Connecting to real-time purchase updates, orders, and shipments...</p>
-        </div>
-      </div>
+      <RahulDashboardLoading 
+        currentUser={currentUser}
+        onDirectPull={onDirectPull}
+        onLogout={onLogout}
+      />
     );
   }
 
@@ -574,7 +578,30 @@ export default function RahulDashboard({
           </p>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          {/* Instant Browser Cache & Live Sync Status Indicator */}
+          {isMasterDataSilentlyLoading || loading ? (
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 12px", borderRadius: "8px", background: "rgba(56, 189, 248, 0.1)", border: "1px solid rgba(56, 189, 248, 0.3)", fontSize: "0.78rem", color: "#38bdf8" }}>
+              <RefreshCw size={13} className="spin-animation" /> Syncing live updates...
+            </div>
+          ) : (
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 12px", borderRadius: "8px", background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.25)", fontSize: "0.78rem", color: "#10b981" }}>
+              <Zap size={13} /> Instant Cache Active
+            </div>
+          )}
+
+          {onRefreshData && (
+            <button 
+              onClick={onRefreshData} 
+              disabled={isMasterDataSilentlyLoading || loading}
+              className="btn btn-secondary btn-sm" 
+              title="Pull freshest data from server"
+              style={{ padding: "7px 12px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: "6px" }}
+            >
+              <RefreshCw size={13} className={isMasterDataSilentlyLoading || loading ? "spin-animation" : ""} /> Sync Now
+            </button>
+          )}
+
           <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 12px", borderRadius: "8px", background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.2)", fontSize: "0.78rem", color: "#38bdf8" }}>
             <Eye size={14} /> Master Orders: View Only
           </div>

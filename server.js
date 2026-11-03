@@ -40,6 +40,7 @@ let stateCache = null;
 let stateCacheTimestamp = 0;
 let purchaserStateCache = null;
 let purchaserStateCacheTimestamp = 0;
+let inFlightPurchaserStatePromise = null;
 let lastKnownGoodPurchaserState = null;
 let lastKnownGoodFullState = null;
 let livePartyCategorySalesCache = null;
@@ -58,6 +59,7 @@ function invalidateStateCache() {
   purchaserStateCacheTimestamp = 0;
   livePartyCategorySalesCache = null;
   livePartyCategorySalesTimestamp = 0;
+  inFlightPurchaserStatePromise = null;
 }
 
 // GET /api/state/meta - Lightweight endpoint returning mutation version & current server date (for EOD delta sync)
@@ -2537,14 +2539,22 @@ async function syncPartyCategoryMonthlySales() {
 // 1. GET /api/state - Fetches full system state with concurrent DB queries & memory cache
 app.get("/api/state", async (req, res) => {
   const { userId, userRole, userName } = req.query;
-  const isCrmRole = userRole === "crm";
-  const isAsmRole = userRole === "asm";
-  const isTsmRole = userRole === "tsm";
-  const isRsmRole = userRole === "rsm";
+  const cleanRole = String(userRole || "").trim().toLowerCase();
+  const cleanName = String(userName || "").trim().toLowerCase();
+  const cleanId = String(userId || "").trim().toLowerCase();
+
+  const isCrmRole = cleanRole === "crm";
+  const isAsmRole = cleanRole === "asm";
+  const isTsmRole = cleanRole === "tsm";
+  const isRsmRole = cleanRole === "rsm";
   const isAsmTsmRole = isAsmRole || isTsmRole || isRsmRole;
   const isRestrictedRole = isCrmRole || isAsmTsmRole;
-  const isPurchaserRole = userRole === "purchaser" || userRole === "purchase_manager" || userRole === "purchase-manager";
-  const isPurchaseOnlyRole = isPurchaserRole || ["requester", "coordinator", "nitin", "rahul", "warehouse", "packing", "accounts"].includes(userRole);
+  const isPurchaserRole = cleanRole === "purchaser" || cleanRole === "purchase_manager" || cleanRole === "purchase-manager" || cleanRole.includes("purchas");
+  const isPurchaseOnlyRole = isPurchaserRole || 
+    ["requester", "coordinator", "nitin", "rahul", "warehouse", "packing", "accounts"].includes(cleanRole) ||
+    cleanRole.includes("rahul") || cleanRole.includes("account") || cleanRole.includes("mark purchase") || cleanRole.includes("nitin") || cleanRole.includes("pack") || cleanRole.includes("coord") ||
+    cleanId === "u-rahul" || cleanId === "u-nitin" || cleanName.includes("rahul") || cleanName.includes("nitin") ||
+    (!cleanRole && !cleanId); // Fast default: unauthenticated / role-less requests always take lightweight purchase state
 
   const now = Date.now();
   if (isPurchaseOnlyRole && purchaserStateCache && (now - purchaserStateCacheTimestamp < STATE_CACHE_TTL_MS)) {
@@ -2561,103 +2571,117 @@ app.get("/api/state", async (req, res) => {
 
   if (isPg) {
     try {
-      // ⚡ Fast Path: For purchasers, purchase managers and requisitioners, query ONLY purchase-related tables
+      // ⚡ Fast Path: For purchasers, accounts (Rahul), packing (Nitin), coordinators & unauthenticated users
       if (isPurchaseOnlyRole) {
-        const [
-          usersRes,
-          vendorsRes,
-          cargoCompaniesRes,
-          cargosRes,
-          requestsRes,
-          settingsRes,
-          itemsRes,
-          designationsRes,
-          itemPricesRes
-        ] = await Promise.all([
-          pool.query("SELECT * FROM users").catch(e => { console.error("users query err:", e.message); return { rows: [] }; }),
-          pool.query("SELECT * FROM vendors").catch(e => { console.error("vendors query err:", e.message); return { rows: [] }; }),
-          pool.query("SELECT * FROM cargo_companies").catch(e => { console.error("cargo_companies query err:", e.message); return { rows: [] }; }),
-          pool.query("SELECT * FROM cargos").catch(e => { console.error("cargos query err:", e.message); return { rows: [] }; }),
-          pool.query("SELECT * FROM requests").catch(e => { console.error("requests query err:", e.message); return { rows: [] }; }),
-          pool.query("SELECT * FROM settings").catch(e => { console.error("settings query err:", e.message); return { rows: [] }; }),
-          pool.query("SELECT * FROM items ORDER BY \"id\" ASC").catch(e => { console.error("items query err:", e.message); return { rows: [] }; }),
-          pool.query("SELECT * FROM designations").catch(e => { console.error("designations query err:", e.message); return { rows: [] }; }),
-          pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC").catch(e => { console.error("item_prices query err:", e.message); return { rows: [] }; })
-        ]);
-
-        // Fail-safe protection: if query returned empty due to connection glitch, preserve last known good state
-        let effectiveVendorRows = vendorsRes.rows || [];
-        if (effectiveVendorRows.length === 0 && (purchaserStateCache?.vendors?.length > 0 || lastKnownGoodPurchaserState?.vendors?.length > 0)) {
-          effectiveVendorRows = (purchaserStateCache?.vendors || lastKnownGoodPurchaserState?.vendors || []);
+        if (inFlightPurchaserStatePromise) {
+          const concurrentData = await inFlightPurchaserStatePromise;
+          return res.json(concurrentData);
         }
-        const vendors = effectiveVendorRows.map(v => ({
-          ...v,
-          purchaserIds: safeJsonParse(v.purchaserIds, [])
-        }));
 
-        let effectiveReqRows = requestsRes.rows || [];
-        if (effectiveReqRows.length === 0 && (purchaserStateCache?.requests?.length > 0 || lastKnownGoodPurchaserState?.requests?.length > 0)) {
-          effectiveReqRows = (purchaserStateCache?.requests || lastKnownGoodPurchaserState?.requests || []);
-        }
-        const requests = effectiveReqRows.map(r => ({
-          ...r,
-          orderQuantity: r.orderQuantity ? parseInt(r.orderQuantity) : 0,
-          priceRmb: r.priceRmb ? parseFloat(r.priceRmb) : "",
-          totalRmb: r.totalRmb ? parseFloat(r.totalRmb) : "",
-          advancePayment: r.advancePayment ? parseFloat(r.advancePayment) : "",
-          balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : "",
-          vendorEddHistory: safeJsonParse(r.vendorEddHistory, [])
-        }));
+        inFlightPurchaserStatePromise = (async () => {
+          try {
+            const [
+              usersRes,
+              vendorsRes,
+              cargoCompaniesRes,
+              cargosRes,
+              requestsRes,
+              settingsRes,
+              itemsRes,
+              designationsRes,
+              itemPricesRes
+            ] = await Promise.all([
+              pool.query("SELECT * FROM users").catch(e => { console.error("users query err:", e.message); return { rows: [] }; }),
+              pool.query("SELECT * FROM vendors").catch(e => { console.error("vendors query err:", e.message); return { rows: [] }; }),
+              pool.query("SELECT * FROM cargo_companies").catch(e => { console.error("cargo_companies query err:", e.message); return { rows: [] }; }),
+              pool.query("SELECT * FROM cargos").catch(e => { console.error("cargos query err:", e.message); return { rows: [] }; }),
+              pool.query("SELECT * FROM requests").catch(e => { console.error("requests query err:", e.message); return { rows: [] }; }),
+              pool.query("SELECT * FROM settings").catch(e => { console.error("settings query err:", e.message); return { rows: [] }; }),
+              pool.query("SELECT * FROM items ORDER BY \"id\" ASC").catch(e => { console.error("items query err:", e.message); return { rows: [] }; }),
+              pool.query("SELECT * FROM designations").catch(e => { console.error("designations query err:", e.message); return { rows: [] }; }),
+              pool.query("SELECT * FROM item_prices ORDER BY \"from\" DESC, \"itemName\" ASC").catch(e => { console.error("item_prices query err:", e.message); return { rows: [] }; })
+            ]);
 
-        let effectiveCargoRows = cargosRes.rows || [];
-        if (effectiveCargoRows.length === 0 && (purchaserStateCache?.cargos?.length > 0 || lastKnownGoodPurchaserState?.cargos?.length > 0)) {
-          effectiveCargoRows = (purchaserStateCache?.cargos || lastKnownGoodPurchaserState?.cargos || []);
-        }
-        const cargos = effectiveCargoRows.map(c => sanitizeCargoDocuments({
-          ...c,
-          cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
-          cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
-          totalCargoPrice: getEffectiveTotalCargoPrice(c),
-          cargoEtaHistory: safeJsonParse(c.cargoEtaHistory, [])
-        }));
+            // Fail-safe protection: if query returned empty due to connection glitch, preserve last known good state
+            let effectiveVendorRows = vendorsRes.rows || [];
+            if (effectiveVendorRows.length === 0 && (purchaserStateCache?.vendors?.length > 0 || lastKnownGoodPurchaserState?.vendors?.length > 0)) {
+              effectiveVendorRows = (purchaserStateCache?.vendors || lastKnownGoodPurchaserState?.vendors || []);
+            }
+            const vendors = effectiveVendorRows.map(v => ({
+              ...v,
+              purchaserIds: safeJsonParse(v.purchaserIds, [])
+            }));
 
-        const settings = {};
-        settingsRes.rows.forEach(row => {
-          if (row.value === "true") settings[row.key] = true;
-          else if (row.value === "false") settings[row.key] = false;
-          else settings[row.key] = row.value;
-        });
-        if (settings.isHidden === undefined) settings.isHidden = false;
-        if (!settings.redirectUrl) settings.redirectUrl = "https://www.google.com";
+            let effectiveReqRows = requestsRes.rows || [];
+            if (effectiveReqRows.length === 0 && (purchaserStateCache?.requests?.length > 0 || lastKnownGoodPurchaserState?.requests?.length > 0)) {
+              effectiveReqRows = (purchaserStateCache?.requests || lastKnownGoodPurchaserState?.requests || []);
+            }
+            const requests = effectiveReqRows.map(r => ({
+              ...r,
+              orderQuantity: r.orderQuantity ? parseInt(r.orderQuantity) : 0,
+              priceRmb: r.priceRmb ? parseFloat(r.priceRmb) : "",
+              totalRmb: r.totalRmb ? parseFloat(r.totalRmb) : "",
+              advancePayment: r.advancePayment ? parseFloat(r.advancePayment) : "",
+              balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : "",
+              vendorEddHistory: safeJsonParse(r.vendorEddHistory, [])
+            }));
 
-        const purchaserState = {
-          users: (usersRes.rows || []).map(u => ({ ...u, status: u.status || "active" })),
-          vendors,
-          cargoCompanies: cargoCompaniesRes.rows || [],
-          cargos,
-          requests,
-          settings,
-          items: itemsRes.rows || [],
-          designations: (designationsRes.rows && designationsRes.rows.length > 0) ? designationsRes.rows : initialDesignations,
-          crmParties: [],
-          crmSalesOrders: [],
-          crmDispatches: [],
-          imsTransactions: [],
-          imsSummary: null,
-          itemPrices: (itemPricesRes?.rows || []).map(p => ({
-            ...p,
-            pp: p.pp ? parseFloat(p.pp) : 0
-          })),
-          crmPartyRemarks: [],
-          partyCategoryMonths: [],
-          partyCategoryMonthlySales: [],
-          version: lastServerMutationTimestamp
-        };
+            let effectiveCargoRows = cargosRes.rows || [];
+            if (effectiveCargoRows.length === 0 && (purchaserStateCache?.cargos?.length > 0 || lastKnownGoodPurchaserState?.cargos?.length > 0)) {
+              effectiveCargoRows = (purchaserStateCache?.cargos || lastKnownGoodPurchaserState?.cargos || []);
+            }
+            const cargos = effectiveCargoRows.map(c => sanitizeCargoDocuments({
+              ...c,
+              cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
+              cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
+              totalCargoPrice: getEffectiveTotalCargoPrice(c),
+              cargoEtaHistory: safeJsonParse(c.cargoEtaHistory, [])
+            }));
 
-        purchaserStateCache = purchaserState;
-        purchaserStateCacheTimestamp = Date.now();
+            const settings = {};
+            settingsRes.rows.forEach(row => {
+              if (row.value === "true") settings[row.key] = true;
+              else if (row.value === "false") settings[row.key] = false;
+              else settings[row.key] = row.value;
+            });
+            if (settings.isHidden === undefined) settings.isHidden = false;
+            if (!settings.redirectUrl) settings.redirectUrl = "https://www.google.com";
 
-        return res.json(purchaserState);
+            const purchaserState = {
+              users: (usersRes.rows || []).map(u => ({ ...u, status: u.status || "active" })),
+              vendors,
+              cargoCompanies: cargoCompaniesRes.rows || [],
+              cargos,
+              requests,
+              settings,
+              items: itemsRes.rows || [],
+              designations: (designationsRes.rows && designationsRes.rows.length > 0) ? designationsRes.rows : initialDesignations,
+              crmParties: [],
+              crmSalesOrders: [],
+              crmDispatches: [],
+              imsTransactions: [],
+              imsSummary: null,
+              itemPrices: (itemPricesRes?.rows || []).map(p => ({
+                ...p,
+                pp: p.pp ? parseFloat(p.pp) : 0
+              })),
+              crmPartyRemarks: [],
+              partyCategoryMonths: [],
+              partyCategoryMonthlySales: [],
+              version: lastServerMutationTimestamp
+            };
+
+            purchaserStateCache = purchaserState;
+            purchaserStateCacheTimestamp = Date.now();
+
+            return purchaserState;
+          } finally {
+            inFlightPurchaserStatePromise = null;
+          }
+        })();
+
+        const resolvedPurchaserState = await inFlightPurchaserStatePromise;
+        return res.json(resolvedPurchaserState);
       }
       let crmPartiesQuery = 'SELECT * FROM crm_parties ORDER BY "name" ASC';
       let crmPartiesParams = [];

@@ -26,6 +26,7 @@ import { isDateInBetween } from "./components/DateRangeFilter";
 import { cleanCategoryName, isRequestForUser } from "./utils/formatters";
 import { useLoading } from "./context/LoadingContext";
 import { closeTopModal, executeTopBackHandler } from "./utils/useModalEscape";
+import { getInitialSyncCache, getAsyncDashboardCache, saveDashboardCache } from "./utils/dashboardCache";
 
 // Helper to ensure party name acts as primary key and duplicates above the last party are deleted
 export function deduplicatePartiesKeepLast(parties) {
@@ -144,18 +145,28 @@ export default function App() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
 
-  // Guarantee clean state on every device to eliminate multi-laptop desync
-  try {
-    localStorage.removeItem("makpower_app_state_cache");
-  } catch (e) {}
+  // Persistent Browser Cache: Hydrate state synchronously on frame-0 for instant open
+  const savedUserOnStartup = (() => {
+    try {
+      const s = localStorage.getItem("makpower_current_user");
+      return s ? JSON.parse(s) : null;
+    } catch (e) { return null; }
+  })();
+  const initialCacheSnapshot = getInitialSyncCache(savedUserOnStartup || "rahul");
+  const hasPreloadedCache = Boolean(initialCacheSnapshot?.requests && initialCacheSnapshot.requests.length > 0);
 
-  const [users, setUsers] = useState(() => initialUsers.map(normalizeUserData));
-  const [vendors, setVendors] = useState([]);
-  const [requests, setRequests] = useState([]);
-  const [cargos, setCargos] = useState([]);
-  const [cargoCompanies, setCargoCompanies] = useState([]);
-  const [items, setItems] = useState([]);
-  const [designations, setDesignations] = useState([]);
+  const [users, setUsers] = useState(() => {
+    if (initialCacheSnapshot?.users && initialCacheSnapshot.users.length > 0) {
+      return initialCacheSnapshot.users.map(normalizeUserData);
+    }
+    return initialUsers.map(normalizeUserData);
+  });
+  const [vendors, setVendors] = useState(() => initialCacheSnapshot?.vendors || []);
+  const [requests, setRequests] = useState(() => initialCacheSnapshot?.requests || []);
+  const [cargos, setCargos] = useState(() => initialCacheSnapshot?.cargos || []);
+  const [cargoCompanies, setCargoCompanies] = useState(() => initialCacheSnapshot?.cargoCompanies || []);
+  const [items, setItems] = useState(() => initialCacheSnapshot?.items || []);
+  const [designations, setDesignations] = useState(() => initialCacheSnapshot?.designations || []);
   const [crmParties, setCrmParties] = useState([]);
   const [crmSalesOrders, setCrmSalesOrders] = useState([]);
   const [crmDispatches, setCrmDispatches] = useState([]);
@@ -172,11 +183,19 @@ export default function App() {
   const [schemes, setSchemes] = useState(initialSchemes);
   const [settings, setSettings] = useState({ isHidden: false, redirectUrl: "https://www.google.com" });
 
-  const [loading, setLoading] = useState(true);
-  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [loading, setLoading] = useState(!hasPreloadedCache);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(hasPreloadedCache);
   const [isMasterDataSilentlyLoading, setIsMasterDataSilentlyLoading] = useState(false);
-  const currentDataVersionRef = useRef(null);
+  const isFetchingDataRef = useRef(false);
+  const loadDataRef = useRef(null);
+  const currentDataVersionRef = useRef(initialCacheSnapshot?.version || null);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
+
+  const handleRefreshFullData = React.useCallback((isInterval = false) => {
+    if (loadDataRef.current) {
+      return loadDataRef.current(isInterval);
+    }
+  }, []);
 
   const handleHardCacheRefresh = async () => {
     try {
@@ -485,9 +504,14 @@ export default function App() {
       try {
         const u = JSON.parse(savedUser);
         const r = (u.role || "").toLowerCase();
+        const d = (u.designation || "").toLowerCase();
         if (r === "superadmin") return "admin";
         if (r === "crm" || r === "asm" || r === "tsm" || r === "rsm") return "crm";
         if (r === "owner") return "owner";
+        if (r === "rahul" || u.id === "u-rahul" || d.includes("mark purchase") || d.includes("accounts")) return "rahul";
+        if (r === "nitin" || u.id === "u-nitin" || d.includes("packing")) return "nitin";
+        if (r === "coordinator" || u.id === "u-coordinator") return "coordinator";
+        if (r === "purchaser" || r === "purchase_manager") return "dashboard";
       } catch (e) {}
       return "home";
     }
@@ -497,9 +521,14 @@ export default function App() {
   useEffect(() => {
     if (currentUser && activeView === "login") {
       const r = (currentUser.role || "").toLowerCase();
+      const d = (currentUser.designation || "").toLowerCase();
       if (r === "superadmin") setActiveView("admin");
       else if (r === "crm" || r === "asm" || r === "tsm" || r === "rsm") setActiveView("crm");
       else if (r === "owner") setActiveView("owner");
+      else if (r === "rahul" || currentUser.id === "u-rahul" || d.includes("mark purchase") || d.includes("accounts")) setActiveView("rahul");
+      else if (r === "nitin" || currentUser.id === "u-nitin" || d.includes("packing")) setActiveView("nitin");
+      else if (r === "coordinator" || currentUser.id === "u-coordinator") setActiveView("coordinator");
+      else if (r === "purchaser" || r === "purchase_manager") setActiveView("dashboard");
       else setActiveView("home");
     }
   }, [currentUser, activeView]);
@@ -733,24 +762,57 @@ export default function App() {
 
   const unreadNotificationsCount = userNotifications.filter(n => !n.read).length;
 
-  // Fetch full state on mount & set up 10-second real-time multi-laptop background sync
+  // Fetch full state on mount & set up multi-laptop background sync
   useEffect(() => {
     let isMounted = true;
 
-    // Safety timeout: auto-resolve and dismiss loading modal after 10 seconds if backend is slow
-    const safetyTimer = setTimeout(() => {
+    // Safety timeout: auto-resolve loading modal after 8 seconds and attempt fast snapshot if empty
+    const safetyTimer = setTimeout(async () => {
+      if (requests.length === 0 && currentUser) {
+        console.warn("[Network Safety] /api/state took >8s. Attempting fast direct snapshot...");
+        try {
+          const [rRes, cRes] = await Promise.all([
+            fetch(`/api/requests?_t=${Date.now()}`).then(r => r.ok ? r.json() : null),
+            fetch(`/api/cargos?_t=${Date.now()}`).then(r => r.ok ? r.json() : null)
+          ]);
+          if (Array.isArray(rRes) && rRes.length > 0) setRequests(rRes);
+          if (Array.isArray(cRes) && cRes.length > 0) setCargos(cRes);
+        } catch (e) {}
+      }
       setLoading(false);
       setInitialLoadComplete(true);
       finishLoading();
-    }, 10000);
+    }, 8000);
 
     async function loadData(isInterval = false) {
+      if (isFetchingDataRef.current) return;
+      isFetchingDataRef.current = true;
+
       try {
         const cacheBuster = Date.now();
 
+        // If user is not logged in, fetch only active users list for login validation
+        if (!currentUser) {
+          try {
+            const uRes = await fetch(`/api/users?_t=${cacheBuster}`);
+            if (uRes.ok) {
+              const uData = await uRes.json();
+              if (Array.isArray(uData) && uData.length > 0) {
+                setUsers(uData.map(normalizeUserData));
+              }
+            }
+          } catch (e) {}
+          setLoading(false);
+          setInitialLoadComplete(true);
+          return;
+        }
+
         // Delta Check: In interval polling, query lightweight /api/state/meta (< 50 bytes)
         let serverMeta = null;
-        if (isInterval && currentDataVersionRef.current !== null) {
+        if (isInterval) {
+          if (currentDataVersionRef.current === null) {
+            return; // Wait until initial load has completed before doing interval delta polling
+          }
           try {
             const metaRes = await fetch(`/api/state/meta?_t=${cacheBuster}`);
             if (metaRes.ok) {
@@ -764,9 +826,8 @@ export default function App() {
           }
         }
 
-        const q = currentUser 
-          ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(currentUser.role)}&userName=${encodeURIComponent(currentUser.name || '')}&_t=${cacheBuster}`
-          : `?_t=${cacheBuster}`;
+        const roleClean = String(currentUser.role || (currentUser.id === "u-rahul" ? "rahul" : "staff")).trim().toLowerCase();
+        const q = `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(roleClean)}&userName=${encodeURIComponent(currentUser.name || '')}&_t=${cacheBuster}`;
 
         const res = await fetch(`/api/state${q}`);
         let data = {};
@@ -900,6 +961,20 @@ export default function App() {
           currentDataVersionRef.current = serverVersion;
         }
 
+        // Save to high-performance persistent browser cache
+        if (effectiveRequests.length > 0 || effectiveCargos.length > 0) {
+          saveDashboardCache(currentUser || "rahul", {
+            requests: effectiveRequests,
+            vendors: effectiveVendors,
+            cargos: effectiveCargos,
+            cargoCompanies: effectiveCargoCompanies,
+            items: effectiveItems,
+            users: effectiveUsers || users,
+            designations: data.designations || designations,
+            version: serverVersion || cacheBuster
+          });
+        }
+
         if (!isInterval) {
           fetch(`/api/audit-logs?_t=${cacheBuster}`)
             .then(r => r.json())
@@ -909,6 +984,7 @@ export default function App() {
       } catch (err) {
         console.error("Failed to load state from database API:", err);
       } finally {
+        isFetchingDataRef.current = false;
         clearTimeout(safetyTimer);
         setLoading(false);
         setInitialLoadComplete(true);
@@ -918,22 +994,23 @@ export default function App() {
       }
     }
     
+    loadDataRef.current = loadData;
     loadData();
 
-    // High-performance background sync across all laptops: poll every 10s
+    // High-performance background sync across all laptops: poll every 12s
     const intervalId = setInterval(() => {
-      if (document.visibilityState === "visible") {
+      if (document.visibilityState === "visible" && currentUser) {
         loadData(true);
       }
-    }, 5000);
+    }, 12000);
 
     // Instant sync when switching back to tab/window
     let lastFocusSyncTime = 0;
     const handleFocusSync = () => {
       const now = Date.now();
-      if (now - lastFocusSyncTime < 4000) return; // Debounce 4s to prevent double-fires
+      if (now - lastFocusSyncTime < 5000) return; // Debounce 5s to prevent double-fires
       lastFocusSyncTime = now;
-      if (document.visibilityState === "visible") {
+      if (document.visibilityState === "visible" && currentUser) {
         loadData(true);
       }
     };
@@ -942,6 +1019,7 @@ export default function App() {
 
     return () => {
       isMounted = false;
+      loadDataRef.current = null;
       clearTimeout(safetyTimer);
       clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleFocusSync);
@@ -1049,6 +1127,46 @@ export default function App() {
     return res;
   };
 
+  // High-speed direct snapshot pull (bypasses full aggregation for fast recovery)
+  const handleDirectPull = React.useCallback(async () => {
+    setIsMasterDataSilentlyLoading(true);
+    try {
+      const cacheBuster = Date.now();
+      const [rRes, cRes, vRes, ccRes, uRes, iRes] = await Promise.all([
+        fetch(`/api/requests?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`/api/cargos?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`/api/vendors?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`/api/cargo-companies?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`/api/users?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`/api/items?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => [])
+      ]);
+      if (Array.isArray(rRes) && rRes.length > 0) setRequests(rRes.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
+      if (Array.isArray(cRes) && cRes.length > 0) setCargos(cRes);
+      if (Array.isArray(vRes) && vRes.length > 0) setVendors(vRes);
+      if (Array.isArray(ccRes) && ccRes.length > 0) setCargoCompanies(ccRes);
+      if (Array.isArray(uRes) && uRes.length > 0) setUsers(uRes.map(normalizeUserData));
+      if (Array.isArray(iRes) && iRes.length > 0) setItems(iRes);
+
+      if (rRes.length > 0 || cRes.length > 0) {
+        saveDashboardCache(currentUser || "rahul", {
+          requests: rRes,
+          cargos: cRes,
+          vendors: vRes,
+          cargoCompanies: ccRes,
+          items: iRes,
+          users: uRes,
+          version: cacheBuster
+        });
+      }
+      setInitialLoadComplete(true);
+      setLoading(false);
+    } catch (e) {
+      console.error("Direct pull error:", e);
+    } finally {
+      setIsMasterDataSilentlyLoading(false);
+    }
+  }, [currentUser]);
+
   // Check if session was explicitly revoked remotely by Admin
   useEffect(() => {
     if (!currentUser) return;
@@ -1117,6 +1235,22 @@ export default function App() {
     }
     if (user) {
       setCurrentUser(user);
+
+      // Check persistent browser cache for this user immediately for 0ms dashboard opening!
+      const userCache = getInitialSyncCache(user);
+      if (userCache && Array.isArray(userCache.requests) && userCache.requests.length > 0) {
+        setRequests(userCache.requests);
+        if (Array.isArray(userCache.vendors) && userCache.vendors.length > 0) setVendors(userCache.vendors);
+        if (Array.isArray(userCache.cargos) && userCache.cargos.length > 0) setCargos(userCache.cargos);
+        if (Array.isArray(userCache.cargoCompanies) && userCache.cargoCompanies.length > 0) setCargoCompanies(userCache.cargoCompanies);
+        if (Array.isArray(userCache.items) && userCache.items.length > 0) setItems(userCache.items);
+        setInitialLoadComplete(true);
+        setLoading(false);
+      } else {
+        // Fresh browser / empty cache -> Set loading state so full-page loading screen shows while data pulls!
+        setLoading(true);
+        setInitialLoadComplete(false);
+      }
       
       try {
         const res = await postData("/api/auth/login", { user });
@@ -3453,6 +3587,8 @@ export default function App() {
             onBatchUpdateRequests={batchUpdateRequests}
             onUpdateCargo={updateCargo}
             onLogout={handleLogout}
+            onRefreshData={() => handleRefreshFullData(false)}
+            onDirectPull={handleDirectPull}
             loading={loading}
             initialLoadComplete={initialLoadComplete}
             isMasterDataSilentlyLoading={isMasterDataSilentlyLoading}
