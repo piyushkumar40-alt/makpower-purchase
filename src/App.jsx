@@ -15,6 +15,7 @@ import HomePage from "./components/HomePage";
 import CrmDashboard from "./components/CrmDashboard";
 import ImsDashboard from "./components/ImsDashboard";
 import ChangePasswordModal, { isWeakPassword } from "./components/ChangePasswordModal";
+import GlobalDataLoadingOverlay from "./components/GlobalDataLoadingOverlay";
 import { initialUsers, initialVendors, initialRequests, initialCargoShipments, initialCargoCompanies, initialCrmParties, initialCrmSalesOrders, initialCrmDispatches, initialImsTransactions, initialSchemes } from "./mockData";
 import { 
   recordUserLogin, 
@@ -3495,30 +3496,13 @@ export default function App() {
         </div>
       )}
 
-      {/* Loading Screen Overlay */}
+      {/* Loading Screen Overlay with Real-time Progress Bar & Duration */}
       {loading && currentUser && activeView !== "login" ? (
-        <div style={{ display: "flex", flex: 1, justifyContent: "center", alignItems: "center", minHeight: "80vh", padding: "20px" }}>
-          <div className="glass-panel card-fade-in" style={{ padding: "40px 32px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "20px", maxWidth: "480px", width: "100%", background: "linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.9) 100%)", borderRadius: "18px", border: "1px solid var(--border-glass)" }}>
-            <div style={{ width: "52px", height: "52px", borderRadius: "50%", border: "4px solid rgba(56, 189, 248, 0.2)", borderTopColor: "#38bdf8", animation: "spin 0.8s linear infinite" }}></div>
-            <div>
-              <h2 style={{ fontSize: "1.45rem", fontWeight: 800, color: "#fff", margin: "0 0 8px 0" }}>Loading data please wait!</h2>
-              <p style={{ color: "var(--text-muted)", fontSize: "0.88rem", margin: 0, lineHeight: 1.5 }}>
-                {currentUser?.role === "purchaser" || currentUser?.role === "requester"
-                  ? "Syncing purchase orders, vendors, transit cargos & items from cloud server..."
-                  : "Syncing party accounts, orders, dispatches & dashboard metrics from cloud server..."}
-              </p>
-            </div>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "0.8rem", color: "#38bdf8", background: "rgba(56, 189, 248, 0.1)", padding: "6px 14px", borderRadius: "20px" }}>
-              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#38bdf8", display: "inline-block" }}></span>
-              <span>Secure Cloud Syncing...</span>
-            </div>
-          </div>
-          <style>{`
-            @keyframes spin {
-              to { transform: rotate(360deg); }
-            }
-          `}</style>
-        </div>
+        <GlobalDataLoadingOverlay 
+          currentUser={currentUser}
+          onDirectPull={handleDirectPull}
+          activeView={activeView}
+        />
       ) : (
         /* Main App Screens */
         <main className="main-content-area" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
