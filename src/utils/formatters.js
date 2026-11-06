@@ -823,3 +823,116 @@ export const formatPunchTime = (val) => {
   return "—";
 };
 
+/**
+ * Intelligent parser for pasted price rows.
+ * Supports:
+ * - Single Price: "20", "15.5", "¥20", "$ 15.5", "20 RMB" -> { type: "price_only", price: 20, currency }
+ * - Model & Price (tab, space, comma, colon): "dx45 20", "48DX\t22.5", "39LX, 15.5", "dx45: 20"
+ *   -> { type: "model_price", model: "dx45", price: 20, currency }
+ * Prevents concatenating letters/numbers into huge numbers like "4520" for "dx45 20".
+ */
+export const parsePastedPriceLine = (rawLine) => {
+  const line = (rawLine || "").trim();
+  if (!line) return null;
+
+  // Detect currency if explicitly present in line
+  let detectedCurrency = null;
+  if (/¥|rmb|cny/i.test(line)) detectedCurrency = "RMB";
+  else if (/\$|usd/i.test(line)) detectedCurrency = "USD";
+  else if (/₹|inr/i.test(line)) detectedCurrency = "INR";
+
+  // Check 1: Tab-separated columns (Excel / Google Sheets paste)
+  if (line.includes("\t")) {
+    const cols = line.split("\t").map(c => c.trim()).filter(Boolean);
+    if (cols.length >= 2) {
+      const modelPart = cols[0];
+      const pricePart = cols[cols.length - 1];
+      const cleanPrice = pricePart.replace(/[¥$₹€,\s]|(?:rmb|usd|inr|cny)/gi, "").replace(/[^0-9.]/g, "");
+      const parsedNum = parseFloat(cleanPrice);
+      if (!isNaN(parsedNum)) {
+        return { type: "model_price", model: modelPart, price: parsedNum, currency: detectedCurrency };
+      }
+    }
+  }
+
+  // Check 2: Comma or semicolon separated
+  if (/[,;]/.test(line)) {
+    const parts = line.split(/[,;]/).map(p => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      const modelPart = parts[0];
+      const pricePart = parts[parts.length - 1];
+      const cleanPrice = pricePart.replace(/[¥$₹€,\s]|(?:rmb|usd|inr|cny)/gi, "").replace(/[^0-9.]/g, "");
+      const parsedNum = parseFloat(cleanPrice);
+      if (!isNaN(parsedNum)) {
+        return { type: "model_price", model: modelPart, price: parsedNum, currency: detectedCurrency };
+      }
+    }
+  }
+
+  // Check 3: Is the ENTIRE line just a number/price?
+  // e.g. "20", "20.5", "¥20", "$ 15.5", "100 RMB"
+  const entireCleanPrice = line.replace(/[¥$₹€,\s]|(?:rmb|usd|inr|cny)/gi, "");
+  if (/^\d+(?:\.\d+)?$/.test(entireCleanPrice)) {
+    const parsedNum = parseFloat(entireCleanPrice);
+    if (!isNaN(parsedNum)) {
+      return { type: "price_only", price: parsedNum, currency: detectedCurrency };
+    }
+  }
+
+  // Check 4: Space-separated or delimiter-separated "Model Price"
+  // e.g. "dx45 20", "48DX 22.0", "39LX  15.5", "iPhone 13 Pro 450", "dx45: 20", "dx45 - 20"
+  const match = line.match(/^(.*?)(?:[\s\t,;:=]+)([\$¥₹€]?\s*\d+(?:\.\d+)?\s*(?:rmb|usd|inr|cny)?)$/i);
+  if (match) {
+    const modelPart = match[1].trim();
+    const pricePart = match[2].trim();
+    const cleanPrice = pricePart.replace(/[¥$₹€,\s]|(?:rmb|usd|inr|cny)/gi, "").replace(/[^0-9.]/g, "");
+    const parsedNum = parseFloat(cleanPrice);
+    if (modelPart && !isNaN(parsedNum)) {
+      return { type: "model_price", model: modelPart, price: parsedNum, currency: detectedCurrency };
+    }
+  }
+
+  // Fallback: If line contains multiple tokens, test if the last token is a valid price
+  const tokens = line.split(/\s+/).filter(Boolean);
+  if (tokens.length >= 2) {
+    const lastToken = tokens[tokens.length - 1].replace(/[¥$₹€,\s]|(?:rmb|usd|inr|cny)/gi, "");
+    const parsedNum = parseFloat(lastToken);
+    if (!isNaN(parsedNum)) {
+      const modelPart = tokens.slice(0, -1).join(" ");
+      return { type: "model_price", model: modelPart, price: parsedNum, currency: detectedCurrency };
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Fuzzy/normalized model matching between request model and pasted model name.
+ */
+export const isModelMatch = (reqModel, inputModel) => {
+  if (!reqModel || !inputModel) return false;
+  const rm = reqModel.trim().toLowerCase();
+  const im = inputModel.trim().toLowerCase();
+  if (rm === im) return true;
+
+  // Normalized alphanumeric match (removes spaces, dashes, slashes, underscores)
+  const normR = rm.replace(/[^a-z0-9]/g, "");
+  const normI = im.replace(/[^a-z0-9]/g, "");
+  if (normR === normI && normR.length > 0) return true;
+
+  // Transposed letters & digits match (e.g. dx45 vs 45dx)
+  const alphaR = normR.replace(/[0-9]/g, "");
+  const numR = normR.replace(/[^0-9]/g, "");
+  const alphaI = normI.replace(/[0-9]/g, "");
+  const numI = normI.replace(/[^0-9]/g, "");
+  if (alphaR && numR && alphaR === alphaI && numR === numI) return true;
+
+  // Substring match if length is substantial
+  if (normR.length >= 4 && normI.length >= 4) {
+    if (normR.includes(normI) || normI.includes(normR)) return true;
+  }
+
+  return false;
+};
+
+

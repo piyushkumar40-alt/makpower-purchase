@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, Check, Search, X } from "lucide-react";
 
 /**
@@ -6,7 +7,7 @@ import { ChevronDown, Check, Search, X } from "lucide-react";
  * --------------------------------
  * Replaces native HTML <select> and browser <datalist> popups with a unified,
  * high-polish dark glassmorphic dropdown with built-in search, keyboard navigation,
- * custom icons, active checkmarks, and auto-alignment.
+ * custom icons, active checkmarks, auto-alignment, and optional portal rendering.
  */
 export default function CustomSelect({
   value,
@@ -21,21 +22,25 @@ export default function CustomSelect({
   label = null,
   className = "",
   style = {},
+  triggerStyle = {},
   menuStyle = {},
   menuWidth = "100%",
-  dropdownPlacement = "auto" // "auto" | "bottom" | "top"
+  dropdownPlacement = "auto", // "auto" | "bottom" | "top"
+  portal = false, // renders via React portal to document.body (prevents clipping in tables/modals)
+  displayCustomValue = true // if value doesn't match an option value/label, still display it instead of blank placeholder
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [placement, setPlacement] = useState("bottom");
+  const [portalCoords, setPortalCoords] = useState({ top: 0, left: 0, width: 0, isTop: false, maxHeight: 260 });
 
   const containerRef = useRef(null);
   const menuRef = useRef(null);
   const searchInputRef = useRef(null);
   const optionsListRef = useRef(null);
 
-  // Normalize options to [{ value, label, count, icon, sublabel }]
+  // Normalize options to [{ value, label, count, icon, sublabel, disabled }]
   const normalizedOptions = useMemo(() => {
     return (options || []).map(opt => {
       if (opt === null || opt === undefined) return { value: "", label: "" };
@@ -53,10 +58,15 @@ export default function CustomSelect({
     });
   }, [options]);
 
-  // Current selected option
+  // Current selected option - matches by value first, then fallback by label (case-insensitive)
   const selectedOption = useMemo(() => {
     const stringVal = value !== undefined && value !== null ? String(value) : "";
-    return normalizedOptions.find(o => o.value === stringVal) || null;
+    if (!stringVal) return null;
+    return (
+      normalizedOptions.find(o => o.value === stringVal) ||
+      normalizedOptions.find(o => o.label.toLowerCase() === stringVal.toLowerCase()) ||
+      null
+    );
   }, [normalizedOptions, value]);
 
   // Should show search input?
@@ -76,24 +86,57 @@ export default function CustomSelect({
     );
   }, [normalizedOptions, searchQuery]);
 
-  // Calculate placement (flip to top if near viewport bottom)
+  // Calculate placement and portal coordinates
   const updatePlacement = useCallback(() => {
     if (!containerRef.current) return;
-    if (dropdownPlacement !== "auto") {
-      setPlacement(dropdownPlacement);
-      return;
-    }
     const rect = containerRef.current.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
-    const minNeeded = 240;
+    const minNeeded = 220;
 
-    if (spaceBelow < minNeeded && spaceAbove > spaceBelow) {
-      setPlacement("top");
-    } else {
-      setPlacement("bottom");
+    let targetPlacement = dropdownPlacement;
+    if (targetPlacement === "auto") {
+      targetPlacement = spaceBelow < minNeeded && spaceAbove > spaceBelow ? "top" : "bottom";
     }
-  }, [dropdownPlacement]);
+    setPlacement(targetPlacement);
+
+    if (portal) {
+      const isTop = targetPlacement === "top";
+      const topPos = isTop ? rect.top - 6 : rect.bottom + 6;
+      setPortalCoords({
+        top: topPos,
+        left: rect.left,
+        width: rect.width,
+        isTop,
+        maxHeight: Math.min(260, Math.max(140, (isTop ? spaceAbove : spaceBelow) - 15))
+      });
+    }
+  }, [dropdownPlacement, portal]);
+
+  // Update placement / coordinates on resize and scroll
+  useEffect(() => {
+    if (!isOpen) return;
+    updatePlacement();
+    if (!portal) return;
+
+    const handleUpdate = () => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      // If container scrolled off screen, close dropdown
+      if (rect.bottom < -50 || rect.top > window.innerHeight + 50) {
+        setIsOpen(false);
+        return;
+      }
+      updatePlacement();
+    };
+
+    window.addEventListener("scroll", handleUpdate, true);
+    window.addEventListener("resize", handleUpdate);
+    return () => {
+      window.removeEventListener("scroll", handleUpdate, true);
+      window.removeEventListener("resize", handleUpdate);
+    };
+  }, [isOpen, portal, updatePlacement]);
 
   // Open / Close handlers
   const handleToggle = () => {
@@ -102,7 +145,6 @@ export default function CustomSelect({
       updatePlacement();
       setIsOpen(true);
       setSearchQuery("");
-      // Reset highlight to current selected index
       const selIdx = filteredOptions.findIndex(o => o.value === String(value));
       setHighlightedIndex(selIdx >= 0 ? selIdx : 0);
     } else {
@@ -125,10 +167,12 @@ export default function CustomSelect({
     }
   }, [isOpen, isSearchable]);
 
-  // Click outside listener
+  // Click outside listener - handles both standard & portaled menu
   useEffect(() => {
     const handlePointerDown = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
+      const inContainer = containerRef.current && containerRef.current.contains(e.target);
+      const inMenu = menuRef.current && menuRef.current.contains(e.target);
+      if (!inContainer && !inMenu) {
         handleClose();
       }
     };
@@ -221,6 +265,170 @@ export default function CustomSelect({
   }, [size]);
 
   const hasValue = value !== undefined && value !== null && String(value) !== "" && String(value) !== "all";
+  const displayLabel = selectedOption 
+    ? selectedOption.label 
+    : (displayCustomValue && hasValue ? String(value) : placeholder);
+
+  const menuNode = (
+    <div
+      ref={menuRef}
+      className={`custom-select-menu ${portal ? "custom-select-portal" : ""}`}
+      style={{
+        position: portal ? "fixed" : "absolute",
+        left: portal ? `${portalCoords.left}px` : 0,
+        ...(portal
+          ? {
+              top: `${portalCoords.top}px`,
+              transform: portalCoords.isTop ? "translateY(-100%)" : "none",
+              width: menuWidth === "100%" ? `${Math.max(portalCoords.width, 160)}px` : menuWidth,
+              minWidth: `${Math.max(portalCoords.width, 140)}px`
+            }
+          : {
+              ...(placement === "top"
+                ? { bottom: "calc(100% + 5px)" }
+                : { top: "calc(100% + 5px)" }),
+              width: menuWidth,
+              minWidth: "100%"
+            }),
+        zIndex: 99999,
+        borderRadius: "10px",
+        padding: "6px",
+        display: "flex",
+        flexDirection: "column",
+        animation: "fadeInDropdown 0.16s cubic-bezier(0.16, 1, 0.3, 1)",
+        ...menuStyle
+      }}
+    >
+      {/* Pinned Search Input if Searchable */}
+      {isSearchable && (
+        <div className="custom-select-search-container" style={{ padding: "4px 4px 6px 4px", marginBottom: "4px" }}>
+          <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+            <Search size={13} className="custom-select-search-icon" style={{ position: "absolute", left: "9px" }} />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Type to filter..."
+              value={searchQuery}
+              onChange={e => {
+                setSearchQuery(e.target.value);
+                setHighlightedIndex(0);
+              }}
+              onKeyDown={handleKeyDown}
+              className="custom-select-search-input"
+              style={{
+                width: "100%",
+                height: "29px",
+                padding: "4px 8px 4px 28px",
+                fontSize: "0.78rem",
+                borderRadius: "6px",
+                outline: "none"
+              }}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="custom-select-search-clear"
+                style={{
+                  position: "absolute",
+                  right: "6px",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "2px",
+                  display: "flex"
+                }}
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Scrollable Option Items */}
+      <div
+        ref={optionsListRef}
+        className="custom-select-options"
+        style={{
+          maxHeight: portal ? `${portalCoords.maxHeight}px` : "240px",
+          overflowY: "auto",
+          scrollbarWidth: "thin"
+        }}
+      >
+        {filteredOptions.length === 0 ? (
+          <div className="custom-select-empty" style={{ padding: "12px", textAlign: "center", fontSize: "0.78rem" }}>
+            No options found
+          </div>
+        ) : (
+          filteredOptions.map((opt, idx) => {
+            const isSelected = selectedOption?.value === opt.value;
+            const isHighlighted = highlightedIndex === idx;
+
+            return (
+              <div
+                key={`${opt.value}-${idx}`}
+                data-option-index={idx}
+                onClick={() => handleSelectOption(opt)}
+                onMouseEnter={() => setHighlightedIndex(idx)}
+                className={`custom-select-option ${isSelected ? "selected" : ""} ${isHighlighted ? "highlighted" : ""} ${opt.disabled ? "disabled" : ""}`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "8px",
+                  padding: "7px 10px",
+                  margin: "1px 2px",
+                  borderRadius: "6px",
+                  fontSize: sizeStyles.fontSize,
+                  cursor: opt.disabled ? "not-allowed" : "pointer",
+                  opacity: opt.disabled ? 0.45 : 1,
+                  transition: "background 0.12s ease, color 0.12s ease"
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {opt.icon && (
+                    <span style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
+                      {opt.icon}
+                    </span>
+                  )}
+                  <div>
+                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {opt.label}
+                    </div>
+                    {opt.sublabel && (
+                      <div className="custom-select-option-sublabel" style={{ fontSize: "0.7rem", marginTop: "1px" }}>
+                        {opt.sublabel}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                  {opt.count !== undefined && (
+                    <span 
+                      className={`custom-select-option-count ${isSelected ? "selected" : ""}`}
+                      style={{ 
+                        fontSize: "0.7rem", 
+                        padding: "1px 6px", 
+                        borderRadius: "99px", 
+                        fontWeight: 600 
+                      }}
+                    >
+                      {opt.count}
+                    </span>
+                  )}
+                  {isSelected && (
+                    <Check size={13} className="custom-select-option-check" />
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div 
@@ -246,14 +454,15 @@ export default function CustomSelect({
           justifyContent: "space-between",
           gap: "8px",
           width: "100%",
-          height: sizeStyles.height,
+          height: style.height || sizeStyles.height,
           padding: sizeStyles.padding,
           fontSize: sizeStyles.fontSize,
           borderRadius: "8px",
           cursor: disabled ? "not-allowed" : "pointer",
           userSelect: "none",
           transition: "all 0.18s cubic-bezier(0.4, 0, 0.2, 1)",
-          outline: "none"
+          outline: "none",
+          ...triggerStyle
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "7px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
@@ -271,7 +480,7 @@ export default function CustomSelect({
             className="custom-select-value-text"
             style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: hasValue ? 600 : 400 }}
           >
-            {selectedOption ? selectedOption.label : placeholder}
+            {displayLabel}
           </span>
           {selectedOption?.count !== undefined && (
             <span className="custom-select-trigger-badge">
@@ -314,158 +523,8 @@ export default function CustomSelect({
         </div>
       </div>
 
-      {/* Beautiful Glassmorphic Dropdown Menu */}
-      {isOpen && (
-        <div
-          ref={menuRef}
-          className="custom-select-menu"
-          style={{
-            position: "absolute",
-            left: 0,
-            ...(placement === "top"
-              ? { bottom: "calc(100% + 5px)" }
-              : { top: "calc(100% + 5px)" }),
-            width: menuWidth,
-            minWidth: "100%",
-            zIndex: 9999,
-            borderRadius: "10px",
-            padding: "6px",
-            display: "flex",
-            flexDirection: "column",
-            animation: "fadeInDropdown 0.16s cubic-bezier(0.16, 1, 0.3, 1)",
-            ...menuStyle
-          }}
-        >
-          {/* Pinned Search Input if Searchable */}
-          {isSearchable && (
-            <div className="custom-select-search-container" style={{ padding: "4px 4px 6px 4px", marginBottom: "4px" }}>
-              <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                <Search size={13} className="custom-select-search-icon" style={{ position: "absolute", left: "9px" }} />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  placeholder="Type to filter..."
-                  value={searchQuery}
-                  onChange={e => {
-                    setSearchQuery(e.target.value);
-                    setHighlightedIndex(0);
-                  }}
-                  onKeyDown={handleKeyDown}
-                  className="custom-select-search-input"
-                  style={{
-                    width: "100%",
-                    height: "29px",
-                    padding: "4px 8px 4px 28px",
-                    fontSize: "0.78rem",
-                    borderRadius: "6px",
-                    outline: "none"
-                  }}
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery("")}
-                    className="custom-select-search-clear"
-                    style={{
-                      position: "absolute",
-                      right: "6px",
-                      background: "transparent",
-                      border: "none",
-                      cursor: "pointer",
-                      padding: "2px",
-                      display: "flex"
-                    }}
-                  >
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Scrollable Option Items */}
-          <div
-            ref={optionsListRef}
-            className="custom-select-options"
-            style={{
-              maxHeight: "240px",
-              overflowY: "auto",
-              scrollbarWidth: "thin"
-            }}
-          >
-            {filteredOptions.length === 0 ? (
-              <div className="custom-select-empty" style={{ padding: "12px", textAlign: "center", fontSize: "0.78rem" }}>
-                No options found
-              </div>
-            ) : (
-              filteredOptions.map((opt, idx) => {
-                const isSelected = selectedOption?.value === opt.value;
-                const isHighlighted = highlightedIndex === idx;
-
-                return (
-                  <div
-                    key={`${opt.value}-${idx}`}
-                    data-option-index={idx}
-                    onClick={() => handleSelectOption(opt)}
-                    onMouseEnter={() => setHighlightedIndex(idx)}
-                    className={`custom-select-option ${isSelected ? "selected" : ""} ${isHighlighted ? "highlighted" : ""} ${opt.disabled ? "disabled" : ""}`}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "8px",
-                      padding: "7px 10px",
-                      margin: "1px 2px",
-                      borderRadius: "6px",
-                      fontSize: sizeStyles.fontSize,
-                      cursor: opt.disabled ? "not-allowed" : "pointer",
-                      opacity: opt.disabled ? 0.45 : 1,
-                      transition: "background 0.12s ease, color 0.12s ease"
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {opt.icon && (
-                        <span style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
-                          {opt.icon}
-                        </span>
-                      )}
-                      <div>
-                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {opt.label}
-                        </div>
-                        {opt.sublabel && (
-                          <div className="custom-select-option-sublabel" style={{ fontSize: "0.7rem", marginTop: "1px" }}>
-                            {opt.sublabel}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
-                      {opt.count !== undefined && (
-                        <span 
-                          className={`custom-select-option-count ${isSelected ? "selected" : ""}`}
-                          style={{ 
-                            fontSize: "0.7rem", 
-                            padding: "1px 6px", 
-                            borderRadius: "99px", 
-                            fontWeight: 600 
-                          }}
-                        >
-                          {opt.count}
-                        </span>
-                      )}
-                      {isSelected && (
-                        <Check size={13} className="custom-select-option-check" />
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
+      {/* Render Dropdown Menu */}
+      {isOpen && (portal ? createPortal(menuNode, document.body) : menuNode)}
     </div>
   );
 }

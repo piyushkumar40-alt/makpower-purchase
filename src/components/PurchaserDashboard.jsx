@@ -10,12 +10,13 @@ import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
-import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons, formatCancelDate, formatCancelTime } from "../utils/formatters";
+import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons, formatCancelDate, formatCancelTime, parsePastedPriceLine, isModelMatch } from "../utils/formatters";
 import { useModalEscape, pushBackHandler } from "../utils/useModalEscape";
 import MasterOrderTracker from "./MasterOrderTracker";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
 import AddEddModal from "./AddEddModal";
 import CargoDocumentModal from "./CargoDocumentModal";
+import CustomSelect from "./CustomSelect";
 
 export { isRequestForUser, isVendorForUser, getPurchaserDisplayName };
 
@@ -788,68 +789,125 @@ export default function PurchaserDashboard({
     e.preventDefault();
     e.stopPropagation();
 
-    const lines = pastedText.split(/\r?\n/).filter(l => l.trim() !== "");
+    const lines = pastedText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     if (lines.length === 0) return;
+
+    const activeReqs = (sortedPendingReqs && sortedPendingReqs.length > 0) ? sortedPendingReqs : pendingReqs;
+    let updatedCount = 0;
 
     setStep1InlineEdits(prev => {
       const updated = { ...prev };
       lines.forEach((line, lineIdx) => {
-        const targetReq = pendingReqs[startRowIdx + lineIdx];
-        if (!targetReq) return;
+        const parsed = parsePastedPriceLine(line);
+        if (!parsed) return;
 
-        const cols = line.split("\t");
-        let priceStr = cols.length >= 2 ? cols[1].trim() : cols[0].trim();
-        const cleaned = priceStr.replace(/[¥$RMB\s,]/gi, "").replace(/[^0-9.]/g, "");
-        const parsedNum = parseFloat(cleaned);
-        if (!isNaN(parsedNum)) {
-          updated[targetReq.id] = {
-            ...updated[targetReq.id],
-            priceRmb: parsedNum
-          };
+        if (parsed.type === "model_price") {
+          const matching = activeReqs.filter(r => isModelMatch(r.model, parsed.model));
+          if (matching.length > 0) {
+            matching.forEach(m => {
+              updated[m.id] = {
+                ...updated[m.id],
+                priceRmb: parsed.price,
+                ...(parsed.currency ? { currency: parsed.currency } : {})
+              };
+              updatedCount++;
+            });
+          }
+        } else if (parsed.type === "price_only") {
+          const targetReq = activeReqs[startRowIdx + lineIdx];
+          if (targetReq) {
+            updated[targetReq.id] = {
+              ...updated[targetReq.id],
+              priceRmb: parsed.price,
+              ...(parsed.currency ? { currency: parsed.currency } : {})
+            };
+            updatedCount++;
+          }
         }
       });
       return updated;
     });
+
+    if (updatedCount > 0) {
+      setStep1FeedbackMsg(`Pasted prices applied to ${updatedCount} item(s)`);
+      setTimeout(() => setStep1FeedbackMsg(""), 3500);
+    }
   };
 
   const handleApplyStep1PasteModal = (pendingReqs) => {
     if (!step1PasteText.trim()) return;
-    const lines = step1PasteText.split(/\r?\n/).filter(l => l.trim() !== "");
+    const lines = step1PasteText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+
+    // Use sortedPendingReqs so order matches current table display, fallback to pendingReqs
+    const activeReqs = (sortedPendingReqs && sortedPendingReqs.length > 0) ? sortedPendingReqs : pendingReqs;
+
+    // Checked pool: if rows are selected via checkboxes, sequential prices apply to checked items first
+    const checkedPool = step1CheckedIds.length > 0
+      ? activeReqs.filter(r => step1CheckedIds.includes(r.id))
+      : activeReqs;
+
+    let matchedModelCount = 0;
+    let sequentialCount = 0;
+    let sequentialIdx = 0;
+    const unmatchedModels = [];
 
     setStep1InlineEdits(prev => {
       const updated = { ...prev };
-      lines.forEach((line, lineIdx) => {
-        const cols = line.split("\t");
-        if (cols.length >= 2) {
-          const modelName = cols[0].trim().toLowerCase();
-          const priceStr = cols[1].trim().replace(/[¥$RMB\s,]/gi, "").replace(/[^0-9.]/g, "");
-          const parsedNum = parseFloat(priceStr);
-          if (!isNaN(parsedNum)) {
-            const matchedReq = pendingReqs.find(r => (r.model || "").trim().toLowerCase() === modelName);
-            if (matchedReq) {
-              updated[matchedReq.id] = {
-                ...updated[matchedReq.id],
-                priceRmb: parsedNum
+
+      lines.forEach((line) => {
+        const parsed = parsePastedPriceLine(line);
+        if (!parsed) return;
+
+        if (parsed.type === "model_price") {
+          const matching = activeReqs.filter(r => isModelMatch(r.model, parsed.model));
+          if (matching.length > 0) {
+            matching.forEach(m => {
+              updated[m.id] = {
+                ...updated[m.id],
+                priceRmb: parsed.price,
+                ...(parsed.currency ? { currency: parsed.currency } : {})
               };
-            }
+              matchedModelCount++;
+            });
+          } else {
+            unmatchedModels.push(parsed.model);
           }
-        } else {
-          const targetReq = pendingReqs[lineIdx];
-          if (!targetReq) return;
-          const priceStr = cols[0].trim().replace(/[¥$RMB\s,]/gi, "").replace(/[^0-9.]/g, "");
-          const parsedNum = parseFloat(priceStr);
-          if (!isNaN(parsedNum)) {
+        } else if (parsed.type === "price_only") {
+          if (sequentialIdx < checkedPool.length) {
+            const targetReq = checkedPool[sequentialIdx];
             updated[targetReq.id] = {
               ...updated[targetReq.id],
-              priceRmb: parsedNum
+              priceRmb: parsed.price,
+              ...(parsed.currency ? { currency: parsed.currency } : {})
             };
+            sequentialCount++;
+            sequentialIdx++;
           }
         }
       });
+
       return updated;
     });
+
     setStep1PasteText("");
     setShowStep1PasteModal(false);
+
+    const totalApplied = matchedModelCount + sequentialCount;
+    if (totalApplied > 0) {
+      const parts = [];
+      if (matchedModelCount > 0) parts.push(`${matchedModelCount} item(s) by Model`);
+      if (sequentialCount > 0) parts.push(`${sequentialCount} item(s) in order`);
+      let msg = `Applied prices to ${parts.join(" and ")}`;
+      if (unmatchedModels.length > 0) {
+        msg += ` (${unmatchedModels.length} model(s) not found: ${unmatchedModels.slice(0, 2).join(", ")})`;
+      }
+      setStep1FeedbackMsg(msg);
+      setTimeout(() => setStep1FeedbackMsg(""), 4500);
+    } else if (unmatchedModels.length > 0) {
+      setStep1FeedbackMsg(`No matching unpriced orders found for model: ${unmatchedModels.join(", ")}`);
+      setTimeout(() => setStep1FeedbackMsg(""), 4500);
+    }
   };
 
   const handleSaveStep1Batch = (pendingReqs, reqIdsToSave = null) => {
@@ -1030,10 +1088,21 @@ export default function PurchaserDashboard({
     return { totalPieces, totalCartons, totalCost };
   }, [filteredStep5Cargos, requests, hasFullPurchaseAccess, currentUser, purchasers]);
 
-  // Step 1: Unpriced pending requests sorting at top level
-  const step1PendingReqs = useMemo(() => {
+  // Step 1: All unpriced pending requests
+  const allStep1UnpricedReqs = useMemo(() => {
     return (myRequests || []).filter(r => !r.priceRmb && r.status !== "Cancelled");
   }, [myRequests]);
+
+  // Step 1: Filtered unpriced requests (filtered by Order Date when selected)
+  const step1PendingReqs = useMemo(() => {
+    if (!step1SelectedOrderDate) return allStep1UnpricedReqs;
+    const cleanDate = step1SelectedOrderDate.trim();
+    return allStep1UnpricedReqs.filter(r => {
+      const d = (r.orderDate || (r.createdAt ? r.createdAt.split("T")[0] : "") || "").trim();
+      return d === cleanDate;
+    });
+  }, [allStep1UnpricedReqs, step1SelectedOrderDate]);
+
   const pendingReqs = step1PendingReqs;
 
   const { items: sortedPendingReqs, copyToastMessage: step1Toast, RenderSortHeader: RenderStep1SortHeader } = useSortableData(step1PendingReqs);
@@ -1159,10 +1228,10 @@ export default function PurchaserDashboard({
     return () => window.removeEventListener("keydown", handleGlobalStep1KeyDown, true);
   }, [activeTab, lastFocusedStep1Index, lastFocusedStep1Field, step1CheckedIds, sortedPendingReqs, step1InlineEdits, accessibleVendors]);
 
-  // Unique order dates present in Step 1 pending unpriced requests
+  // Unique order dates present in ALL Step 1 pending unpriced requests
   const step1AvailableOrderDates = useMemo(() => {
     const countMap = {};
-    (pendingReqs || []).forEach(r => {
+    (allStep1UnpricedReqs || []).forEach(r => {
       const d = (r.orderDate || (r.createdAt ? r.createdAt.split("T")[0] : "") || "").trim();
       if (d) {
         countMap[d] = (countMap[d] || 0) + 1;
@@ -1171,32 +1240,58 @@ export default function PurchaserDashboard({
     return Object.entries(countMap)
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([date, count]) => ({ date, count }));
-  }, [pendingReqs]);
+  }, [allStep1UnpricedReqs]);
 
-  const handleSelectByOrderDate = (dateStr, mode = "replace") => {
-    if (!dateStr) return;
-    const cleanDate = dateStr.trim();
-    const matchedIds = (pendingReqs || [])
-      .filter(r => {
+  // Active vendors & options for CustomSelect dropdowns
+  const activeVendors = useMemo(() => {
+    return (accessibleVendors || []).filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
+  }, [accessibleVendors]);
+
+  const vendorSelectOptions = useMemo(() => {
+    return activeVendors.map(v => ({
+      value: v.id,
+      label: v.name,
+      sublabel: v.contactPerson ? `${v.contactPerson}${v.phone ? ` • ${v.phone}` : ""}` : undefined
+    }));
+  }, [activeVendors]);
+
+  const step1OrderDateOptions = useMemo(() => {
+    return [
+      { value: "", label: `All Order Dates (${allStep1UnpricedReqs.length})` },
+      ...step1AvailableOrderDates.map(({ date, count }) => ({
+        value: date,
+        label: `${date} (${count} item${count !== 1 ? "s" : ""})`,
+        count: count
+      }))
+    ];
+  }, [step1AvailableOrderDates, allStep1UnpricedReqs.length]);
+
+  const currencyOptions = useMemo(() => [
+    { value: "RMB", label: "RMB (¥)" },
+    { value: "USD", label: "USD ($)" },
+    { value: "INR", label: "INR (₹)" }
+  ], []);
+
+  const rowCurrencyOptions = useMemo(() => [
+    { value: "RMB", label: "¥ RMB" },
+    { value: "USD", label: "$ USD" },
+    { value: "INR", label: "₹ INR" }
+  ], []);
+
+  const handleOrderDateFilterChange = (val) => {
+    const cleanVal = (val || "").trim();
+    setStep1SelectedOrderDate(cleanVal);
+    setStep1CheckedIds([]);
+    if (cleanVal) {
+      const count = allStep1UnpricedReqs.filter(r => {
         const d = (r.orderDate || (r.createdAt ? r.createdAt.split("T")[0] : "") || "").trim();
-        return d === cleanDate;
-      })
-      .map(r => r.id);
-
-    if (matchedIds.length === 0) {
-      setStep1FeedbackMsg(`No unpriced orders found for ${cleanDate}`);
-      setTimeout(() => setStep1FeedbackMsg(""), 3500);
-      return;
-    }
-
-    if (mode === "add") {
-      setStep1CheckedIds(prev => Array.from(new Set([...prev, ...matchedIds])));
-      setStep1FeedbackMsg(`Added ${matchedIds.length} order(s) from ${cleanDate} to selection`);
+        return d === cleanVal;
+      }).length;
+      setStep1FeedbackMsg(`Filtered to ${count} order(s) for ${cleanVal}`);
     } else {
-      setStep1CheckedIds(matchedIds);
-      setStep1FeedbackMsg(`Selected ${matchedIds.length} order(s) for ${cleanDate}`);
+      setStep1FeedbackMsg("Showing all order dates");
     }
-    setTimeout(() => setStep1FeedbackMsg(""), 3500);
+    setTimeout(() => setStep1FeedbackMsg(""), 3000);
   };
 
   // Step 2: Candidate pool of all priced orders not yet vendor ready for the chosen vendor
@@ -2543,70 +2638,57 @@ export default function PurchaserDashboard({
                       )}
                     </div>
 
-                    {/* Select by Order Date Control */}
+                    {/* Filter by Order Date Control */}
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.25)", padding: "4px 10px", borderRadius: "8px", flexWrap: "wrap" }}>
                       <span style={{ fontSize: "0.8rem", color: "#38bdf8", fontWeight: 700, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                        <Calendar size={14} /> Select by Order Date:
+                        <Calendar size={14} /> Filter by Order Date:
                       </span>
-                      <select
-                        className="form-control"
-                        value={step1SelectedOrderDate}
-                        onChange={e => {
-                          const val = e.target.value;
-                          setStep1SelectedOrderDate(val);
-                          if (val) handleSelectByOrderDate(val, "replace");
-                        }}
-                        style={{ width: "175px", padding: "4px 8px", fontSize: "0.82rem", height: "auto", fontWeight: 600 }}
-                      >
-                        <option value="">Select by Order Date...</option>
-                        {step1AvailableOrderDates.map(({ date, count }) => (
-                          <option key={date} value={date}>
-                            {date} ({count} items)
-                          </option>
-                        ))}
-                      </select>
+                      <div style={{ width: "205px" }}>
+                        <CustomSelect
+                          size="sm"
+                          value={step1SelectedOrderDate}
+                          onChange={handleOrderDateFilterChange}
+                          options={step1OrderDateOptions}
+                          placeholder="All Order Dates..."
+                          searchable={true}
+                          clearable={true}
+                        />
+                      </div>
                       <input 
                         type="date"
                         className="form-control"
                         value={step1SelectedOrderDate}
-                        onChange={e => {
-                          const val = e.target.value;
-                          setStep1SelectedOrderDate(val);
-                          if (val) handleSelectByOrderDate(val, "replace");
-                        }}
-                        style={{ width: "135px", padding: "4px 6px", fontSize: "0.82rem", height: "auto" }}
-                        title="Pick date to select"
+                        onChange={e => handleOrderDateFilterChange(e.target.value)}
+                        style={{ width: "135px", padding: "4px 6px", fontSize: "0.82rem", height: "30px" }}
+                        title="Pick date to filter table"
                       />
                       {step1SelectedOrderDate && (
                         <button
                           type="button"
-                          onClick={() => handleSelectByOrderDate(step1SelectedOrderDate, "add")}
+                          onClick={() => handleOrderDateFilterChange("")}
                           className="btn btn-secondary btn-sm"
-                          style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap" }}
-                          title="Add this date's items to current selection"
+                          style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap", color: "#38bdf8" }}
+                          title="Show all order dates"
                         >
-                          + Add
+                          ✕ Show All ({allStep1UnpricedReqs.length})
                         </button>
                       )}
                       {step1CheckedIds.length > 0 && (
                         <button
                           type="button"
-                          onClick={() => {
-                            setStep1CheckedIds([]);
-                            setStep1SelectedOrderDate("");
-                          }}
+                          onClick={() => setStep1CheckedIds([])}
                           className="btn btn-secondary btn-sm"
                           style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap", color: "var(--text-muted)" }}
                           title="Deselect all selected items"
                         >
-                          Deselect
+                          Deselect ({step1CheckedIds.length})
                         </button>
                       )}
                       {isAdmin && step1SelectedOrderDate && (
                         <button
                           type="button"
                           onClick={() => {
-                            const forDate = pendingReqs.filter(r => r.orderDate === step1SelectedOrderDate);
+                            const forDate = allStep1UnpricedReqs.filter(r => r.orderDate === step1SelectedOrderDate);
                             if (forDate.length === 0) {
                               alert(`No unpriced orders found for date ${step1SelectedOrderDate}`);
                               return;
@@ -2623,7 +2705,7 @@ export default function PurchaserDashboard({
                           style={{ padding: "4px 8px", fontSize: "0.76rem", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: "4px", background: "rgba(239, 68, 68, 0.2)", border: "1px solid rgba(239, 68, 68, 0.4)", color: "#f87171" }}
                           title={`Permanently delete all unpriced orders for date ${step1SelectedOrderDate}`}
                         >
-                          <Trash2 size={12} /> Delete Date ({pendingReqs.filter(r => r.orderDate === step1SelectedOrderDate).length})
+                          <Trash2 size={12} /> Delete Date ({allStep1UnpricedReqs.filter(r => r.orderDate === step1SelectedOrderDate).length})
                         </button>
                       )}
                       {isAdmin && step1CheckedIds.length > 0 && (
@@ -2649,43 +2731,40 @@ export default function PurchaserDashboard({
 
                     {/* Batch Vendor Selector */}
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Vendor:</span>
-                      <input 
-                        type="text" 
-                        list="batch-step1-vendor-list"
-                        className="form-control"
-                        placeholder="Select Vendor..."
-                        value={accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").find(v => v.id === step1BatchVendorId)?.name || step1BatchVendorId}
-                        onChange={e => {
-                          const val = e.target.value;
-                          const activeVendors = accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
-                          const matched = activeVendors.find(v => v.name.toLowerCase() === val.toLowerCase());
-                          setStep1BatchVendorId(matched ? matched.id : val);
-                        }}
-                        style={{ width: "180px", padding: "4px 8px", fontSize: "0.82rem", height: "auto" }}
-                      />
-                      <datalist id="batch-step1-vendor-list">
-                        {accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
-                          <option key={v.id} value={v.name}>{v.name}</option>
-                        ))}
-                      </datalist>
+                      <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Vendor:</span>
+                      <div style={{ width: "210px" }}>
+                        <CustomSelect
+                          size="sm"
+                          value={step1BatchVendorId}
+                          onChange={val => setStep1BatchVendorId(val)}
+                          options={vendorSelectOptions}
+                          placeholder="Select Vendor..."
+                          searchable={true}
+                          clearable={true}
+                        />
+                      </div>
                       <button 
                         type="button"
                         onClick={() => {
                           if (!step1BatchVendorId) return;
                           const targetIds = step1CheckedIds.length > 0 ? step1CheckedIds : pendingReqs.map(r => r.id);
+                          const vName = accessibleVendors.find(v => v.id === step1BatchVendorId)?.name || "";
                           setStep1InlineEdits(prev => {
                             const updated = { ...prev };
                             targetIds.forEach(id => {
-                              updated[id] = { ...updated[id], vendorId: step1BatchVendorId };
+                              updated[id] = { 
+                                ...updated[id], 
+                                vendorId: step1BatchVendorId,
+                                vendorSearchText: vName
+                              };
                             });
                             return updated;
                           });
-                          setStep1FeedbackMsg(`Applied vendor to ${targetIds.length} item(s)`);
+                          setStep1FeedbackMsg(`Applied vendor "${vName}" to ${targetIds.length} item(s)`);
                           setTimeout(() => setStep1FeedbackMsg(""), 3000);
                         }}
                         className="btn btn-secondary btn-sm"
-                        style={{ padding: "4px 10px", fontSize: "0.78rem" }}
+                        style={{ padding: "4px 10px", fontSize: "0.78rem", whiteSpace: "nowrap" }}
                       >
                         Apply Vendor
                       </button>
@@ -2694,16 +2773,15 @@ export default function PurchaserDashboard({
                     {/* Batch Currency & Price/Amount Selector */}
                     <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                       <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Currency & Price:</span>
-                      <select
-                        className="form-control"
-                        value={step1BatchCurrency}
-                        onChange={e => setStep1BatchCurrency(e.target.value)}
-                        style={{ width: "105px", padding: "4px 6px", fontSize: "0.82rem", height: "auto", fontWeight: 600 }}
-                      >
-                        <option value="RMB">RMB (¥)</option>
-                        <option value="USD">USD ($)</option>
-                        <option value="INR">INR (₹)</option>
-                      </select>
+                      <div style={{ width: "115px" }}>
+                        <CustomSelect
+                          size="sm"
+                          value={step1BatchCurrency}
+                          onChange={val => setStep1BatchCurrency(val)}
+                          options={currencyOptions}
+                          searchable={false}
+                        />
+                      </div>
                       <input 
                         type="text" 
                         inputMode="decimal"
@@ -2711,7 +2789,7 @@ export default function PurchaserDashboard({
                         placeholder={`Amount (${getCurrencySymbol(step1BatchCurrency)})`}
                         value={step1BatchPrice}
                         onChange={e => setStep1BatchPrice(e.target.value.replace(/[^0-9.]/g, ""))}
-                        style={{ width: "105px", padding: "4px 8px", fontSize: "0.82rem", height: "auto" }}
+                        style={{ width: "105px", padding: "4px 8px", fontSize: "0.82rem", height: "30px" }}
                       />
                       <button 
                         type="button"
@@ -2897,8 +2975,8 @@ export default function PurchaserDashboard({
                         <RenderStep1SortHeader colKey="orderDate" title="Order Date" style={{ width: "95px", minWidth: "95px" }} />
                         <RenderStep1SortHeader colKey="model" title="Model / Description" style={{ minWidth: "150px" }} />
                         <RenderStep1SortHeader colKey="orderQuantity" title="Qty" style={{ width: "80px", minWidth: "80px", textAlign: "center" }} />
-                        <RenderStep1SortHeader colKey="vendorId" title="Vendor / Supplier" getValue={r => accessibleVendors.find(v => v.id === (step1InlineEdits[r.id]?.vendorId || r.vendorId))?.name || ""} style={{ width: "185px", minWidth: "185px" }} />
-                        <RenderStep1SortHeader colKey="priceRmb" title="Price / Currency" style={{ width: "205px", minWidth: "205px", maxWidth: "205px" }} />
+                        <RenderStep1SortHeader colKey="vendorId" title="Vendor / Supplier" getValue={r => accessibleVendors.find(v => v.id === (step1InlineEdits[r.id]?.vendorId || r.vendorId))?.name || ""} style={{ width: "195px", minWidth: "195px" }} />
+                        <RenderStep1SortHeader colKey="priceRmb" title="Price / Currency" style={{ width: "215px", minWidth: "215px" }} />
                         <RenderStep1SortHeader colKey="totalRmb" title="Total Amount" style={{ width: "125px", minWidth: "125px", textAlign: "right" }} />
                         <RenderStep1SortHeader colKey="vendorEdd" title="Vendor EDD" style={{ width: "185px", minWidth: "185px" }} />
                         <th style={{ width: "90px", minWidth: "90px", textAlign: "center" }}>Actions</th>
@@ -2954,11 +3032,8 @@ export default function PurchaserDashboard({
                                 </td>
                               <td 
                                 style={{ cursor: "pointer" }}
-                                title={`Click to select all orders with Order Date ${r.orderDate}`}
-                                onClick={() => {
-                                  setStep1SelectedOrderDate(r.orderDate);
-                                  handleSelectByOrderDate(r.orderDate, "replace");
-                                }}
+                                title={`Click to filter table by Order Date ${r.orderDate}`}
+                                onClick={() => handleOrderDateFilterChange(r.orderDate)}
                               >
                                 <span style={{ borderBottom: "1px dashed rgba(56, 189, 248, 0.45)" }}>
                                   {r.orderDate}
@@ -3028,11 +3103,8 @@ export default function PurchaserDashboard({
                               </td>
                               <td 
                                 style={{ width: "95px", minWidth: "95px", whiteSpace: "nowrap", cursor: "pointer" }}
-                                title={`Click to select all orders with Order Date ${r.orderDate}`}
-                                onClick={() => {
-                                  setStep1SelectedOrderDate(r.orderDate);
-                                  handleSelectByOrderDate(r.orderDate, "replace");
-                                }}
+                                title={`Click to filter table by Order Date ${r.orderDate}`}
+                                onClick={() => handleOrderDateFilterChange(r.orderDate)}
                               >
                                 <span style={{ borderBottom: "1px dashed rgba(56, 189, 248, 0.45)", color: "var(--text-main)" }}>
                                   {r.orderDate}
@@ -3104,79 +3176,56 @@ export default function PurchaserDashboard({
                               </td>
 
                               {/* Vendor Selection (Inline) */}
-                              <td style={{ width: "185px", minWidth: "185px", boxSizing: "border-box" }}>
-                                <input 
-                                  type="text" 
-                                  list={`step1-vendor-list-${r.id}`}
-                                  className="form-control"
-                                  placeholder="Select Vendor..."
-                                  value={currentVendorText}
-                                  onChange={e => {
-                                    const val = e.target.value;
-                                    const activeVendors = accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
-                                    const matched = activeVendors.find(v => v.name.toLowerCase() === val.toLowerCase());
+                              <td style={{ width: "195px", minWidth: "195px", boxSizing: "border-box" }}>
+                                <CustomSelect
+                                  portal={true}
+                                  size="sm"
+                                  value={currentVendorId}
+                                  onChange={(val, opt) => {
+                                    const vName = opt?.label || (accessibleVendors.find(v => v.id === val)?.name || "");
                                     setStep1InlineEdits(prev => ({
                                       ...prev,
                                       [r.id]: {
                                         ...prev[r.id],
-                                        vendorSearchText: val,
-                                        vendorId: matched ? matched.id : prev[r.id]?.vendorId
+                                        vendorId: val,
+                                        vendorSearchText: vName
                                       }
                                     }));
-                                  }}
-                                  onFocus={() => {
                                     setLastFocusedStep1Index(index);
                                     setLastFocusedStep1Field("vendor");
                                   }}
-                                  onKeyDown={e => {
-                                    if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      handleStep1FillDown(index, "vendor");
-                                    }
-                                  }}
-                                  style={{ padding: "4px 8px", fontSize: "0.85rem", height: "32px", width: "100%", boxSizing: "border-box" }}
+                                  options={vendorSelectOptions}
+                                  placeholder="Select Vendor..."
+                                  searchable={true}
+                                  clearable={true}
+                                  menuWidth="240px"
                                 />
-                                <datalist id={`step1-vendor-list-${r.id}`}>
-                                  {accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
-                                    <option key={v.id} value={v.name}>{v.name}</option>
-                                  ))}
-                                </datalist>
                               </td>
 
                               {/* Price & Currency Input with Paste Handler */}
-                              <td style={{ width: "205px", minWidth: "205px", maxWidth: "205px", boxSizing: "border-box", overflow: "hidden" }}>
+                              <td style={{ width: "215px", minWidth: "215px", maxWidth: "215px", boxSizing: "border-box" }}>
                                 <div style={{ display: "flex", gap: "6px", alignItems: "center", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
-                                  <select
-                                    className="form-control"
-                                    style={{ width: "82px", minWidth: "82px", maxWidth: "82px", padding: "4px 4px", fontSize: "0.8rem", height: "32px", fontWeight: 700, flexShrink: 0, boxSizing: "border-box" }}
-                                    value={currentCurrency}
-                                    onChange={e => {
-                                      const val = e.target.value;
-                                      setStep1InlineEdits(prev => ({
-                                        ...prev,
-                                        [r.id]: {
-                                          ...prev[r.id],
-                                          currency: val
-                                        }
-                                      }));
-                                    }}
-                                    onFocus={() => {
-                                      setLastFocusedStep1Index(index);
-                                      setLastFocusedStep1Field("price");
-                                    }}
-                                    onKeyDown={e => {
-                                      if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleStep1FillDown(index, "price");
-                                      }
-                                    }}
-                                  >
-                                    <option value="RMB">¥ RMB</option>
-                                    <option value="USD">$ USD</option>
-                                    <option value="INR">₹ INR</option>
-                                  </select>
+                                  <div style={{ width: "88px", minWidth: "88px", flexShrink: 0 }}>
+                                    <CustomSelect
+                                      portal={true}
+                                      size="sm"
+                                      value={currentCurrency}
+                                      onChange={val => {
+                                        setStep1InlineEdits(prev => ({
+                                          ...prev,
+                                          [r.id]: {
+                                            ...prev[r.id],
+                                            currency: val
+                                          }
+                                        }));
+                                        setLastFocusedStep1Index(index);
+                                        setLastFocusedStep1Field("price");
+                                      }}
+                                      options={rowCurrencyOptions}
+                                      searchable={false}
+                                      menuWidth="95px"
+                                    />
+                                  </div>
                                   <input 
                                     type="text" 
                                     inputMode="decimal"
@@ -3184,7 +3233,12 @@ export default function PurchaserDashboard({
                                     placeholder={`Price (${getCurrencySymbol(currentCurrency)})`}
                                     value={currentPrice}
                                     onChange={e => {
-                                      const val = e.target.value.replace(/[^0-9.]/g, "");
+                                      const raw = e.target.value;
+                                      const parsed = parsePastedPriceLine(raw);
+                                      let val = raw.replace(/[^0-9.]/g, "");
+                                      if (parsed && parsed.price !== undefined) {
+                                        val = String(parsed.price);
+                                      }
                                       setStep1InlineEdits(prev => ({
                                         ...prev,
                                         [r.id]: {
@@ -3212,7 +3266,7 @@ export default function PurchaserDashboard({
                                       flexShrink: 1,
                                       padding: "4px 8px", 
                                       fontSize: "0.85rem", 
-                                      height: "32px",
+                                      height: "30px",
                                       boxSizing: "border-box",
                                       borderColor: currentPrice ? "rgba(16, 185, 129, 0.4)" : undefined,
                                       background: currentPrice ? "rgba(16, 185, 129, 0.05)" : undefined
@@ -4754,30 +4808,24 @@ export default function PurchaserDashboard({
             <div style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap", marginBottom: "16px" }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Filter by Vendor</label>
-                <input 
-                  type="text" 
-                  list="list-vr-vendors"
-                  className="form-control" 
-                  placeholder="Type or Select Vendor..." 
-                  value={accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").find(v => v.id === vrFilter)?.name || ""}
-                  onChange={e => {
-                    const val = e.target.value;
-                    const activeVendors = accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
-                    const matched = activeVendors.find(v => v.name.toLowerCase() === val.toLowerCase());
-                    setVrFilter(matched ? matched.id : "");
-                    setVrChecked([]);
-                    setVrSelectedOrderDate("");
-                    setVrNewQtyMap({});
-                    setVrNewReadyDateMap({});
-                    setVrExcelNotification(null);
-                  }}
-                  style={{ minWidth: "200px" }}
-                />
-                <datalist id="list-vr-vendors">
-                  {accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
-                    <option key={v.id} value={v.name}>{v.name}</option>
-                  ))}
-                </datalist>
+                <div style={{ minWidth: "200px" }}>
+                  <CustomSelect
+                    value={vrFilter}
+                    onChange={val => {
+                      setVrFilter(val || "");
+                      setVrChecked([]);
+                      setVrSelectedOrderDate("");
+                      setVrNewQtyMap({});
+                      setVrNewReadyDateMap({});
+                      setVrExcelNotification(null);
+                    }}
+                    options={vendorSelectOptions}
+                    placeholder="Type or Select Vendor..."
+                    searchable={true}
+                    clearable={true}
+                    size="md"
+                  />
+                </div>
               </div>
 
               {/* Filter by Order Date */}
@@ -5620,26 +5668,20 @@ export default function PurchaserDashboard({
             <div style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap", marginBottom: "16px" }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Filter by Vendor</label>
-                <input 
-                  type="text" 
-                  list="list-cp-vendors"
-                  className="form-control" 
-                  placeholder="Type or Select Vendor..." 
-                  value={accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").find(v => v.id === cpFilter)?.name || ""}
-                  onChange={e => {
-                    const val = e.target.value;
-                    const activeVendors = accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
-                    const matched = activeVendors.find(v => v.name.toLowerCase() === val.toLowerCase());
-                    setCpFilter(matched ? matched.id : "");
-                    setCpChecked([]);
-                  }}
-                  style={{ minWidth: "200px" }}
-                />
-                <datalist id="list-cp-vendors">
-                  {accessibleVendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
-                    <option key={v.id} value={v.name}>{v.name}</option>
-                  ))}
-                </datalist>
+                <div style={{ minWidth: "200px" }}>
+                  <CustomSelect
+                    value={cpFilter}
+                    onChange={val => {
+                      setCpFilter(val || "");
+                      setCpChecked([]);
+                    }}
+                    options={vendorSelectOptions}
+                    placeholder="Type or Select Vendor..."
+                    searchable={true}
+                    clearable={true}
+                    size="md"
+                  />
+                </div>
               </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Pickup Date</label>
@@ -7050,18 +7092,18 @@ export default function PurchaserDashboard({
               </button>
             </div>
 
-            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "12px" }}>
-              Paste prices copied directly from your Excel sheet or tracking list. You can paste:
+            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "12px", lineHeight: "1.5" }}>
+              Paste prices copied from Excel, Google Sheets, or type directly. Supported formats:
               <br />
-              • <strong>Single Price Column</strong> (e.g. <code>15.5\n22.0\n18</code>) — maps sequentially down unpriced rows.
+              • <strong>Model & Price</strong> (e.g. <code>48DX 20</code>, <code>dx45 20</code>, <code>39LX\t15.5</code>, <code>49KX, 22</code>) — auto-matches Model names to orders!
               <br />
-              • <strong>Model & Price Columns</strong> (e.g. <code>39LX \t 15.5</code>) — auto-matches Model names to requests!
+              • <strong>Single Price Column</strong> (e.g. <code>20\n22.5\n18</code>) — maps sequentially down rows {step1CheckedIds.length > 0 ? `(${step1CheckedIds.length} selected)` : "(all unpriced)"}.
             </p>
 
             <textarea 
               rows={8}
               className="form-control"
-              placeholder={`Paste Excel rows here...\nExample 1:\n15.5\n22.0\n18.0\n\nExample 2:\n39LX\t15.5\n48DX\t22.0`}
+              placeholder={`Paste rows or type here...\nExample 1 (Model & Price):\n48DX 20\n49KX 22.5\nBM4W 35\n\nExample 2 (Prices only):\n20\n22.5\n35`}
               value={step1PasteText}
               onChange={e => setStep1PasteText(e.target.value)}
               style={{ fontFamily: "monospace", fontSize: "0.88rem", marginBottom: "16px" }}
@@ -7075,7 +7117,7 @@ export default function PurchaserDashboard({
                 Cancel
               </button>
               <button 
-                onClick={() => handleApplyStep1PasteModal(myRequests.filter(r => !r.priceRmb && r.status !== "Cancelled"))} 
+                onClick={() => handleApplyStep1PasteModal(sortedPendingReqs && sortedPendingReqs.length > 0 ? sortedPendingReqs : pendingReqs)} 
                 className="btn btn-primary"
                 disabled={!step1PasteText.trim()}
               >
@@ -7508,26 +7550,24 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
                   </button>
                 )}
               </div>
-              <input 
-                type="text" 
-                list="pricing-vendor-list"
-                className="form-control"
-                placeholder="Type or Select Vendor..."
-                value={vendorSearchText}
-                disabled={isInTransit && !isSuperAdmin}
-                onChange={e => {
-                  const val = e.target.value;
-                  setVendorSearchText(val);
-                  const activeVendors = vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive");
-                  const matched = activeVendors.find(v => v.name.toLowerCase() === val.toLowerCase());
-                  setVendorId(matched ? matched.id : val);
+              <CustomSelect
+                value={vendorId}
+                onChange={(val, opt) => {
+                  setVendorId(val);
+                  setVendorSearchText(opt?.label || "");
                 }}
+                options={(vendors || [])
+                  .filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive")
+                  .map(v => ({
+                    value: v.id,
+                    label: v.name,
+                    sublabel: v.contactPerson ? `${v.contactPerson}${v.phone ? ` • ${v.phone}` : ""}` : undefined
+                  }))}
+                placeholder="Type or Select Vendor..."
+                searchable={true}
+                clearable={true}
+                disabled={isInTransit && !isSuperAdmin}
               />
-              <datalist id="pricing-vendor-list">
-                {vendors.filter(v => String(v.status || "Active").trim().toLowerCase() !== "inactive").map(v => (
-                  <option key={v.id} value={v.name}>{v.name}</option>
-                ))}
-              </datalist>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
