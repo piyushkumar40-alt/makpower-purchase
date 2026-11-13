@@ -564,6 +564,25 @@ async function setupPgDatabase() {
       `);
 
       await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_parties_name_unique ON crm_parties (LOWER(TRIM("name")));`);
+    // Category Normalization: Ensure all pouch battery items and requests have category 'Pouch Battery'
+    try {
+      await pool.query(`
+        UPDATE items 
+        SET "category" = 'Pouch Battery' 
+        WHERE LOWER("category") LIKE '%pouch%' 
+           OR (LOWER("name") LIKE '%pouch%' AND (LOWER("category") = 'polymer' OR "category" IS NULL OR TRIM("category") = ''));
+      `);
+      await pool.query(`
+        UPDATE requests 
+        SET "category" = 'Pouch Battery' 
+        WHERE LOWER("category") LIKE '%pouch%' 
+           OR (LOWER("model") LIKE '%pouch%' AND (LOWER("category") = 'polymer' OR "category" IS NULL OR TRIM("category") = ''));
+      `);
+      console.log("Pouch Battery category normalization complete in PG database.");
+    } catch (catErr) {
+      console.warn("Pouch battery category update notice:", catErr.message);
+    }
+
       console.log("CRM parties schema verified: name is PRIMARY KEY and UNIQUE constraint active.");
     } catch (migErr) {
       console.error("CRM parties deduplication / primary key migration error:", migErr.message);
@@ -2290,7 +2309,15 @@ function extractYearMonthFromAnyDate(dStr) {
 }
 
 // Function to clean and normalize category names
-function cleanCategoryName(category) {
+function cleanCategoryName(category, itemName = "") {
+  const itemStr = itemName && typeof itemName === "string" ? itemName.trim() : "";
+  const itemLower = itemStr.toLowerCase();
+
+  // If item name contains pouch -> always "Pouch Battery"
+  if (itemLower.includes("pouch")) {
+    return "Pouch Battery";
+  }
+
   if (!category || typeof category !== "string") return category || "";
   let str = category.trim();
 
@@ -2304,16 +2331,27 @@ function cleanCategoryName(category) {
 
   const lower = str.toLowerCase();
 
-  // 2. Merge all polymers into single "Polymer"
+  // 2. Pouch Batteries -> "Pouch Battery"
   if (
-    lower === "polymer" ||
-    lower.includes("polymer") ||
-    lower.includes("li-poly") ||
-    lower.includes("lithium poly") ||
+    lower === "pouch" ||
+    lower.includes("pouch") ||
     lower.includes("pouch battery") ||
-    lower.includes("poly battery") ||
-    lower === "polymers" ||
-    lower.startsWith("poly ")
+    lower.includes("pouch batteries")
+  ) {
+    return "Pouch Battery";
+  }
+
+  // 3. Merge all polymers into single "Polymer" (excluding pouch batteries)
+  if (
+    !lower.includes("pouch") && (
+      lower === "polymer" ||
+      lower.includes("polymer") ||
+      lower.includes("li-poly") ||
+      lower.includes("lithium poly") ||
+      lower.includes("poly battery") ||
+      lower === "polymers" ||
+      lower.startsWith("poly ")
+    )
   ) {
     return "Polymer";
   }

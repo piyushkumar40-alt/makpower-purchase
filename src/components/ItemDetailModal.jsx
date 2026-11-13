@@ -182,7 +182,7 @@ export default function ItemDetailModal({
             }} 
           />
           <div style={{ color: "#e2e8f0", fontSize: "1.1rem", fontWeight: 700, marginTop: "16px" }}>
-            {item.name} ({item.category || "General"})
+            {item.name} ({cleanCategoryName(item.category, item.name) || "General"})
           </div>
           <div style={{ color: "#94a3b8", fontSize: "0.85rem", marginTop: "4px" }}>
             Click anywhere to close image preview
@@ -290,7 +290,7 @@ export default function ItemDetailModal({
               </div>
 
               <div style={{ display: "flex", gap: "12px", fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "4px", flexWrap: "wrap" }}>
-                <span>Category: <strong style={{ color: "var(--text-main)" }}>{item.category || "General"}</strong></span>
+                <span>Category: <strong style={{ color: "var(--text-main)" }}>{cleanCategoryName(item.category, item.name) || "General"}</strong></span>
                 <span>•</span>
                 <span>Nature: <strong style={{ color: "var(--text-main)" }}>{item.itemNature || "Non Consumables"}</strong></span>
                 <span>•</span>
@@ -547,7 +547,7 @@ export default function ItemDetailModal({
 
                   <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed var(--border-color)", paddingBottom: "8px" }}>
                     <span style={{ color: "var(--text-muted)" }}>Product Category:</span>
-                    <strong style={{ color: "var(--text-main)" }}>{item.category || "General"}</strong>
+                    <strong style={{ color: "var(--text-main)" }}>{cleanCategoryName(item.category, item.name) || "General"}</strong>
                   </div>
 
                   <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed var(--border-color)", paddingBottom: "8px" }}>

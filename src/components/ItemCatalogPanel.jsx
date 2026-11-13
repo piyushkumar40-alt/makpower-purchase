@@ -190,10 +190,11 @@ export default function ItemCatalogPanel({
   const [merging, setMerging] = useState(false);
 
   // Filter items by search, category & type
-  const categories = useMemo(() => ["all", ...new Set(items.map(i => cleanCategoryName(i.category)).filter(Boolean))], [items]);
+  const categories = useMemo(() => ["all", ...new Set(items.map(i => cleanCategoryName(i.category, i.name)).filter(Boolean))], [items]);
   const filteredItems = useMemo(() => {
     return items.filter(i => {
-      const matchesCategory = categoryFilter === "all" || i.category === categoryFilter;
+      const cleanCat = cleanCategoryName(i.category, i.name);
+      const matchesCategory = categoryFilter === "all" || cleanCat === categoryFilter || i.category === categoryFilter;
       const matchesType = typeFilter === "all" || (i.itemType || "RM") === typeFilter;
       const q = searchQuery.toLowerCase();
       const matchesSearch = !q || String(i.id).toLowerCase().includes(q) || (i.name && i.name.toLowerCase().includes(q)) || (i.category && i.category.toLowerCase().includes(q));
@@ -1858,7 +1859,7 @@ export default function ItemCatalogPanel({
                       </td>
                       <td style={{ cursor: "pointer" }} onClick={() => handleItemClick(item)}>
                         <span className="badge badge-secondary" style={{ fontSize: "0.75rem" }}>
-                          {cleanCategoryName(item.category) || "General"}
+                          {cleanCategoryName(item.category, item.name) || "General"}
                         </span>
                       </td>
                       <td style={{ cursor: "pointer" }} onClick={() => handleItemClick(item)}>

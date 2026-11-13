@@ -454,6 +454,7 @@ export default function PurchaserDashboard({
   batchUpdateRequests,
   onCancelOrder,
   onCancelRequests,
+  onReactivateRequests,
   onDeleteRequests,
   onDeleteRequestsByDate,
   onUndoCargoAssignment,
@@ -2643,6 +2644,7 @@ export default function PurchaserDashboard({
             onNavigateStep={(stepKey) => setActiveTab(stepKey)}
             onDeleteRequests={onDeleteRequests}
             onCancelRequests={onCancelRequests}
+            onReactivateRequests={onReactivateRequests}
             onUndoPricing={onUndoPricing}
             onBatchUndoPricing={onBatchUndoPricing}
             onUndoCargoAssignment={onUndoCargoAssignment}

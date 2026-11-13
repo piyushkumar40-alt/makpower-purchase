@@ -1554,7 +1554,44 @@ export default function App() {
     logSystemActivity("CANCEL_ORDER", `Cancelled purchase order ${target.model} (#${target.id}) ${reason ? `- Reason: ${reason}` : ""}`, "Requisition", target.id, target, updated);
   };
 
-  const cancelRequests = async (requestIds, reason = "") => {
+    const reactivateRequests = async (requestIds) => {
+    const ids = Array.isArray(requestIds) ? requestIds : [requestIds];
+    if (ids.length === 0) return { success: false, count: 0 };
+    const targets = requests.filter(r => ids.includes(r.id));
+    const updatedList = targets.map(r => ({
+      ...r,
+      status: "Active",
+      cancellationReason: "",
+      cancelledAt: "",
+      cancelledBy: "",
+      cancelledByName: ""
+    }));
+
+    try {
+      await postData("/api/requests/batch", updatedList);
+    } catch (err) {
+      console.error("Failed to batch reactivate requests on server:", err);
+    }
+
+    setRequests(prev => prev.map(r => {
+      const match = updatedList.find(u => u.id === r.id);
+      return match ? match : r;
+    }));
+
+    const targetModels = targets.map(r => r.model).filter(Boolean).slice(0, 5).join(", ");
+    const moreSuffix = targets.length > 5 ? ` and ${targets.length - 5} more` : "";
+    logSystemActivity(
+      "REACTIVATE_ORDERS",
+      `Reactivated ${ids.length} purchase order(s) back to Active [${targetModels}${moreSuffix}]`,
+      "Requisition",
+      ids[0],
+      null,
+      updatedList
+    );
+    return { success: true, count: ids.length };
+  };
+
+const cancelRequests = async (requestIds, reason = "") => {
     const ids = Array.isArray(requestIds) ? requestIds : [requestIds];
     if (ids.length === 0) return { success: false, count: 0 };
     const nowIso = new Date().toISOString();
@@ -3832,6 +3869,7 @@ export default function App() {
             onBatchUpdateRequests={batchUpdateRequests}
             onCancelOrder={cancelRequest}
             onCancelRequests={cancelRequests}
+            onReactivateRequests={reactivateRequests}
             onDeleteRequests={deleteRequests}
             onDeleteRequestsByDate={deleteRequestsByDate}
             items={items}

@@ -16,8 +16,18 @@ export const formatIndianCurrency = (amount, symbol = "₹") => {
   return `${sign}${symbol} ${Math.round(num).toLocaleString("en-IN")}`;
 };
 
-export const cleanCategoryName = (category) => {
-  if (!category || typeof category !== "string") return category || "";
+export const cleanCategoryName = (category, itemName = "") => {
+  const itemStr = itemName && typeof itemName === "string" ? itemName.trim() : "";
+  const itemLower = itemStr.toLowerCase();
+
+  // If item name or description contains pouch -> always "Pouch Battery"
+  if (itemLower.includes("pouch")) {
+    return "Pouch Battery";
+  }
+
+  if (!category || typeof category !== "string") {
+    return category || "";
+  }
   let str = category.trim();
 
   // 1. Remove "Z ", "ZZ ", "S " wording from everywhere (prefixes, suffixes, internal words)
@@ -30,16 +40,27 @@ export const cleanCategoryName = (category) => {
 
   const lower = str.toLowerCase();
 
-  // 2. Merge all polymers into single "Polymer"
+  // 2. Pouch Batteries -> "Pouch Battery"
   if (
-    lower === "polymer" ||
-    lower.includes("polymer") ||
-    lower.includes("li-poly") ||
-    lower.includes("lithium poly") ||
+    lower === "pouch" ||
+    lower.includes("pouch") ||
     lower.includes("pouch battery") ||
-    lower.includes("poly battery") ||
-    lower === "polymers" ||
-    lower.startsWith("poly ")
+    lower.includes("pouch batteries")
+  ) {
+    return "Pouch Battery";
+  }
+
+  // 3. Merge all polymers into single "Polymer" (excluding pouch batteries)
+  if (
+    !lower.includes("pouch") && (
+      lower === "polymer" ||
+      lower.includes("polymer") ||
+      lower.includes("li-poly") ||
+      lower.includes("lithium poly") ||
+      lower.includes("poly battery") ||
+      lower === "polymers" ||
+      lower.startsWith("poly ")
+    )
   ) {
     return "Polymer";
   }

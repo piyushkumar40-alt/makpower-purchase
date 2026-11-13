@@ -129,6 +129,7 @@ export default function MasterOrderTracker({
   onNavigateStep,
   onDeleteRequests,
   onCancelRequests,
+  onReactivateRequests,
   onUpdateCargo,
   onUndoPricing,
   onBatchUndoPricing,
@@ -698,7 +699,36 @@ export default function MasterOrderTracker({
     setSelectedOrderIds([]);
   };
 
-  const handleTriggerBatchCancel = () => {
+    const cancelledSelectedCount = useMemo(() => {
+    return selectedRequests.filter(r => r.status === "Cancelled").length;
+  }, [selectedRequests]);
+
+  const activeSelectedCount = useMemo(() => {
+    return selectedRequests.filter(r => r.status !== "Cancelled").length;
+  }, [selectedRequests]);
+
+  const handleTriggerBatchReactivate = async () => {
+    const cancelledTargets = selectedRequests.filter(r => r.status === "Cancelled");
+    if (cancelledTargets.length === 0) {
+      alert("None of the selected orders are currently cancelled.");
+      return;
+    }
+    const count = cancelledTargets.length;
+    if (window.confirm(`Restore & Reactivate ${count} selected order(s) back to Active status?\n\nThey will return to their previous active workflow stages.`)) {
+      try {
+        const ids = cancelledTargets.map(r => r.id);
+        if (onReactivateRequests) {
+          await onReactivateRequests(ids);
+        }
+        handleClearSelection();
+      } catch (err) {
+        console.error("Batch reactivate failed:", err);
+        alert("Failed to reactivate orders: " + (err.message || "Unknown error"));
+      }
+    }
+  };
+
+const handleTriggerBatchCancel = () => {
     if (selectedOrderIds.length === 0) return;
     const activeSelected = selectedRequests.filter(r => r.status !== "Cancelled");
     if (activeSelected.length === 0) {
@@ -1108,27 +1138,54 @@ export default function MasterOrderTracker({
                     >
                       ✕ Clear
                     </button>
-                    <button
-                      type="button"
-                      onClick={handleTriggerBatchCancel}
-                      className="btn btn-danger btn-sm"
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        fontWeight: 700,
-                        fontSize: "0.8rem",
-                        padding: "5px 12px",
-                        background: "#ef4444",
-                        color: "#ffffff",
-                        border: "none",
-                        boxShadow: "0 2px 8px rgba(239, 68, 68, 0.35)",
-                        cursor: "pointer"
-                      }}
-                      title={`Cancel ${selectedOrderIds.length} selected orders`}
-                    >
-                      <XCircle size={13} /> Cancel Selected ({selectedOrderIds.length})
-                    </button>
+                    {cancelledSelectedCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleTriggerBatchReactivate}
+                        className="btn btn-sm"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          fontWeight: 700,
+                          fontSize: "0.8rem",
+                          padding: "5px 12px",
+                          background: "#10b981",
+                          color: "#ffffff",
+                          border: "none",
+                          borderRadius: "6px",
+                          boxShadow: "0 2px 8px rgba(16, 185, 129, 0.35)",
+                          cursor: "pointer"
+                        }}
+                        title={`Reactivate ${cancelledSelectedCount} selected cancelled order(s) back to Active`}
+                      >
+                        <RotateCcw size={13} /> Reactivate Selected ({cancelledSelectedCount})
+                      </button>
+                    )}
+                    {activeSelectedCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleTriggerBatchCancel}
+                        className="btn btn-danger btn-sm"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          fontWeight: 700,
+                          fontSize: "0.8rem",
+                          padding: "5px 12px",
+                          background: "#ef4444",
+                          color: "#ffffff",
+                          border: "none",
+                          borderRadius: "6px",
+                          boxShadow: "0 2px 8px rgba(239, 68, 68, 0.35)",
+                          cursor: "pointer"
+                        }}
+                        title={`Cancel ${activeSelectedCount} selected orders`}
+                      >
+                        <XCircle size={13} /> Cancel Selected ({activeSelectedCount})
+                      </button>
+                    )}
                     {isAdmin && onBatchUndoPricing && (
                       <button
                         type="button"
