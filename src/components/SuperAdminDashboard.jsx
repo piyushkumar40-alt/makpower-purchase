@@ -798,11 +798,18 @@ export default function SuperAdminDashboard({
     setMigrationStatusMsg("");
     try {
       const res = await fetch("/api/migrate-photos-to-cloudinary", { method: "POST" });
-      const data = await res.json();
-      if (data.success) {
+      const text = await res.text();
+      let data = null;
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (pe) {
+        setMigrationStatusMsg(`❌ Server Error (${res.status}): ${text ? text.slice(0, 150) : res.statusText}`);
+        return;
+      }
+      if (data && data.success) {
         setMigrationStatusMsg(`✅ ${data.message}`);
       } else {
-        setMigrationStatusMsg(`❌ Migration Error: ${data.error}`);
+        setMigrationStatusMsg(`❌ Migration Error: ${data?.error || "Failed"}`);
       }
     } catch (err) {
       setMigrationStatusMsg(`❌ Network Error: ${err.message}`);
@@ -831,11 +838,23 @@ export default function SuperAdminDashboard({
       await handleSaveSheetSettings(sheetWebhookUrl, sheetAutoSync);
 
       const res = await fetch("/api/google-sheets/sync", { method: "POST" });
-      const data = await res.json();
-      if (data.success) {
+      const text = await res.text();
+      let data = null;
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (pe) {
+        if (text.includes("<!DOCTYPE") || text.includes("<html") || text.includes("Gateway Timeout") || res.status === 504 || res.status === 502) {
+          setSheetStatusMsg("⚠️ The sync request took longer than 25s on the server. The Google Sheet is updating in the background. Please check your sheet.");
+          return;
+        }
+        setSheetStatusMsg(`❌ Server Error (${res.status}): ${text ? text.slice(0, 150) : res.statusText}`);
+        return;
+      }
+
+      if (data && data.success) {
         setSheetStatusMsg(`✅ Successfully synced ${data.count} rows to Google Sheets at ${data.syncedAt}!`);
       } else {
-        setSheetStatusMsg(`❌ Sync Error: ${data.error}`);
+        setSheetStatusMsg(`❌ Sync Error: ${data?.error || "Failed to sync to Google Sheets."}`);
       }
     } catch (err) {
       setSheetStatusMsg(`❌ Network Error: ${err.message}`);
@@ -899,11 +918,14 @@ export default function SuperAdminDashboard({
   const [loadingSessions, setLoadingSessions] = useState(false);
 
   const fetchSessionsData = async () => {
+    if (document.visibilityState !== "visible") return;
     setLoadingSessions(true);
     try {
       const res = await fetch("/api/auth/sessions");
-      const data = await res.json();
-      if (data.success) {
+      const text = await res.text();
+      let data = null;
+      try { data = text ? JSON.parse(text) : {}; } catch (e) {}
+      if (data && data.success) {
         setActiveSessions(data.activeSessions || []);
         setAuthAuditLogs(data.authAuditLogs || []);
       }
@@ -916,7 +938,11 @@ export default function SuperAdminDashboard({
 
   React.useEffect(() => {
     fetchSessionsData();
-    const interval = setInterval(fetchSessionsData, 5000);
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        fetchSessionsData();
+      }
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 

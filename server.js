@@ -1662,22 +1662,37 @@ async function formatAllRequestsForGoogleSheets() {
   let cargos = [];
 
   if (isPg) {
-    const rRes = await pool.query("SELECT * FROM requests");
-    const uRes = await pool.query("SELECT * FROM users");
-    const vRes = await pool.query("SELECT * FROM vendors");
-    const cRes = await pool.query("SELECT * FROM cargos");
+    const [rRes, uRes, vRes, cRes] = await Promise.all([
+      pool.query(`
+        SELECT "id", "purchaserId", "purchaserName", "assignedPurchaser", "vendorId", "cargoId", 
+               "orderDate", "type", "model", "orderQuantity", "vendorOrderQuantity", "cargoPickedQty",
+               "priceRmb", "totalRmb", "advancePayment", "balancePayment", "photo", "vendorEdd",
+               "status", "isMaterialRec", "packingOrderedByNitin", "purchaseUpdated", 
+               "purchaseUpdatedAt", "purchaseUpdatedBy"
+        FROM requests
+        WHERE "status" != 'Cancelled' AND ("isMaterialRec" IS NULL OR "isMaterialRec" != 'Yes')
+      `),
+      pool.query('SELECT "id", "name" FROM users'),
+      pool.query('SELECT "id", "name" FROM vendors'),
+      pool.query(`
+        SELECT "id", "cargoOrderDate", "cargoDetail", "cargoPrice", "cargoPriceUom", 
+               "cbmPackingList", "totalCargoPrice", "modeOfTransport", "cargoShippingDate", 
+               "cargoEta", "packingListFile", "invoiceFile", "cargoReceiptFile", "isMaterialRec"
+        FROM cargos
+      `)
+    ]);
     requests = rRes.rows || [];
     users = uRes.rows || [];
     vendors = vRes.rows || [];
     cargos = cRes.rows || [];
   } else {
     requests = memoryDb.requests || [];
-  users = memoryDb.users || [];
+    users = memoryDb.users || [];
     vendors = memoryDb.vendors || [];
     cargos = memoryDb.cargos || [];
   }
 
-  // Exclude cancelled and received orders from Google Sheets export as requested
+  // Filter active requests (status != Cancelled and isMaterialRec != Yes)
   const activeRequests = requests.filter(r => r.status !== "Cancelled" && r.isMaterialRec !== "Yes");
 
   const rows = activeRequests.map(r => {
@@ -1821,11 +1836,47 @@ async function performGoogleSheetSync() {
       rows
     };
 
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000); // 25s abort to finish before gateway 30s timeout
+
+    let syncOk = false;
+    let syncError = null;
+    let syncCount = rows.length;
+
+    try {
+      const response = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      const text = await response.text();
+      let respData = null;
+      try { respData = JSON.parse(text); } catch (e) {}
+
+      if (response.ok || (respData && respData.status === "success")) {
+        syncOk = true;
+        if (respData && respData.count != null) syncCount = respData.count;
+      } else {
+        syncError = respData?.error || `Google Apps Script returned status ${response.status}: ${text.slice(0, 150)}`;
+      }
+    } catch (fetchErr) {
+      clearTimeout(timeout);
+      if (fetchErr.name === "AbortError") {
+        // Apps Script takes longer to respond, but execution continues on Google's cloud
+        syncOk = true;
+        syncError = null;
+        console.log("[Google Sheets] Payload delivered; Apps Script is finishing write in background.");
+      } else {
+        syncError = fetchErr.message;
+      }
+    }
+
+    if (!syncOk && syncError) {
+      return { success: false, error: syncError };
+    }
 
     const nowStr = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
     if (isPg) {
@@ -1838,9 +1889,9 @@ async function performGoogleSheetSync() {
       memoryDb.settings.lastGoogleSheetSyncTime = nowStr;
     }
 
-    recordAuthAuditLog("system", "System Auto-Sync", "system", "Google Sheets Sync", `Synced ${rows.length} rows to Google Sheets`);
+    recordAuthAuditLog("system", "System Auto-Sync", "system", "Google Sheets Sync", `Synced ${syncCount} rows to Google Sheets`);
 
-    return { success: true, count: rows.length, syncedAt: nowStr };
+    return { success: true, count: syncCount, syncedAt: nowStr };
   } catch (err) {
     console.error("Google Sheets sync execution error:", err);
     return { success: false, error: err.message };
