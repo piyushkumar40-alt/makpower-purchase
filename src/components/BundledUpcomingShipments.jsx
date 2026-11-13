@@ -27,7 +27,7 @@ import {
   CheckSquare,
   RotateCcw
 } from "lucide-react";
-import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, formatCancelDate, formatCancelTime, formatPunchDateTime } from "../utils/formatters";
+import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, isCargoMatch, reconcileCargosWithRequests, formatCancelDate, formatCancelTime, formatPunchDateTime } from "../utils/formatters";
 import { uploadToCloudinary } from "../utils/upload";
 import CustomSelect from "./CustomSelect";
 import CargoDocumentModal from "./CargoDocumentModal";
@@ -117,18 +117,19 @@ export default function BundledUpcomingShipments({
 
   // Enriched Cargos - In-Transit Goods Only
   const enrichedCargos = useMemo(() => {
-    return (cargos || [])
+    const allCargos = reconcileCargosWithRequests(cargos, requests);
+    return (allCargos || [])
       .filter(cargo => {
         const isDelivered = cargo.isMaterialRec === "Yes" || cargo.status === "Delivered" || cargo.status === "Received";
         if (isDelivered) return false;
-        const allItems = (requests || []).filter(r => r.cargoId === cargo.id && r.status !== "Cancelled");
+        const allItems = (requests || []).filter(r => isCargoMatch(r.cargoId, cargo) && r.status !== "Cancelled");
         if (allItems.length > 0 && allItems.every(it => it.isMaterialRec === "Yes")) {
           return false;
         }
         return true;
       })
       .map(cargo => {
-        const items = cargoItemsMap[cargo.id] || [];
+        const items = cargoItemsMap[cargo.id] || (requests || []).filter(r => isCargoMatch(r.cargoId, cargo) && r.status !== "Cancelled" && r.isMaterialRec !== "Yes");
         const totalUnits = items.reduce((sum, it) => sum + (Number(it.orderQuantity) || 0), 0);
         const totalValueRmb = items.reduce((sum, it) => {
           const qty = Number(it.orderQuantity) || 0;

@@ -1,5 +1,6 @@
 import React from "react";
 import { Clock, Truck, AlertCircle, Award } from "lucide-react";
+import { isCargoMatch, reconcileCargosWithRequests } from "../utils/formatters";
 
 export default function AnalyticsPanel({ requests = [], vendors = [], cargos = [], onSelectTab, loading = false }) {
   // 1. Dynamic Reference Date
@@ -21,11 +22,31 @@ export default function AnalyticsPanel({ requests = [], vendors = [], cargos = [
   // Unique Orders (Lots grouped by vendor + orderDate)
   const pendingLots = new Set(pendingItems.map(r => `${r.vendorId}__${r.orderDate || 'no_date'}`)).size;
   const awaitingCargoLots = new Set(awaitingCargoItems.map(r => `${r.vendorId}__${r.orderDate || 'no_date'}`)).size;
-
   // Active In-transit Cargos
-  const myCargoIds = new Set(requests.map(r => r.cargoId).filter(Boolean));
-  const myCargos = (cargos || []).filter(c => myCargoIds.has(c.id));
-  const inTransitCargosCount = myCargos.filter(c => c.isMaterialRec !== "Yes").length;
+  const effectiveCargos = React.useMemo(() => {
+    return reconcileCargosWithRequests(cargos, requests);
+  }, [cargos, requests]);
+
+  const inTransitCargosCount = React.useMemo(() => {
+    const matchedCargoKeys = new Set();
+    effectiveCargos.forEach(c => {
+      if (c.isMaterialRec === "Yes") return;
+      const hasItems = inTransitItems.some(r => isCargoMatch(r.cargoId, c));
+      if (hasItems) {
+        matchedCargoKeys.add(String(c.id || "").trim().toLowerCase());
+      }
+    });
+
+    // In case any in-transit item's cargoId was not matched, count its unique cargo ID
+    inTransitItems.forEach(r => {
+      const cid = String(r.cargoId || "").trim().toLowerCase();
+      if (cid && !matchedCargoKeys.has(cid)) {
+        matchedCargoKeys.add(cid);
+      }
+    });
+
+    return matchedCargoKeys.size;
+  }, [effectiveCargos, inTransitItems]);
 
   let delayedItemsCount = 0;
 
@@ -46,7 +67,7 @@ export default function AnalyticsPanel({ requests = [], vendors = [], cargos = [
 
   // Cargo transit delays
   inTransitItems.forEach(r => {
-    const c = (cargos || []).find(cg => cg.id === r.cargoId || String(cg.id) === String(r.cargoId));
+    const c = (effectiveCargos || []).find(cg => isCargoMatch(r.cargoId, cg));
     if (!c) return;
     if (c.isMaterialRec !== "Yes") {
       if (c.cargoEta && new Date(c.cargoEta) < today) {

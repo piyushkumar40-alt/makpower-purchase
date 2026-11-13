@@ -2713,6 +2713,48 @@ app.get("/api/state", async (req, res) => {
               cargoEtaHistory: safeJsonParse(c.cargoEtaHistory, [])
             }));
 
+            // Auto-reconcile active cargo IDs referenced on requests so in-transit cargos are never 0
+            const knownCargoKeys = new Set(cargos.flatMap(c => [
+              String(c.id || "").trim().toLowerCase(),
+              c.cargoDetail ? String(c.cargoDetail).trim().toLowerCase() : null
+            ]).filter(Boolean));
+            const orphanCargosMap = new Map();
+            requests.forEach(r => {
+              const cid = String(r.cargoId || "").trim();
+              if (!cid || r.status === "Cancelled") return;
+              const cidLower = cid.toLowerCase();
+              if (!knownCargoKeys.has(cidLower) && !orphanCargosMap.has(cidLower)) {
+                orphanCargosMap.set(cidLower, sanitizeCargoDocuments({
+                  id: r.cargoId,
+                  vendorId: r.vendorId || "",
+                  cargoOrderDate: r.vendorReadyDate || r.orderDate || new Date().toISOString().split("T")[0],
+                  cargoDetail: r.cargoDetail || r.cargoId,
+                  cargoPrice: "",
+                  cargoPriceUom: "Total",
+                  cbmPackingList: "",
+                  totalCargoPrice: 0,
+                  modeOfTransport: "Sea",
+                  cargoShippingDate: r.vendorReadyDate || r.orderDate || "",
+                  cargoEta: r.vendorEdd || "",
+                  packingListFile: "",
+                  packingListData: "",
+                  invoiceFile: "",
+                  invoiceData: "",
+                  cargoReceiptFile: "",
+                  cargoReceiptData: "",
+                  isMaterialRec: r.isMaterialRec || "No",
+                  receivedDate: r.actualReceivedDate || "",
+                  currency: r.currency || "RMB",
+                  cargoEtaHistory: [],
+                  totalCartons: r.totalCartons || 0,
+                  cargoCompanyId: ""
+                }));
+              }
+            });
+            if (orphanCargosMap.size > 0) {
+              cargos.push(...orphanCargosMap.values());
+            }
+
             const settings = {};
             settingsRes.rows.forEach(row => {
               if (row.value === "true") settings[row.key] = true;

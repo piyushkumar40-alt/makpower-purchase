@@ -10,7 +10,7 @@ import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
-import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons, formatCancelDate, formatCancelTime, parsePastedPriceLine, isModelMatch } from "../utils/formatters";
+import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons, formatCancelDate, formatCancelTime, parsePastedPriceLine, isModelMatch, isCargoMatch, reconcileCargosWithRequests } from "../utils/formatters";
 import { useModalEscape, pushBackHandler } from "../utils/useModalEscape";
 import MasterOrderTracker from "./MasterOrderTracker";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
@@ -18,7 +18,7 @@ import AddEddModal from "./AddEddModal";
 import CargoDocumentModal from "./CargoDocumentModal";
 import CustomSelect from "./CustomSelect";
 
-export { isRequestForUser, isVendorForUser, getPurchaserDisplayName };
+export { isRequestForUser, isVendorForUser, getPurchaserDisplayName, isCargoMatch, reconcileCargosWithRequests };
 
 // ==================== TOP-LEVEL UTILITIES & METRIC CALCULATION HELPERS ====================
 export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange, placeholder, accentColor = "var(--primary)", style }) {
@@ -998,16 +998,21 @@ export default function PurchaserDashboard({
   // Cancelled requests
   const cancelledRequests = allMyRequests.filter(r => r.status === "Cancelled");
   
-  // Scoped cargos: Exclude ghost/empty cargos with 0 items, and isolate to current purchaser
+  // 1. Reconcile all available cargos (base + synthesized from active requests)
+  const allAvailableCargos = useMemo(() => {
+    return reconcileCargosWithRequests(cargos, requests);
+  }, [cargos, requests]);
+
+  // 2. Scoped cargos: Exclude ghost/empty cargos with 0 items, and isolate to current purchaser
   const myCargos = useMemo(() => {
-    return (cargos || []).filter(c => {
-      const cargoItems = (requests || []).filter(r => r.cargoId === c.id && r.status !== "Cancelled");
+    return allAvailableCargos.filter(c => {
+      const cargoItems = (requests || []).filter(r => isCargoMatch(r.cargoId, c) && r.status !== "Cancelled");
       if (cargoItems.length === 0) return false; // Filter out empty/ghost cargos with 0 items
       if (hasFullPurchaseAccess) return true;
       // For individual purchaser: only cargos containing their items
       return cargoItems.some(r => isRequestForUser(r, currentUser, purchasers));
     });
-  }, [cargos, requests, hasFullPurchaseAccess, currentUser, purchasers]);
+  }, [allAvailableCargos, requests, hasFullPurchaseAccess, currentUser, purchasers]);
 
   // Step 5 shipments counts
   const step5InTransitCount = useMemo(() => {
@@ -1057,7 +1062,7 @@ export default function PurchaserDashboard({
 
         const matchesCargo = cargoCode.includes(q) || cargoDetail.includes(q) || ccName.includes(q) || vName.includes(q);
         if (!matchesCargo) {
-          const items = (requests || []).filter(r => r.cargoId === cargo.id && r.status !== "Cancelled");
+          const items = (requests || []).filter(r => isCargoMatch(r.cargoId, cargo) && r.status !== "Cancelled");
           const matchesItem = items.some(it => (it.model || "").toLowerCase().includes(q));
           if (!matchesItem) return false;
         }
@@ -1075,8 +1080,8 @@ export default function PurchaserDashboard({
 
     filteredStep5Cargos.forEach(cargo => {
       const cargoItems = hasFullPurchaseAccess
-        ? (requests || []).filter(r => r.cargoId === cargo.id && r.status !== "Cancelled")
-        : (requests || []).filter(r => r.cargoId === cargo.id && isRequestForUser(r, currentUser, purchasers) && r.status !== "Cancelled");
+        ? (requests || []).filter(r => isCargoMatch(r.cargoId, cargo) && r.status !== "Cancelled")
+        : (requests || []).filter(r => isCargoMatch(r.cargoId, cargo) && isRequestForUser(r, currentUser, purchasers) && r.status !== "Cancelled");
 
       const pcs = cargoItems.reduce((acc, r) => acc + (Number(r.vendorOrderQuantity || r.orderQuantity) || 0), 0);
       totalPieces += pcs;
@@ -1559,8 +1564,8 @@ export default function PurchaserDashboard({
       const cargoName = (cargoCompanies || []).find(cc => cc.id === cargo.cargoCompanyId)?.name || cargo.cargoDetail || cargo.cargoCompanyName || "—";
       
       const cargoItems = hasFullPurchaseAccess
-        ? (requests || []).filter(r => r.cargoId === cargo.id && r.status !== "Cancelled")
-        : (requests || []).filter(r => r.cargoId === cargo.id && isRequestForUser(r, currentUser, purchasers) && r.status !== "Cancelled");
+        ? (requests || []).filter(r => isCargoMatch(r.cargoId, cargo) && r.status !== "Cancelled")
+        : (requests || []).filter(r => isCargoMatch(r.cargoId, cargo) && isRequestForUser(r, currentUser, purchasers) && r.status !== "Cancelled");
 
       const totalPcs = cargoItems.reduce((acc, r) => acc + (Number(r.vendorOrderQuantity || r.orderQuantity) || 0), 0);
       const totalCartons = calculateCargoTotalCartons(cargo, requests);
@@ -5789,7 +5794,7 @@ export default function PurchaserDashboard({
                               <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
                                 <div>{r.cargoId}</div>
                                 {(() => {
-                                  const cg = cargos.find(c => c.id === r.cargoId);
+                                  const cg = allAvailableCargos.find(c => isCargoMatch(r.cargoId, c));
                                   const cCartons = calculateCargoTotalCartons(cg, requests);
                                   return cCartons > 0 ? (
                                     <span style={{ fontSize: "0.72rem", color: "#f59e0b", fontWeight: 700, display: "block", marginTop: "2px" }}>
@@ -6030,8 +6035,8 @@ export default function PurchaserDashboard({
                   const vName = vendors.find(v => v.id === cargo.vendorId)?.name || cargo.vendorName || "Unknown Vendor";
                   // Isolate items: only show items belonging to this purchaser if not admin
                   const cargoItems = hasFullPurchaseAccess
-                    ? requests.filter(r => r.cargoId === cargo.id && r.status !== "Cancelled")
-                    : requests.filter(r => r.cargoId === cargo.id && isRequestForUser(r, currentUser, purchasers) && r.status !== "Cancelled");
+                    ? requests.filter(r => isCargoMatch(r.cargoId, cargo) && r.status !== "Cancelled")
+                    : requests.filter(r => isCargoMatch(r.cargoId, cargo) && isRequestForUser(r, currentUser, purchasers) && r.status !== "Cancelled");
                   
                   if (cargoItems.length === 0) return null;
 
@@ -6761,6 +6766,7 @@ export default function PurchaserDashboard({
           request={editingRequest}
           requests={requests}
           vendors={accessibleVendors}
+          cargos={allAvailableCargos}
           currentUser={currentUser}
           onAddVendor={onAddVendor}
           items={items}
@@ -6783,7 +6789,7 @@ export default function PurchaserDashboard({
         <ViewRequestModal 
           request={viewingRequest}
           vendors={vendors}
-          cargos={cargos}
+          cargos={allAvailableCargos}
           cargoCompanies={cargoCompanies}
           purchasers={purchasers}
           items={items}
@@ -6824,7 +6830,7 @@ export default function PurchaserDashboard({
       {receivingCargo && (
         <ReceiveCargoModal
           cargo={receivingCargo}
-          requests={requests.filter(r => r.cargoId === receivingCargo.id)}
+          requests={requests.filter(r => isCargoMatch(r.cargoId, receivingCargo))}
           purchasers={purchasers}
           onClose={() => setReceivingCargo(null)}
           onConfirm={(receiveDate, itemReceiptMap) => {
@@ -7017,7 +7023,7 @@ export default function PurchaserDashboard({
           docInfo={viewingCargoDoc}
           onClose={() => setViewingCargoDoc(null)}
           onUpdateCargo={onUpdateCargo}
-          bundledRequests={requests.filter(r => r.cargoId === viewingCargoDoc?.cargo?.id)}
+          bundledRequests={requests.filter(r => isCargoMatch(r.cargoId, viewingCargoDoc?.cargo))}
         />
       )}
 
@@ -7661,12 +7667,22 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
                 <label className="form-label" style={{ fontSize: "0.78rem" }}>Assigned Cargo Shipment</label>
                 <select className="form-control" value={cargoId} onChange={e => setCargoId(e.target.value)} disabled={isInTransit}>
                   <option value="">No Cargo (Not yet assigned)</option>
+                  {cargoId && !cargos.some(c => isCargoMatch(cargoId, c)) && (
+                    <option value={cargoId}>
+                      📦 {cargoId} — Assigned Cargo
+                    </option>
+                  )}
                   {cargos.map(c => (
                     <option key={c.id} value={c.id}>
                       {c.id} — {c.cargoDetail || "Cargo Shipment"} ({c.modeOfTransport || "Sea"})
                     </option>
                   ))}
                 </select>
+                {cargoId && (
+                  <div style={{ fontSize: "0.75rem", color: "#38bdf8", marginTop: "4px", fontWeight: 600 }}>
+                    📦 Active Cargo: {cargoId}
+                  </div>
+                )}
               </div>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
@@ -7822,7 +7838,14 @@ function ViewRequestModal({ request, vendors, cargos, cargoCompanies = [], purch
   const vName = vendors.find(v => v.id === request.vendorId)?.name || "Unknown";
   
   // Find linked Cargo details
-  const cargo = cargos.find(c => c.id === request.cargoId);
+  const cargo = (cargos || []).find(c => isCargoMatch(request.cargoId, c)) || (request.cargoId ? {
+    id: request.cargoId,
+    cargoDetail: request.cargoDetail || request.cargoId,
+    modeOfTransport: "Sea",
+    isMaterialRec: request.isMaterialRec || "No",
+    receivedDate: request.actualReceivedDate,
+    cargoShippingDate: request.vendorReadyDate || request.orderDate
+  } : null);
   const effectivePhoto = getEffectivePhoto(request, items, requests);
 
   // Stepper calculations

@@ -947,5 +947,59 @@ export const isModelMatch = (reqModel, inputModel) => {
 
   return false;
 };
+/**
+ * Resilient cargo matcher: checks if a request's cargoId matches a cargo object (or cargo ID string).
+ * Matches by exact ID, trimmed case-insensitive ID, or cargoDetail.
+ */
+export const isCargoMatch = (reqCargoId, cargo) => {
+  if (!reqCargoId || !cargo) return false;
+  const rc = String(reqCargoId).trim().toLowerCase();
+  if (typeof cargo === "string") {
+    return rc === String(cargo).trim().toLowerCase();
+  }
+  const cid = String(cargo.id || "").trim().toLowerCase();
+  const cDetail = cargo.cargoDetail ? String(cargo.cargoDetail).trim().toLowerCase() : "";
+  return rc === cid || (cDetail !== "" && rc === cDetail);
+};
 
+/**
+ * Reconciles base cargo shipments with active requests.
+ * Ensures that if requests reference a cargoId not currently in the cargos array,
+ * a synthesized cargo shipment is created and included.
+ */
+export const reconcileCargosWithRequests = (cargos = [], requests = []) => {
+  const base = Array.isArray(cargos) ? [...cargos] : [];
+  const knownKeys = new Set(
+    base.flatMap(c => [
+      String(c.id || "").trim().toLowerCase(),
+      c.cargoDetail ? String(c.cargoDetail).trim().toLowerCase() : null
+    ]).filter(Boolean)
+  );
+
+  const missingMap = new Map();
+  (requests || []).forEach(r => {
+    const cid = String(r.cargoId || "").trim();
+    if (!cid || r.status === "Cancelled") return;
+    const cidLower = cid.toLowerCase();
+    if (!knownKeys.has(cidLower) && !missingMap.has(cidLower)) {
+      missingMap.set(cidLower, {
+        id: r.cargoId,
+        cargoDetail: r.cargoDetail || r.cargoId,
+        vendorId: r.vendorId || "",
+        vendorName: r.vendorName || "",
+        cargoOrderDate: r.vendorReadyDate || r.orderDate || new Date().toISOString().split("T")[0],
+        cargoShippingDate: r.vendorReadyDate || r.orderDate || "",
+        cargoEta: r.vendorEdd || "",
+        modeOfTransport: "Sea",
+        currency: r.currency || "RMB",
+        isMaterialRec: r.isMaterialRec || "No",
+        receivedDate: r.actualReceivedDate || (r.isMaterialRec === "Yes" ? (r.receivedDate || "") : ""),
+        totalCartons: r.totalCartons || 0,
+        synthetic: true
+      });
+    }
+  });
+
+  return missingMap.size > 0 ? [...base, ...missingMap.values()] : base;
+};
 
