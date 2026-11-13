@@ -3111,3 +3111,77 @@ table th {
     display: none;
   }
 }
+
+/* ==================== UNIVERSAL SAVE STATUS INDICATOR ==================== */
+@keyframes savePulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.25), inset 0 0 4px rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(245, 158, 11, 0.5), inset 0 0 8px rgba(245, 158, 11, 0.3);
+    border-color: rgba(245, 158, 11, 0.9);
+  }
+}
+
+.save-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.save-status-pill.saving {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.6);
+  color: #f59e0b;
+  animation: savePulseGlow 1.6s ease-in-out infinite;
+  cursor: pointer;
+}
+
+.save-status-pill.saved {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.32);
+  color: #10b981;
+}
+
+.save-status-pill.error {
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #ef4444;
+}
+
+.save-status-pill.idle {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-glass, rgba(255, 255, 255, 0.12));
+  color: var(--text-muted, #94a3b8);
+}
+
+.save-status-long-text {
+  display: inline;
+}
+
+.save-status-short-text {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .save-status-long-text {
+    display: none !important;
+  }
+  .save-status-short-text {
+    display: inline !important;
+  }
+  .save-status-pill {
+    padding: 3px 8px;
+    font-size: 0.72rem;
+  }
+}
+

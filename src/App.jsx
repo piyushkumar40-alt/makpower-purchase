@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { LogIn, ShoppingCart, ShieldAlert, LogOut, Settings, BarChart2, Package, Sun, Moon, Home, Menu, X, Building2, RefreshCw, Search, Bell, Briefcase, Layers, Key, ArrowLeft } from "lucide-react";
+import { LogIn, ShoppingCart, ShieldAlert, LogOut, Settings, BarChart2, Package, Sun, Moon, Home, Menu, X, Building2, RefreshCw, Search, Bell, Briefcase, Layers, Key, ArrowLeft, CheckCircle2 } from "lucide-react";
 import LoginPage from "./components/LoginPage";
 import RequesterForm from "./components/RequesterForm";
 import PurchaserDashboard from "./components/PurchaserDashboard";
@@ -26,6 +26,7 @@ import {
 import { isDateInBetween } from "./components/DateRangeFilter";
 import { cleanCategoryName, isRequestForUser } from "./utils/formatters";
 import { useLoading } from "./context/LoadingContext";
+import { useSaveStatus } from "./context/SaveStatusContext";
 import { closeTopModal, executeTopBackHandler } from "./utils/useModalEscape";
 import { getInitialSyncCache, getAsyncDashboardCache, saveDashboardCache } from "./utils/dashboardCache";
 
@@ -54,6 +55,7 @@ export function deduplicatePartiesKeepLast(parties) {
 
 export default function App() {
   const { startLoading, updateProgress, finishLoading } = useLoading();
+  const { isSaving, saveStatus, lastSavedTime, setShowSavingAlert } = useSaveStatus();
 
   // Mobile drawer state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -1232,6 +1234,10 @@ export default function App() {
   const [refreshSuccessMsg, setRefreshSuccessMsg] = useState("");
 
   const handleRefreshAllData = React.useCallback(async () => {
+    if (isSaving || window.__isSaving?.()) {
+      setShowSavingAlert(true);
+      return;
+    }
     if (isRefreshingData) return;
     setIsRefreshingData(true);
     setRefreshSuccessMsg("");
@@ -3353,8 +3359,50 @@ const cancelRequests = async (requestIds, reason = "") => {
           </div>
 
           {/* Right Side Controls (Theme Toggle, Bell, Profile, Logout, Mobile Menu Toggle) */}
-          <div className="header-controls-right" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "12px" }}>
+          <div className="header-controls-right" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "10px" }}>
             
+            {/* Universal Header Save Status Indicator ("very beautiful") */}
+            <div
+              className={`save-status-pill ${isSaving ? "saving" : saveStatus === "error" ? "error" : lastSavedTime ? "saved" : "idle"}`}
+              title={
+                isSaving
+                  ? "Changes are currently saving to database... Click to view details."
+                  : lastSavedTime
+                  ? `All changes saved to database at ${lastSavedTime}`
+                  : "Database ready & synchronized"
+              }
+              onClick={() => {
+                if (isSaving) setShowSavingAlert(true);
+              }}
+              style={{
+                cursor: isSaving ? "pointer" : "default"
+              }}
+            >
+              {isSaving ? (
+                <>
+                  <RefreshCw size={12} style={{ animation: "spin 0.8s linear infinite" }} />
+                  <span className="save-status-long-text">Saving... please wait</span>
+                  <span className="save-status-short-text">Saving...</span>
+                </>
+              ) : saveStatus === "error" ? (
+                <>
+                  <ShieldAlert size={12} />
+                  <span className="save-status-long-text">Save Issue</span>
+                  <span className="save-status-short-text">Error</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={12} />
+                  <span className="save-status-long-text">
+                    {lastSavedTime ? `Saved • ${lastSavedTime}` : "All saved"}
+                  </span>
+                  <span className="save-status-short-text">
+                    {lastSavedTime ? lastSavedTime : "Saved"}
+                  </span>
+                </>
+              )}
+            </div>
+
             {/* Global Universal Refresh Data Button */}
             <button
               type="button"
@@ -3604,6 +3652,40 @@ const cancelRequests = async (requestIds, reason = "") => {
             )}
 
             {/* Mobile Nav Links List */}
+            {/* Mobile Save Status Indicator */}
+            <div style={{ padding: "0 16px 8px 16px" }}>
+              <div
+                className={`save-status-pill ${isSaving ? "saving" : saveStatus === "error" ? "error" : lastSavedTime ? "saved" : "idle"}`}
+                onClick={() => {
+                  if (isSaving) {
+                    setShowSavingAlert(true);
+                    setMobileMenuOpen(false);
+                  }
+                }}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "7px 12px",
+                  borderRadius: "8px",
+                  cursor: isSaving ? "pointer" : "default"
+                }}
+              >
+                <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  {isSaving ? (
+                    <RefreshCw size={13} style={{ animation: "spin 0.8s linear infinite" }} />
+                  ) : (
+                    <CheckCircle2 size={13} />
+                  )}
+                  <span>{isSaving ? "Saving to database..." : "All Changes Saved"}</span>
+                </span>
+                <span style={{ fontSize: "0.72rem", opacity: 0.85 }}>
+                  {lastSavedTime || "Database Ready"}
+                </span>
+              </div>
+            </div>
+
             {/* Mobile Refresh Data Action */}
             <div style={{ padding: "0 16px 10px 16px" }}>
               <button

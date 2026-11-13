@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Trash2, CheckCircle2, Clipboard, ShieldAlert, Sparkles, X, Package, Copy, Check, Eye } from "lucide-react";
+import { Plus, Trash2, CheckCircle2, Clipboard, ShieldAlert, Sparkles, X, Package, Copy, Check, Eye, RefreshCw } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
 import { QuickCreateItemModal, QuickCreateUserModal } from "./QuickCreateModals";
 import { cleanCategoryName, parseFlexibleDate } from "../utils/formatters";
@@ -530,6 +530,8 @@ export default function RequesterForm({
   const [pasteText, setPasteText] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [submittedCount, setSubmittedCount] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
 
   // Helper to open item creation modal prefilled for a row
   const openQuickItemModal = (rowId = null, prefillData = null) => {
@@ -821,8 +823,11 @@ export default function RequesterForm({
 
 
   // Submit all items
-  const handleSubmitAll = () => {
-    if (!isGoodToGo()) return;
+  const handleSubmitAll = async () => {
+    if (!isGoodToGo() || isSubmitting) return;
+
+    setIsSubmitting(true);
+    setSubmitError(null);
 
     const currentTimestamp = new Date().toISOString();
 
@@ -851,9 +856,18 @@ export default function RequesterForm({
       };
     });
 
-    onAddRequests(requestsToSubmit);
-    setSubmittedCount(requestsToSubmit.length);
-    setIsSubmitted(true);
+    try {
+      if (onAddRequests) {
+        await onAddRequests(requestsToSubmit);
+      }
+      setSubmittedCount(requestsToSubmit.length);
+      setIsSubmitted(true);
+    } catch (err) {
+      console.error("Order submission failed:", err);
+      setSubmitError(err?.message || "Failed to save order to database. Please check your connection and retry.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleReset = () => {
@@ -1866,21 +1880,50 @@ export default function RequesterForm({
                 {goodToGo ? "Good to Go" : hasInvalidModel ? "Invalid Item Model" : "Fill All Cells"}
               </div>
 
+              {submitError && (
+                <div style={{
+                  padding: "8px 16px",
+                  borderRadius: "8px",
+                  background: "rgba(239, 68, 68, 0.15)",
+                  border: "1px solid rgba(239, 68, 68, 0.4)",
+                  color: "#ef4444",
+                  fontSize: "0.85rem",
+                  fontWeight: 600
+                }}>
+                  ⚠️ {submitError}
+                </div>
+              )}
+
               <button 
-                disabled={!goodToGo}
+                disabled={!goodToGo || isSubmitting}
                 onClick={handleSubmitAll}
                 className="btn btn-primary"
                 style={{ 
                   padding: "12px 30px", 
                   fontSize: "1rem", 
-                  background: goodToGo ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)" : "rgba(255, 255, 255, 0.05)",
-                  color: goodToGo ? "var(--text-dark)" : "var(--text-muted)",
+                  background: isSubmitting 
+                    ? "rgba(245, 158, 11, 0.4)"
+                    : goodToGo 
+                    ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)" 
+                    : "rgba(255, 255, 255, 0.05)",
+                  color: isSubmitting ? "#fff" : goodToGo ? "var(--text-dark)" : "var(--text-muted)",
                   borderColor: goodToGo ? "rgba(255, 255, 255, 0.15)" : "var(--border-glass)",
-                  boxShadow: goodToGo ? "0 4px 15px rgba(245, 158, 11, 0.25)" : "none",
-                  fontWeight: 700
+                  boxShadow: goodToGo && !isSubmitting ? "0 4px 15px rgba(245, 158, 11, 0.25)" : "none",
+                  fontWeight: 700,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  cursor: isSubmitting ? "wait" : goodToGo ? "pointer" : "not-allowed"
                 }}
               >
-                Place Order ({rows.length} Items | {totalQty.toLocaleString()} Pcs)
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw size={18} style={{ animation: "spin 0.8s linear infinite" }} />
+                    <span>Saving to Database... Please Wait</span>
+                  </>
+                ) : (
+                  <span>Place Order ({rows.length} Items | {totalQty.toLocaleString()} Pcs)</span>
+                )}
               </button>
             </>
           )}
