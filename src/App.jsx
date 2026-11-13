@@ -1149,6 +1149,46 @@ export default function App() {
     return res;
   };
 
+  // High-speed direct snapshot pull (bypasses full aggregation for fast recovery)
+  const handleDirectPull = React.useCallback(async () => {
+    setIsMasterDataSilentlyLoading(true);
+    try {
+      const cacheBuster = Date.now();
+      const [rRes, cRes, vRes, ccRes, uRes, iRes] = await Promise.all([
+        fetch(`/api/requests?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`/api/cargos?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`/api/vendors?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`/api/cargo-companies?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`/api/users?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`/api/items?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => [])
+      ]);
+      if (Array.isArray(rRes) && rRes.length > 0) setRequests(rRes.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
+      if (Array.isArray(cRes) && cRes.length > 0) setCargos(cRes);
+      if (Array.isArray(vRes) && vRes.length > 0) setVendors(vRes);
+      if (Array.isArray(ccRes) && ccRes.length > 0) setCargoCompanies(ccRes);
+      if (Array.isArray(uRes) && uRes.length > 0) setUsers(uRes.map(normalizeUserData));
+      if (Array.isArray(iRes) && iRes.length > 0) setItems(iRes);
+
+      if (rRes.length > 0 || cRes.length > 0) {
+        saveDashboardCache(currentUser || "rahul", {
+          requests: rRes,
+          cargos: cRes,
+          vendors: vRes,
+          cargoCompanies: ccRes,
+          items: iRes,
+          users: uRes,
+          version: cacheBuster
+        });
+      }
+      setInitialLoadComplete(true);
+      setLoading(false);
+    } catch (e) {
+      console.error("Direct pull error:", e);
+    } finally {
+      setIsMasterDataSilentlyLoading(false);
+    }
+  }, [currentUser]);
+
   const [isRefreshingData, setIsRefreshingData] = useState(false);
   const [refreshSuccessMsg, setRefreshSuccessMsg] = useState("");
 
@@ -1244,45 +1284,7 @@ export default function App() {
     }
   }, [currentUser, handleDirectPull]);
 
-  // High-speed direct snapshot pull (bypasses full aggregation for fast recovery)
-  const handleDirectPull = React.useCallback(async () => {
-    setIsMasterDataSilentlyLoading(true);
-    try {
-      const cacheBuster = Date.now();
-      const [rRes, cRes, vRes, ccRes, uRes, iRes] = await Promise.all([
-        fetch(`/api/requests?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch(`/api/cargos?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch(`/api/vendors?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch(`/api/cargo-companies?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch(`/api/users?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch(`/api/items?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => [])
-      ]);
-      if (Array.isArray(rRes) && rRes.length > 0) setRequests(rRes.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
-      if (Array.isArray(cRes) && cRes.length > 0) setCargos(cRes);
-      if (Array.isArray(vRes) && vRes.length > 0) setVendors(vRes);
-      if (Array.isArray(ccRes) && ccRes.length > 0) setCargoCompanies(ccRes);
-      if (Array.isArray(uRes) && uRes.length > 0) setUsers(uRes.map(normalizeUserData));
-      if (Array.isArray(iRes) && iRes.length > 0) setItems(iRes);
 
-      if (rRes.length > 0 || cRes.length > 0) {
-        saveDashboardCache(currentUser || "rahul", {
-          requests: rRes,
-          cargos: cRes,
-          vendors: vRes,
-          cargoCompanies: ccRes,
-          items: iRes,
-          users: uRes,
-          version: cacheBuster
-        });
-      }
-      setInitialLoadComplete(true);
-      setLoading(false);
-    } catch (e) {
-      console.error("Direct pull error:", e);
-    } finally {
-      setIsMasterDataSilentlyLoading(false);
-    }
-  }, [currentUser]);
 
   // Check if session was explicitly revoked remotely by Admin
   useEffect(() => {

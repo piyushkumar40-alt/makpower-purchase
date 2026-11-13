@@ -3314,10 +3314,27 @@ export default function PurchaserDashboard({
                                     value={currentPrice}
                                     onChange={e => {
                                       const raw = e.target.value;
-                                      const parsed = parsePastedPriceLine(raw);
+                                      // If user pasted/entered multi-token or currency-tagged text like "dx45 20" or "¥ 15.5"
+                                      if (raw.includes(" ") || raw.includes("\t") || /[a-zA-Z]/.test(raw) || /[$¥₹€]/.test(raw)) {
+                                        const parsed = parsePastedPriceLine(raw);
+                                        if (parsed && parsed.price !== undefined) {
+                                          setStep1InlineEdits(prev => ({
+                                            ...prev,
+                                            [r.id]: {
+                                              ...prev[r.id],
+                                              priceRmb: String(parsed.price),
+                                              ...(parsed.currency ? { currency: parsed.currency } : {})
+                                            }
+                                          }));
+                                          return;
+                                        }
+                                      }
+
+                                      // Normal typing: keep digits and decimal point intact without numeric truncation
                                       let val = raw.replace(/[^0-9.]/g, "");
-                                      if (parsed && parsed.price !== undefined) {
-                                        val = String(parsed.price);
+                                      const parts = val.split(".");
+                                      if (parts.length > 2) {
+                                        val = parts[0] + "." + parts.slice(1).join("");
                                       }
                                       setStep1InlineEdits(prev => ({
                                         ...prev,
