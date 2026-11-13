@@ -161,6 +161,10 @@ function sanitizeCargoDocuments(c) {
 
   return {
     ...c,
+    cargoEta: sanitizeDateStr(c.cargoEta),
+    cargoShippingDate: sanitizeDateStr(c.cargoShippingDate),
+    cargoOrderDate: sanitizeDateStr(c.cargoOrderDate),
+    actualReceivedDate: sanitizeDateStr(c.actualReceivedDate),
     packingListFile: hasPacking ? (c.packingListFile || "") : "",
     packingListData: hasPacking ? c.packingListData : "",
     invoiceFile: hasInvoice ? (c.invoiceFile || "") : "",
@@ -957,11 +961,13 @@ async function setupPgDatabase() {
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "purchaseUpdatedBy" TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "purchaseUpdatedById" TEXT;
       UPDATE requests SET "timestamp" = "orderDate" WHERE ("timestamp" IS NULL OR "timestamp" = '') AND "orderDate" IS NOT NULL;
-      UPDATE requests SET "vendorEdd" = '20' || SUBSTRING("vendorEdd", 3) WHERE "vendorEdd" LIKE '002%-%';
-      UPDATE requests SET "orderDate" = '20' || SUBSTRING("orderDate", 3) WHERE "orderDate" LIKE '002%-%';
-      UPDATE requests SET "requiredByDate" = '20' || SUBSTRING("requiredByDate", 3) WHERE "requiredByDate" LIKE '002%-%';
-      UPDATE requests SET "vendorReadyDate" = '20' || SUBSTRING("vendorReadyDate", 3) WHERE "vendorReadyDate" LIKE '002%-%';
-      UPDATE cargos SET "cargoEta" = '20' || SUBSTRING("cargoEta", 3) WHERE "cargoEta" LIKE '002%-%';
+      UPDATE requests SET "vendorEdd" = '20' || SUBSTRING("vendorEdd", 3) WHERE "vendorEdd" LIKE '00%-%' OR "vendorEdd" LIKE '00%/%';
+      UPDATE requests SET "orderDate" = '20' || SUBSTRING("orderDate", 3) WHERE "orderDate" LIKE '00%-%' OR "orderDate" LIKE '00%/%';
+      UPDATE requests SET "requiredByDate" = '20' || SUBSTRING("requiredByDate", 3) WHERE "requiredByDate" LIKE '00%-%' OR "requiredByDate" LIKE '00%/%';
+      UPDATE requests SET "vendorReadyDate" = '20' || SUBSTRING("vendorReadyDate", 3) WHERE "vendorReadyDate" LIKE '00%-%' OR "vendorReadyDate" LIKE '00%/%';
+      UPDATE cargos SET "cargoEta" = '20' || SUBSTRING("cargoEta", 3) WHERE "cargoEta" LIKE '00%-%' OR "cargoEta" LIKE '00%/%';
+      UPDATE items SET "category" = 'Pouch Battery' WHERE LOWER("name") LIKE '%pouch%' AND ("category" IS NULL OR "category" = '' OR LOWER("category") LIKE '%polymer%' OR LOWER("category") LIKE '%poly%');
+      UPDATE requests SET "category" = 'Pouch Battery' WHERE LOWER("model") LIKE '%pouch%' AND ("category" IS NULL OR "category" = '' OR LOWER("category") LIKE '%polymer%' OR LOWER("category") LIKE '%poly%');
     `);
 
     // Auto-populate vendorReadyDate for orders assigned to cargo if vendorReadyDate is missing
@@ -2434,7 +2440,7 @@ async function getLivePartyCategoryMonthlySales() {
       (itemsRes.rows || []).forEach(it => {
         const typeStr = it.itemType || "";
         if (!isFinishedGoodType(typeStr)) return;
-        const cat = cleanCategoryName(it.category || "");
+        const cat = cleanCategoryName(it.category || "", it.name || "");
         if (!cat || cat.toUpperCase() === "GENERAL" || cat.toUpperCase() === "UNSPECIFIED" || cat.toUpperCase() === "RM" || cat.toUpperCase() === "RAW") return;
 
         if (it.id) {
@@ -2525,7 +2531,7 @@ async function getLivePartyCategoryMonthlySales() {
     (data.items || []).forEach(it => {
       const typeStr = it.itemType || it.type || "";
       if (!isFinishedGoodType(typeStr)) return;
-      const cat = cleanCategoryName(it.category || "");
+      const cat = cleanCategoryName(it.category || "", it.name || "");
       if (!cat || cat.toUpperCase() === "GENERAL" || cat.toUpperCase() === "UNSPECIFIED" || cat.toUpperCase() === "RM" || cat.toUpperCase() === "RAW") return;
       if (it.id) {
         const rawId = String(it.id).trim().toLowerCase();
@@ -3335,6 +3341,11 @@ app.get("/api/requests", async (req, res) => {
           }
           return rows.map(r => ({
             ...r,
+            orderDate: sanitizeDateStr(r.orderDate),
+            vendorEdd: sanitizeDateStr(r.vendorEdd),
+            vendorReadyDate: sanitizeDateStr(r.vendorReadyDate),
+            requiredByDate: sanitizeDateStr(r.requiredByDate),
+            actualReceivedDate: sanitizeDateStr(r.actualReceivedDate),
             orderQuantity: r.orderQuantity ? parseInt(r.orderQuantity) : 0,
             priceRmb: r.priceRmb ? parseFloat(r.priceRmb) : "",
             totalRmb: r.totalRmb ? parseFloat(r.totalRmb) : "",
@@ -6686,11 +6697,12 @@ app.post("/api/items", async (req, res) => {
   }
 
   const targetKey = normalizeItemKey(item.name);
+  const cleanCat = cleanCategoryName(item.category, item.name) || item.category || "General";
 
   if (isPg) {
     try {
       // Check for fuzzy duplicate item name matching (DC02 == DC 02 == DC-2 == DC-02)
-      const existingRes = await pool.query("SELECT * FROM items");
+      const existingRes = await pool.query('SELECT "id", "name" FROM items');
       const match = existingRes.rows.find(i => i.id !== item.id && normalizeItemKey(i.name) === targetKey);
       if (match) {
         return res.status(400).json({
@@ -6702,10 +6714,10 @@ app.post("/api/items", async (req, res) => {
         `INSERT INTO items ("id", "name", "category", "itemType", "itemNature", "unit", "description", "photo", "currentStock", "createdBy")
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT ("id") DO UPDATE SET "name" = EXCLUDED."name", "category" = EXCLUDED."category", "itemType" = EXCLUDED."itemType", "itemNature" = EXCLUDED."itemNature", "unit" = EXCLUDED."unit", "description" = EXCLUDED."description", "photo" = EXCLUDED."photo", "currentStock" = EXCLUDED."currentStock", "createdBy" = EXCLUDED."createdBy"`,
-        [item.id, item.name, item.category || "", item.itemType || "RM", item.itemNature || "Non Consumables", item.unit || "Pcs", item.description || "", item.photo || "", item.currentStock || 0, item.createdBy || item.entryBy || "Super Admin"]
+        [item.id, item.name, cleanCat, item.itemType || "RM", item.itemNature || "Non Consumables", item.unit || "Pcs", item.description || "", item.photo || "", item.currentStock || 0, item.createdBy || item.entryBy || "Super Admin"]
       );
       invalidateStateCache();
-      res.json({ success: true, item });
+      res.json({ success: true, item: { ...item, category: cleanCat } });
     } catch (err) {
       console.error("POST /api/items error:", err.message);
       res.status(500).json({ error: err.message });
@@ -6721,14 +6733,15 @@ app.post("/api/items", async (req, res) => {
     }
 
     const idx = data.items.findIndex(i => i.id === item.id);
+    const itemToSave = { ...item, category: cleanCat };
     if (idx !== -1) {
-      data.items[idx] = { ...data.items[idx], ...item };
+      data.items[idx] = { ...data.items[idx], ...itemToSave };
     } else {
-      data.items.push(item);
+      data.items.push(itemToSave);
     }
     writeLocalJson(data);
     invalidateStateCache();
-    res.json({ success: true, item });
+    res.json({ success: true, item: itemToSave });
   }
 });
 
@@ -6740,7 +6753,7 @@ app.post("/api/items/bulk", async (req, res) => {
   }
   if (isPg) {
     try {
-      const existingRes = await pool.query("SELECT * FROM items");
+      const existingRes = await pool.query('SELECT "id", "name" FROM items');
       const existingItemsMap = new Map(existingRes.rows.map(i => [String(i.id).trim().toUpperCase(), i]));
       const existingNameKeys = new Set(existingRes.rows.map(i => normalizeItemKey(i.name)));
       let insertedCount = 0;
@@ -6921,7 +6934,7 @@ app.post("/api/items/update", async (req, res) => {
 
   if (isPg) {
     try {
-      const existingRes = await pool.query("SELECT * FROM items");
+      const existingRes = await pool.query('SELECT "id", "name" FROM items');
       const match = existingRes.rows.find(i => i.id !== id && normalizeItemKey(i.name) === targetKey);
       if (match) {
         return res.status(400).json({

@@ -1543,9 +1543,16 @@ export default function PurchaserDashboard({
       }
     });
 
+    const cleanPrimaryEdd = (raw) => {
+      if (!raw) return "";
+      let s = String(raw).trim();
+      if (/^00\d{2}[-\/\.]/.test(s)) s = "20" + s.slice(2);
+      return parseFlexibleDate(s) || s;
+    };
+
     const lots = Array.from(lotMap.values()).map(lot => {
-      const eddArray = Array.from(lot.vendorEdds).filter(Boolean).map(d => parseFlexibleDate(d) || d).sort();
-      const primaryEdd = eddArray.length > 0 ? (parseFlexibleDate(eddArray[0]) || eddArray[0]) : "";
+      const eddArray = Array.from(lot.vendorEdds).filter(Boolean).map(cleanPrimaryEdd).sort();
+      const primaryEdd = eddArray.length > 0 ? eddArray[0] : "";
       
       let diffDays = null;
       let statusLabel = "Awaiting EDD";

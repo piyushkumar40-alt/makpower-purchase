@@ -154,6 +154,7 @@ export default function ItemCatalogPanel({
   const [newItemDescription, setNewItemDescription] = useState("");
   const [newItemPhoto, setNewItemPhoto] = useState("");
   const [formMsg, setFormMsg] = useState("");
+  const [isSavingItem, setIsSavingItem] = useState(false);
 
   // Multiple Items form rows
   const [multiRows, setMultiRows] = useState([
@@ -437,6 +438,7 @@ export default function ItemCatalogPanel({
 
   const handleCreateItem = async (e) => {
     e.preventDefault();
+    if (isSavingItem) return;
     setFormMsg("");
 
     const cleanId = newItemId.trim();
@@ -458,7 +460,7 @@ export default function ItemCatalogPanel({
     const itemObj = {
       id: cleanId,
       name: cleanName,
-      category: newItemCategory.trim() || "General",
+      category: cleanCategoryName(newItemCategory.trim(), cleanName) || newItemCategory.trim() || "General",
       itemType: newItemType,
       itemNature: newItemNature,
       unit: newItemUnit.trim() || "Pcs",
@@ -468,15 +470,24 @@ export default function ItemCatalogPanel({
       createdBy: currentUser?.name || "Mr. Anees"
     };
 
-    const res = await onAddItem(itemObj);
-    if (res && res.success) {
-      setNewItemName("");
-      setNewItemCategory("");
-      setNewItemDescription("");
-      setNewItemPhoto("");
-      setShowAddForm(false);
-    } else {
-      setFormMsg(`❌ Creation failed: ${res?.error || "ID already exists or server error."}`);
+    setIsSavingItem(true);
+    setFormMsg("Saving item to catalog...");
+    try {
+      const res = await onAddItem(itemObj);
+      if (res && res.success) {
+        setNewItemName("");
+        setNewItemCategory("");
+        setNewItemDescription("");
+        setNewItemPhoto("");
+        setShowAddForm(false);
+        setFormMsg("");
+      } else {
+        setFormMsg(`❌ Creation failed: ${res?.error || "ID already exists or server error."}`);
+      }
+    } catch (err) {
+      setFormMsg(`❌ Creation failed: ${err.message || "Network error. Please try again."}`);
+    } finally {
+      setIsSavingItem(false);
     }
   };
 
@@ -1436,7 +1447,9 @@ export default function ItemCatalogPanel({
 
               <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
                 <button type="button" onClick={() => setShowAddForm(false)} className="btn btn-secondary">Cancel</button>
-                <button type="submit" className="btn btn-primary">Save Master Item</button>
+                <button type="submit" className="btn btn-primary" disabled={isSavingItem}>
+                  {isSavingItem ? "Saving Master Item..." : "Save Master Item"}
+                </button>
               </div>
             </form>
           ) : (

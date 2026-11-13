@@ -770,17 +770,17 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
 
-    // Safety timeout: if data is still empty after 6s, trigger immediate parallel direct snapshot pull
+    // Safety timeout: if data is still empty after 12s, allow user to proceed safely
     const safetyTimer = setTimeout(async () => {
-      if (currentUser) {
-        console.warn("[Network Safety] /api/state taking longer. Triggering immediate direct parallel pull...");
+      if (currentUser && isMounted) {
+        console.warn("[Network Safety] /api/state taking longer. Triggering rescue snapshot pull...");
         try {
           await handleDirectPull();
         } catch (e) {
           console.warn("Direct pull in safety timer err:", e);
         }
       }
-    }, 6000);
+    }, 12000);
 
     async function loadData(isInterval = false) {
       if (isFetchingDataRef.current) return;
@@ -864,13 +864,13 @@ export default function App() {
         effectiveCargoCompanies = Array.isArray(data.cargoCompanies) ? data.cargoCompanies : [];
         effectiveItems = Array.isArray(data.items) ? data.items : [];
 
-        // Direct Fallback Pull for Purchasing System:
+        // Direct Fallback Pull for Purchasing System (only if /api/state failed to respond):
         const desigClean = String(currentUser?.designation || "").trim().toLowerCase();
         const isPurchaseUser = !currentUser || [
           "superadmin", "owner", "admin", "purchase_manager", "purchaser", 
           "requester", "coordinator", "nitin", "rahul", "warehouse", "packing", "accounts"
         ].includes(roleClean) || roleClean.includes("rahul") || roleClean.includes("mark") || roleClean.includes("purchas") || roleClean.includes("account") || roleClean.includes("acct") || desigClean.includes("acct") || desigClean.includes("mark purchase") || currentUser?.id === "u-rahul" || activeView === "rahul";
-        if (isPurchaseUser && (effectiveRequests.length === 0 || effectiveVendors.length === 0 || effectiveCargos.length === 0)) {
+        if (!res.ok && isPurchaseUser) {
           try {
             const fetches = [
               effectiveRequests.length === 0 ? fetch(`/api/requests?_t=${cacheBuster}`).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null),
@@ -999,19 +999,9 @@ export default function App() {
         isFetchingDataRef.current = false;
         clearTimeout(safetyTimer);
         if (!isInterval) {
-          const hasLoadedRequests = effectiveRequests && effectiveRequests.length > 0;
-          if (hasLoadedRequests || !currentUser) {
-            setLoading(false);
-            setInitialLoadComplete(true);
-            finishLoading();
-          } else {
-            console.warn("[Data Safety] Requests not populated yet. Triggering initial auto-rescue direct pull...");
-            setTimeout(() => {
-              if (isMounted) {
-                handleDirectPull();
-              }
-            }, 1200);
-          }
+          setLoading(false);
+          setInitialLoadComplete(true);
+          finishLoading();
         }
       }
     }
@@ -1026,11 +1016,11 @@ export default function App() {
       }
     }, 60000);
 
-    // Instant sync when switching back to tab/window
+    // Instant sync when switching back to tab/window (debounced to 15s)
     let lastFocusSyncTime = 0;
     const handleFocusSync = () => {
       const now = Date.now();
-      if (now - lastFocusSyncTime < 5000) return; // Debounce 5s to prevent double-fires
+      if (now - lastFocusSyncTime < 15000) return; // Debounce 15s to prevent flurry of requests
       lastFocusSyncTime = now;
       if (document.visibilityState === "visible" && currentUser) {
         loadData(true);
@@ -1082,10 +1072,25 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // DB post helper
-  const postData = async (url, data) => {
+  // Helper to extract clean error message avoiding raw HTML dumps from Cloudflare/reverse proxies
+  const formatApiErrorMessage = (status, text = "", defaultMsg = "") => {
+    if (status === 429) {
+      return "The server is temporarily rate-limiting requests (429 Rate Limit). Please wait 5-10 seconds and try again.";
+    }
+    if (status === 502 || status === 503 || status === 504) {
+      return `Server is temporarily unavailable or waking up (${status}). Please wait a few moments and try again.`;
+    }
+    const cleanText = (text || "").trim();
+    if (cleanText.includes("<!DOCTYPE") || cleanText.includes("<html") || cleanText.includes("Just a moment") || cleanText.includes("Cloudflare")) {
+      return `Server security verification or temporary gateway error (${status}). Please wait a few seconds and try again.`;
+    }
+    return cleanText ? cleanText.slice(0, 200) : (defaultMsg || `Server error (${status})`);
+  };
+
+  // DB post helper with automatic exponential backoff retry on 429 / 502 / 503 / 504
+  const postData = async (url, data, retryCount = 0) => {
     const isHeavy = url.includes("batch") || url.includes("bulk") || url.includes("purge") || url.includes("backup") || url.includes("upload") || (Array.isArray(data) && data.length > 5);
-    if (isHeavy && window.__startLoadingProgress) {
+    if (isHeavy && window.__startLoadingProgress && retryCount === 0) {
       window.__startLoadingProgress("Saving Bulk Changes...", "Saving data to database...", 1);
     }
     try {
@@ -1094,26 +1099,44 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data)
       });
+
+      // If Rate-Limited (429) or Gateway Error (502/503/504), retry automatically with exponential backoff up to 2 times
+      if ((res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) && retryCount < 2) {
+        const delay = (retryCount + 1) * 1500;
+        console.warn(`[postData] Transient ${res.status} from ${url}. Retrying in ${delay}ms (attempt ${retryCount + 1}/2)...`);
+        await new Promise(r => setTimeout(r, delay));
+        return postData(url, data, retryCount + 1);
+      }
+
       const text = await res.text();
       let json = null;
       try {
         json = text ? JSON.parse(text) : {};
       } catch (pe) {
         console.error(`Non-JSON response from ${url}:`, text);
-        json = { success: res.ok, error: `Server error (${res.status}): ${text ? text.slice(0, 250) : res.statusText}` };
+        json = { 
+          success: res.ok, 
+          error: formatApiErrorMessage(res.status, text, res.statusText) 
+        };
       }
       if (!res.ok) {
         if (!json || typeof json !== "object") json = {};
         json.success = false;
         if (!json.error) {
-          json.error = `Server error (${res.status}): ${text ? text.slice(0, 250) : res.statusText}`;
+          json.error = formatApiErrorMessage(res.status, text, res.statusText);
         }
       }
-      if (isHeavy && window.__finishLoadingProgress) {
+      if (isHeavy && window.__finishLoadingProgress && retryCount === 0) {
         window.__finishLoadingProgress();
       }
       return json;
     } catch (err) {
+      if ((err.name === "TypeError" || err.message?.includes("Failed to fetch")) && retryCount < 2) {
+        const delay = (retryCount + 1) * 1500;
+        console.warn(`[postData] Network fetch failure for ${url}. Retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        return postData(url, data, retryCount + 1);
+      }
       if (isHeavy && window.__finishLoadingProgress) {
         window.__finishLoadingProgress();
       }
@@ -1122,14 +1145,30 @@ export default function App() {
     }
   };
 
-  // DB delete helper
-  const deleteData = async (url) => {
-    if (window.__startLoadingProgress) {
+  // DB delete helper with automatic retry on 429 / 502 / 503 / 504
+  const deleteData = async (url, retryCount = 0) => {
+    if (window.__startLoadingProgress && retryCount === 0) {
       window.__startLoadingProgress("Deleting Record...", "Updating records on server database...", 1);
     }
     try {
       const res = await fetch(url, { method: "DELETE" });
-      const json = await res.json();
+      if ((res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) && retryCount < 2) {
+        const delay = (retryCount + 1) * 1500;
+        await new Promise(r => setTimeout(r, delay));
+        return deleteData(url, retryCount + 1);
+      }
+      const text = await res.text();
+      let json = null;
+      try {
+        json = text ? JSON.parse(text) : {};
+      } catch (pe) {
+        json = { success: res.ok, error: formatApiErrorMessage(res.status, text, res.statusText) };
+      }
+      if (!res.ok) {
+        if (!json || typeof json !== "object") json = {};
+        json.success = false;
+        if (!json.error) json.error = formatApiErrorMessage(res.status, text, res.statusText);
+      }
       if (window.__finishLoadingProgress) {
         window.__finishLoadingProgress();
       }
