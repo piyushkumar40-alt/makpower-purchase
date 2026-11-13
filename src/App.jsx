@@ -1372,6 +1372,8 @@ export default function App() {
         purchaseUpdatedAt: "",
         purchaseUpdatedBy: "",
         purchaseUpdatedById: "",
+        purchaserName: req.purchaserName || (users.find(u => u.id === req.purchaserId)?.name || ""),
+        assignedPurchaser: req.assignedPurchaser || req.purchaserName || (users.find(u => u.id === req.purchaserId)?.name || ""),
         notes: req.notes || "",
         itemNature: req.itemNature || "Non Consumables",
         category: req.category || "",

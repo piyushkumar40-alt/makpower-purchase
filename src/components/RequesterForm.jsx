@@ -89,9 +89,68 @@ export default function RequesterForm({
   const getTodayDate = () => new Date().toISOString().split("T")[0];
   const [defaultOrderDate, setDefaultOrderDate] = useState(getTodayDate);
 
-  // Determine default purchaser based on logged-in user (defaults to Himanshi Wadhwa for requisitions)
+  // Resolve default purchaser based on current logged in user (e.g. Anees -> Mr. Anees, Himanshi -> Mrs. Himanshi, Rahul -> Mr. Rahul)
+  const resolvedPurchaserId = useMemo(() => {
+    if (!currentUser) return null;
+
+    // 1. Direct ID match in purchasers list
+    const idMatch = (purchasers || []).find(p => p.id === currentUser.id);
+    if (idMatch) return idMatch.id;
+
+    const userClean = String(currentUser.name || "").toLowerCase().replace(/^(mr|mrs|ms|dr|shri|smt)\.?\s+/i, "").trim();
+    const userEmail = String(currentUser.email || "").toLowerCase().trim();
+
+    // 2. Anees check (e.g. name contains "anees", or email contains "anees")
+    if (userClean.includes("anees") || userEmail.includes("anees")) {
+      const aneesP = (purchasers || []).find(p => {
+        const pName = String(p.name || "").toLowerCase();
+        return p.id === "u-anees" || pName.includes("anees");
+      });
+      if (aneesP) return aneesP.id;
+      return "u-anees";
+    }
+
+    // 3. Himanshi check
+    if (userClean.includes("himanshi") || userEmail.includes("himanshi")) {
+      const himanshiP = (purchasers || []).find(p => {
+        const pName = String(p.name || "").toLowerCase();
+        return p.id === "u-himanshi" || pName.includes("himanshi");
+      });
+      if (himanshiP) return himanshiP.id;
+      return "u-himanshi";
+    }
+
+    // 4. Rahul Kumar check
+    if ((userClean.includes("rahul") && !userClean.includes("mann")) || userEmail.includes("rahulkumar")) {
+      const rahulP = (purchasers || []).find(p => {
+        const pName = String(p.name || "").toLowerCase();
+        return p.id === "u-rahul-kumar" || (pName.includes("rahul") && !pName.includes("mann"));
+      });
+      if (rahulP) return rahulP.id;
+      return "u-rahul-kumar";
+    }
+
+    // 5. Name match against any purchaser in list
+    if (userClean) {
+      const nameMatch = (purchasers || []).find(p => {
+        const pClean = String(p.name || "").toLowerCase().replace(/^(mr|mrs|ms|dr|shri|smt)\.?\s+/i, "").trim();
+        return pClean && (pClean === userClean || pClean.includes(userClean) || userClean.includes(pClean));
+      });
+      if (nameMatch) return nameMatch.id;
+    }
+
+    // 6. Role check: if logged in user has purchaser or purchase_manager role
+    if (currentUser.role === "purchaser" || currentUser.role === "purchase_manager" || currentUser.role === "purchase-manager") {
+      const roleMatch = (purchasers || []).find(p => p.id === currentUser.id);
+      if (roleMatch) return roleMatch.id;
+      return currentUser.id;
+    }
+
+    return null;
+  }, [currentUser, purchasers]);
+
   const himanshiPurchaser = (purchasers || []).find(p => p.id === "u-himanshi" || (p.name && p.name.toLowerCase().includes("himanshi")));
-  const defaultPurchaserId = currentUser?.role === "purchaser" ? currentUser.id : (himanshiPurchaser?.id || purchasers[0]?.id || "u-himanshi");
+  const defaultPurchaserId = resolvedPurchaserId || himanshiPurchaser?.id || purchasers[0]?.id || "u-himanshi";
 
   // Spreadsheet rows state
   const [rows, setRows] = useState([
@@ -546,15 +605,22 @@ export default function RequesterForm({
     setActiveDropdown(null);
   };
 
-  // Sync entry author and default purchaser when currentUser changes
+  // Sync entry author and default purchaser when currentUser or purchasers change
   useEffect(() => {
     if (currentUser) {
       setEntryBy(currentUser.name || "Requester");
-      if (currentUser.role === "purchaser") {
-        setRows(prev => prev.map(r => ({ ...r, purchaserId: currentUser.id })));
-      }
     }
-  }, [currentUser]);
+    const targetPurchaserId = resolvedPurchaserId || defaultPurchaserId;
+    if (targetPurchaserId) {
+      setRows(prev => prev.map(r => {
+        // If row still has placeholder or unassigned or previous fallback when targetPurchaserId is known, update
+        if (!r.purchaserId || (resolvedPurchaserId && r.purchaserId !== resolvedPurchaserId && r.purchaserId === "u-himanshi")) {
+          return { ...r, purchaserId: targetPurchaserId };
+        }
+        return r;
+      }));
+    }
+  }, [currentUser, resolvedPurchaserId, defaultPurchaserId]);
 
   // Strict Validation: Item Model MUST match a valid model in combinedItems (if items exist in system) and match row's itemType (FG/RM)
   const isValidModel = (modelName, rowItemType = null) => {
@@ -665,14 +731,20 @@ export default function RequesterForm({
   // Match Purchaser Name (e.g. "Mr. Anees", "Anees", "Himanshi", "Himanshi Wadhwa")
   const matchPurchaser = (nameStr) => {
     if (!nameStr) return defaultPurchaserId;
-    const cleanName = nameStr.toLowerCase().replace("mr.", "").replace("ms.", "").replace("mrs.", "").trim();
+    const cleanName = nameStr.toLowerCase().replace(/^(mr|mrs|ms|dr|shri|smt)\.?\s+/i, "").trim();
     if (!cleanName) return defaultPurchaserId;
     const match = purchasers.find(p => p?.name && (p.name.toLowerCase().includes(cleanName) || cleanName.includes(p.name.toLowerCase())));
     if (match) return match.id;
+    if (cleanName.includes("anees")) {
+      const aneesP = purchasers.find(p => p.id === "u-anees" || (p.name && p.name.toLowerCase().includes("anees")));
+      if (aneesP) return aneesP.id;
+      return "u-anees";
+    }
     if (cleanName.includes("himanshi")) return himanshiPurchaser?.id || "u-himanshi";
-    if (cleanName.includes("rahul")) {
+    if (cleanName.includes("rahul") && !cleanName.includes("mann")) {
       const rk = purchasers.find(p => p.id === "u-rahul-kumar" || (p.name && p.name.toLowerCase().includes("rahul") && !p.name.toLowerCase().includes("mann")));
       if (rk) return rk.id;
+      return "u-rahul-kumar";
     }
     return defaultPurchaserId;
   };
@@ -757,8 +829,13 @@ export default function RequesterForm({
     // Convert row inputs to submit request format
     const requestsToSubmit = rows.map(r => {
       const oDate = (r.orderDate || "").trim() || defaultOrderDate || getTodayDate();
+      const pId = r.purchaserId || defaultPurchaserId;
+      const matchedP = (purchasers || []).find(p => p.id === pId);
+      const pName = matchedP ? matchedP.name : (pId === "u-anees" ? "Mr. Anees" : pId === "u-himanshi" ? "Mrs. Himanshi Wadhwa" : "");
       return {
-        purchaserId: r.purchaserId,
+        purchaserId: pId,
+        purchaserName: pName,
+        assignedPurchaser: pName,
         vendorId: "", // Reset vendor - will be selected by purchaser in Step 2!
         orderDate: oDate,
         timestamp: currentTimestamp,
@@ -1679,6 +1756,11 @@ export default function RequesterForm({
                           </option>
                         );
                       })}
+                      {row.purchaserId && !purchasers.some(p => p.id === row.purchaserId) && (
+                        <option value={row.purchaserId}>
+                          {currentUser?.id === row.purchaserId ? (currentUser.name || "Current User") : (row.purchaserId === "u-anees" ? "Mr. Anees" : row.purchaserId === "u-himanshi" ? "Mrs. Himanshi Wadhwa" : row.purchaserId)}
+                        </option>
+                      )}
                     </select>
                   </td>
 

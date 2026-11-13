@@ -535,17 +535,16 @@ export default function PurchaserDashboard({
     return unregister;
   }, []);
 
-  // Admin and Purchase Manager role flags (Only manager/admin can see all orders)
+  // Admin and Purchase Manager role flags (Only admin and manager see all orders; purchasers see ONLY their own orders)
   const isAdmin = currentUser?.role === "superadmin" || currentUser?.role === "owner" || currentUser?.role === "admin";
   const isSuperAdmin = currentUser?.role === "superadmin" || currentUser?.role === "owner";
-  const isPurchaseManager = currentUser?.role === "purchase_manager" || 
+  const isPurchaserRole = currentUser?.role === "purchaser";
+  const isPurchaseManager = !isPurchaserRole && (
+    currentUser?.role === "purchase_manager" || 
     currentUser?.role === "purchase-manager" || 
-    (currentUser?.designation && currentUser.designation.toLowerCase().trim().includes("purchase manager")) ||
-    (currentUser?.name && currentUser.name.toLowerCase().includes("anees"));
-  const isHimanshi = currentUser?.id === "u-himanshi" || 
-    (currentUser?.name && currentUser.name.toLowerCase().includes("himanshi")) ||
-    (currentUser?.email && currentUser.email.toLowerCase().includes("himanshi"));
-  const hasFullPurchaseAccess = isAdmin || isPurchaseManager || isHimanshi;
+    (currentUser?.designation && currentUser.designation.toLowerCase().trim().includes("purchase manager"))
+  );
+  const hasFullPurchaseAccess = isAdmin || isPurchaseManager;
 
   // Admin delete confirmation modal state
   const [adminDeleteConfirm, setAdminDeleteConfirm] = useState(null);
@@ -977,7 +976,7 @@ export default function PurchaserDashboard({
   today.setHours(0, 0, 0, 0);
   const todayStr = today.toISOString().split("T")[0];
 
-  // Filter requests based on user role (Admin, Purchase Manager, and Himanshi see all purchase requests)
+  // Filter requests based on user role (Admin & Manager see all, Purchasers see only their assigned requests)
   const isSearchAdmin = hasFullPurchaseAccess;
   const rawMyRequests = isSearchAdmin ? requests : (requests || []).filter(r => isRequestForUser(r, currentUser, purchasers));
 

@@ -172,10 +172,8 @@ export default function MasterOrderTracker({
   const [cancelConfirm, setCancelConfirm] = useState(null);
   const [inspectedOrder, setInspectedOrder] = useState(null);
 
-  const isHimanshi = currentUser?.id === "u-himanshi" || 
-    (currentUser?.name && currentUser.name.toLowerCase().includes("himanshi")) ||
-    (currentUser?.email && currentUser.email.toLowerCase().includes("himanshi"));
-  const canSeeAllOrders = isAdmin || isPurchaseManager || isHimanshi || isViewOnly || currentUser?.role === "rahul";
+  const isPurchaserRole = currentUser?.role === "purchaser";
+  const canSeeAllOrders = !isPurchaserRole && (isAdmin || isPurchaseManager || isViewOnly || currentUser?.role === "rahul");
 
   const accessibleRequests = useMemo(() => {
     if (canSeeAllOrders) {
@@ -1284,7 +1282,7 @@ export default function MasterOrderTracker({
                       Commercials <ArrowUpDown size={12} />
                     </div>
                   </th>
-                  {(isPurchaseManager || isSearchAdmin || isHimanshi) && (
+                  {(isPurchaseManager || isSearchAdmin) && !isPurchaserRole && (
                     <th style={{ minWidth: "110px" }}>Purchaser</th>
                   )}
                   <th style={{ minWidth: "80px", textAlign: "center" }}>Action</th>

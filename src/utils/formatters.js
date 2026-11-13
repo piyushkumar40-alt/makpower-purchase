@@ -255,80 +255,93 @@ export const isRequestForUser = (r, user, purchasers = []) => {
   const rPurchaserId = String(r.purchaserId || "").trim().toLowerCase();
   const rPurchaserName = String(r.purchaserName || r.assignedPurchaser || r.purchaser || "").trim().toLowerCase();
 
+  const cleanStr = (s) => String(s || "").toLowerCase().replace(/^(mr|mrs|ms|dr|shri|smt)\.?\s+/i, "").trim();
+  const cleanUserName = cleanStr(userName);
+  const cleanRPurchaserName = cleanStr(rPurchaserName);
+
   // 1. Direct ID match
   if (rPurchaserId && userId && rPurchaserId === userId) return true;
 
-  // Rahul Kumar special aliases (legacy u-rahul was used before separation from Rahul Mann in Accounts)
+  // 2. Anees special aliases & ID matching
+  const isAnees = userId === "u-anees" || cleanUserName.includes("anees") || userEmail.includes("anees");
+  if (isAnees) {
+    if (
+      rPurchaserId === "u-anees" || 
+      rPurchaserId === "anees" || 
+      rPurchaserId.includes("anees") || 
+      cleanRPurchaserName.includes("anees")
+    ) {
+      return true;
+    }
+  }
+
+  // 3. Rahul Kumar special aliases (legacy u-rahul was used before separation from Rahul Mann in Accounts)
   const isRahulKumar = userId === "u-rahul-kumar" || 
-    (userName.includes("rahul") && !userName.includes("mann")) || 
+    (cleanUserName.includes("rahul") && !cleanUserName.includes("mann")) || 
     userEmail.includes("rahulkumar");
 
   if (isRahulKumar) {
     if (
       rPurchaserId === "u-rahul-kumar" || 
       rPurchaserId === "u-rahul" || 
-      rPurchaserId === "rahul" ||
-      rPurchaserId.includes("rahul") ||
-      (rPurchaserName.includes("rahul") && !rPurchaserName.includes("mann"))
+      rPurchaserId === "rahul" || 
+      rPurchaserId.includes("rahul") || 
+      (cleanRPurchaserName.includes("rahul") && !cleanRPurchaserName.includes("mann"))
     ) {
       return true;
     }
   }
 
-  // 2. Direct Name match in r.purchaserId (e.g. "himanshi", "nitin", "rahul", "anees")
-  if (rPurchaserId && userName && (rPurchaserId === userName || rPurchaserId.includes(userName) || userName.includes(rPurchaserId))) {
-    return true;
-  }
+  // 4. Himanshi special aliases & ID matching
+  const isHimanshi = userId === "u-himanshi" || 
+    cleanUserName.includes("himanshi") || 
+    userEmail.includes("himanshi");
 
-  // 3. Name or ID match in r.purchaserName, r.assignedPurchaser, r.purchaser
-  if (rPurchaserName) {
-    if (userName && (rPurchaserName === userName || rPurchaserName.includes(userName) || userName.includes(rPurchaserName))) {
+  if (isHimanshi) {
+    if (
+      rPurchaserId === "u-himanshi" || 
+      rPurchaserId === "himanshi" || 
+      rPurchaserId.includes("himanshi") || 
+      cleanRPurchaserName.includes("himanshi")
+    ) {
       return true;
     }
-    if (userId && (rPurchaserName === userId || rPurchaserName.includes(userId))) return true;
   }
 
-  // 4. Check if explicitly assigned to ANOTHER active purchaser (e.g. Anees, Himanshi, Rahul Kumar)
+  // 5. Direct Name match in r.purchaserId or r.purchaserName
+  if (cleanUserName) {
+    if (rPurchaserId && (rPurchaserId === cleanUserName || rPurchaserId.includes(cleanUserName))) return true;
+    if (cleanRPurchaserName && (cleanRPurchaserName === cleanUserName || cleanRPurchaserName.includes(cleanUserName) || cleanUserName.includes(cleanRPurchaserName))) return true;
+  }
+  if (userId && cleanRPurchaserName && cleanRPurchaserName === userId) return true;
+
+  // 6. Check if explicitly assigned to ANOTHER active purchaser (Anees, Himanshi, Rahul Kumar, etc.)
+  if (!isAnees && (rPurchaserId === "u-anees" || rPurchaserId.includes("anees") || cleanRPurchaserName.includes("anees"))) {
+    return false;
+  }
+  if (!isRahulKumar && (rPurchaserId === "u-rahul-kumar" || rPurchaserId === "u-rahul" || (rPurchaserId.includes("rahul") && !rPurchaserId.includes("mann")) || (cleanRPurchaserName.includes("rahul") && !cleanRPurchaserName.includes("mann")))) {
+    return false;
+  }
+  if (!isHimanshi && (rPurchaserId === "u-himanshi" || rPurchaserId.includes("himanshi") || cleanRPurchaserName.includes("himanshi"))) {
+    return false;
+  }
+
   const isAssignedToOther = (purchasers || []).some(p => {
     const pId = String(p.id || "").trim().toLowerCase();
-    const pName = String(p.name || "").trim().toLowerCase();
-    if (!pId || pId === userId || (userName && pName === userName)) return false;
+    const pCleanName = cleanStr(p.name);
+    if (!pId || pId === userId || (cleanUserName && pCleanName === cleanUserName)) return false;
 
-    // If checking against Rahul Kumar, also treat u-rahul / rahul as his ID
-    const isOtherRahulKumar = pId === "u-rahul-kumar" || (pName.includes("rahul") && !pName.includes("mann"));
-    if (isOtherRahulKumar && (rPurchaserId === "u-rahul" || rPurchaserId === "rahul" || rPurchaserId.includes("rahul") || (rPurchaserName.includes("rahul") && !rPurchaserName.includes("mann")))) {
-      return true;
-    }
-
-    return (rPurchaserId && (rPurchaserId === pId || rPurchaserId === pName || (pName && rPurchaserId.includes(pName)))) ||
-           (rPurchaserName && (rPurchaserName === pId || rPurchaserName === pName || (pName && rPurchaserName.includes(pName))));
+    return (rPurchaserId && (rPurchaserId === pId || rPurchaserId === pCleanName || (pCleanName && rPurchaserId.includes(pCleanName)))) ||
+           (cleanRPurchaserName && (cleanRPurchaserName === pId || cleanRPurchaserName === pCleanName || (pCleanName && cleanRPurchaserName.includes(pCleanName))));
   });
 
-  // If explicitly assigned to another known purchaser, this user cannot access it
   if (isAssignedToOther) {
     return false;
   }
 
-  // 5. Himanshi fallback (default general purchaser for unassigned requisitions or unmapped requests)
-  const isHimanshi = userId === "u-himanshi" || 
-    userName.includes("himanshi") || 
-    userEmail.includes("himanshi");
-
-  if (isHimanshi) {
-    if (rPurchaserId.includes("himanshi") || rPurchaserName.includes("himanshi")) {
-      return true;
-    }
-    // If not assigned to another known purchaser and completely unassigned, it defaults to Himanshi
-    if (!rPurchaserId && !rPurchaserName) {
-      return true;
-    }
-    const isKnownOtherPurchaser = (purchasers || []).some(p => {
-      const pId = String(p.id || "").trim().toLowerCase();
-      return pId && pId !== "u-himanshi" && pId === rPurchaserId;
-    });
-    if (!isKnownOtherPurchaser) {
-      return true;
-    }
+  // 7. Legacy fallback: only completely unassigned orders (no ID and no name) default to Himanshi
+  if (isHimanshi && !rPurchaserId && !rPurchaserName) {
+    return true;
   }
 
   return false;
