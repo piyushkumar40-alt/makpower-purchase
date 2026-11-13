@@ -120,6 +120,15 @@ function safeJsonParse(val, fallback = []) {
   }
 }
 
+function sanitizeDateStr(str) {
+  if (!str || typeof str !== "string") return str;
+  const trimmed = str.trim();
+  if (/^00\d{2}[-\/\.]/.test(trimmed)) {
+    return "20" + trimmed.slice(2);
+  }
+  return trimmed;
+}
+
 function getEffectiveTotalCargoPrice(c) {
   if (!c) return "";
   const price = c.cargoPrice != null && c.cargoPrice !== "" ? parseFloat(c.cargoPrice) : 0;
@@ -924,6 +933,11 @@ async function setupPgDatabase() {
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "purchaseUpdatedBy" TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "purchaseUpdatedById" TEXT;
       UPDATE requests SET "timestamp" = "orderDate" WHERE ("timestamp" IS NULL OR "timestamp" = '') AND "orderDate" IS NOT NULL;
+      UPDATE requests SET "vendorEdd" = '20' || SUBSTRING("vendorEdd", 3) WHERE "vendorEdd" LIKE '002%-%';
+      UPDATE requests SET "orderDate" = '20' || SUBSTRING("orderDate", 3) WHERE "orderDate" LIKE '002%-%';
+      UPDATE requests SET "requiredByDate" = '20' || SUBSTRING("requiredByDate", 3) WHERE "requiredByDate" LIKE '002%-%';
+      UPDATE requests SET "vendorReadyDate" = '20' || SUBSTRING("vendorReadyDate", 3) WHERE "vendorReadyDate" LIKE '002%-%';
+      UPDATE cargos SET "cargoEta" = '20' || SUBSTRING("cargoEta", 3) WHERE "cargoEta" LIKE '002%-%';
     `);
 
     // Auto-populate vendorReadyDate for orders assigned to cargo if vendorReadyDate is missing
@@ -2685,6 +2699,11 @@ app.get("/api/state", async (req, res) => {
             }
             const requests = effectiveReqRows.map(r => ({
               ...r,
+              orderDate: sanitizeDateStr(r.orderDate),
+              vendorEdd: sanitizeDateStr(r.vendorEdd),
+              vendorReadyDate: sanitizeDateStr(r.vendorReadyDate),
+              requiredByDate: sanitizeDateStr(r.requiredByDate),
+              actualReceivedDate: sanitizeDateStr(r.actualReceivedDate),
               orderQuantity: r.orderQuantity ? parseInt(r.orderQuantity) : 0,
               priceRmb: r.priceRmb ? parseFloat(r.priceRmb) : "",
               totalRmb: r.totalRmb ? parseFloat(r.totalRmb) : "",
@@ -3612,7 +3631,8 @@ app.post("/api/requests", async (req, res) => {
 // 2.1 POST /api/requests/:id/edd - Dedicated endpoint to append revised vendor EDD with impact logging
 app.post("/api/requests/:id/edd", async (req, res) => {
   const { id } = req.params;
-  const { newEdd, reason, changedBy } = req.body;
+  const { newEdd: rawEdd, reason, changedBy } = req.body;
+  const newEdd = sanitizeDateStr(rawEdd);
   if (!newEdd) {
     return res.status(400).json({ error: "newEdd is required." });
   }

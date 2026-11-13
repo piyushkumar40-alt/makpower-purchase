@@ -110,49 +110,58 @@ export const downloadExcelOrCsv = (headers, rows, filename = "export") => {
 // Parse and normalize various date formats (M/D/YYYY, YYYY-MM-DD, D/M/YYYY, Excel serials) to YYYY-MM-DD
 export const parseFlexibleDate = (dateVal) => {
   if (!dateVal) return "";
+
+  // Normalize year helper: converts 2-digit or 00xx years (e.g. 0026 -> 2026, 26 -> 2026, 1926 -> 2026)
+  const normalizeYear = (yrStr) => {
+    let yNum = parseInt(yrStr, 10);
+    if (isNaN(yNum)) return yrStr;
+    if (yNum < 100) return String(2000 + yNum);
+    if (yNum >= 1900 && yNum < 1950) return String(yNum + 100);
+    return String(yNum);
+  };
+
   if (dateVal instanceof Date && !isNaN(dateVal.getTime())) {
-    // SheetJS creates UTC midnight Date objects (00:00:00 UTC) when reading Excel dates.
-    // Using local getDate() causes dates to shift backwards by 1 day in any negative timezone.
-    // Check if UTC midnight first:
+    const formatYmd = (yRaw, mRaw, dRaw) => {
+      const y = normalizeYear(yRaw);
+      const m = String(mRaw).padStart(2, "0");
+      const d = String(dRaw).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    };
+
     if (dateVal.getUTCHours() === 0 && dateVal.getUTCMinutes() === 0 && dateVal.getUTCSeconds() === 0) {
-      const y = dateVal.getUTCFullYear();
-      const m = String(dateVal.getUTCMonth() + 1).padStart(2, "0");
-      const d = String(dateVal.getUTCDate()).padStart(2, "0");
-      return `${y}-${m}-${d}`;
+      return formatYmd(dateVal.getUTCFullYear(), dateVal.getUTCMonth() + 1, dateVal.getUTCDate());
     }
-    // Check if constructed at local midnight:
     if (dateVal.getHours() === 0 && dateVal.getMinutes() === 0 && dateVal.getSeconds() === 0) {
-      const y = dateVal.getFullYear();
-      const m = String(dateVal.getMonth() + 1).padStart(2, "0");
-      const d = String(dateVal.getDate()).padStart(2, "0");
-      return `${y}-${m}-${d}`;
+      return formatYmd(dateVal.getFullYear(), dateVal.getMonth() + 1, dateVal.getDate());
     }
-    // Fallback using midday buffer (add 12 hours) to avoid edge boundary crossings:
     const buffered = new Date(dateVal.getTime() + 12 * 3600 * 1000);
-    const y = buffered.getUTCFullYear();
-    const m = String(buffered.getUTCMonth() + 1).padStart(2, "0");
-    const d = String(buffered.getUTCDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
+    return formatYmd(buffered.getUTCFullYear(), buffered.getUTCMonth() + 1, buffered.getUTCDate());
   }
-  const str = String(dateVal).trim();
+
+  let str = String(dateVal).trim();
   if (!str) return "";
 
-  // Check if numeric serial (Excel date: e.g. 40000 to 60000)
+  // 1. Correct 00xx- prefix (e.g. 0026-12-08 -> 2026-12-08)
+  if (/^00\d{2}[-\/\.]/.test(str)) {
+    str = "20" + str.slice(2);
+  }
+
+  // 2. Check if numeric serial (Excel date: e.g. 40000 to 60000)
   const num = Number(str);
   if (!isNaN(num) && num > 25000 && num < 65000) {
     const d = new Date(Math.round((num - 25569) * 86400 * 1000));
     if (!isNaN(d.getTime())) {
-      const y = d.getUTCFullYear();
+      const y = normalizeYear(d.getUTCFullYear());
       const m = String(d.getUTCMonth() + 1).padStart(2, "0");
       const dt = String(d.getUTCDate()).padStart(2, "0");
       return `${y}-${m}-${dt}`;
     }
   }
 
-  // Check YYYY-MM-DD or YYYY-DD-MM (e.g. 2026-07-08 or 2026-08-19 or 2026/08/19)
+  // 3. Check YYYY-MM-DD or YYYY-DD-MM (e.g. 2026-07-08 or 2026-08-19 or 0026-12-08)
   const ymdMatch = str.match(/^(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})/);
   if (ymdMatch) {
-    const y = ymdMatch[1];
+    const y = normalizeYear(ymdMatch[1]);
     const p1 = parseInt(ymdMatch[2], 10);
     const p2 = parseInt(ymdMatch[3], 10);
     // If p1 > 12, it is YYYY-DD-MM
@@ -166,13 +175,12 @@ export const parseFlexibleDate = (dateVal) => {
     return `${y}-${m}-${d}`;
   }
 
-  // Check DD-MM-YYYY or MM-DD-YYYY or D/M/YYYY or M/D/YYYY
+  // 4. Check DD-MM-YYYY or MM-DD-YYYY or D/M/YYYY or M/D/YYYY
   const slashMatch = str.match(/^(\d{1,2})[-\/\.](\d{1,2})[-\/\.](\d{2,4})/);
   if (slashMatch) {
     const p1 = parseInt(slashMatch[1], 10);
     const p2 = parseInt(slashMatch[2], 10);
-    let y = slashMatch[3];
-    if (y.length === 2) y = `20${y}`;
+    const y = normalizeYear(slashMatch[3]);
 
     if (p1 > 12) {
       // p1 is day, p2 is month (DD/MM/YYYY)

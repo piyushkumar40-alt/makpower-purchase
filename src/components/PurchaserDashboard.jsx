@@ -976,16 +976,55 @@ export default function PurchaserDashboard({
   today.setHours(0, 0, 0, 0);
   const todayStr = today.toISOString().split("T")[0];
 
+  // Helper to ensure dates are valid and 00xx years are fixed to 20xx
+  const cleanDateVal = (d) => {
+    if (!d) return "";
+    return parseFlexibleDate(d) || d;
+  };
+
+  // Sanitize requests to guarantee 00xx or 2-digit years are corrected across all purchasers
+  const sanitizedRequests = useMemo(() => {
+    return (requests || []).map(r => {
+      const vEdd = cleanDateVal(r.vendorEdd);
+      const oDate = cleanDateVal(r.orderDate);
+      const reqDate = cleanDateVal(r.requiredByDate);
+      const vrDate = cleanDateVal(r.vendorReadyDate);
+      const recDate = cleanDateVal(r.actualReceivedDate);
+      if (
+        (r.vendorEdd && vEdd !== r.vendorEdd) ||
+        (r.orderDate && oDate !== r.orderDate) ||
+        (r.requiredByDate && reqDate !== r.requiredByDate) ||
+        (r.vendorReadyDate && vrDate !== r.vendorReadyDate) ||
+        (r.actualReceivedDate && recDate !== r.actualReceivedDate)
+      ) {
+        return {
+          ...r,
+          vendorEdd: vEdd || r.vendorEdd,
+          orderDate: oDate || r.orderDate,
+          requiredByDate: reqDate || r.requiredByDate,
+          vendorReadyDate: vrDate || r.vendorReadyDate,
+          actualReceivedDate: recDate || r.actualReceivedDate
+        };
+      }
+      return r;
+    });
+  }, [requests]);
+
   // Filter requests based on user role (Admin & Manager see all, Purchasers see only their assigned requests)
   const isSearchAdmin = hasFullPurchaseAccess;
-  const rawMyRequests = isSearchAdmin ? requests : (requests || []).filter(r => isRequestForUser(r, currentUser, purchasers));
+  const rawMyRequests = isSearchAdmin ? sanitizedRequests : sanitizedRequests.filter(r => isRequestForUser(r, currentUser, purchasers));
 
   // Helper: check if target date is missed
   const isTargetDateMissed = (r) => {
     if (r.isMaterialRec === "Yes" || r.status === "Cancelled") return false;
-    const targetDateStr = r.vendorEdd || r.requiredByDate;
+    const targetDateStr = cleanDateVal(r.vendorEdd) || cleanDateVal(r.requiredByDate);
     if (!targetDateStr) return false;
-    return new Date(targetDateStr) < today;
+    const dt = new Date(targetDateStr);
+    let yr = dt.getFullYear();
+    if (yr < 100) yr = 2000 + yr;
+    else if (yr >= 1900 && yr < 1950) yr = yr + 100;
+    const target = new Date(yr, dt.getMonth(), dt.getDate());
+    return target < today;
   };
 
   // Requirement 5: Filter items whose target date is missed when toggle is active
@@ -1485,7 +1524,8 @@ export default function PurchaserDashboard({
         lot.totalAmountRmb += Number(r.totalRmb) || 0;
       }
       if (r.vendorEdd) {
-        lot.vendorEdds.add(r.vendorEdd);
+        const cleanEdd = parseFlexibleDate(r.vendorEdd) || r.vendorEdd;
+        lot.vendorEdds.add(cleanEdd);
       }
       if (!lot.modelsList.includes(r.model)) {
         lot.modelsList.push(r.model);
@@ -1501,19 +1541,23 @@ export default function PurchaserDashboard({
     });
 
     const lots = Array.from(lotMap.values()).map(lot => {
-      const eddArray = Array.from(lot.vendorEdds).filter(Boolean).sort();
-      const primaryEdd = eddArray.length > 0 ? eddArray[0] : "";
+      const eddArray = Array.from(lot.vendorEdds).filter(Boolean).map(d => parseFlexibleDate(d) || d).sort();
+      const primaryEdd = eddArray.length > 0 ? (parseFlexibleDate(eddArray[0]) || eddArray[0]) : "";
       
       let diffDays = null;
       let statusLabel = "Awaiting EDD";
       let statusType = "secondary";
 
       if (primaryEdd) {
-        const eddDate = new Date(primaryEdd);
+        const cleanEdd = parseFlexibleDate(primaryEdd) || primaryEdd;
+        const eddDate = new Date(cleanEdd);
         if (!isNaN(eddDate.getTime())) {
           const now = new Date();
           now.setHours(0, 0, 0, 0);
-          const target = new Date(eddDate.getFullYear(), eddDate.getMonth(), eddDate.getDate());
+          let yr = eddDate.getFullYear();
+          if (yr < 100) yr = 2000 + yr;
+          else if (yr >= 1900 && yr < 1950) yr = yr + 100;
+          const target = new Date(yr, eddDate.getMonth(), eddDate.getDate());
           diffDays = Math.round((target - now) / (1000 * 60 * 60 * 24));
 
           if (diffDays < 0) {
@@ -1575,11 +1619,15 @@ export default function PurchaserDashboard({
       let statusType = "info";
 
       if (cargo.cargoEta) {
-        const etaDate = new Date(cargo.cargoEta);
+        const cleanEta = parseFlexibleDate(cargo.cargoEta) || cargo.cargoEta;
+        const etaDate = new Date(cleanEta);
         if (!isNaN(etaDate.getTime())) {
           const now = new Date();
           now.setHours(0, 0, 0, 0);
-          const target = new Date(etaDate.getFullYear(), etaDate.getMonth(), etaDate.getDate());
+          let yr = etaDate.getFullYear();
+          if (yr < 100) yr = 2000 + yr;
+          else if (yr >= 1900 && yr < 1950) yr = yr + 100;
+          const target = new Date(yr, etaDate.getMonth(), etaDate.getDate());
           diffDays = Math.round((target - now) / (1000 * 60 * 60 * 24));
 
           if (diffDays < 0) {

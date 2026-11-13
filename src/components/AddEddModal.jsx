@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Calendar, AlertTriangle, Clock, CheckCircle2, History, X, Save, ArrowRight, User } from "lucide-react";
 import { useModalEscape } from "../utils/useModalEscape";
+import { parseFlexibleDate } from "../utils/formatters";
 
 export default function AddEddModal({
   isOpen,
@@ -117,13 +118,14 @@ export default function AddEddModal({
       return;
     }
 
+    const sanitizedDate = parseFlexibleDate(newDate) || newDate;
     setIsSubmitting(true);
     try {
       if (isBatch) {
         await onSave({
           itemIds: effectiveItems.map(x => x.id),
           itemId: primaryItem.id,
-          newDate,
+          newDate: sanitizedDate,
           reason: effectiveReason,
           diffDays: diffDays > 0 ? diffDays : 0,
           changedBy: currentUser?.name || currentUser?.id || "Staff",
@@ -133,7 +135,7 @@ export default function AddEddModal({
       } else {
         await onSave({
           itemId: primaryItem.id,
-          newDate,
+          newDate: sanitizedDate,
           reason: effectiveReason,
           diffDays: diffDays > 0 ? diffDays : 0,
           changedBy: currentUser?.name || currentUser?.id || "Staff",
@@ -254,7 +256,9 @@ export default function AddEddModal({
               type="date"
               className="form-control"
               value={newDate}
-              onChange={e => setNewDate(e.target.value)}
+              onChange={e => setNewDate(parseFlexibleDate(e.target.value) || e.target.value)}
+              min="2020-01-01"
+              max="2035-12-31"
               required
               style={{ fontSize: "1rem", padding: "8px 12px" }}
             />
