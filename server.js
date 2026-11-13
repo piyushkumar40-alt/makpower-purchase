@@ -1664,7 +1664,7 @@ async function formatAllRequestsForGoogleSheets() {
   if (isPg) {
     const [rRes, uRes, vRes, cRes] = await Promise.all([
       pool.query(`
-        SELECT "id", "purchaserId", "purchaserName", "assignedPurchaser", "vendorId", "cargoId", 
+        SELECT "id", "purchaserId", "vendorId", "cargoId", 
                "orderDate", "type", "model", "orderQuantity", "vendorOrderQuantity", "cargoPickedQty",
                "priceRmb", "totalRmb", "advancePayment", "balancePayment", "photo", "vendorEdd",
                "status", "isMaterialRec", "packingOrderedByNitin", "purchaseUpdated", 
@@ -1697,7 +1697,7 @@ async function formatAllRequestsForGoogleSheets() {
 
   const rows = activeRequests.map(r => {
     const purchaserObj = users.find(u => u.id === r.purchaserId);
-    const purchaser = purchaserObj ? purchaserObj.name : (r.purchaserName || r.assignedPurchaser || r.purchaserId || "");
+    const purchaser = purchaserObj ? purchaserObj.name : (r.purchaserId || "");
     const vendor = vendors.find(v => v.id === r.vendorId)?.name || "";
     const cargo = cargos.find(c => c.id === r.cargoId) || {};
 
@@ -1716,7 +1716,7 @@ async function formatAllRequestsForGoogleSheets() {
       totalRmb: r.totalRmb != null ? String(r.totalRmb) : "",
       advancePayment: r.advancePayment != null ? String(r.advancePayment) : "",
       balancePayment: r.balancePayment != null ? String(r.balancePayment) : "",
-      photo: r.photo || "",
+      photo: (r.photo && !r.photo.startsWith("data:")) ? r.photo : (r.photo ? "[Image Attached]" : ""),
       vendorEdd: r.vendorEdd || "",
       cargoOrderDate: cargo.cargoOrderDate || "",
       cargoDetail: cargo.cargoDetail || "",
