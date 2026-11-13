@@ -598,9 +598,9 @@ export default function PurchaserDashboard({
 
     let effectiveData = fileData;
     // Check if any bundled item has packing list data as fallback
-    if (!effectiveData && docType?.toLowerCase().includes("packing")) {
+    if ((!effectiveData || effectiveData === "AVAILABLE") && docType?.toLowerCase().includes("packing")) {
       const match = (requests || []).find(r => r.cargoId === cargo?.id && r.itemPackingListData);
-      if (match) {
+      if (match && match.itemPackingListData) {
         effectiveData = match.itemPackingListData;
       }
     }
@@ -612,7 +612,7 @@ export default function PurchaserDashboard({
       fileData: effectiveData || "",
       field,
       dataField,
-      isMissing: !effectiveData
+      isMissing: !effectiveData && !fileName
     });
   };
 

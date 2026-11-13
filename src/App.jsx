@@ -836,8 +836,10 @@ export default function App() {
           }
         }
 
+        const isPurchaseView = ["dashboard", "rahul", "nitin", "coordinator", "admin"].includes(activeView);
+        const scopeParam = isPurchaseView ? "&scope=purchases" : "";
         const roleClean = String(currentUser.role || (currentUser.id === "u-rahul" ? "rahul" : "staff")).trim().toLowerCase();
-        const q = `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(roleClean)}&userName=${encodeURIComponent(currentUser.name || '')}&_t=${cacheBuster}`;
+        const q = `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(roleClean)}&userName=${encodeURIComponent(currentUser.name || '')}${scopeParam}&_t=${cacheBuster}`;
 
         const res = await fetch(`/api/state${q}`);
         let data = {};
@@ -1251,9 +1253,11 @@ export default function App() {
     try {
       const cacheBuster = Date.now();
       const roleClean = String(currentUser?.role || (currentUser?.id === "u-rahul" ? "rahul" : "staff")).trim().toLowerCase();
+      const isPurchaseView = ["dashboard", "rahul", "nitin", "coordinator", "admin"].includes(activeView);
+      const scopeParam = isPurchaseView ? "&scope=purchases" : "";
       const q = currentUser 
-        ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(roleClean)}&userName=${encodeURIComponent(currentUser.name || '')}&force=true&refresh=true&_t=${cacheBuster}`
-        : `?force=true&refresh=true&_t=${cacheBuster}`;
+        ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(roleClean)}&userName=${encodeURIComponent(currentUser.name || '')}${scopeParam}&force=true&refresh=true&_t=${cacheBuster}`
+        : `?${scopeParam ? scopeParam.slice(1) + '&' : ''}force=true&refresh=true&_t=${cacheBuster}`;
 
       const res = await fetch(`/api/state${q}`);
       if (res.ok) {

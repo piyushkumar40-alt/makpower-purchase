@@ -187,6 +187,40 @@ function sanitizeCargoDocuments(c) {
   };
 }
 
+// Lightweight serializer for outgoing cargos in lists/state endpoints (drops 52MB base64 down to 15KB)
+function formatCargoForResponse(c) {
+  if (!c) return c;
+  const hasPacking = Boolean(c.packingListData && String(c.packingListData).trim());
+  const hasInvoice = Boolean(c.invoiceData && String(c.invoiceData).trim());
+  const hasReceipt = Boolean(c.cargoReceiptData && String(c.cargoReceiptData).trim());
+
+  const getDocToken = (raw) => {
+    if (!raw) return "";
+    const s = String(raw).trim();
+    if (!s) return "";
+    if (s.startsWith("http://") || s.startsWith("https://")) return s;
+    return "AVAILABLE";
+  };
+
+  return {
+    ...c,
+    cargoEta: sanitizeDateStr(c.cargoEta),
+    cargoShippingDate: sanitizeDateStr(c.cargoShippingDate),
+    cargoOrderDate: sanitizeDateStr(c.cargoOrderDate),
+    actualReceivedDate: sanitizeDateStr(c.actualReceivedDate),
+    cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
+    cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
+    totalCargoPrice: getEffectiveTotalCargoPrice(c),
+    cargoEtaHistory: safeJsonParse(c.cargoEtaHistory, []),
+    packingListFile: hasPacking ? (c.packingListFile || "") : "",
+    packingListData: getDocToken(c.packingListData),
+    invoiceFile: hasInvoice ? (c.invoiceFile || "") : "",
+    invoiceData: getDocToken(c.invoiceData),
+    cargoReceiptFile: hasReceipt ? (c.cargoReceiptFile || "") : "",
+    cargoReceiptData: getDocToken(c.cargoReceiptData)
+  };
+}
+
 // Automatically invalidate full-state cache on any mutating request
 app.use((req, res, next) => {
   if (req.method !== "GET" && req.path.startsWith("/api") && !req.path.startsWith("/api/audit-logs") && !req.path.startsWith("/api/auth")) {
@@ -2739,16 +2773,17 @@ app.get("/api/state", async (req, res) => {
     cleanRole.includes("rahul") || cleanRole.includes("account") || cleanRole.includes("acct") || cleanRole.includes("mark purchase") || cleanRole.includes("nitin") || cleanRole.includes("pack") || cleanRole.includes("coord") ||
     cleanId === "u-rahul" || cleanId === "u-nitin" || cleanName.includes("rahul") || cleanName.includes("nitin") ||
     (!cleanRole && !cleanId); // Fast default: unauthenticated / role-less requests always take lightweight purchase state
+  const isPurchaseScope = req.query.scope === "purchases" || isPurchaseOnlyRole;
 
   const isRefreshRequest = req.query.force === "true" || req.query.refresh === "true";
   if (isRefreshRequest) {
     invalidateStateCache();
   }
   const now = Date.now();
-  if (!isRefreshRequest && isPurchaseOnlyRole && purchaserStateCache?.requests?.length > 0 && (now - purchaserStateCacheTimestamp < STATE_CACHE_TTL_MS)) {
+  if (!isRefreshRequest && isPurchaseScope && purchaserStateCache?.requests?.length > 0 && (now - purchaserStateCacheTimestamp < STATE_CACHE_TTL_MS)) {
     return res.json(purchaserStateCache);
   }
-  if (!isRefreshRequest && !isRestrictedRole && !isPurchaseOnlyRole && stateCache?.requests?.length > 0 && (now - stateCacheTimestamp < STATE_CACHE_TTL_MS)) {
+  if (!isRefreshRequest && !isRestrictedRole && !isPurchaseScope && stateCache?.requests?.length > 0 && (now - stateCacheTimestamp < STATE_CACHE_TTL_MS)) {
     return res.json(stateCache);
   }
 
@@ -2759,8 +2794,8 @@ app.get("/api/state", async (req, res) => {
 
   if (isPg) {
     try {
-      // ⚡ Fast Path: For purchasers, accounts (Rahul), packing (Nitin), coordinators & unauthenticated users
-      if (isPurchaseOnlyRole) {
+      // ⚡ Fast Path: For purchasers, accounts (Rahul), packing (Nitin), coordinators, scope=purchases & unauthenticated users
+      if (isPurchaseScope) {
         if (inFlightPurchaserStatePromise) {
           const concurrentData = await inFlightPurchaserStatePromise;
           return res.json(concurrentData);
@@ -2847,13 +2882,7 @@ app.get("/api/state", async (req, res) => {
             if (effectiveCargoRows.length === 0 && (purchaserStateCache?.cargos?.length > 0 || lastKnownGoodPurchaserState?.cargos?.length > 0)) {
               effectiveCargoRows = (purchaserStateCache?.cargos || lastKnownGoodPurchaserState?.cargos || []);
             }
-            const cargos = effectiveCargoRows.map(c => sanitizeCargoDocuments({
-              ...c,
-              cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
-              cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
-              totalCargoPrice: getEffectiveTotalCargoPrice(c),
-              cargoEtaHistory: safeJsonParse(c.cargoEtaHistory, [])
-            }));
+            const cargos = effectiveCargoRows.map(formatCargoForResponse);
 
             // Auto-reconcile active cargo IDs referenced on requests so in-transit cargos are never 0
             const knownCargoKeys = new Set(cargos.flatMap(c => [
@@ -2866,7 +2895,7 @@ app.get("/api/state", async (req, res) => {
               if (!cid || r.status === "Cancelled") return;
               const cidLower = cid.toLowerCase();
               if (!knownCargoKeys.has(cidLower) && !orphanCargosMap.has(cidLower)) {
-                orphanCargosMap.set(cidLower, sanitizeCargoDocuments({
+                orphanCargosMap.set(cidLower, formatCargoForResponse({
                   id: r.cargoId,
                   vendorId: r.vendorId || "",
                   cargoOrderDate: r.vendorReadyDate || r.orderDate || new Date().toISOString().split("T")[0],
@@ -3118,13 +3147,7 @@ app.get("/api/state", async (req, res) => {
         vendorEddHistory: safeJsonParse(r.vendorEddHistory, [])
       }));
 
-      const cargos = (cargosRes.rows || []).map(c => sanitizeCargoDocuments({
-        ...c,
-        cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
-        cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
-        totalCargoPrice: getEffectiveTotalCargoPrice(c),
-        cargoEtaHistory: safeJsonParse(c.cargoEtaHistory, [])
-      }));
+      const cargos = (cargosRes.rows || []).map(formatCargoForResponse);
 
       const settings = {};
       (settingsRes.rows || []).forEach(row => {
@@ -3205,7 +3228,7 @@ app.get("/api/state", async (req, res) => {
           users: (uR.rows || []).map(u => ({ ...u, status: u.status || "active" })),
           vendors: (vR.rows || []).map(v => ({ ...v, purchaserIds: safeJsonParse(v.purchaserIds, []) })),
           requests: (rR.rows || []).map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })),
-          cargos: (cR.rows || []).map(sanitizeCargoDocuments),
+          cargos: (cR.rows || []).map(formatCargoForResponse),
           cargoCompanies: [],
           items: [],
           designations: initialDesignations,
@@ -3218,13 +3241,13 @@ app.get("/api/state", async (req, res) => {
       } catch (fbErr) {
         console.error("GET /api/state ultimate fallback:", fbErr.message);
         const data = readLocalJson();
-        if (data.cargos) data.cargos = data.cargos.map(sanitizeCargoDocuments);
+        if (data.cargos) data.cargos = data.cargos.map(formatCargoForResponse);
         return res.json(data);
       }
     }
   } else {
     const data = readLocalJson();
-    if (data.cargos) data.cargos = data.cargos.map(sanitizeCargoDocuments);
+    if (data.cargos) data.cargos = data.cargos.map(formatCargoForResponse);
     if (isPurchaseOnlyRole) {
       return res.json({
         ...data,
@@ -3368,13 +3391,7 @@ app.get("/api/cargos", async (req, res) => {
           if (rows.length === 0 && (purchaserStateCache?.cargos?.length > 0 || lastKnownGoodPurchaserState?.cargos?.length > 0)) {
             rows = purchaserStateCache?.cargos || lastKnownGoodPurchaserState?.cargos || [];
           }
-          return rows.map(c => sanitizeCargoDocuments({
-            ...c,
-            cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
-            cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
-            totalCargoPrice: getEffectiveTotalCargoPrice(c),
-            cargoEtaHistory: safeJsonParse(c.cargoEtaHistory, [])
-          }));
+          return rows.map(formatCargoForResponse);
         } finally {
           inFlightCargosPromise = null;
         }
@@ -3390,7 +3407,33 @@ app.get("/api/cargos", async (req, res) => {
     }
   } else {
     const data = readLocalJson();
-    res.json((data.cargos || []).map(sanitizeCargoDocuments));
+    res.json((data.cargos || []).map(formatCargoForResponse));
+  }
+});
+
+// GET /api/cargos/:id/document/:field - Fast on-demand document download (bypasses bloating full cargo lists)
+app.get("/api/cargos/:id/document/:field", async (req, res) => {
+  const { id, field } = req.params;
+  const allowed = ["packingListData", "invoiceData", "cargoReceiptData"];
+  if (!allowed.includes(field)) {
+    return res.status(400).json({ error: "Invalid document field." });
+  }
+  if (isPg) {
+    try {
+      const q = `SELECT "${field}", "packingListFile", "invoiceFile", "cargoReceiptFile" FROM cargos WHERE "id" = $1`;
+      const result = await pool.query(q, [id]);
+      if (result.rows.length === 0) return res.status(404).json({ error: "Cargo not found." });
+      const row = result.rows[0];
+      return res.json({ success: true, data: row[field] || "" });
+    } catch (err) {
+      console.error(`GET /api/cargos/${id}/document/${field} error:`, err.message);
+      return res.status(500).json({ error: "Failed to fetch document." });
+    }
+  } else {
+    const data = readLocalJson();
+    const c = (data.cargos || []).find(x => x.id === id);
+    if (!c) return res.status(404).json({ error: "Cargo not found." });
+    return res.json({ success: true, data: c[field] || "" });
   }
 });
 
@@ -4209,11 +4252,11 @@ app.post("/api/cargos", async (req, res) => {
           "cargoShippingDate" = EXCLUDED."cargoShippingDate",
           "cargoEta" = EXCLUDED."cargoEta",
           "packingListFile" = EXCLUDED."packingListFile",
-          "packingListData" = EXCLUDED."packingListData",
+          "packingListData" = CASE WHEN EXCLUDED."packingListData" = 'AVAILABLE' THEN cargos."packingListData" ELSE EXCLUDED."packingListData" END,
           "invoiceFile" = EXCLUDED."invoiceFile",
-          "invoiceData" = EXCLUDED."invoiceData",
+          "invoiceData" = CASE WHEN EXCLUDED."invoiceData" = 'AVAILABLE' THEN cargos."invoiceData" ELSE EXCLUDED."invoiceData" END,
           "cargoReceiptFile" = EXCLUDED."cargoReceiptFile",
-          "cargoReceiptData" = EXCLUDED."cargoReceiptData",
+          "cargoReceiptData" = CASE WHEN EXCLUDED."cargoReceiptData" = 'AVAILABLE' THEN cargos."cargoReceiptData" ELSE EXCLUDED."cargoReceiptData" END,
           "isMaterialRec" = EXCLUDED."isMaterialRec",
           "receivedDate" = EXCLUDED."receivedDate",
           "currency" = EXCLUDED."currency",
@@ -4252,10 +4295,15 @@ app.post("/api/cargos", async (req, res) => {
     c.cargoEtaHistory = safeJsonParse(c.cargoEtaHistory, []);
     const index = data.cargos.findIndex(x => x.id === c.id);
     if (index !== -1) {
-      data.cargos[index] = {
-        ...data.cargos[index],
+      const prev = data.cargos[index];
+      const merged = {
+        ...prev,
         ...c
       };
+      if (c.packingListData === "AVAILABLE") merged.packingListData = prev.packingListData || "";
+      if (c.invoiceData === "AVAILABLE") merged.invoiceData = prev.invoiceData || "";
+      if (c.cargoReceiptData === "AVAILABLE") merged.cargoReceiptData = prev.cargoReceiptData || "";
+      data.cargos[index] = merged;
     } else {
       data.cargos.unshift(c);
     }

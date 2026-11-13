@@ -37,9 +37,30 @@ export default function CargoDocumentModal({
   const totalCartons = calculateCargoTotalCartons(cargo, bundledRequests);
   const [currentFileName, setCurrentFileName] = useState(docInfo.fileName || "");
   const [currentData, setCurrentData] = useState(docInfo.fileData || "");
+  const [isLoadingDoc, setIsLoadingDoc] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+
+  // On-demand document fetcher if data is "AVAILABLE" or missing
+  useEffect(() => {
+    if (currentData === "AVAILABLE" || (!currentData && cargo?.id && dataField)) {
+      let isSubscribed = true;
+      setIsLoadingDoc(true);
+      fetch(`/api/cargos/${cargo.id}/document/${dataField}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(res => {
+          if (isSubscribed && res && res.data) {
+            setCurrentData(res.data);
+          }
+        })
+        .catch(err => console.warn("Could not fetch document on-demand:", err))
+        .finally(() => {
+          if (isSubscribed) setIsLoadingDoc(false);
+        });
+      return () => { isSubscribed = false; };
+    }
+  }, [cargo?.id, dataField, currentData]);
 
   // Spreadsheet Live Preview States
   const [parsedSheets, setParsedSheets] = useState({});
@@ -49,15 +70,16 @@ export default function CargoDocumentModal({
   const [sheetParseError, setSheetParseError] = useState("");
   const [tableSearch, setTableSearch] = useState("");
 
+  const hasRealData = typeof currentData === "string" && currentData.trim() !== "" && currentData !== "AVAILABLE";
   const lowerName = String(currentFileName || "").toLowerCase();
   const isSpreadsheet = lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls") || lowerName.endsWith(".csv");
-  const isImage = /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(lowerName) || (typeof currentData === "string" && currentData.startsWith("data:image/"));
-  const isPdf = lowerName.endsWith(".pdf") || (typeof currentData === "string" && currentData.startsWith("data:application/pdf"));
-  const isWebUrl = typeof currentData === "string" && (currentData.startsWith("http://") || currentData.startsWith("https://"));
+  const isImage = /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(lowerName) || (hasRealData && currentData.startsWith("data:image/"));
+  const isPdf = lowerName.endsWith(".pdf") || (hasRealData && currentData.startsWith("data:application/pdf"));
+  const isWebUrl = hasRealData && (currentData.startsWith("http://") || currentData.startsWith("https://"));
 
   // Parse spreadsheet when currentData is available
   useEffect(() => {
-    if (!isSpreadsheet || !currentData) return;
+    if (!isSpreadsheet || !hasRealData) return;
     let cancelled = false;
     setIsParsingSheet(true);
     setSheetParseError("");
@@ -184,7 +206,7 @@ export default function CargoDocumentModal({
   };
 
   const handleDownload = () => {
-    if (!currentData) return;
+    if (!hasRealData) return;
     downloadOrOpenBlob(currentData, currentFileName || fileName);
   };
 
@@ -270,22 +292,33 @@ export default function CargoDocumentModal({
             </div>
           )}
 
+          {/* Document Fetching Loader */}
+          {isLoadingDoc && (
+            <div style={{ textAlign: "center", padding: "40px", background: "rgba(0,0,0,0.2)", borderRadius: "10px", marginBottom: "16px", border: "1px solid var(--border-glass)" }}>
+              <Loader2 size={32} className="spinner" style={{ margin: "0 auto 12px auto", color: "var(--primary)" }} />
+              <div style={{ fontWeight: 600, color: "var(--text-main)" }}>Loading document attachment...</div>
+              <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "4px" }}>
+                Fetching document securely from database
+              </div>
+            </div>
+          )}
+
           {/* If Image and Data Present */}
-          {isImage && currentData && (
+          {isImage && hasRealData && (
             <div style={{ textAlign: "center", background: "rgba(0,0,0,0.3)", borderRadius: "10px", padding: "16px", marginBottom: "16px", border: "1px solid var(--border-glass)" }}>
               <img src={currentData} alt={currentFileName} style={{ maxWidth: "100%", maxHeight: "55vh", objectFit: "contain", borderRadius: "6px" }} />
             </div>
           )}
 
           {/* If PDF and Data Present */}
-          {isPdf && currentData && (
+          {isPdf && hasRealData && (
             <div style={{ background: "rgba(0,0,0,0.3)", borderRadius: "10px", overflow: "hidden", marginBottom: "16px", border: "1px solid var(--border-glass)" }}>
               <iframe src={currentData} title={currentFileName} style={{ width: "100%", height: "55vh", border: "none" }} />
             </div>
           )}
 
           {/* If Data Present (Spreadsheet / Any File Attached) */}
-          {currentData ? (
+          {hasRealData ? (
             <div style={{ background: "rgba(255, 255, 255, 0.02)", border: "1px solid var(--border-glass)", borderRadius: "10px", padding: "16px", marginBottom: "16px" }}>
               
               {/* Header Action Bar for Document */}
