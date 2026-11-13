@@ -831,6 +831,16 @@ export default function SuperAdminDashboard({
   }, [settings.redirectUrl, settings.googleSheetWebhookUrl, settings.googleSheetAutoSyncEnabled]);
 
   const handleManualSheetSync = async () => {
+    if (!sheetWebhookUrl || !sheetWebhookUrl.trim()) {
+      setSheetStatusMsg("❌ Please enter a Google Apps Script Webhook URL first.");
+      return;
+    }
+    if (sheetWebhookUrl.includes("docs.google.com/spreadsheets")) {
+      setSheetStatusMsg("❌ Invalid URL: You entered the Google Sheet link (docs.google.com/spreadsheets/...) instead of the Apps Script Webhook URL. Please deploy your Google Apps Script as a Web App (starts with https://script.google.com/macros/s/.../exec). Follow the steps below.");
+      setShowAppsScriptCode(true);
+      return;
+    }
+
     setSheetSyncing(true);
     setSheetStatusMsg("");
     try {
@@ -864,9 +874,15 @@ export default function SuperAdminDashboard({
   };
 
   const handleSaveSheetSettings = async (urlVal, syncVal) => {
+    const cleanUrl = (urlVal || "").trim();
+    if (cleanUrl.includes("docs.google.com/spreadsheets")) {
+      setSheetStatusMsg("❌ Cannot save: You entered a Google Sheet link instead of a Webhook URL. Please deploy the Apps Script Web App (https://script.google.com/macros/s/.../exec).");
+      setShowAppsScriptCode(true);
+      return;
+    }
     const updated = {
       ...settings,
-      googleSheetWebhookUrl: (urlVal || "").trim(),
+      googleSheetWebhookUrl: cleanUrl,
       googleSheetAutoSyncEnabled: syncVal
     };
     const res = await onUpdateSettings(updated);
@@ -2686,14 +2702,14 @@ export default function SuperAdminDashboard({
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "20px" }}>
                   <div>
                     <label className="form-label" style={{ fontWeight: 600 }}>Google Apps Script Webhook URL</label>
-                    <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+                    <div style={{ display: "flex", gap: "8px", marginBottom: "6px" }}>
                       <input 
                         type="url" 
                         className="form-control" 
                         placeholder="https://script.google.com/macros/s/AKfycb.../exec"
                         value={sheetWebhookUrl}
                         onChange={e => setSheetWebhookUrl(e.target.value)}
-                        style={{ flex: 1 }}
+                        style={{ flex: 1, borderColor: sheetWebhookUrl && sheetWebhookUrl.includes("docs.google.com/spreadsheets") ? "#ef4444" : undefined }}
                       />
                       <button 
                         onClick={() => handleSaveSheetSettings(sheetWebhookUrl, sheetAutoSync)}
@@ -2703,6 +2719,13 @@ export default function SuperAdminDashboard({
                         Save Settings
                       </button>
                     </div>
+
+                    {sheetWebhookUrl && sheetWebhookUrl.includes("docs.google.com/spreadsheets") && (
+                      <div style={{ color: "#ef4444", fontSize: "0.8rem", marginBottom: "10px", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+                        <AlertTriangle size={15} />
+                        ⚠️ You entered the Google Sheet link. You need the Google Apps Script Web App URL (starts with https://script.google.com/macros/s/.../exec). Follow the steps below!
+                      </div>
+                    )}
 
                     <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "8px" }}>
                       <input 
@@ -2784,6 +2807,25 @@ export default function SuperAdminDashboard({
   return ContentService.createTextOutput(JSON.stringify({ status: "success", sheet: sheetName, count: data.rows ? data.rows.length : 0 })).setMimeType(ContentService.MimeType.JSON);
 }`}
                     </pre>
+
+                    <div style={{ marginTop: "14px", background: "rgba(15, 23, 42, 0.8)", border: "1px solid rgba(56, 189, 248, 0.3)", borderRadius: "8px", padding: "16px", color: "#f1f5f9" }}>
+                      <h5 style={{ color: "#38bdf8", fontSize: "0.95rem", marginBottom: "10px", display: "flex", alignItems: "center", gap: "8px" }}>
+                        📌 Step-by-Step: How to Deploy and Get Your Webhook URL
+                      </h5>
+                      <ol style={{ margin: 0, paddingLeft: "20px", fontSize: "0.85rem", lineHeight: "1.7" }}>
+                        <li>Open your Google Sheet (e.g. <code>https://docs.google.com/spreadsheets/d/...</code>).</li>
+                        <li>In the top menu bar, click <strong>Extensions</strong> → <strong>Apps Script</strong>.</li>
+                        <li>Delete any existing code in the code editor, copy the entire code box above, and paste it there.</li>
+                        <li>Click the <strong>Save</strong> (💾 diskette icon) in Apps Script.</li>
+                        <li>Click the blue <strong>Deploy</strong> button at the top right, then select <strong>New deployment</strong>.</li>
+                        <li>In the popup, click the <strong>gear icon (⚙️)</strong> next to "Select type" and choose <strong>Web app</strong>.</li>
+                        <li>Set <strong>Execute as</strong>: <code>Me (your Google email)</code>.</li>
+                        <li>Set <strong>Who has access</strong>: <strong style={{ color: "#facc15" }}>Anyone</strong> (Required! If not set to "Anyone", the app cannot post data).</li>
+                        <li>Click <strong>Deploy</strong> (if prompted, click "Authorize access", choose your Google account, click "Advanced" → "Go to Untitled project (unsafe)" → "Allow").</li>
+                        <li>Google will display a <strong>Web app URL</strong> that looks like: <br/><code style={{ color: "#4ade80", background: "rgba(0,0,0,0.4)", padding: "2px 6px", borderRadius: "4px" }}>https://script.google.com/macros/s/AKfycb.../exec</code></li>
+                        <li>Copy that <strong>Web app URL</strong>, paste it into the <strong>Google Apps Script Webhook URL</strong> box above, and click <strong>Save Settings</strong> & <strong>Sync to Google Sheet Now</strong>!</li>
+                      </ol>
+                    </div>
                   </div>
                 )}
               </div>

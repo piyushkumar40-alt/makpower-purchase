@@ -1828,6 +1828,12 @@ async function performGoogleSheetSync() {
     if (!webhookUrl || !webhookUrl.startsWith("http")) {
       return { success: false, error: "No valid Google Sheets Webhook URL configured. Please paste your Google Apps Script Webhook URL in Admin Settings." };
     }
+    if (webhookUrl.includes("docs.google.com/spreadsheets")) {
+      return { 
+        success: false, 
+        error: "Invalid Webhook URL: You entered the Google Sheet link (docs.google.com/spreadsheets/...) instead of the Google Apps Script Web App URL. Deploy your Apps Script as a Web App to get the URL (starts with https://script.google.com/macros/s/.../exec)." 
+      };
+    }
 
     const rows = await formatAllRequestsForGoogleSheets();
     const payload = {
