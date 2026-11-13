@@ -1541,7 +1541,12 @@ export default function App() {
         entryBy: req.entryBy || "Guest"
       };
     });
-    await postData("/api/requests/batch", reqsWithIds);
+    const saveRes = await postData("/api/requests/batch", reqsWithIds);
+    if (!saveRes || saveRes.success === false) {
+      const errText = saveRes?.error || "Failed to save order to database.";
+      console.error("[addRequests] Error saving orders to database:", errText);
+      throw new Error(errText);
+    }
     setRequests(prev => [...reqsWithIds, ...prev]);
     currentDataVersionRef.current = Date.now();
     const creatorName = reqsWithIds[0]?.entryBy || currentUser?.name || "Requester";

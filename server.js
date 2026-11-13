@@ -126,6 +126,18 @@ function safeJsonParse(val, fallback = []) {
   }
 }
 
+function safeNum(val) {
+  if (val === null || val === undefined || val === "") return null;
+  const num = Number(val);
+  return isNaN(num) ? null : num;
+}
+
+function safeInt(val, defaultVal = null) {
+  if (val === null || val === undefined || val === "") return defaultVal;
+  const num = parseInt(val, 10);
+  return isNaN(num) ? defaultVal : num;
+}
+
 function sanitizeDateStr(str) {
   if (!str || typeof str !== "string") return str;
   const trimmed = str.trim();
@@ -3736,27 +3748,32 @@ app.post("/api/requests", async (req, res) => {
             "purchaseUpdatedBy" = EXCLUDED."purchaseUpdatedBy",
             "purchaseUpdatedById" = EXCLUDED."purchaseUpdatedById"
         `;
-        const calculatedCartons = (r.itemsPerCarton && parseInt(r.itemsPerCarton) > 0)
-          ? Math.ceil(parseInt(r.vendorOrderQuantity || r.orderQuantity || 0) / parseInt(r.itemsPerCarton))
-          : (r.totalCartons != null && r.totalCartons !== "" ? parseInt(r.totalCartons) : null);
+        const parsedItemsPerCarton = safeInt(r.itemsPerCarton);
+        const orderQty = safeInt(r.orderQuantity, 0) || 0;
+        const vendorOrderQty = safeInt(r.vendorOrderQuantity);
+        const baseQty = vendorOrderQty != null ? vendorOrderQty : orderQty;
+        const calculatedCartons = (parsedItemsPerCarton && parsedItemsPerCarton > 0)
+          ? Math.ceil(baseQty / parsedItemsPerCarton)
+          : safeInt(r.totalCartons);
+
         const values = [
-          r.id, r.purchaserId, r.vendorId, r.orderDate, r.type, r.model, parseInt(r.orderQuantity || 0),
-          r.priceRmb === "" ? null : parseFloat(r.priceRmb), r.totalRmb === "" ? null : parseFloat(r.totalRmb),
-          r.advancePayment === "" ? null : parseFloat(r.advancePayment), r.balancePayment === "" ? null : parseFloat(r.balancePayment),
+          r.id, r.purchaserId || "", r.vendorId || "", r.orderDate || "", r.type || "Import", r.model || "", orderQty,
+          safeNum(r.priceRmb), safeNum(r.totalRmb),
+          safeNum(r.advancePayment), safeNum(r.balancePayment),
           r.photo || "", r.vendorEdd || "", r.cargoId || "", r.isMaterialRec || "No", r.actualReceivedDate || "",
           r.notes || "", r.itemNature || "Non Consumables", r.category || "", r.requiredByDate || "", r.entryBy || "",
           r.packingOrderedByNitin || "No", r.purchaseUpdated || "No", r.status || "Active",
           r.cancellationReason || "", r.cancelledAt || "", r.cargoAssignedAt || "",
-          r.vendorOrderQuantity != null ? parseInt(r.vendorOrderQuantity) : null,
-          r.cargoPickedQty != null ? parseInt(r.cargoPickedQty) : null,
-          r.receivedQuantity != null ? parseInt(r.receivedQuantity) : null,
-          r.shortageQty != null ? parseInt(r.shortageQty) : null,
+          vendorOrderQty,
+          safeInt(r.cargoPickedQty),
+          safeInt(r.receivedQuantity),
+          safeInt(r.shortageQty),
           r.parentRequestId || "",
           r.vendorReadyDate || "",
           r.currency || "RMB",
           r.timestamp || r.orderDate || new Date().toISOString(),
           Array.isArray(r.vendorEddHistory) ? JSON.stringify(r.vendorEddHistory) : (r.vendorEddHistory || "[]"),
-          r.itemsPerCarton != null && r.itemsPerCarton !== "" ? parseInt(r.itemsPerCarton) : null,
+          parsedItemsPerCarton,
           calculatedCartons,
           r.cancelledBy || "",
           r.cancelledByName || "",
@@ -3770,7 +3787,7 @@ app.post("/api/requests", async (req, res) => {
         res.json({ success: true });
     } catch (err) {
       console.error("POST /api/requests error:", err.message);
-      res.status(500).json({ error: "Failed to upsert request." });
+      res.status(500).json({ success: false, error: "Failed to upsert request: " + err.message });
     }
   } else {
     const data = readLocalJson();
@@ -3973,10 +3990,10 @@ app.post("/api/requests/batch", async (req, res) => {
             "cargoId", "isMaterialRec", "actualReceivedDate", "notes", "itemNature", "category",
             "requiredByDate", "entryBy", "packingOrderedByNitin", "purchaseUpdated", "status",
             "cancellationReason", "cancelledAt", "cargoAssignedAt",
-            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency", "timestamp",
+            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency", "timestamp", "vendorEddHistory",
             "itemsPerCarton", "totalCartons", "cancelledBy", "cancelledByName",
             "purchaseUpdatedAt", "purchaseUpdatedBy", "purchaseUpdatedById"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42)
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43)
           ON CONFLICT ("id") DO UPDATE SET
             "purchaserId" = EXCLUDED."purchaserId",
             "vendorId" = EXCLUDED."vendorId",
@@ -4012,6 +4029,7 @@ app.post("/api/requests/batch", async (req, res) => {
             "vendorReadyDate" = EXCLUDED."vendorReadyDate",
             "currency" = EXCLUDED."currency",
             "timestamp" = COALESCE(EXCLUDED."timestamp", requests."timestamp"),
+            "vendorEddHistory" = COALESCE(NULLIF(EXCLUDED."vendorEddHistory", ''), requests."vendorEddHistory"),
             "itemsPerCarton" = COALESCE(EXCLUDED."itemsPerCarton", requests."itemsPerCarton"),
             "totalCartons" = COALESCE(EXCLUDED."totalCartons", requests."totalCartons"),
             "cancelledBy" = COALESCE(EXCLUDED."cancelledBy", requests."cancelledBy"),
@@ -4020,26 +4038,32 @@ app.post("/api/requests/batch", async (req, res) => {
             "purchaseUpdatedBy" = EXCLUDED."purchaseUpdatedBy",
             "purchaseUpdatedById" = EXCLUDED."purchaseUpdatedById"
         `;
-        const calculatedCartons = (r.itemsPerCarton && parseInt(r.itemsPerCarton) > 0)
-          ? Math.ceil(parseInt(r.vendorOrderQuantity || r.orderQuantity || 0) / parseInt(r.itemsPerCarton))
-          : (r.totalCartons != null && r.totalCartons !== "" ? parseInt(r.totalCartons) : null);
+        const parsedItemsPerCarton = safeInt(r.itemsPerCarton);
+        const orderQty = safeInt(r.orderQuantity, 0) || 0;
+        const vendorOrderQty = safeInt(r.vendorOrderQuantity);
+        const baseQty = vendorOrderQty != null ? vendorOrderQty : orderQty;
+        const calculatedCartons = (parsedItemsPerCarton && parsedItemsPerCarton > 0)
+          ? Math.ceil(baseQty / parsedItemsPerCarton)
+          : safeInt(r.totalCartons);
+
         const values = [
-          r.id, r.purchaserId, r.vendorId, r.orderDate, r.type, r.model, parseInt(r.orderQuantity || 0),
-          r.priceRmb === "" ? null : parseFloat(r.priceRmb), r.totalRmb === "" ? null : parseFloat(r.totalRmb),
-          r.advancePayment === "" ? null : parseFloat(r.advancePayment), r.balancePayment === "" ? null : parseFloat(r.balancePayment),
+          r.id, r.purchaserId || "", r.vendorId || "", r.orderDate || "", r.type || "Import", r.model || "", orderQty,
+          safeNum(r.priceRmb), safeNum(r.totalRmb),
+          safeNum(r.advancePayment), safeNum(r.balancePayment),
           r.photo || "", r.vendorEdd || "", r.cargoId || "", r.isMaterialRec || "No", r.actualReceivedDate || "",
           r.notes || "", r.itemNature || "Non Consumables", r.category || "", r.requiredByDate || "", r.entryBy || "",
           r.packingOrderedByNitin || "No", r.purchaseUpdated || "No", r.status || "Active",
           r.cancellationReason || "", r.cancelledAt || "", r.cargoAssignedAt || "",
-          r.vendorOrderQuantity != null ? parseInt(r.vendorOrderQuantity) : null,
-          r.cargoPickedQty != null ? parseInt(r.cargoPickedQty) : null,
-          r.receivedQuantity != null ? parseInt(r.receivedQuantity) : null,
-          r.shortageQty != null ? parseInt(r.shortageQty) : null,
+          vendorOrderQty,
+          safeInt(r.cargoPickedQty),
+          safeInt(r.receivedQuantity),
+          safeInt(r.shortageQty),
           r.parentRequestId || "",
           r.vendorReadyDate || "",
           r.currency || "RMB",
           r.timestamp || r.orderDate || new Date().toISOString(),
-          r.itemsPerCarton != null && r.itemsPerCarton !== "" ? parseInt(r.itemsPerCarton) : null,
+          Array.isArray(r.vendorEddHistory) ? JSON.stringify(r.vendorEddHistory) : (r.vendorEddHistory || "[]"),
+          parsedItemsPerCarton,
           calculatedCartons,
           r.cancelledBy || "",
           r.cancelledByName || "",
@@ -4056,7 +4080,7 @@ app.post("/api/requests/batch", async (req, res) => {
     } catch (err) {
       await pool.query("ROLLBACK");
       console.error("POST /api/requests/batch error:", err.message);
-      res.status(500).json({ error: "Failed to batch upsert requests." });
+      res.status(500).json({ success: false, error: "Failed to batch upsert requests: " + err.message });
     }
   } else {
     const data = readLocalJson();
