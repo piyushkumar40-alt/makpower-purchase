@@ -3156,6 +3156,12 @@ table th {
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.save-status-pill:hover {
+  filter: brightness(1.15);
+  transform: translateY(-0.5px);
 }
 
 .save-status-pill.saving {

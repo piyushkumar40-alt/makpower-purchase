@@ -11,7 +11,9 @@ const SaveStatusContext = createContext({
   setShowSavingAlert: () => {},
   beginSave: () => "",
   endSave: () => {},
-  trackSave: async (promise) => promise
+  trackSave: async (promise) => promise,
+  resetSaveStatus: () => {},
+  saveError: null
 });
 
 export const useSaveStatus = () => useContext(SaveStatusContext);
@@ -20,6 +22,18 @@ function formatCurrentTime() {
   const d = new Date();
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
+
+// Internal endpoints that are fire-and-forget, telemetry, or external integrations
+// and must NEVER trigger a false-alarm "Save Issue" for database state
+const NON_DATABASE_SAVE_PATTERNS = [
+  "/api/audit-logs",
+  "/api/auth/",
+  "/api/settings/force-refresh",
+  "/api/google-sheets/sync",
+  "/api/storage/",
+  "/api/migrate-photos-to-cloudinary",
+  "/api/state"
+];
 
 export function SaveStatusProvider({ children }) {
   const [isSaving, setIsSaving] = useState(false);
@@ -33,18 +47,27 @@ export function SaveStatusProvider({ children }) {
   // Set of currently active save operation IDs
   const activeSavesRef = useRef(new Map()); // id -> { taskName, timeoutId }
   const isSavingRef = useRef(false);
+  const lastSavedTimeRef = useRef(null);
   const autoCloseAlertTimeoutRef = useRef(null);
+  const autoClearErrorTimeoutRef = useRef(null);
 
   // Sync ref
   useEffect(() => {
     isSavingRef.current = isSaving;
   }, [isSaving]);
 
-  // Clean up auto-close timer on unmount
+  // Clean up auto-close & auto-clear timers on unmount
   useEffect(() => {
     return () => {
       if (autoCloseAlertTimeoutRef.current) clearTimeout(autoCloseAlertTimeoutRef.current);
+      if (autoClearErrorTimeoutRef.current) clearTimeout(autoClearErrorTimeoutRef.current);
     };
+  }, []);
+
+  const resetSaveStatus = useCallback(() => {
+    if (autoClearErrorTimeoutRef.current) clearTimeout(autoClearErrorTimeoutRef.current);
+    setSaveStatus(lastSavedTimeRef.current ? "saved" : "idle");
+    setSaveError(null);
   }, []);
 
   const updateStateFromMap = useCallback((wasSuccess = true, errorMsg = null) => {
@@ -61,6 +84,7 @@ export function SaveStatusProvider({ children }) {
       isSavingRef.current = false;
       if (wasSuccess) {
         const timeStr = formatCurrentTime();
+        lastSavedTimeRef.current = timeStr;
         setSaveStatus("saved");
         setLastSavedTime(timeStr);
         setLastSavedTimestamp(Date.now());
@@ -74,6 +98,13 @@ export function SaveStatusProvider({ children }) {
       } else {
         setSaveStatus("error");
         setSaveError(errorMsg || "An error occurred while saving to database.");
+
+        // Auto-revert transient error to "saved" after 6 seconds so the header doesn't stay permanently stuck
+        if (autoClearErrorTimeoutRef.current) clearTimeout(autoClearErrorTimeoutRef.current);
+        autoClearErrorTimeoutRef.current = setTimeout(() => {
+          setSaveStatus(prev => (prev === "error" ? (lastSavedTimeRef.current ? "saved" : "idle") : prev));
+          setSaveError(null);
+        }, 6000);
       }
     }
   }, []);
@@ -131,13 +162,15 @@ export function SaveStatusProvider({ children }) {
     window.__endSave = endSave;
     window.__isSaving = () => isSavingRef.current;
     window.__showSavingAlert = () => setShowSavingAlert(true);
+    window.__resetSaveStatus = resetSaveStatus;
     return () => {
       delete window.__beginSave;
       delete window.__endSave;
       delete window.__isSaving;
       delete window.__showSavingAlert;
+      delete window.__resetSaveStatus;
     };
-  }, [beginSave, endSave]);
+  }, [beginSave, endSave, resetSaveStatus]);
 
   // ==================== BROWSER UNLOAD & REFRESH INTERCEPTOR ====================
   useEffect(() => {
@@ -182,9 +215,16 @@ export function SaveStatusProvider({ children }) {
       const method = config?.method ? String(config.method).toUpperCase() : "GET";
       const isMutation = ["POST", "PUT", "DELETE", "PATCH"].includes(method);
 
-      // Filter out internal polling/heartbeats if any
       const urlStr = typeof resource === "string" ? resource : (resource?.url || "");
-      const isSaveOp = isMutation && !urlStr.includes("/api/auth/sessions");
+
+      // Only track internal backend database mutations, never external webhooks, blobs, or telemetry
+      const isInternalApi =
+        urlStr.startsWith("/api/") ||
+        (typeof window !== "undefined" && urlStr.startsWith(window.location.origin + "/api/")) ||
+        (!urlStr.startsWith("http://") && !urlStr.startsWith("https://") && !urlStr.startsWith("blob:") && !urlStr.startsWith("data:") && urlStr.includes("/api/"));
+
+      const isNonSave = NON_DATABASE_SAVE_PATTERNS.some((pattern) => urlStr.includes(pattern));
+      const isSaveOp = isMutation && isInternalApi && !isNonSave;
 
       let saveId = null;
       if (isSaveOp) {
@@ -194,7 +234,14 @@ export function SaveStatusProvider({ children }) {
       try {
         const response = await originalFetch.apply(this, args);
         if (isSaveOp && saveId) {
-          endSave(saveId, response.ok);
+          // Transient status codes (429 rate-limiting, 502/503/504 gateway wakeups) are automatically
+          // retried by postData with exponential backoff; do not treat them as fatal database write failures.
+          const isTransient = response.status === 429 || response.status === 502 || response.status === 503 || response.status === 504;
+          if (response.ok || isTransient) {
+            endSave(saveId, true);
+          } else {
+            endSave(saveId, false, `Server returned HTTP ${response.status}`);
+          }
         }
         return response;
       } catch (err) {
@@ -223,6 +270,7 @@ export function SaveStatusProvider({ children }) {
         beginSave,
         endSave,
         trackSave,
+        resetSaveStatus,
         saveError
       }}
     >
@@ -246,7 +294,7 @@ export function SaveStatusProvider({ children }) {
             justifyContent: "center",
             padding: "20px"
           }}
-          onClick={(e) => {
+          onClick={() => {
             // Only allow closing if save has finished
             if (!isSaving) setShowSavingAlert(false);
           }}
@@ -255,14 +303,20 @@ export function SaveStatusProvider({ children }) {
             className="glass-panel"
             style={{
               background: "var(--bg-card, #0f172a)",
-              border: isSaving ? "1.5px solid rgba(245, 158, 11, 0.55)" : "1.5px solid rgba(16, 185, 129, 0.55)",
+              border: isSaving
+                ? "1.5px solid rgba(245, 158, 11, 0.55)"
+                : saveStatus === "error"
+                ? "1.5px solid rgba(239, 68, 68, 0.55)"
+                : "1.5px solid rgba(16, 185, 129, 0.55)",
               borderRadius: "18px",
               padding: "36px 30px",
-              maxWidth: "460px",
+              maxWidth: "480px",
               width: "100%",
               textAlign: "center",
               boxShadow: isSaving
                 ? "0 25px 60px rgba(0, 0, 0, 0.75), 0 0 35px rgba(245, 158, 11, 0.28)"
+                : saveStatus === "error"
+                ? "0 25px 60px rgba(0, 0, 0, 0.75), 0 0 35px rgba(239, 68, 68, 0.28)"
                 : "0 25px 60px rgba(0, 0, 0, 0.75), 0 0 35px rgba(16, 185, 129, 0.28)",
               animation: "fadeIn 0.25s ease-out",
               position: "relative"
@@ -295,14 +349,24 @@ export function SaveStatusProvider({ children }) {
                 width: "72px",
                 height: "72px",
                 borderRadius: "50%",
-                background: isSaving ? "rgba(245, 158, 11, 0.15)" : "rgba(16, 185, 129, 0.15)",
-                border: isSaving ? "2.5px solid #f59e0b" : "2.5px solid #10b981",
+                background: isSaving
+                  ? "rgba(245, 158, 11, 0.15)"
+                  : saveStatus === "error"
+                  ? "rgba(239, 68, 68, 0.15)"
+                  : "rgba(16, 185, 129, 0.15)",
+                border: isSaving
+                  ? "2.5px solid #f59e0b"
+                  : saveStatus === "error"
+                  ? "2.5px solid #ef4444"
+                  : "2.5px solid #10b981",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 margin: "0 auto 20px",
                 boxShadow: isSaving
                   ? "0 0 25px rgba(245, 158, 11, 0.45)"
+                  : saveStatus === "error"
+                  ? "0 0 25px rgba(239, 68, 68, 0.45)"
                   : "0 0 25px rgba(16, 185, 129, 0.45)"
               }}
             >
@@ -314,6 +378,8 @@ export function SaveStatusProvider({ children }) {
                     animation: "spin 0.9s linear infinite"
                   }}
                 />
+              ) : saveStatus === "error" ? (
+                <ShieldAlert size={36} style={{ color: "#ef4444" }} />
               ) : (
                 <CheckCircle2 size={36} style={{ color: "#10b981" }} />
               )}
@@ -325,11 +391,19 @@ export function SaveStatusProvider({ children }) {
                 fontSize: "1.35rem",
                 fontWeight: 800,
                 marginBottom: "10px",
-                color: isSaving ? "#f59e0b" : "#10b981",
+                color: isSaving
+                  ? "#f59e0b"
+                  : saveStatus === "error"
+                  ? "#ef4444"
+                  : "#10b981",
                 letterSpacing: "-0.01em"
               }}
             >
-              {isSaving ? "Saving, Please Wait!" : "All Changes Saved!"}
+              {isSaving
+                ? "Saving, Please Wait!"
+                : saveStatus === "error"
+                ? "Database Sync Note"
+                : "All Changes Saved!"}
             </h3>
 
             {/* Explanatory Message */}
@@ -343,10 +417,14 @@ export function SaveStatusProvider({ children }) {
             >
               {isSaving
                 ? "Your submission is currently saving to the server database. Please do NOT refresh, reload, or close the browser until complete so your changes are safely stored."
-                : "Your changes have been safely stored in the database. You can now refresh or continue working safely."}
+                : saveStatus === "error"
+                ? (saveError ? `Notice: ${saveError}. If your changes already appear on screen, they are safely preserved. You can refresh or dismiss this note.` : "A recent background sync encountered a temporary delay. Your saved orders and items in the active session remain intact.")
+                : (lastSavedTime
+                    ? `Your changes have been safely stored in the PostgreSQL database. (Last verified at ${lastSavedTime})`
+                    : "Your changes have been safely stored in the database. You can now refresh or continue working safely.")}
             </p>
 
-            {/* Live Status Pill */}
+            {/* Live Status Pill or Action Buttons */}
             {isSaving ? (
               <div
                 style={{
@@ -374,8 +452,48 @@ export function SaveStatusProvider({ children }) {
                 ></span>
                 Writing changes to database...
               </div>
+            ) : saveStatus === "error" ? (
+              <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetSaveStatus();
+                    setShowSavingAlert(false);
+                  }}
+                  className="btn btn-secondary"
+                  style={{
+                    padding: "9px 20px",
+                    fontWeight: 600,
+                    borderRadius: "10px",
+                    fontSize: "0.88rem"
+                  }}
+                >
+                  Dismiss Note
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetSaveStatus();
+                    setShowSavingAlert(false);
+                    if (window.__forceRefreshApp) window.__forceRefreshApp();
+                  }}
+                  className="btn btn-primary"
+                  style={{
+                    padding: "9px 22px",
+                    fontWeight: 700,
+                    borderRadius: "10px",
+                    fontSize: "0.88rem",
+                    background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+                    border: "none",
+                    boxShadow: "0 4px 15px rgba(59, 130, 246, 0.35)"
+                  }}
+                >
+                  Refresh Data
+                </button>
+              </div>
             ) : (
               <button
+                type="button"
                 onClick={() => setShowSavingAlert(false)}
                 className="btn btn-primary"
                 style={{

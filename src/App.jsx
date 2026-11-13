@@ -55,7 +55,7 @@ export function deduplicatePartiesKeepLast(parties) {
 
 export default function App() {
   const { startLoading, updateProgress, finishLoading } = useLoading();
-  const { isSaving, saveStatus, lastSavedTime, setShowSavingAlert } = useSaveStatus();
+  const { isSaving, saveStatus, lastSavedTime, setShowSavingAlert, resetSaveStatus, saveError } = useSaveStatus();
 
   // Mobile drawer state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -1335,6 +1335,13 @@ export default function App() {
       setIsRefreshingData(false);
     }
   }, [currentUser, handleDirectPull]);
+
+  useEffect(() => {
+    window.__forceRefreshApp = handleRefreshAllData;
+    return () => {
+      delete window.__forceRefreshApp;
+    };
+  }, [handleRefreshAllData]);
 
 
 
@@ -3376,15 +3383,17 @@ const cancelRequests = async (requestIds, reason = "") => {
               title={
                 isSaving
                   ? "Changes are currently saving to database... Click to view details."
+                  : saveStatus === "error"
+                  ? `Save Note: ${saveError || "Temporary sync delay"}. Click to inspect or dismiss.`
                   : lastSavedTime
-                  ? `All changes saved to database at ${lastSavedTime}`
+                  ? `All changes saved to database at ${lastSavedTime}. Click to view details.`
                   : "Database ready & synchronized"
               }
               onClick={() => {
-                if (isSaving) setShowSavingAlert(true);
+                setShowSavingAlert(true);
               }}
               style={{
-                cursor: isSaving ? "pointer" : "default"
+                cursor: "pointer"
               }}
             >
               {isSaving ? (
@@ -3680,10 +3689,8 @@ const cancelRequests = async (requestIds, reason = "") => {
               <div
                 className={`save-status-pill ${isSaving ? "saving" : saveStatus === "error" ? "error" : lastSavedTime ? "saved" : "idle"}`}
                 onClick={() => {
-                  if (isSaving) {
-                    setShowSavingAlert(true);
-                    setMobileMenuOpen(false);
-                  }
+                  setShowSavingAlert(true);
+                  setMobileMenuOpen(false);
                 }}
                 style={{
                   width: "100%",
@@ -3692,16 +3699,24 @@ const cancelRequests = async (requestIds, reason = "") => {
                   justifyContent: "space-between",
                   padding: "7px 12px",
                   borderRadius: "8px",
-                  cursor: isSaving ? "pointer" : "default"
+                  cursor: "pointer"
                 }}
               >
                 <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                   {isSaving ? (
                     <RefreshCw size={13} style={{ animation: "spin 0.8s linear infinite" }} />
+                  ) : saveStatus === "error" ? (
+                    <ShieldAlert size={13} style={{ color: "#ef4444" }} />
                   ) : (
                     <CheckCircle2 size={13} />
                   )}
-                  <span>{isSaving ? "Saving to database..." : "All Changes Saved"}</span>
+                  <span>
+                    {isSaving 
+                      ? "Saving to database..." 
+                      : saveStatus === "error"
+                      ? "Save Issue (Click to View)"
+                      : "All Changes Saved"}
+                  </span>
                 </span>
                 <span style={{ fontSize: "0.72rem", opacity: 0.85 }}>
                   {lastSavedTime || "Database Ready"}
