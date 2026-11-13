@@ -1011,18 +1011,18 @@ export default function App() {
     loadDataRef.current = loadData;
     loadData();
 
-    // High-performance background sync across all laptops: poll every 60s with lightweight delta check
+    // High-performance real-time background sync across all devices: poll every 12s with lightweight delta check
     const intervalId = setInterval(() => {
       if (document.visibilityState === "visible" && currentUser) {
         loadData(true);
       }
-    }, 60000);
+    }, 12000);
 
-    // Instant sync when switching back to tab/window (debounced to 15s)
+    // Instant sync when switching back to tab/window (debounced to 3s)
     let lastFocusSyncTime = 0;
     const handleFocusSync = () => {
       const now = Date.now();
-      if (now - lastFocusSyncTime < 15000) return; // Debounce 15s to prevent flurry of requests
+      if (now - lastFocusSyncTime < 3000) return; // Debounce 3s to prevent duplicate calls
       lastFocusSyncTime = now;
       if (document.visibilityState === "visible" && currentUser) {
         loadData(true);
@@ -1040,6 +1040,13 @@ export default function App() {
       window.removeEventListener("focus", handleFocusSync);
     };
   }, [currentUser]);
+
+  // Immediate fresh sync whenever user switches dashboards/views
+  useEffect(() => {
+    if (currentUser && loadDataRef.current) {
+      loadDataRef.current(true);
+    }
+  }, [activeView, currentUser]);
 
   // Add Designation Handler
   const addDesignation = async (designationObj) => {
@@ -1510,6 +1517,7 @@ export default function App() {
         totalRmb: "",
         advancePayment: "",
         balancePayment: "",
+        status: "Active",
         photo: req.photo || existingPhoto,
         vendorEdd: "",
         packingOrderedByNitin: "No",
@@ -1528,6 +1536,7 @@ export default function App() {
     });
     await postData("/api/requests/batch", reqsWithIds);
     setRequests(prev => [...reqsWithIds, ...prev]);
+    currentDataVersionRef.current = Date.now();
     const creatorName = reqsWithIds[0]?.entryBy || currentUser?.name || "Requester";
     const modelsSummary = reqsWithIds.map(r => `${r.model || "Item"} (${r.orderQuantity || 1} Pcs)`).join(", ");
     logSystemActivity(
@@ -3553,7 +3562,7 @@ const cancelRequests = async (requestIds, reason = "") => {
 
             {/* User Avatar Badge */}
             {currentUser ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
                 <div 
                   onClick={() => setMobileMenuOpen(prev => !prev)}
                   title={currentUser.name}
@@ -3562,10 +3571,10 @@ const cancelRequests = async (requestIds, reason = "") => {
                   {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : "AP"}
                 </div>
                 <div className="desktop-user-badge-text" style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
-                  <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-main)", whiteSpace: "nowrap" }}>
+                  <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-main)", whiteSpace: "nowrap" }}>
                     {currentUser.role === "superadmin" ? "Admin" : currentUser.name}
                   </span>
-                  <span style={{ fontSize: "0.66rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                  <span style={{ fontSize: "0.64rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
                     ({currentUser.role === "rahul" ? "Accts" : currentUser.role === "nitin" ? "PACKING" : (currentUser.role?.toUpperCase() || "STAFF")})
                   </span>
                 </div>
@@ -3577,22 +3586,36 @@ const cancelRequests = async (requestIds, reason = "") => {
                   className="btn btn-sm btn-secondary desktop-user-password-btn" 
                   style={{ 
                     borderRadius: "8px", 
-                    padding: "3px 8px", 
+                    padding: "3px 7px", 
                     fontSize: "0.72rem", 
                     fontWeight: 600,
-                    marginLeft: "4px",
                     display: "inline-flex",
                     alignItems: "center",
                     gap: "4px",
-                    border: "1px solid var(--border-glass, rgba(255, 255, 255, 0.18))"
+                    border: "1px solid var(--border-glass, rgba(255, 255, 255, 0.18))",
+                    flexShrink: 0
                   }}
                   title="Change your account password"
                 >
-                  <Key size={12} style={{ color: "var(--primary, #38bdf8)" }} />
+                  <Key size={11} style={{ color: "var(--primary, #38bdf8)" }} />
                   <span>Password</span>
                 </button>
-                <button onClick={handleLogout} className="btn btn-sm btn-danger desktop-user-logout-btn" style={{ borderRadius: "8px", padding: "2px 6px", fontSize: "0.72rem", marginLeft: "4px" }}>
-                  Logout
+                <button 
+                  onClick={handleLogout} 
+                  className="btn btn-sm btn-danger desktop-user-logout-btn" 
+                  style={{ 
+                    borderRadius: "8px", 
+                    padding: "3px 8px", 
+                    fontSize: "0.72rem",
+                    fontWeight: 700,
+                    flexShrink: 0,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "3px"
+                  }}
+                >
+                  <LogOut size={11} />
+                  <span>Logout</span>
                 </button>
               </div>
             ) : (

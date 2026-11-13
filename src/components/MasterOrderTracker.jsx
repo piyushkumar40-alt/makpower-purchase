@@ -317,14 +317,18 @@ export default function MasterOrderTracker({
     // 6. Search Query
     if (excludeKey !== "search" && searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
-      const modelMatch = (r.model || "").toLowerCase().includes(q);
+      const modelLower = (r.model || "").toLowerCase();
+      const catLower = (r.category || "").toLowerCase();
+      const modelMatch = modelLower.includes(q) || (q.length >= 3 && modelLower.startsWith(q.slice(0, 3)));
+      const categoryMatch = catLower.includes(q) || (q.length >= 3 && catLower.startsWith(q.slice(0, 3)));
       const idMatch = (r.id || "").toLowerCase().includes(q);
       const vendorMatch = (r._vendor?.name || "").toLowerCase().includes(q);
       const cargoMatch = (r.cargoId || "").toLowerCase().includes(q) || (r._cargo?.cargoDetail || "").toLowerCase().includes(q) || (r.cargoDetail || "").toLowerCase().includes(q);
-      const purchaserMatch = (r._purchaser?.name || "").toLowerCase().includes(q);
+      const purchaserMatch = (r._purchaser?.name || "").toLowerCase().includes(q) || (r.purchaserName || "").toLowerCase().includes(q);
       const remarksMatch = (r.remarks || "").toLowerCase().includes(q);
+      const entryByMatch = (r.entryBy || "").toLowerCase().includes(q);
 
-      if (!modelMatch && !idMatch && !vendorMatch && !cargoMatch && !purchaserMatch && !remarksMatch) {
+      if (!modelMatch && !categoryMatch && !idMatch && !vendorMatch && !cargoMatch && !purchaserMatch && !remarksMatch && !entryByMatch) {
         return false;
       }
     }

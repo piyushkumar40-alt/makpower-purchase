@@ -90,7 +90,7 @@ setInterval(() => {
 
 function invalidateStateCache() {
   lastServerMutationTimestamp = Date.now();
-  if (purchaserStateCache?.requests?.length > 0) lastKnownGoodPurchaserState = purchaserStateCache;
+  lastKnownGoodPurchaserState = null;
   stateCache = null;
   stateCacheTimestamp = 0;
   purchaserStateCache = null;
@@ -98,6 +98,7 @@ function invalidateStateCache() {
   livePartyCategorySalesCache = null;
   livePartyCategorySalesTimestamp = 0;
   inFlightPurchaserStatePromise = null;
+  inFlightRequestsPromise = null;
 }
 
 // GET /api/state/meta - Lightweight endpoint returning mutation version & current server date (for EOD delta sync)
@@ -2770,7 +2771,7 @@ app.get("/api/state", async (req, res) => {
               pool.query("SELECT * FROM vendors").catch(e => { console.error("vendors query err:", e.message); return { rows: [] }; }),
               pool.query("SELECT * FROM cargo_companies").catch(e => { console.error("cargo_companies query err:", e.message); return { rows: [] }; }),
               pool.query("SELECT * FROM cargos").catch(e => { console.error("cargos query err:", e.message); return { rows: [] }; }),
-              pool.query("SELECT * FROM requests").catch(e => { console.error("requests query err:", e.message); return { rows: [] }; }),
+              pool.query("SELECT * FROM requests ORDER BY \"timestamp\" DESC, \"orderDate\" DESC").catch(e => { console.error("requests query err:", e.message); return { rows: [] }; }),
               pool.query("SELECT * FROM settings").catch(e => { console.error("settings query err:", e.message); return { rows: [] }; }),
               pool.query("SELECT * FROM items ORDER BY \"id\" ASC").catch(e => { console.error("items query err:", e.message); return { rows: [] }; }),
               pool.query("SELECT * FROM designations").catch(e => { console.error("designations query err:", e.message); return { rows: [] }; }),
@@ -2798,7 +2799,7 @@ app.get("/api/state", async (req, res) => {
             let effectiveReqRows = requestsRes.rows || [];
             if (effectiveReqRows.length === 0 && isPg) {
               try {
-                const retryRes = await pool.query('SELECT * FROM requests ORDER BY "orderDate" DESC');
+                const retryRes = await pool.query('SELECT * FROM requests ORDER BY "timestamp" DESC, "orderDate" DESC');
                 if (retryRes.rows && retryRes.rows.length > 0) effectiveReqRows = retryRes.rows;
               } catch (retryErr) {
                 console.error("Dedicated requests retry query err:", retryErr.message);
@@ -3391,7 +3392,7 @@ app.get("/api/requests", async (req, res) => {
       }
       inFlightRequestsPromise = (async () => {
         try {
-          const result = await pool.query('SELECT * FROM requests ORDER BY "orderDate" DESC');
+          const result = await pool.query('SELECT * FROM requests ORDER BY "timestamp" DESC, "orderDate" DESC');
           let rows = result.rows || [];
           if (rows.length === 0 && (purchaserStateCache?.requests?.length > 0 || lastKnownGoodPurchaserState?.requests?.length > 0)) {
             rows = purchaserStateCache?.requests || lastKnownGoodPurchaserState?.requests || [];
