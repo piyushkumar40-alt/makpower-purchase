@@ -3077,3 +3077,37 @@ table th {
 
 
 
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin-animation {
+  animation: spin 0.8s linear infinite;
+}
+
+.btn-refresh-data {
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+}
+
+.btn-refresh-data:hover:not(:disabled) {
+  filter: brightness(1.12);
+  transform: translateY(-1px);
+}
+
+.btn-refresh-data:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+@media (max-width: 640px) {
+  .btn-refresh-data .refresh-btn-label-desktop-only {
+    display: none;
+  }
+}

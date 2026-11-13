@@ -441,6 +441,8 @@ export const calculateCargoCompanyMetrics = (company, cargos = [], requests = []
 };
 
 export default function PurchaserDashboard({
+  onRefreshData,
+  isRefreshingData,
   currentUser = {},
   requests = [],
   vendors = [],
@@ -1811,10 +1813,34 @@ export default function PurchaserDashboard({
           />
 
           {/* Quick Filter: Missed Target Date */}
+          {onRefreshData && (
+            <button
+              type="button"
+              onClick={onRefreshData}
+              disabled={isRefreshingData}
+              className="btn btn-sm btn-secondary"
+              style={{
+                marginLeft: "auto",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                fontWeight: 600,
+                padding: "8px 14px",
+                flexShrink: 0,
+                borderColor: "rgba(14, 165, 233, 0.4)",
+                color: "var(--primary)"
+              }}
+              title="Refresh purchase data & latest updates"
+            >
+              <RefreshCw size={13} style={{ animation: isRefreshingData ? "spin 0.8s linear infinite" : "none" }} />
+              <span>{isRefreshingData ? "Refreshing..." : "Refresh Data"}</span>
+            </button>
+          )}
+
           <button 
             onClick={() => setMissedTargetOnly(!missedTargetOnly)}
             className={`btn btn-sm ${missedTargetOnly ? "btn-danger" : "btn-secondary"}`}
-            style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "6px", fontWeight: 600, padding: "8px 14px", flexShrink: 0 }}
+            style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 600, padding: "8px 14px", flexShrink: 0 }}
             title="Filter dashboard to show only items that missed target dates"
           >
             <AlertTriangle size={14} style={{ color: missedTargetOnly ? "#fff" : "var(--danger)" }} />

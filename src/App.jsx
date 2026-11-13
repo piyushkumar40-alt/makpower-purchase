@@ -461,9 +461,12 @@ export default function App() {
       recordUserLogin(currentUser.id);
       const predictivePreloads = getPredictivePreloadSections(currentUser.id);
       if (predictivePreloads.length > 0) {
-        predictivePreloads.forEach(modKey => {
-          pullModuleData(modKey, false, { silent: true });
-        });
+        const delayTimer = setTimeout(() => {
+          predictivePreloads.forEach(modKey => {
+            pullModuleData(modKey, false, { silent: true });
+          });
+        }, 4000);
+        return () => clearTimeout(delayTimer);
       }
     }
   }, [currentUser, pullModuleData]);
@@ -1145,6 +1148,101 @@ export default function App() {
     const res = await postData("/api/settings", newSettings);
     return res;
   };
+
+  const [isRefreshingData, setIsRefreshingData] = useState(false);
+  const [refreshSuccessMsg, setRefreshSuccessMsg] = useState("");
+
+  const handleRefreshAllData = React.useCallback(async () => {
+    if (isRefreshingData) return;
+    setIsRefreshingData(true);
+    setRefreshSuccessMsg("");
+    try {
+      const cacheBuster = Date.now();
+      const roleClean = String(currentUser?.role || (currentUser?.id === "u-rahul" ? "rahul" : "staff")).trim().toLowerCase();
+      const q = currentUser 
+        ? `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(roleClean)}&userName=${encodeURIComponent(currentUser.name || '')}&force=true&refresh=true&_t=${cacheBuster}`
+        : `?force=true&refresh=true&_t=${cacheBuster}`;
+
+      const res = await fetch(`/api/state${q}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.users) && data.users.length > 0) {
+          setUsers(data.users.map(normalizeUserData));
+        }
+        if (Array.isArray(data.vendors)) {
+          setVendors(data.vendors);
+        }
+        if (Array.isArray(data.requests)) {
+          setRequests(data.requests.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
+        }
+        if (Array.isArray(data.cargos)) {
+          setCargos(data.cargos);
+        }
+        if (Array.isArray(data.cargoCompanies)) {
+          setCargoCompanies(data.cargoCompanies);
+        }
+        if (Array.isArray(data.items)) {
+          setItems(data.items);
+        }
+        if (Array.isArray(data.designations)) {
+          setDesignations(data.designations);
+        }
+        if (Array.isArray(data.itemPrices)) {
+          setItemPrices(data.itemPrices);
+        }
+        if (Array.isArray(data.crmParties) && data.crmParties.length > 0) {
+          setCrmParties(deduplicatePartiesKeepLast(data.crmParties));
+        }
+        if (Array.isArray(data.crmSalesOrders) && data.crmSalesOrders.length > 0) {
+          setCrmSalesOrders(data.crmSalesOrders);
+        }
+        if (Array.isArray(data.crmDispatches) && data.crmDispatches.length > 0) {
+          setCrmDispatches(data.crmDispatches);
+        }
+        if (Array.isArray(data.imsTransactions) && data.imsTransactions.length > 0) {
+          setImsTransactions(data.imsTransactions);
+        }
+        if (data.imsSummary) {
+          setImsSummary(data.imsSummary);
+        }
+
+        const serverVersion = data.version || cacheBuster;
+        currentDataVersionRef.current = serverVersion;
+
+        saveDashboardCache(currentUser || "guest", {
+          requests: data.requests || [],
+          cargos: data.cargos || [],
+          vendors: data.vendors || [],
+          cargoCompanies: data.cargoCompanies || [],
+          items: data.items || [],
+          users: data.users || [],
+          crmParties: data.crmParties || [],
+          crmSalesOrders: data.crmSalesOrders || [],
+          crmDispatches: data.crmDispatches || [],
+          version: serverVersion
+        });
+
+        setRefreshSuccessMsg("Updated!");
+        setTimeout(() => setRefreshSuccessMsg(""), 2500);
+      } else {
+        await handleDirectPull();
+        setRefreshSuccessMsg("Updated!");
+        setTimeout(() => setRefreshSuccessMsg(""), 2500);
+      }
+    } catch (err) {
+      console.error("Manual refresh data error:", err);
+      try {
+        await handleDirectPull();
+        setRefreshSuccessMsg("Updated!");
+        setTimeout(() => setRefreshSuccessMsg(""), 2500);
+      } catch (e) {
+        setRefreshSuccessMsg("Failed");
+        setTimeout(() => setRefreshSuccessMsg(""), 2500);
+      }
+    } finally {
+      setIsRefreshingData(false);
+    }
+  }, [currentUser, handleDirectPull]);
 
   // High-speed direct snapshot pull (bypasses full aggregation for fast recovery)
   const handleDirectPull = React.useCallback(async () => {
@@ -3179,6 +3277,45 @@ export default function App() {
           {/* Right Side Controls (Theme Toggle, Bell, Profile, Logout, Mobile Menu Toggle) */}
           <div className="header-controls-right" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "12px" }}>
             
+            {/* Global Universal Refresh Data Button */}
+            <button
+              type="button"
+              onClick={handleRefreshAllData}
+              disabled={isRefreshingData}
+              className="btn btn-sm btn-refresh-data"
+              title="Refresh entire data from server without reloading page"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "4px 11px",
+                borderRadius: "8px",
+                fontSize: "0.78rem",
+                fontWeight: 700,
+                background: refreshSuccessMsg
+                  ? "rgba(16, 185, 129, 0.15)"
+                  : theme === "dark" ? "rgba(14, 165, 233, 0.12)" : "rgba(2, 132, 199, 0.08)",
+                border: refreshSuccessMsg
+                  ? "1px solid #10b981"
+                  : "1px solid rgba(14, 165, 233, 0.35)",
+                color: refreshSuccessMsg
+                  ? "#10b981"
+                  : theme === "dark" ? "#38bdf8" : "#0284c7",
+                cursor: isRefreshingData ? "wait" : "pointer",
+                transition: "all 0.2s ease",
+                whiteSpace: "nowrap"
+              }}
+            >
+              <RefreshCw 
+                size={13} 
+                style={{
+                  transition: "transform 0.4s ease",
+                  animation: isRefreshingData ? "spin 0.8s linear infinite" : "none"
+                }} 
+              />
+              <span>{isRefreshingData ? "Refreshing..." : (refreshSuccessMsg || "Refresh Data")}</span>
+            </button>
+            
             {/* Mode Switcher Toggle Pill */}
             <div 
               onClick={toggleTheme} 
@@ -3389,6 +3526,36 @@ export default function App() {
             )}
 
             {/* Mobile Nav Links List */}
+            {/* Mobile Refresh Data Action */}
+            <div style={{ padding: "0 16px 10px 16px" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  handleRefreshAllData();
+                  setMobileMenuOpen(false);
+                }}
+                disabled={isRefreshingData}
+                className="btn btn-sm btn-refresh-data"
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  padding: "8px 12px",
+                  borderRadius: "8px",
+                  fontWeight: 700,
+                  fontSize: "0.82rem",
+                  background: refreshSuccessMsg ? "rgba(16, 185, 129, 0.15)" : "rgba(14, 165, 233, 0.12)",
+                  border: refreshSuccessMsg ? "1px solid #10b981" : "1px solid rgba(14, 165, 233, 0.35)",
+                  color: refreshSuccessMsg ? "#10b981" : "#38bdf8"
+                }}
+              >
+                <RefreshCw size={14} style={{ animation: isRefreshingData ? "spin 0.8s linear infinite" : "none" }} />
+                <span>{isRefreshingData ? "Refreshing Data..." : (refreshSuccessMsg || "Refresh Whole Data")}</span>
+              </button>
+            </div>
+
             <div className="mobile-nav-list">
               {currentUser && (
                 <>
@@ -3786,6 +3953,8 @@ export default function App() {
 
         {(activeView === "dashboard" || (currentUser && !["login", "home", "requester", "nitin", "rahul", "coordinator", "owner", "admin", "crm", "itemcatalog", "itemdetail", "ims"].includes(activeView))) && (
           <PurchaserDashboard 
+            onRefreshData={handleRefreshAllData}
+            isRefreshingData={isRefreshingData}
             currentUser={currentUser}
             requests={requests}
             vendors={vendors}

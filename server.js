@@ -59,6 +59,11 @@ let stateCacheTimestamp = 0;
 let purchaserStateCache = null;
 let purchaserStateCacheTimestamp = 0;
 let inFlightPurchaserStatePromise = null;
+let inFlightGeneralStatePromise = null;
+let inFlightRequestsPromise = null;
+let inFlightCargosPromise = null;
+let inFlightVendorsPromise = null;
+let inFlightCargoCompaniesPromise = null;
 let lastKnownGoodPurchaserState = null;
 let livePartyCategorySalesCache = null;
 let livePartyCategorySalesTimestamp = 0;
@@ -221,9 +226,9 @@ async function initDatabase() {
     try {
       pool = new pg.Pool({
         connectionString,
-        max: 10,
+        max: 20,
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000,
+        connectionTimeoutMillis: 20000,
         ssl: connectionString.includes("localhost") ? false : { rejectUnauthorized: false }
       });
       // Handle idle client errors without crashing Node.js process
@@ -2621,11 +2626,15 @@ app.get("/api/state", async (req, res) => {
     cleanId === "u-rahul" || cleanId === "u-nitin" || cleanName.includes("rahul") || cleanName.includes("nitin") ||
     (!cleanRole && !cleanId); // Fast default: unauthenticated / role-less requests always take lightweight purchase state
 
+  const isRefreshRequest = req.query.force === "true" || req.query.refresh === "true";
+  if (isRefreshRequest) {
+    invalidateStateCache();
+  }
   const now = Date.now();
-  if (isPurchaseOnlyRole && purchaserStateCache?.requests?.length > 0 && (now - purchaserStateCacheTimestamp < STATE_CACHE_TTL_MS)) {
+  if (!isRefreshRequest && isPurchaseOnlyRole && purchaserStateCache?.requests?.length > 0 && (now - purchaserStateCacheTimestamp < STATE_CACHE_TTL_MS)) {
     return res.json(purchaserStateCache);
   }
-  if (!isRestrictedRole && !isPurchaseOnlyRole && stateCache?.requests?.length > 0 && (now - stateCacheTimestamp < STATE_CACHE_TTL_MS)) {
+  if (!isRefreshRequest && !isRestrictedRole && !isPurchaseOnlyRole && stateCache?.requests?.length > 0 && (now - stateCacheTimestamp < STATE_CACHE_TTL_MS)) {
     return res.json(stateCache);
   }
 
@@ -3175,11 +3184,22 @@ app.get("/api/state", async (req, res) => {
 app.get("/api/vendors", async (req, res) => {
   if (isPg) {
     try {
-      const result = await pool.query('SELECT * FROM vendors ORDER BY "name" ASC');
-      const vendors = (result.rows || []).map(v => ({
-        ...v,
-        purchaserIds: safeJsonParse(v.purchaserIds, [])
-      }));
+      if (inFlightVendorsPromise) {
+        const concurrentData = await inFlightVendorsPromise;
+        return res.json(concurrentData);
+      }
+      inFlightVendorsPromise = (async () => {
+        try {
+          const result = await pool.query('SELECT * FROM vendors ORDER BY "name" ASC');
+          return (result.rows || []).map(v => ({
+            ...v,
+            purchaserIds: safeJsonParse(v.purchaserIds, [])
+          }));
+        } finally {
+          inFlightVendorsPromise = null;
+        }
+      })();
+      const vendors = await inFlightVendorsPromise;
       res.json(vendors);
     } catch (err) {
       console.error("GET /api/vendors error:", err.message);
@@ -3195,8 +3215,20 @@ app.get("/api/vendors", async (req, res) => {
 app.get("/api/cargo-companies", async (req, res) => {
   if (isPg) {
     try {
-      const result = await pool.query('SELECT * FROM cargo_companies ORDER BY "name" ASC');
-      res.json(result.rows || []);
+      if (inFlightCargoCompaniesPromise) {
+        const concurrentData = await inFlightCargoCompaniesPromise;
+        return res.json(concurrentData);
+      }
+      inFlightCargoCompaniesPromise = (async () => {
+        try {
+          const result = await pool.query('SELECT * FROM cargo_companies ORDER BY "name" ASC');
+          return result.rows || [];
+        } finally {
+          inFlightCargoCompaniesPromise = null;
+        }
+      })();
+      const cargoCompanies = await inFlightCargoCompaniesPromise;
+      res.json(cargoCompanies);
     } catch (err) {
       console.error("GET /api/cargo-companies error:", err.message);
       res.status(500).json({ error: "Failed to fetch cargo companies." });
@@ -3211,18 +3243,29 @@ app.get("/api/cargo-companies", async (req, res) => {
 app.get("/api/cargos", async (req, res) => {
   if (isPg) {
     try {
-      const result = await pool.query('SELECT * FROM cargos ORDER BY "cargoOrderDate" DESC');
-      let rows = result.rows || [];
-      if (rows.length === 0 && (purchaserStateCache?.cargos?.length > 0 || lastKnownGoodPurchaserState?.cargos?.length > 0)) {
-        rows = purchaserStateCache?.cargos || lastKnownGoodPurchaserState?.cargos || [];
+      if (inFlightCargosPromise) {
+        const concurrentData = await inFlightCargosPromise;
+        return res.json(concurrentData);
       }
-      const cargos = rows.map(c => sanitizeCargoDocuments({
-        ...c,
-        cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
-        cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
-        totalCargoPrice: getEffectiveTotalCargoPrice(c),
-        cargoEtaHistory: safeJsonParse(c.cargoEtaHistory, [])
-      }));
+      inFlightCargosPromise = (async () => {
+        try {
+          const result = await pool.query('SELECT * FROM cargos ORDER BY "cargoOrderDate" DESC');
+          let rows = result.rows || [];
+          if (rows.length === 0 && (purchaserStateCache?.cargos?.length > 0 || lastKnownGoodPurchaserState?.cargos?.length > 0)) {
+            rows = purchaserStateCache?.cargos || lastKnownGoodPurchaserState?.cargos || [];
+          }
+          return rows.map(c => sanitizeCargoDocuments({
+            ...c,
+            cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
+            cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
+            totalCargoPrice: getEffectiveTotalCargoPrice(c),
+            cargoEtaHistory: safeJsonParse(c.cargoEtaHistory, [])
+          }));
+        } finally {
+          inFlightCargosPromise = null;
+        }
+      })();
+      const cargos = await inFlightCargosPromise;
       res.json(cargos);
     } catch (err) {
       console.error("GET /api/cargos error:", err.message);
@@ -3241,20 +3284,31 @@ app.get("/api/cargos", async (req, res) => {
 app.get("/api/requests", async (req, res) => {
   if (isPg) {
     try {
-      const result = await pool.query('SELECT * FROM requests ORDER BY "orderDate" DESC');
-      let rows = result.rows || [];
-      if (rows.length === 0 && (purchaserStateCache?.requests?.length > 0 || lastKnownGoodPurchaserState?.requests?.length > 0)) {
-        rows = purchaserStateCache?.requests || lastKnownGoodPurchaserState?.requests || [];
+      if (inFlightRequestsPromise) {
+        const concurrentData = await inFlightRequestsPromise;
+        return res.json(concurrentData);
       }
-      const requests = rows.map(r => ({
-        ...r,
-        orderQuantity: r.orderQuantity ? parseInt(r.orderQuantity) : 0,
-        priceRmb: r.priceRmb ? parseFloat(r.priceRmb) : "",
-        totalRmb: r.totalRmb ? parseFloat(r.totalRmb) : "",
-        advancePayment: r.advancePayment ? parseFloat(r.advancePayment) : "",
-        balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : "",
-        vendorEddHistory: safeJsonParse(r.vendorEddHistory, [])
-      }));
+      inFlightRequestsPromise = (async () => {
+        try {
+          const result = await pool.query('SELECT * FROM requests ORDER BY "orderDate" DESC');
+          let rows = result.rows || [];
+          if (rows.length === 0 && (purchaserStateCache?.requests?.length > 0 || lastKnownGoodPurchaserState?.requests?.length > 0)) {
+            rows = purchaserStateCache?.requests || lastKnownGoodPurchaserState?.requests || [];
+          }
+          return rows.map(r => ({
+            ...r,
+            orderQuantity: r.orderQuantity ? parseInt(r.orderQuantity) : 0,
+            priceRmb: r.priceRmb ? parseFloat(r.priceRmb) : "",
+            totalRmb: r.totalRmb ? parseFloat(r.totalRmb) : "",
+            advancePayment: r.advancePayment ? parseFloat(r.advancePayment) : "",
+            balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : "",
+            vendorEddHistory: safeJsonParse(r.vendorEddHistory, [])
+          }));
+        } finally {
+          inFlightRequestsPromise = null;
+        }
+      })();
+      const requests = await inFlightRequestsPromise;
       res.json(requests);
     } catch (err) {
       console.error("GET /api/requests error:", err.message);
