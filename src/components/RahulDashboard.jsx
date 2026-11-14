@@ -52,6 +52,8 @@ export default function RahulDashboard({
   items = [],
   onBatchUpdateRequests,
   onUpdateCargo,
+  onCancelRequests,
+  onReactivateRequests,
   onLogout,
   onRefreshData,
   onDirectPull,
@@ -81,6 +83,18 @@ export default function RahulDashboard({
     localStorage.setItem("makpower_rahul_tab", activeTab);
   }, [activeTab]);
 
+  // Handle direct navigation events from notifications (e.g. Cancelled orders)
+  useEffect(() => {
+    try { localStorage.removeItem("makpower_rahul_stage_filter"); } catch(e) {}
+    const handleNav = (e) => {
+      if (e.detail?.stage) setFilterStage(e.detail.stage);
+      if (e.detail?.quickStatus) setQuickStatus(e.detail.quickStatus);
+      if (e.detail?.step) setWorkflowStep(e.detail.step);
+    };
+    window.addEventListener("makpower_rahul_navigate", handleNav);
+    return () => window.removeEventListener("makpower_rahul_navigate", handleNav);
+  }, []);
+
   // Inspection modal state
   const [inspectedOrder, setInspectedOrder] = useState(null);
   // Cargo Document Modal state
@@ -107,8 +121,10 @@ export default function RahulDashboard({
   };
 
   // Multi-Level Filtration States
-  const [quickStatus, setQuickStatus] = useState("all"); // "all" | "coming" | "pipeline" | "delivered" | "pending_mark" | "marked"
-  const [filterStage, setFilterStage] = useState("all");
+  const [quickStatus, setQuickStatus] = useState("all"); // "all" | "coming" | "pipeline" | "delivered" | "pending_mark" | "marked" | "cancelled"
+  const [filterStage, setFilterStage] = useState(() => {
+    return localStorage.getItem("makpower_rahul_stage_filter") || "all";
+  });
   const [filterVendor, setFilterVendor] = useState("");
   const [filterPurchaser, setFilterPurchaser] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
@@ -297,15 +313,25 @@ export default function RahulDashboard({
     });
   }, [billCargos, step2Filter, step2Search, vendors]);
 
-  // Filter requests: all active requests across the pipeline (including unpriced Step 1, priced Step 2, cargo, transit, received)
-  const eligibleRequests = useMemo(() => (requests || []).filter(r => r && r.status !== "Cancelled"), [requests]);
+  const isLookingForCancelled = filterStage === "cancelled" || quickStatus === "cancelled";
+
+  // Filter requests: all active requests across the pipeline (or cancelled items when specifically filtering for cancelled)
+  const eligibleRequests = useMemo(() => {
+    return (requests || []).filter(r => {
+      if (!r) return false;
+      if (isLookingForCancelled) return r.status === "Cancelled";
+      return r.status !== "Cancelled";
+    });
+  }, [requests, isLookingForCancelled]);
 
   // Partitioned requests for Mark Purchases
   const pendingRequests = useMemo(() => eligibleRequests.filter(r => r.purchaseUpdated !== "Yes"), [eligibleRequests]);
   const submittedRequests = useMemo(() => eligibleRequests.filter(r => r.purchaseUpdated === "Yes"), [eligibleRequests]);
 
   // Active requests for the current tab
-  const currentTabRequests = activeTab === "pending" ? pendingRequests : submittedRequests;
+  const currentTabRequests = isLookingForCancelled
+    ? eligibleRequests
+    : (activeTab === "pending" ? pendingRequests : submittedRequests);
 
   // Multi-Level Filtered Requests
   const filteredRequests = useMemo(() => {
@@ -326,6 +352,8 @@ export default function RahulDashboard({
         if (r.purchaseUpdated === "Yes") return false;
       } else if (quickStatus === "marked") {
         if (r.purchaseUpdated !== "Yes") return false;
+      } else if (quickStatus === "cancelled") {
+        if (r.status !== "Cancelled") return false;
       }
 
       // 2. Stage Filter ("Where Item Is Now")
@@ -1451,6 +1479,28 @@ export default function RahulDashboard({
               >
                 ✓ Marked in Ledger
               </button>
+
+              <button 
+                onClick={() => {
+                  if (quickStatus === "cancelled" || filterStage === "cancelled") {
+                    setQuickStatus("all");
+                    setFilterStage("all");
+                  } else {
+                    setQuickStatus("cancelled");
+                    setFilterStage("cancelled");
+                  }
+                }}
+                className={`btn btn-sm ${(quickStatus === "cancelled" || filterStage === "cancelled") ? "btn-primary" : "btn-secondary"}`}
+                style={{ 
+                  fontSize: "0.78rem", 
+                  padding: "5px 12px", 
+                  color: (quickStatus === "cancelled" || filterStage === "cancelled") ? "#fff" : "#ef4444", 
+                  borderColor: "rgba(239, 68, 68, 0.4)",
+                  background: (quickStatus === "cancelled" || filterStage === "cancelled") ? "rgba(239, 68, 68, 0.2)" : "transparent"
+                }}
+              >
+                🚫 Cancelled Orders ({(requests || []).filter(r => r && r.status === "Cancelled").length})
+              </button>
             </div>
 
             {/* Level 2 & 3: Filter Dropdowns Grid */}
@@ -1793,9 +1843,15 @@ export default function RahulDashboard({
                                 whiteSpace: "nowrap",
                                 display: "inline-block"
                               }}
+                              title={r.cancellationReason ? `Reason: ${r.cancellationReason}` : stage.desc}
                             >
                               {stage.label}
                             </span>
+                            {r.status === "Cancelled" && (
+                              <div style={{ fontSize: "0.68rem", color: "#f87171", marginTop: "2px", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.cancellationReason || "Cancelled"}>
+                                {r.cancellationReason || "Cancelled"}
+                              </div>
+                            )}
                           </td>
 
                           {/* Purchaser */}

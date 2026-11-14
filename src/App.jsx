@@ -809,6 +809,32 @@ export default function App() {
             data: c
           });
         });
+
+      // 1e. Cancelled Orders / Requisitions Notification for Rahul & Accounts
+      (requests || [])
+        .filter(r => r && r.status === "Cancelled")
+        .sort((a, b) => new Date(b.cancelledAt || 0) - new Date(a.cancelledAt || 0))
+        .slice(0, 30)
+        .forEach(r => {
+          const notifId = `notif_cancelled_${r.id}`;
+          const reasonText = r.cancellationReason ? ` • Reason: "${r.cancellationReason}"` : "";
+          const cancelledByText = r.cancelledByName ? ` by ${r.cancelledByName}` : "";
+          const cancelDate = r.cancelledAt ? new Date(r.cancelledAt).toLocaleDateString("en-IN") : (r.orderDate || "Recent");
+          list.push({
+            id: notifId,
+            title: `🚫 Order Cancelled: ${r.model}`,
+            description: `Order #${r.id} (${r.orderQuantity || 1} Pcs) was cancelled${cancelledByText}${reasonText}. Review ledger & accounts accordingly.`,
+            time: cancelDate,
+            timestamp: r.cancelledAt ? new Date(r.cancelledAt).getTime() : 0,
+            read: readSet.has(notifId),
+            type: "order_cancelled",
+            targetView: "rahul",
+            targetStage: "cancelled",
+            targetQuickStatus: "cancelled",
+            targetStep: "step1",
+            data: r
+          });
+        });
     }
 
     if (["crm", "asm", "tsm", "rsm", "superadmin", "owner"].includes(currentUser.role)) {
@@ -3790,14 +3816,20 @@ const cancelRequests = async (requestIds, reason = "") => {
                               setReadNotificationIds(next);
                               try { localStorage.setItem("makpower_read_notifications", JSON.stringify(next)); } catch(e) {}
                             }
+                            if (n.targetView === "rahul" && n.targetStage) {
+                              try { localStorage.setItem("makpower_rahul_stage_filter", n.targetStage); } catch(e) {}
+                              window.dispatchEvent(new CustomEvent("makpower_rahul_navigate", { 
+                                detail: { stage: n.targetStage, quickStatus: n.targetQuickStatus || "all", step: n.targetStep || "step1" } 
+                              }));
+                            }
                             setActiveView(n.targetView || "crm");
                             setShowNotificationDropdown(false);
                           }}
                           style={{
                             padding: "8px 10px",
                             borderRadius: "8px",
-                            background: n.read ? "transparent" : "rgba(56, 189, 248, 0.08)",
-                            border: n.read ? "1px solid rgba(255,255,255,0.05)" : "1px solid rgba(56, 189, 248, 0.25)",
+                            background: n.read ? "transparent" : n.type === "order_cancelled" ? "rgba(239, 68, 68, 0.08)" : "rgba(56, 189, 248, 0.08)",
+                            border: n.read ? "1px solid rgba(255,255,255,0.05)" : n.type === "order_cancelled" ? "1px solid rgba(239, 68, 68, 0.3)" : "1px solid rgba(56, 189, 248, 0.25)",
                             cursor: "pointer",
                             display: "flex",
                             flexDirection: "column",
@@ -3805,7 +3837,7 @@ const cancelRequests = async (requestIds, reason = "") => {
                           }}
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--primary)" }}>{n.title}</span>
+                            <span style={{ fontSize: "0.78rem", fontWeight: 700, color: n.type === "order_cancelled" ? "#f87171" : "var(--primary)" }}>{n.title}</span>
                             <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>{n.time}</span>
                           </div>
                           <div style={{ fontSize: "0.75rem", color: "var(--text-main)", lineHeight: 1.3 }}>{n.description}</div>
@@ -4203,6 +4235,8 @@ const cancelRequests = async (requestIds, reason = "") => {
             purchasers={users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active")}
             onBatchUpdateRequests={batchUpdateRequests}
             onUpdateCargo={updateCargo}
+            onCancelRequests={cancelRequests}
+            onReactivateRequests={reactivateRequests}
             onLogout={handleLogout}
             onRefreshData={() => handleRefreshFullData(false)}
             onDirectPull={handleDirectPull}
