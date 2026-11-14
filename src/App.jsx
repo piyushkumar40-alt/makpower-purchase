@@ -2,20 +2,18 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { LogIn, ShoppingCart, ShieldAlert, LogOut, Settings, BarChart2, Package, Sun, Moon, Home, Menu, X, Building2, RefreshCw, Search, Bell, Briefcase, Layers, Key, ArrowLeft, CheckCircle2 } from "lucide-react";
 import LoginPage from "./components/LoginPage";
 import RequesterForm from "./components/RequesterForm";
-import HomePage from "./components/HomePage";
-
-// Dynamic Code Splitting for ultra-fast startup & reduced memory footprint
-const PurchaserDashboard = React.lazy(() => import("./components/PurchaserDashboard"));
-const SuperAdminDashboard = React.lazy(() => import("./components/SuperAdminDashboard"));
-const NitinDashboard = React.lazy(() => import("./components/NitinDashboard"));
-const RahulDashboard = React.lazy(() => import("./components/RahulDashboard"));
-const CoordinatorDashboard = React.lazy(() => import("./components/CoordinatorDashboard"));
+import PurchaserDashboard from "./components/PurchaserDashboard";
+import SuperAdminDashboard from "./components/SuperAdminDashboard";
+import NitinDashboard from "./components/NitinDashboard";
+import RahulDashboard from "./components/RahulDashboard";
+import CoordinatorDashboard from "./components/CoordinatorDashboard";
 import ItemMasterView from "./components/ItemMasterView";
-const ItemCatalogPanel = React.lazy(() => import("./components/ItemCatalogPanel"));
-const OwnerDashboard = React.lazy(() => import("./components/OwnerDashboard"));
-const ItemDetailModal = React.lazy(() => import("./components/ItemDetailModal"));
-const CrmDashboard = React.lazy(() => import("./components/CrmDashboard"));
-const ImsDashboard = React.lazy(() => import("./components/ImsDashboard"));
+import ItemCatalogPanel from "./components/ItemCatalogPanel";
+import OwnerDashboard from "./components/OwnerDashboard";
+import ItemDetailModal from "./components/ItemDetailModal";
+import HomePage from "./components/HomePage";
+import CrmDashboard from "./components/CrmDashboard";
+import ImsDashboard from "./components/ImsDashboard";
 import ChangePasswordModal, { isWeakPassword } from "./components/ChangePasswordModal";
 import GlobalDataLoadingOverlay from "./components/GlobalDataLoadingOverlay";
 import { initialUsers, initialVendors, initialRequests, initialCargoShipments, initialCargoCompanies, initialCrmParties, initialCrmSalesOrders, initialCrmDispatches, initialImsTransactions, initialSchemes } from "./mockData";
@@ -3942,12 +3940,6 @@ const cancelRequests = async (requestIds, reason = "") => {
       ) : (
         /* Main App Screens */
         <main className="main-content-area" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-          <React.Suspense fallback={
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "50vh", gap: "14px" }}>
-              <div style={{ width: "42px", height: "42px", border: "4px solid rgba(56, 189, 248, 0.2)", borderTopColor: "#38bdf8", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-              <div style={{ fontSize: "0.9rem", color: "var(--text-muted)", fontWeight: 600 }}>Loading Module...</div>
-            </div>
-          }>
           {activeView === "login" && !currentUser && (
             <LoginPage onLogin={handleLogin} onEnterAsGuest={enterAsGuest} users={users} />
           )}
@@ -4294,7 +4286,6 @@ const cancelRequests = async (requestIds, reason = "") => {
             />
           </div>
         )}
-          </React.Suspense>
       </main>
       )}
 
