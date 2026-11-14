@@ -10,7 +10,7 @@ import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
-import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons, formatCancelDate, formatCancelTime, parsePastedPriceLine, isModelMatch, isCargoMatch, reconcileCargosWithRequests } from "../utils/formatters";
+import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons, formatCancelDate, formatCancelTime, parsePastedPriceLine, isModelMatch, isCargoMatch, reconcileCargosWithRequests, getOfficialPurchasersList } from "../utils/formatters";
 import { useModalEscape, pushBackHandler } from "../utils/useModalEscape";
 import MasterOrderTracker from "./MasterOrderTracker";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
@@ -548,6 +548,9 @@ export default function PurchaserDashboard({
   );
   const hasFullPurchaseAccess = isAdmin || isPurchaseManager;
   const isAneesUser = currentUser?.id === "u-anees" || String(currentUser?.name || "").toLowerCase().includes("anees");
+  const officialPurchasersList = useMemo(() => {
+    return getOfficialPurchasersList(purchasers);
+  }, [purchasers]);
 
   // Default purchaser filter for purchase manager Anees
   const [dashboardPurchaserFilter, setDashboardPurchaserFilter] = useState(() => {
@@ -1869,29 +1872,20 @@ export default function PurchaserDashboard({
           {hasFullPurchaseAccess && (
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <div className="nav-separator" />
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(15, 23, 42, 0.5)", padding: "4px 10px", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+              <div className="purchaser-scope-container">
                 <User size={14} style={{ color: "var(--primary)" }} />
-                <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Purchaser:</span>
+                <span className="purchaser-scope-label">Purchaser:</span>
                 <select
-                  className="form-control"
+                  className="purchaser-scope-select"
                   value={dashboardPurchaserFilter}
                   onChange={(e) => {
                     const val = e.target.value;
                     setDashboardPurchaserFilter(val);
                     setPlannerPurchaserFilter(val);
                   }}
-                  style={{
-                    fontSize: "0.82rem",
-                    padding: "4px 8px",
-                    borderRadius: "6px",
-                    fontWeight: 600,
-                    borderColor: dashboardPurchaserFilter !== "all" ? "var(--primary)" : undefined,
-                    background: dashboardPurchaserFilter !== "all" ? "rgba(56, 189, 248, 0.15)" : undefined,
-                    cursor: "pointer"
-                  }}
                 >
                   <option value="all">🌐 All Purchasers</option>
-                  {(purchasers || []).map(p => (
+                  {officialPurchasersList.map(p => (
                     <option key={p.id} value={p.id}>
                       👤 {p.name} {isAneesUser && (p.id === "u-anees" || String(p.name).toLowerCase().includes("anees")) ? "(Default)" : ""}
                     </option>
@@ -3642,7 +3636,7 @@ export default function PurchaserDashboard({
                     >
                       <option value="all">📦 All Purchasers (Cross-Consolidated)</option>
                       <option value={currentUser?.id}>👤 My Orders Only ({currentUser?.name})</option>
-                      {purchasers.filter(p => p.id !== currentUser?.id).map(p => (
+                      {officialPurchasersList.filter(p => p.id !== currentUser?.id).map(p => (
                         <option key={p.id} value={p.id}>👤 {p.name} ({p.designation || "Purchaser"})</option>
                       ))}
                     </select>

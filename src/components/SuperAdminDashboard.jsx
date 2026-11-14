@@ -17,7 +17,7 @@ import SchemeManagementStudio from "./SchemeManagementStudio";
 import { QuickCreateDesignationModal, QuickCreateVendorModal, QuickCreateCargoCompanyModal, QuickCreateItemModal, QuickCreateUserModal } from "./QuickCreateModals";
 import { useLoading } from "../context/LoadingContext";
 import { initialUsers } from "../mockData";
-import { downloadCsv, isRequestForUser } from "../utils/formatters";
+import { downloadCsv, isRequestForUser, getOfficialPurchasersList } from "../utils/formatters";
 
 export default function SuperAdminDashboard({
   users = [],
@@ -4179,7 +4179,7 @@ export default function SuperAdminDashboard({
           vendor={selectedVendorForDetail}
           requests={requests}
           cargos={cargos}
-          purchasers={users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active")}
+          purchasers={getOfficialPurchasersList(users)}
           currentUser={{ role: "superadmin" }}
           onUpdateVendor={onUpdateVendor}
           onRemoveVendor={onRemoveVendor}

@@ -842,6 +842,21 @@ async function setupPgDatabase() {
       } catch (e) {
         console.warn("Could not run Rahul Kumar purchaser role update query in PG:", e.message);
       }
+      try {
+        await pool.query(`UPDATE users SET "role" = 'purchaser', "designation" = 'Purchaser' WHERE "id" = 'u-himanshi' OR "id" = 'u-1787024560912' OR LOWER("name") LIKE '%himanshi%'`);
+      } catch (e) {
+        console.warn("Could not run Himanshi purchaser role update query in PG:", e.message);
+      }
+      try {
+        await pool.query(`UPDATE users SET "role" = 'nitin', "designation" = 'Packing' WHERE "id" = 'u-nitin' OR LOWER("name") LIKE '%nitin%'`);
+      } catch (e) {
+        console.warn("Could not run Nitin role update query in PG:", e.message);
+      }
+      try {
+        await pool.query(`UPDATE users SET "role" = 'coordinator', "designation" = 'Logistics' WHERE "id" = 'u-coordinator' OR LOWER("name") LIKE '%reena%'`);
+      } catch (e) {
+        console.warn("Could not run Reena Malik role update query in PG:", e.message);
+      }
 
       // Seed IMS Transactions
       await pool.query(`

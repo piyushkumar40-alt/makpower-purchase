@@ -6,7 +6,7 @@ import {
   Truck, Building2, Eye, Check
 } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
-import { isRequestForUser, calculateCargoTotalCartons } from "../utils/formatters";
+import { isRequestForUser, calculateCargoTotalCartons, getOfficialPurchasersList } from "../utils/formatters";
 
 export default function HomePage({
   currentUser,
@@ -63,12 +63,7 @@ export default function HomePage({
   });
 
   const activePurchasers = React.useMemo(() => {
-    return (users || []).filter(u => 
-      u.role === "purchaser" || 
-      u.role === "purchase_manager" || 
-      u.id === "u-anees" ||
-      (u.designation && u.designation.toLowerCase().includes("purchas"))
-    );
+    return getOfficialPurchasersList(users);
   }, [users]);
 
   // Active non-cancelled requests
@@ -297,22 +292,13 @@ export default function HomePage({
 
         <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
           {(isAdminOrManager || isAneesUser) && (
-            <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(15, 23, 42, 0.6)", padding: "4px 10px", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+            <div className="purchaser-scope-container">
               <User size={14} style={{ color: "var(--primary)" }} />
-              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Scope:</span>
+              <span className="purchaser-scope-label">Scope:</span>
               <select
-                className="form-control"
+                className="purchaser-scope-select"
                 value={selectedPurchaserId}
                 onChange={(e) => setSelectedPurchaserId(e.target.value)}
-                style={{
-                  fontSize: "0.82rem",
-                  padding: "4px 8px",
-                  borderRadius: "6px",
-                  fontWeight: 600,
-                  borderColor: selectedPurchaserId !== "all" ? "var(--primary)" : undefined,
-                  background: selectedPurchaserId !== "all" ? "rgba(56, 189, 248, 0.15)" : undefined,
-                  cursor: "pointer"
-                }}
               >
                 <option value="all">🌐 All Purchasers</option>
                 {activePurchasers.map(p => (

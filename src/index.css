@@ -3211,3 +3211,70 @@ table th {
   }
 }
 
+/* Purchaser Scope Badge (Responsive & Light/Dark Theme Compliant) */
+.purchaser-scope-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--border-glass, rgba(255, 255, 255, 0.12));
+  padding: 4px 10px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s ease;
+}
+
+.purchaser-scope-label {
+  font-size: 0.8rem;
+  color: var(--text-muted, #94a3b8);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.purchaser-scope-select {
+  font-size: 0.82rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border-glass, rgba(255, 255, 255, 0.15));
+  background: var(--bg-card, rgba(13, 20, 38, 0.7));
+  color: var(--text-main, #f8fafc);
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.purchaser-scope-select:focus {
+  border-color: var(--primary, #38bdf8);
+  box-shadow: 0 0 0 2px var(--primary-glow, rgba(56, 189, 248, 0.2));
+}
+
+/* Light Theme Overrides for Purchaser Scope Badge */
+[data-theme="light"] .purchaser-scope-container,
+:root:not([data-theme="dark"]) .purchaser-scope-container {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme="light"] .purchaser-scope-label,
+:root:not([data-theme="dark"]) .purchaser-scope-label {
+  color: #334155 !important;
+}
+
+[data-theme="light"] .purchaser-scope-select,
+:root:not([data-theme="dark"]) .purchaser-scope-select {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+[data-theme="light"] .purchaser-scope-select:focus,
+:root:not([data-theme="dark"]) .purchaser-scope-select:focus {
+  border-color: #0284c7 !important;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15) !important;
+  background: #ffffff !important;
+}
+

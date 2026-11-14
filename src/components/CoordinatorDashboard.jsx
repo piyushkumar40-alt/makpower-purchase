@@ -3,6 +3,7 @@ import { LogOut, Filter, ShieldAlert, Clock, AlertTriangle, CheckCircle, Search,
 import ItemMasterView from "./ItemMasterView";
 import CustomSelect from "./CustomSelect";
 import { useSortableData } from "../utils/useSortableData";
+import { getOfficialPurchasersList } from "../utils/formatters";
 
 export default function CoordinatorDashboard({ currentUser = {}, requests = [], vendors = [], cargos = [], users = [], onLogout, loading = false, initialLoadComplete = true }) {
   const [activeTab, setActiveTab] = useState("pending"); // "pending" | "delayed"
@@ -246,7 +247,7 @@ export default function CoordinatorDashboard({ currentUser = {}, requests = [], 
       </div>
 
       {activeTab === "itemmaster" ? (
-        <ItemMasterView requests={requests} vendors={vendors} cargos={cargos} purchasers={users.filter(u => u.role === "purchaser")} />
+        <ItemMasterView requests={requests} vendors={vendors} cargos={cargos} purchasers={getOfficialPurchasersList(users)} />
       ) : (
         <>
 

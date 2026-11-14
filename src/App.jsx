@@ -24,7 +24,7 @@ import {
   TRACKABLE_MODULES 
 } from "./utils/userIntentionTracker";
 import { isDateInBetween } from "./components/DateRangeFilter";
-import { cleanCategoryName, isRequestForUser } from "./utils/formatters";
+import { cleanCategoryName, isRequestForUser, getOfficialPurchasersList } from "./utils/formatters";
 import { useLoading } from "./context/LoadingContext";
 import { useSaveStatus } from "./context/SaveStatusContext";
 import { closeTopModal, executeTopBackHandler } from "./utils/useModalEscape";
@@ -185,6 +185,8 @@ export default function App() {
   const [partyCategoryMonths, setPartyCategoryMonths] = useState([]);
   const [schemes, setSchemes] = useState(initialSchemes);
   const [settings, setSettings] = useState({ isHidden: false, redirectUrl: "https://www.google.com" });
+
+  const officialPurchasers = React.useMemo(() => getOfficialPurchasersList(users), [users]);
 
   const [loading, setLoading] = useState(!hasPreloadedCache);
   const [initialLoadComplete, setInitialLoadComplete] = useState(hasPreloadedCache);
@@ -4416,7 +4418,7 @@ const cancelRequests = async (requestIds, reason = "") => {
           <div style={{ flex: 1, width: "100%", padding: "16px 24px" }}>
             <RequesterForm 
               onAddRequests={addRequests} 
-              purchasers={users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active")} 
+              purchasers={officialPurchasers} 
               vendors={vendors} 
               requests={requests}
               cargos={cargos}
@@ -4437,7 +4439,7 @@ const cancelRequests = async (requestIds, reason = "") => {
             vendors={vendors}
             cargos={cargos}
             items={items}
-            purchasers={users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active")}
+            purchasers={officialPurchasers}
             onBatchUpdateRequests={batchUpdateRequests}
             onLogout={handleLogout}
             loading={loading}
@@ -4454,7 +4456,7 @@ const cancelRequests = async (requestIds, reason = "") => {
             cargoCompanies={cargoCompanies}
             users={users}
             items={items}
-            purchasers={users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active")}
+            purchasers={officialPurchasers}
             onBatchUpdateRequests={batchUpdateRequests}
             onUpdateCargo={updateCargo}
             onCancelRequests={cancelRequests}
@@ -4664,7 +4666,7 @@ const cancelRequests = async (requestIds, reason = "") => {
             vendors={vendors}
             cargos={cargos}
             cargoCompanies={cargoCompanies}
-            purchasers={users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active")}
+            purchasers={officialPurchasers}
             initialTargetCargoId={directTargetCargoId}
             onUpdateRequest={updateRequest}
             batchUpdateRequests={batchUpdateRequests}

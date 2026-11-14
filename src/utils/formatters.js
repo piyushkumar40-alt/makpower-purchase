@@ -267,6 +267,96 @@ export const getDateVariants = (dateVal) => {
 };
 
 /**
+ * Official Purchasers in Makpower: exactly 3 individuals:
+ * 1. Mr. Anees (Purchase Manager)
+ * 2. Mrs. Himanshi Wadhwa (Purchaser)
+ * 3. Mr. Rahul Kumar (Purchaser)
+ *
+ * Explicitly excludes Nitin (Packing), Reena Malik (Logistics/Coordinator), Rahul Mann (Accounts), etc.
+ */
+export const isOfficialPurchaser = (u) => {
+  if (!u) return false;
+  if (u.status === "inactive") return false;
+  const id = String(u.id || "").trim().toLowerCase();
+  const role = String(u.role || "").trim().toLowerCase();
+  const name = String(u.name || "").trim().toLowerCase();
+
+  // Strict exclusions: Nitin (Packing), Reena Malik (Logistics), Rahul Mann (Accounts)
+  if (role === "nitin" || id === "u-nitin" || name.includes("nitin")) return false;
+  if (role === "coordinator" || id === "u-coordinator" || name.includes("reena") || name.includes("malik")) return false;
+  if (role === "rahul" || id === "u-rahul" || name.includes("mann") || (name.includes("rahul") && !name.includes("kumar"))) return false;
+
+  // The 3 official purchasers ONLY:
+  // 1. Anees
+  if (id === "u-anees" || name.includes("anees") || role === "purchase_manager") return true;
+  // 2. Himanshi Wadhwa
+  if (name.includes("himanshi") || id === "u-himanshi" || id === "u-1787024560912") return true;
+  // 3. Rahul Kumar
+  if ((name.includes("rahul") && name.includes("kumar")) || id === "u-rahul-kumar" || id === "u-1787201271219") return true;
+
+  return false;
+};
+
+export const getOfficialPurchasersList = (users = []) => {
+  const userList = Array.isArray(users) ? users : [];
+
+  // 1. Anees (Purchase Manager)
+  const anees = userList.find(u => 
+    u.id === "u-anees" || 
+    String(u.name || "").toLowerCase().includes("anees") || 
+    u.role === "purchase_manager"
+  ) || {
+    id: "u-anees",
+    name: "Mr. Anees",
+    role: "purchase_manager",
+    designation: "Purchase Manager",
+    status: "active"
+  };
+
+  // 2. Himanshi Wadhwa (Purchaser)
+  const himanshi = userList.find(u => 
+    u.id === "u-1787024560912" || 
+    u.id === "u-himanshi" || 
+    String(u.name || "").toLowerCase().includes("himanshi")
+  ) || {
+    id: "u-1787024560912",
+    name: "Mrs. Himanshi Wadhwa",
+    role: "purchaser",
+    designation: "Purchaser",
+    status: "active"
+  };
+
+  // 3. Rahul Kumar (Purchaser - strictly exclude Rahul Mann in Accounts)
+  const rahulKumar = userList.find(u => 
+    (u.id === "u-1787201271219" || u.id === "u-rahul-kumar" || (String(u.name || "").toLowerCase().includes("rahul") && String(u.name || "").toLowerCase().includes("kumar"))) &&
+    !String(u.name || "").toLowerCase().includes("mann") &&
+    u.role !== "rahul" &&
+    u.id !== "u-rahul"
+  ) || {
+    id: "u-1787201271219",
+    name: "Mr. Rahul Kumar",
+    role: "purchaser",
+    designation: "Purchaser",
+    status: "active"
+  };
+
+  // Ensure canonical clean names with proper salutations
+  const formatName = (obj, defaultName) => {
+    let n = (obj.name || defaultName).trim();
+    if (!/^(mr|mrs|ms|dr|shri|smt)\.?\s+/i.test(n)) {
+      n = defaultName;
+    }
+    return { ...obj, name: n };
+  };
+
+  return [
+    formatName(anees, "Mr. Anees"),
+    formatName(himanshi, "Mrs. Himanshi Wadhwa"),
+    formatName(rahulKumar, "Mr. Rahul Kumar")
+  ];
+};
+
+/**
  * Determines whether a purchase request belongs to the specified user.
  * Supports:
  * - Direct ID matching (e.g. "u-himanshi", "u-anees")
@@ -306,12 +396,14 @@ export const isRequestForUser = (r, user, purchasers = []) => {
 
   // 3. Rahul Kumar special aliases (legacy u-rahul was used before separation from Rahul Mann in Accounts)
   const isRahulKumar = userId === "u-rahul-kumar" || 
-    (cleanUserName.includes("rahul") && !cleanUserName.includes("mann")) || 
+    userId === "u-1787201271219" ||
+    (cleanUserName.includes("rahul") && cleanUserName.includes("kumar")) || 
     userEmail.includes("rahulkumar");
 
   if (isRahulKumar) {
     if (
       rPurchaserId === "u-rahul-kumar" || 
+      rPurchaserId === "u-1787201271219" || 
       rPurchaserId === "u-rahul" || 
       rPurchaserId === "rahul" || 
       rPurchaserId.includes("rahul") || 
@@ -323,12 +415,14 @@ export const isRequestForUser = (r, user, purchasers = []) => {
 
   // 4. Himanshi special aliases & ID matching
   const isHimanshi = userId === "u-himanshi" || 
+    userId === "u-1787024560912" ||
     cleanUserName.includes("himanshi") || 
     userEmail.includes("himanshi");
 
   if (isHimanshi) {
     if (
       rPurchaserId === "u-himanshi" || 
+      rPurchaserId === "u-1787024560912" || 
       rPurchaserId === "himanshi" || 
       rPurchaserId.includes("himanshi") || 
       cleanRPurchaserName.includes("himanshi")
