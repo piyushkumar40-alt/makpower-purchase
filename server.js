@@ -37,6 +37,10 @@ app.use(compression({
   level: 6,
   filter: (req, res) => {
     if (req.headers["x-no-compression"]) return false;
+    // CRITICAL: Do not compress Server-Sent Events stream to prevent buffer/memory accumulation
+    if (req.path === "/api/events" || (req.headers.accept && req.headers.accept.includes("text/event-stream"))) {
+      return false;
+    }
     return compression.filter(req, res);
   }
 }));
@@ -67,8 +71,8 @@ let inFlightCargoCompaniesPromise = null;
 let lastKnownGoodPurchaserState = null;
 let livePartyCategorySalesCache = null;
 let livePartyCategorySalesTimestamp = 0;
-const STATE_CACHE_TTL_MS = 600000; // 10 minutes cache ceiling (mutation-driven invalidation handles real-time updates)
-const LIVE_PARTY_CAT_CACHE_TTL_MS = 300000; // 5 minutes cache ceiling
+const STATE_CACHE_TTL_MS = 45000; // 45s cache ceiling (mutation-driven invalidation handles real-time updates)
+const LIVE_PARTY_CAT_CACHE_TTL_MS = 120000; // 2 minutes cache ceiling
 let lastServerMutationTimestamp = Date.now();
 let cacheGeneration = 0; // Incremented on every mutation to prevent stale in-flight query cache poisoning
 
@@ -77,17 +81,21 @@ setInterval(() => {
   const mem = process.memoryUsage();
   const heapUsedMB = Math.round(mem.heapUsed / 1024 / 1024);
   const rssMB = Math.round(mem.rss / 1024 / 1024);
-  if (heapUsedMB > 260 || rssMB > 350) {
-    console.warn(`[Memory Governor] High memory threshold reached (Heap: ${heapUsedMB}MB, RSS: ${rssMB}MB). Purging heavy caches...`);
+  if (heapUsedMB > 180 || rssMB > 300) {
+    console.warn(`[Memory Governor] High memory threshold reached (Heap: ${heapUsedMB}MB, RSS: ${rssMB}MB). Purging heavy caches & forcing GC...`);
     stateCache = null;
     stateCacheTimestamp = 0;
+    purchaserStateCache = null;
+    purchaserStateCacheTimestamp = 0;
+    lastKnownGoodPurchaserState = null;
     livePartyCategorySalesCache = null;
     livePartyCategorySalesTimestamp = 0;
+    imsFullSummaryCache = null;
     if (global.gc) {
       try { global.gc(); } catch (e) {}
     }
   }
-}, 20000);
+}, 10000);
 
 // ==================== REAL-TIME SSE (SERVER-SENT EVENTS) HUB ====================
 const sseClients = new Set();
@@ -144,15 +152,25 @@ app.get("/api/events", (req, res) => {
 
   res.write(`data: ${JSON.stringify({ type: "CONNECTED", clientId, version: lastServerMutationTimestamp })}\n\n`);
 
-  req.on("close", () => {
+  const cleanupClient = () => {
     sseClients.delete(clientObj);
-  });
+  };
+  req.on("close", cleanupClient);
+  req.on("end", cleanupClient);
+  req.on("error", cleanupClient);
+  res.on("close", cleanupClient);
+  res.on("finish", cleanupClient);
+  res.on("error", cleanupClient);
 });
 
-// Keepalive heartbeat every 25s prevents proxy/Cloudflare connection timeouts
+// Keepalive heartbeat every 25s prevents proxy/Cloudflare connection timeouts & cleans dead sockets
 setInterval(() => {
   if (sseClients.size > 0) {
     for (const client of sseClients) {
+      if (!client.res || client.res.writableEnded || client.res.destroyed || !client.res.writable) {
+        sseClients.delete(client);
+        continue;
+      }
       try {
         client.res.write(": keepalive\n\n");
       } catch (e) {
@@ -248,6 +266,35 @@ function sanitizeCargoDocuments(c) {
   };
 }
 
+// High-efficiency SQL projection: projects lightweight tokens instead of streaming 52MB of base64 documents over PostgreSQL connection
+const CARGOS_LIGHT_QUERY = `
+  SELECT 
+    "id", "vendorId", "cargoOrderDate", "cargoDetail", "cargoPrice", "cargoPriceUom", 
+    "cbmPackingList", "totalCargoPrice", "modeOfTransport", "cargoShippingDate", "cargoEta", 
+    "packingListFile", 
+    CASE 
+      WHEN "packingListData" IS NOT NULL AND TRIM("packingListData") <> '' AND "packingListData" LIKE 'http%' THEN "packingListData"
+      WHEN "packingListData" IS NOT NULL AND TRIM("packingListData") <> '' THEN 'AVAILABLE' 
+      ELSE '' 
+    END as "packingListData",
+    "invoiceFile", 
+    CASE 
+      WHEN "invoiceData" IS NOT NULL AND TRIM("invoiceData") <> '' AND "invoiceData" LIKE 'http%' THEN "invoiceData"
+      WHEN "invoiceData" IS NOT NULL AND TRIM("invoiceData") <> '' THEN 'AVAILABLE' 
+      ELSE '' 
+    END as "invoiceData",
+    "cargoReceiptFile", 
+    CASE 
+      WHEN "cargoReceiptData" IS NOT NULL AND TRIM("cargoReceiptData") <> '' AND "cargoReceiptData" LIKE 'http%' THEN "cargoReceiptData"
+      WHEN "cargoReceiptData" IS NOT NULL AND TRIM("cargoReceiptData") <> '' THEN 'AVAILABLE' 
+      ELSE '' 
+    END as "cargoReceiptData",
+    "isMaterialRec", "receivedDate", "currency", "cargoEtaHistory", "billUploadedAt", 
+    "billUploadedBy", "billStatus", "billVerifiedAt", "billVerifiedBy", "billVerificationNotes", 
+    "totalCartons", "cargoCompanyId"
+  FROM cargos
+`;
+
 // Lightweight serializer for outgoing cargos in lists/state endpoints (drops 52MB base64 down to 15KB)
 function formatCargoForResponse(c) {
   if (!c) return c;
@@ -338,7 +385,7 @@ async function initDatabase() {
     try {
       pool = new pg.Pool({
         connectionString,
-        max: 20,
+        max: 10,
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 20000,
         ssl: connectionString.includes("localhost") ? false : { rejectUnauthorized: false }
@@ -1785,8 +1832,9 @@ async function formatAllRequestsForGoogleSheets() {
       pool.query(`
         SELECT "id", "purchaserId", "vendorId", "cargoId", 
                "orderDate", "type", "model", "orderQuantity", "vendorOrderQuantity", "cargoPickedQty",
-               "priceRmb", "totalRmb", "advancePayment", "balancePayment", "photo", "vendorEdd",
-               "status", "isMaterialRec", "packingOrderedByNitin", "purchaseUpdated", 
+               "priceRmb", "totalRmb", "advancePayment", "balancePayment", 
+               CASE WHEN "photo" LIKE 'http%' THEN "photo" WHEN "photo" IS NOT NULL AND "photo" != '' THEN '[Image Attached]' ELSE '' END as "photo",
+               "vendorEdd", "status", "isMaterialRec", "packingOrderedByNitin", "purchaseUpdated", 
                "purchaseUpdatedAt", "purchaseUpdatedBy"
         FROM requests
         WHERE "status" != 'Cancelled' AND ("isMaterialRec" IS NULL OR "isMaterialRec" != 'Yes')
@@ -2890,7 +2938,7 @@ app.get("/api/state", async (req, res) => {
               pool.query("SELECT * FROM users").catch(e => { console.error("users query err:", e.message); return { rows: [] }; }),
               pool.query("SELECT * FROM vendors").catch(e => { console.error("vendors query err:", e.message); return { rows: [] }; }),
               pool.query("SELECT * FROM cargo_companies").catch(e => { console.error("cargo_companies query err:", e.message); return { rows: [] }; }),
-              pool.query("SELECT * FROM cargos").catch(e => { console.error("cargos query err:", e.message); return { rows: [] }; }),
+              pool.query(CARGOS_LIGHT_QUERY).catch(e => { console.error("cargos query err:", e.message); return { rows: [] }; }),
               pool.query("SELECT * FROM requests ORDER BY \"timestamp\" DESC, \"orderDate\" DESC").catch(e => { console.error("requests query err:", e.message); return { rows: [] }; }),
               pool.query("SELECT * FROM settings").catch(e => { console.error("settings query err:", e.message); return { rows: [] }; }),
               pool.query("SELECT * FROM items ORDER BY \"id\" ASC").catch(e => { console.error("items query err:", e.message); return { rows: [] }; }),
@@ -2946,7 +2994,7 @@ app.get("/api/state", async (req, res) => {
             let effectiveCargoRows = cargosRes.rows || [];
             if (effectiveCargoRows.length === 0 && isPg) {
               try {
-                const retryCargo = await pool.query('SELECT * FROM cargos ORDER BY "cargoOrderDate" DESC');
+                const retryCargo = await pool.query(CARGOS_LIGHT_QUERY + ' ORDER BY "cargoOrderDate" DESC');
                 if (retryCargo.rows && retryCargo.rows.length > 0) effectiveCargoRows = retryCargo.rows;
               } catch (retryErr) {
                 console.error("Dedicated cargos retry query err:", retryErr.message);
@@ -3131,7 +3179,7 @@ app.get("/api/state", async (req, res) => {
         pool.query("SELECT * FROM users").catch(e => { console.error("users query err:", e.message); return { rows: [] }; }),
         pool.query("SELECT * FROM vendors").catch(e => { console.error("vendors query err:", e.message); return { rows: [] }; }),
         pool.query("SELECT * FROM cargo_companies").catch(e => { console.error("cargo_companies query err:", e.message); return { rows: [] }; }),
-        pool.query("SELECT * FROM cargos").catch(e => { console.error("cargos query err:", e.message); return { rows: [] }; }),
+        pool.query(CARGOS_LIGHT_QUERY).catch(e => { console.error("cargos query err:", e.message); return { rows: [] }; }),
         pool.query("SELECT * FROM requests").catch(e => { console.error("requests query err:", e.message); return { rows: [] }; }),
         pool.query("SELECT * FROM settings").catch(e => { console.error("settings query err:", e.message); return { rows: [] }; }),
         pool.query("SELECT * FROM items ORDER BY LENGTH(\"id\") ASC, \"id\" ASC").catch(e => { console.error("items query err:", e.message); return { rows: [] }; }),
@@ -3339,7 +3387,7 @@ app.get("/api/state", async (req, res) => {
           pool.query("SELECT * FROM users").catch(() => ({ rows: [] })),
           pool.query("SELECT * FROM vendors").catch(() => ({ rows: [] })),
           pool.query("SELECT * FROM requests").catch(() => ({ rows: [] })),
-          pool.query("SELECT * FROM cargos").catch(() => ({ rows: [] }))
+          pool.query(CARGOS_LIGHT_QUERY).catch(() => ({ rows: [] }))
         ]);
         return res.json({
           users: (uR.rows || []).map(u => ({ ...u, status: u.status || "active" })),
@@ -3503,7 +3551,7 @@ app.get("/api/cargos", async (req, res) => {
       }
       inFlightCargosPromise = (async () => {
         try {
-          const result = await pool.query('SELECT * FROM cargos ORDER BY "cargoOrderDate" DESC');
+          const result = await pool.query(CARGOS_LIGHT_QUERY + ' ORDER BY "cargoOrderDate" DESC');
           let rows = result.rows || [];
           if (rows.length === 0 && (purchaserStateCache?.cargos?.length > 0 || lastKnownGoodPurchaserState?.cargos?.length > 0)) {
             rows = purchaserStateCache?.cargos || lastKnownGoodPurchaserState?.cargos || [];
