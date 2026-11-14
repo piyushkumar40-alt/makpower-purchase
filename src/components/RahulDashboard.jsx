@@ -90,6 +90,16 @@ export default function RahulDashboard({
       if (e.detail?.stage) setFilterStage(e.detail.stage);
       if (e.detail?.quickStatus) setQuickStatus(e.detail.quickStatus);
       if (e.detail?.step) setWorkflowStep(e.detail.step);
+      if (e.detail?.stage === "cancelled" || e.detail?.quickStatus === "cancelled") {
+        setFilterVendor("");
+        setFilterPurchaser("");
+        setFilterCategory("");
+        setFilterCargo("");
+        setFilterTransport("");
+        setSearchQuery("");
+        setFromDate("");
+        setToDate("");
+      }
     };
     window.addEventListener("makpower_rahul_navigate", handleNav);
     return () => window.removeEventListener("makpower_rahul_navigate", handleNav);
@@ -139,8 +149,18 @@ export default function RahulDashboard({
   // Selection check for marking purchases
   const [checkedIds, setCheckedIds] = useState([]);
 
+  const isRequestCancelled = (r) => {
+    if (!r) return false;
+    const st = String(r.status || "").trim().toLowerCase();
+    return st === "cancelled" || Boolean(r.cancelledAt) || (Boolean(r.cancellationReason) && st !== "active");
+  };
+
+  const cancelledRequestsCount = useMemo(() => {
+    return (requests || []).filter(isRequestCancelled).length;
+  }, [requests]);
+
   // Active non-cancelled requests
-  const activeRequests = useMemo(() => requests.filter(r => r.status !== "Cancelled"), [requests]);
+  const activeRequests = useMemo(() => (requests || []).filter(r => !isRequestCancelled(r)), [requests]);
 
   // Financial & Operational Accounts Executive Metrics
   const kpiStats = useMemo(() => {
@@ -319,8 +339,8 @@ export default function RahulDashboard({
   const eligibleRequests = useMemo(() => {
     return (requests || []).filter(r => {
       if (!r) return false;
-      if (isLookingForCancelled) return r.status === "Cancelled";
-      return r.status !== "Cancelled";
+      if (isLookingForCancelled) return isRequestCancelled(r);
+      return !isRequestCancelled(r);
     });
   }, [requests, isLookingForCancelled]);
 
@@ -344,7 +364,7 @@ export default function RahulDashboard({
         const isComing = stage.key === "pickedup" || stage.key === "vendorready";
         if (!isComing) return false;
       } else if (quickStatus === "pipeline") {
-        const inPipeline = r.isMaterialRec !== "Yes" && r.status !== "Cancelled";
+        const inPipeline = r.isMaterialRec !== "Yes" && !isRequestCancelled(r);
         if (!inPipeline) return false;
       } else if (quickStatus === "delivered") {
         if (r.isMaterialRec !== "Yes") return false;
@@ -353,7 +373,7 @@ export default function RahulDashboard({
       } else if (quickStatus === "marked") {
         if (r.purchaseUpdated !== "Yes") return false;
       } else if (quickStatus === "cancelled") {
-        if (r.status !== "Cancelled") return false;
+        if (!isRequestCancelled(r)) return false;
       }
 
       // 2. Stage Filter ("Where Item Is Now")
@@ -1488,6 +1508,14 @@ export default function RahulDashboard({
                   } else {
                     setQuickStatus("cancelled");
                     setFilterStage("cancelled");
+                    setFilterVendor("");
+                    setFilterPurchaser("");
+                    setFilterCategory("");
+                    setFilterCargo("");
+                    setFilterTransport("");
+                    setSearchQuery("");
+                    setFromDate("");
+                    setToDate("");
                   }
                 }}
                 className={`btn btn-sm ${(quickStatus === "cancelled" || filterStage === "cancelled") ? "btn-primary" : "btn-secondary"}`}
@@ -1496,12 +1524,75 @@ export default function RahulDashboard({
                   padding: "5px 12px", 
                   color: (quickStatus === "cancelled" || filterStage === "cancelled") ? "#fff" : "#ef4444", 
                   borderColor: "rgba(239, 68, 68, 0.4)",
-                  background: (quickStatus === "cancelled" || filterStage === "cancelled") ? "rgba(239, 68, 68, 0.2)" : "transparent"
+                  background: (quickStatus === "cancelled" || filterStage === "cancelled") ? "rgba(239, 68, 68, 0.2)" : "transparent",
+                  fontWeight: (quickStatus === "cancelled" || filterStage === "cancelled") ? 700 : 500
                 }}
               >
-                🚫 Cancelled Orders ({(requests || []).filter(r => r && r.status === "Cancelled").length})
+                🚫 Cancelled Orders ({cancelledRequestsCount})
               </button>
             </div>
+
+            {/* Real-time Cancelled Orders Alert Banner for Accounts */}
+            {cancelledRequestsCount > 0 && quickStatus !== "cancelled" && filterStage !== "cancelled" && (
+              <div 
+                style={{
+                  margin: "0 0 14px 0",
+                  padding: "10px 16px",
+                  borderRadius: "10px",
+                  background: "linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(220, 38, 38, 0.05))",
+                  border: "1px solid rgba(239, 68, 68, 0.35)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  flexWrap: "wrap",
+                  boxShadow: "0 2px 8px rgba(239, 68, 68, 0.08)"
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontSize: "1.2rem" }}>🚫</span>
+                  <div>
+                    <span style={{ fontSize: "0.85rem", color: "#f87171", fontWeight: 700 }}>
+                      Notice: {cancelledRequestsCount} Purchase Order(s) Cancelled
+                    </span>
+                    <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>
+                      Recent cancellations recorded. Review them to prevent duplicate payments or incorrect ledger postings.
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setQuickStatus("cancelled");
+                    setFilterStage("cancelled");
+                    setFilterVendor("");
+                    setFilterPurchaser("");
+                    setFilterCategory("");
+                    setFilterCargo("");
+                    setFilterTransport("");
+                    setSearchQuery("");
+                    setFromDate("");
+                    setToDate("");
+                  }}
+                  className="btn btn-sm"
+                  style={{
+                    fontSize: "0.78rem",
+                    padding: "6px 14px",
+                    background: "#ef4444",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "6px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    boxShadow: "0 2px 6px rgba(239, 68, 68, 0.3)"
+                  }}
+                >
+                  View Cancelled Orders ({cancelledRequestsCount}) →
+                </button>
+              </div>
+            )}
 
             {/* Level 2 & 3: Filter Dropdowns Grid */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", marginBottom: "14px" }}>

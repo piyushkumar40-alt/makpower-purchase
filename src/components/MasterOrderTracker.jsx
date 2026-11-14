@@ -30,7 +30,7 @@ import CustomSelect from "./CustomSelect";
 import { isRequestForUser, getPurchaserDisplayName, formatCancelDate, formatCancelTime } from "../utils/formatters";
 
 export function getOrderStage(r, cargo) {
-  if (r.status === "Cancelled") {
+  if (r && (String(r.status || "").trim().toLowerCase() === "cancelled" || Boolean(r.cancelledAt) || (Boolean(r.cancellationReason) && String(r.status || "").trim().toLowerCase() !== "active"))) {
     return {
       key: "cancelled",
       step: 0,

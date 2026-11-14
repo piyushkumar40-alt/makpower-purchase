@@ -708,6 +708,9 @@ export default function App() {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
       const ctx = new AudioContext();
+      if (ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
@@ -732,14 +735,28 @@ export default function App() {
     const cleanId = String(currentUser?.id || "").toLowerCase();
     const cleanName = String(currentUser?.name || "").toLowerCase();
     const cleanDesig = String(currentUser?.designation || "").toLowerCase();
-    const isRahul = cleanRole === "rahul" || cleanId === "u-rahul" || cleanName.includes("rahul") || cleanDesig.includes("account") || cleanDesig.includes("mark purchase") || cleanRole.includes("account");
-    const isAccountsOrAdmin = isRahul || cleanRole === "superadmin" || cleanRole === "owner";
+    const isRahul = cleanRole === "rahul" || 
+      cleanId === "u-rahul" || 
+      cleanName.includes("rahul") || 
+      cleanDesig.includes("account") || 
+      cleanDesig.includes("acct") || 
+      cleanRole.includes("account") || 
+      cleanRole.includes("acct") || 
+      cleanDesig.includes("mark purchase") || 
+      activeView === "rahul";
+    const isAccountsOrAdmin = isRahul || cleanRole === "superadmin" || cleanRole === "owner" || cleanRole === "admin";
+
+    const isOrderCancelled = (r) => {
+      if (!r) return false;
+      const st = String(r.status || "").trim().toLowerCase();
+      return st === "cancelled" || Boolean(r.cancelledAt) || (Boolean(r.cancellationReason) && st !== "active");
+    };
 
     // 1. Accounts Workboard Notifications for Rahul
     if (isAccountsOrAdmin) {
       // 1a. Unmarked Priced Purchases awaiting Ledger Entry
       (requests || [])
-        .filter(r => r && r.status !== "Cancelled" && r.priceRmb && r.purchaseUpdated !== "Yes")
+        .filter(r => r && !isOrderCancelled(r) && r.priceRmb && r.purchaseUpdated !== "Yes")
         .slice(0, 30)
         .forEach(r => {
           const notifId = `notif_ledger_pending_${r.id}`;
@@ -749,6 +766,7 @@ export default function App() {
             title: `💰 Ledger Entry: ${r.model}`,
             description: `Priced at ¥${r.priceRmb} RMB (${r.vendorOrderQuantity || r.orderQuantity || 1} Pcs) • ${vName}. Ready to mark in accounting ledger.`,
             time: r.pricedAt ? new Date(r.pricedAt).toLocaleDateString("en-IN") : (r.orderDate || "Recent"),
+            timestamp: r.pricedAt ? new Date(r.pricedAt).getTime() : (r.timestamp ? new Date(r.timestamp).getTime() : 0),
             read: readSet.has(notifId),
             type: "ledger_pending",
             targetView: "rahul",
@@ -758,7 +776,7 @@ export default function App() {
 
       // 1b. New Requisitions Punched (Step 1 Starting)
       (requests || [])
-        .filter(r => r && r.status !== "Cancelled" && !r.priceRmb)
+        .filter(r => r && !isOrderCancelled(r) && !r.priceRmb)
         .slice(0, 20)
         .forEach(r => {
           const notifId = `notif_new_requisition_${r.id}`;
@@ -767,6 +785,7 @@ export default function App() {
             title: `📋 New Order Punched: ${r.model}`,
             description: `${r.orderQuantity || 1} Pcs entered by ${r.entryBy || "Requester"} (Order Date: ${r.orderDate || "Today"}).`,
             time: r.orderDate || "Recent",
+            timestamp: r.timestamp ? new Date(r.timestamp).getTime() : (r.orderDate ? new Date(r.orderDate).getTime() : 0),
             read: readSet.has(notifId),
             type: "new_requisition",
             targetView: "rahul",
@@ -776,7 +795,7 @@ export default function App() {
 
       // 1c. Warehouse Received Material (Delivered)
       (requests || [])
-        .filter(r => r && r.status !== "Cancelled" && r.isMaterialRec === "Yes" && r.purchaseUpdated !== "Yes")
+        .filter(r => r && !isOrderCancelled(r) && r.isMaterialRec === "Yes" && r.purchaseUpdated !== "Yes")
         .slice(0, 20)
         .forEach(r => {
           const notifId = `notif_delivered_${r.id}`;
@@ -785,6 +804,7 @@ export default function App() {
             title: `📦 Warehouse Received: ${r.model}`,
             description: `${r.receivedQuantity || r.orderQuantity} Pcs arrived in warehouse. Ready for landed cost & ledger closure.`,
             time: r.actualReceivedDate || "Recent",
+            timestamp: r.actualReceivedDate ? new Date(r.actualReceivedDate).getTime() : (r.timestamp ? new Date(r.timestamp).getTime() : 0),
             read: readSet.has(notifId),
             type: "warehouse_delivered",
             targetView: "rahul",
@@ -803,6 +823,7 @@ export default function App() {
             title: `🧾 Bill Verification: Cargo #${c.id}`,
             description: `${c.cargoDetail || "Cargo shipment"} (${c.vendorName || "Vendor"}) has documents attached awaiting Accounts verification.`,
             time: c.cargoOrderDate || "Recent",
+            timestamp: c.cargoOrderDate ? new Date(c.cargoOrderDate).getTime() : (c.timestamp ? new Date(c.timestamp).getTime() : 0),
             read: readSet.has(notifId),
             type: "bill_verification",
             targetView: "rahul",
@@ -810,22 +831,38 @@ export default function App() {
           });
         });
 
-      // 1e. Cancelled Orders / Requisitions Notification for Rahul & Accounts
+      // 1e. Cancelled Orders / Requisitions Notification for Rahul & Accounts (Highest Priority Alert)
       (requests || [])
-        .filter(r => r && r.status === "Cancelled")
-        .sort((a, b) => new Date(b.cancelledAt || 0) - new Date(a.cancelledAt || 0))
-        .slice(0, 30)
+        .filter(r => isOrderCancelled(r))
+        .sort((a, b) => {
+          const tA = a.cancelledAt ? new Date(a.cancelledAt).getTime() : (a.timestamp ? new Date(a.timestamp).getTime() : 0);
+          const tB = b.cancelledAt ? new Date(b.cancelledAt).getTime() : (b.timestamp ? new Date(b.timestamp).getTime() : 0);
+          return tB - tA;
+        })
+        .slice(0, 40)
         .forEach(r => {
           const notifId = `notif_cancelled_${r.id}`;
           const reasonText = r.cancellationReason ? ` • Reason: "${r.cancellationReason}"` : "";
           const cancelledByText = r.cancelledByName ? ` by ${r.cancelledByName}` : "";
-          const cancelDate = r.cancelledAt ? new Date(r.cancelledAt).toLocaleDateString("en-IN") : (r.orderDate || "Recent");
+          
+          let cancelDateDisplay = "Recent";
+          if (r.cancelledAt) {
+            try {
+              const cDate = new Date(r.cancelledAt);
+              cancelDateDisplay = cDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) + " " + cDate.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+            } catch(e) {
+              cancelDateDisplay = r.cancelledAt.slice(0, 10);
+            }
+          } else if (r.orderDate) {
+            cancelDateDisplay = r.orderDate;
+          }
+
           list.push({
             id: notifId,
             title: `🚫 Order Cancelled: ${r.model}`,
             description: `Order #${r.id} (${r.orderQuantity || 1} Pcs) was cancelled${cancelledByText}${reasonText}. Review ledger & accounts accordingly.`,
-            time: cancelDate,
-            timestamp: r.cancelledAt ? new Date(r.cancelledAt).getTime() : 0,
+            time: cancelDateDisplay,
+            timestamp: r.cancelledAt ? new Date(r.cancelledAt).getTime() : (r.timestamp ? new Date(r.timestamp).getTime() : 0),
             read: readSet.has(notifId),
             type: "order_cancelled",
             targetView: "rahul",
@@ -851,6 +888,7 @@ export default function App() {
             title: `Remark on ${r.partyName}`,
             description: `${r.authorName} (${r.authorRole?.toUpperCase()}): "${r.remark}" [${r.category}]`,
             time: r.createdAt ? new Date(r.createdAt).toLocaleDateString("en-IN") : "Recent",
+            timestamp: r.createdAt ? new Date(r.createdAt).getTime() : 0,
             read: readSet.has(`rem-${r.id}`),
             type: "remark",
             targetView: "crm",
@@ -871,6 +909,7 @@ export default function App() {
               title: `Cargo Assigned by ${r.cargoAssignedByName || "Purchase Manager"}`,
               description: `${r.cargoAssignedByName || "Purchase Manager"} assigned your order "${r.model}" (#${r.id}) to Cargo #${r.cargoId || "Shipment"}`,
               time: r.cargoAssignedAt ? new Date(r.cargoAssignedAt).toLocaleDateString("en-IN") : "Recent",
+              timestamp: r.cargoAssignedAt ? new Date(r.cargoAssignedAt).getTime() : 0,
               read: readSet.has(notifId),
               type: "cargo_assigned",
               targetView: "dashboard",
@@ -886,6 +925,7 @@ export default function App() {
               title: `Cargo Received by ${r.cargoReceivedByName || "Purchase Manager"}`,
               description: `${r.cargoReceivedByName || "Purchase Manager"} confirmed warehouse receipt for your order "${r.model}" (${r.receivedQuantity || r.vendorOrderQuantity || r.orderQuantity} Pcs)`,
               time: r.actualReceivedDate || "Recent",
+              timestamp: r.actualReceivedDate ? new Date(r.actualReceivedDate).getTime() : 0,
               read: readSet.has(notifId),
               type: "cargo_received",
               targetView: "dashboard",
@@ -896,8 +936,27 @@ export default function App() {
       });
     }
 
-    return list.sort((a, b) => (b.time || "").localeCompare(a.time || ""));
-  }, [currentUser, crmPartyRemarks, crmParties, requests, cargos, vendors, readNotificationIds]);
+    return list.sort((a, b) => {
+      // 1. Unread notifications appear first
+      if (a.read !== b.read) return a.read ? 1 : -1;
+      // 2. High priority types (cancelled orders are top priority alerts for Accounts)
+      const priorityMap = {
+        order_cancelled: 1,
+        ledger_pending: 2,
+        bill_verification: 3,
+        warehouse_delivered: 4,
+        new_requisition: 5,
+        remark: 6,
+        cargo_assigned: 7,
+        cargo_received: 8
+      };
+      const pA = priorityMap[a.type] || 10;
+      const pB = priorityMap[b.type] || 10;
+      if (pA !== pB) return pA - pB;
+      // 3. Most recent first by numeric timestamp
+      return (b.timestamp || 0) - (a.timestamp || 0);
+    });
+  }, [currentUser, crmPartyRemarks, crmParties, requests, cargos, vendors, readNotificationIds, activeView]);
 
   const unreadNotificationsCount = userNotifications.filter(n => !n.read).length;
 
@@ -1853,6 +1912,7 @@ export default function App() {
     };
     await postData("/api/requests", updated);
     setRequests(prev => prev.map(r => r.id === requestId ? updated : r));
+    playNotificationSound();
     logSystemActivity("CANCEL_ORDER", `Cancelled purchase order ${target.model} (#${target.id}) ${reason ? `- Reason: ${reason}` : ""}`, "Requisition", target.id, target, updated);
   };
 
@@ -1879,6 +1939,7 @@ export default function App() {
       const match = updatedList.find(u => u.id === r.id);
       return match ? match : r;
     }));
+    playNotificationSound();
 
     const targetModels = targets.map(r => r.model).filter(Boolean).slice(0, 5).join(", ");
     const moreSuffix = targets.length > 5 ? ` and ${targets.length - 5} more` : "";
@@ -1917,6 +1978,7 @@ const cancelRequests = async (requestIds, reason = "") => {
       const match = updatedList.find(u => u.id === r.id);
       return match ? match : r;
     }));
+    playNotificationSound();
 
     const targetModels = targets.map(r => r.model).filter(Boolean).slice(0, 5).join(", ");
     const moreSuffix = targets.length > 5 ? ` and ${targets.length - 5} more` : "";
