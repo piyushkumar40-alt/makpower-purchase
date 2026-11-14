@@ -297,12 +297,12 @@ export default function RahulDashboard({
     });
   }, [billCargos, step2Filter, step2Search, vendors]);
 
-  // Filter requests: priced, vendor assigned (all items, not just Import)
-  const eligibleRequests = useMemo(() => requests.filter(r => r.priceRmb && r.vendorId), [requests]);
+  // Filter requests: all active requests across the pipeline (including unpriced Step 1, priced Step 2, cargo, transit, received)
+  const eligibleRequests = useMemo(() => (requests || []).filter(r => r && r.status !== "Cancelled"), [requests]);
 
   // Partitioned requests for Mark Purchases
-  const pendingRequests = useMemo(() => eligibleRequests.filter(r => r.purchaseUpdated !== "Yes" && r.status !== "Cancelled"), [eligibleRequests]);
-  const submittedRequests = useMemo(() => eligibleRequests.filter(r => r.purchaseUpdated === "Yes" && r.status !== "Cancelled"), [eligibleRequests]);
+  const pendingRequests = useMemo(() => eligibleRequests.filter(r => r.purchaseUpdated !== "Yes"), [eligibleRequests]);
+  const submittedRequests = useMemo(() => eligibleRequests.filter(r => r.purchaseUpdated === "Yes"), [eligibleRequests]);
 
   // Active requests for the current tab
   const currentTabRequests = activeTab === "pending" ? pendingRequests : submittedRequests;
@@ -329,8 +329,11 @@ export default function RahulDashboard({
       }
 
       // 2. Stage Filter ("Where Item Is Now")
-      if (filterStage !== "all" && stage.key !== filterStage) {
-        return false;
+      if (filterStage !== "all") {
+        const matchesStage = stage.key === filterStage || 
+          (filterStage === "consolidated" && stage.key === "cargo") ||
+          (filterStage === "cargo" && stage.key === "consolidated");
+        if (!matchesStage) return false;
       }
 
       // 3. Vendor Filter
@@ -437,7 +440,8 @@ export default function RahulDashboard({
     { value: "all", label: "All Stages" },
     { value: "step1", label: "Step 1: Starting (Unpriced)" },
     { value: "priced", label: "Step 2: Priced / In Production" },
-    { value: "consolidated", label: "Step 3: Cargo Consolidated" },
+    { value: "vendorready", label: "Ready at Vendor" },
+    { value: "cargo", label: "Step 3: Cargo Consolidated" },
     { value: "pickedup", label: "Step 4: In Freight Transit" },
     { value: "received", label: "Step 5: Warehouse Received" },
     { value: "cancelled", label: "Cancelled" }
@@ -548,7 +552,7 @@ export default function RahulDashboard({
   const hasActiveFilters = quickStatus !== "all" || filterStage !== "all" || filterVendor || filterPurchaser || filterCategory || filterCargo || filterTransport || filterType !== "all" || searchQuery || fromDate || toDate;
 
   // When data is not pulled yet, show the full-page, dedicated Rahul Accounts loading screen
-  const isDataNotPulledYet = (!requests || requests.length === 0);
+  const isDataNotPulledYet = loading && !initialLoadComplete && (!requests || requests.length === 0);
   if (isDataNotPulledYet) {
     return (
       <RahulDashboardLoading 

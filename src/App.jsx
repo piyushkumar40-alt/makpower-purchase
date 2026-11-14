@@ -701,11 +701,115 @@ export default function App() {
     }
   });
 
-  // Calculate real-time notifications for the active user (remarks, allocations)
+  // Audio Chime notification on new work / live updates
+  const playNotificationSound = useCallback(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5 note
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.12); // A5 note
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.38);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.38);
+    } catch (e) {}
+  }, []);
+
+  // Calculate real-time notifications for the active user (remarks, allocations, accounts work, etc.)
   const userNotifications = useMemo(() => {
     if (!currentUser) return [];
     const list = [];
     const readSet = new Set(readNotificationIds);
+
+    const cleanRole = String(currentUser?.role || "").toLowerCase();
+    const cleanId = String(currentUser?.id || "").toLowerCase();
+    const cleanName = String(currentUser?.name || "").toLowerCase();
+    const cleanDesig = String(currentUser?.designation || "").toLowerCase();
+    const isRahul = cleanRole === "rahul" || cleanId === "u-rahul" || cleanName.includes("rahul") || cleanDesig.includes("account") || cleanDesig.includes("mark purchase") || cleanRole.includes("account");
+    const isAccountsOrAdmin = isRahul || cleanRole === "superadmin" || cleanRole === "owner";
+
+    // 1. Accounts Workboard Notifications for Rahul
+    if (isAccountsOrAdmin) {
+      // 1a. Unmarked Priced Purchases awaiting Ledger Entry
+      (requests || [])
+        .filter(r => r && r.status !== "Cancelled" && r.priceRmb && r.purchaseUpdated !== "Yes")
+        .slice(0, 30)
+        .forEach(r => {
+          const notifId = `notif_ledger_pending_${r.id}`;
+          const vName = (vendors || []).find(v => v.id === r.vendorId)?.name || "Vendor Assigned";
+          list.push({
+            id: notifId,
+            title: `💰 Ledger Entry: ${r.model}`,
+            description: `Priced at ¥${r.priceRmb} RMB (${r.vendorOrderQuantity || r.orderQuantity || 1} Pcs) • ${vName}. Ready to mark in accounting ledger.`,
+            time: r.pricedAt ? new Date(r.pricedAt).toLocaleDateString("en-IN") : (r.orderDate || "Recent"),
+            read: readSet.has(notifId),
+            type: "ledger_pending",
+            targetView: "rahul",
+            data: r
+          });
+        });
+
+      // 1b. New Requisitions Punched (Step 1 Starting)
+      (requests || [])
+        .filter(r => r && r.status !== "Cancelled" && !r.priceRmb)
+        .slice(0, 20)
+        .forEach(r => {
+          const notifId = `notif_new_requisition_${r.id}`;
+          list.push({
+            id: notifId,
+            title: `📋 New Order Punched: ${r.model}`,
+            description: `${r.orderQuantity || 1} Pcs entered by ${r.entryBy || "Requester"} (Order Date: ${r.orderDate || "Today"}).`,
+            time: r.orderDate || "Recent",
+            read: readSet.has(notifId),
+            type: "new_requisition",
+            targetView: "rahul",
+            data: r
+          });
+        });
+
+      // 1c. Warehouse Received Material (Delivered)
+      (requests || [])
+        .filter(r => r && r.status !== "Cancelled" && r.isMaterialRec === "Yes" && r.purchaseUpdated !== "Yes")
+        .slice(0, 20)
+        .forEach(r => {
+          const notifId = `notif_delivered_${r.id}`;
+          list.push({
+            id: notifId,
+            title: `📦 Warehouse Received: ${r.model}`,
+            description: `${r.receivedQuantity || r.orderQuantity} Pcs arrived in warehouse. Ready for landed cost & ledger closure.`,
+            time: r.actualReceivedDate || "Recent",
+            read: readSet.has(notifId),
+            type: "warehouse_delivered",
+            targetView: "rahul",
+            data: r
+          });
+        });
+
+      // 1d. Vendor Bills Pending Verification in Cargos
+      (cargos || [])
+        .filter(c => c && (c.invoiceFile || c.packingListFile) && (!c.vendorBillVerified || c.vendorBillVerified === "No"))
+        .slice(0, 15)
+        .forEach(c => {
+          const notifId = `notif_cargo_bill_${c.id}`;
+          list.push({
+            id: notifId,
+            title: `🧾 Bill Verification: Cargo #${c.id}`,
+            description: `${c.cargoDetail || "Cargo shipment"} (${c.vendorName || "Vendor"}) has documents attached awaiting Accounts verification.`,
+            time: c.cargoOrderDate || "Recent",
+            read: readSet.has(notifId),
+            type: "bill_verification",
+            targetView: "rahul",
+            data: c
+          });
+        });
+    }
 
     if (["crm", "asm", "tsm", "rsm", "superadmin", "owner"].includes(currentUser.role)) {
       (crmPartyRemarks || []).forEach(r => {
@@ -723,6 +827,7 @@ export default function App() {
             time: r.createdAt ? new Date(r.createdAt).toLocaleDateString("en-IN") : "Recent",
             read: readSet.has(`rem-${r.id}`),
             type: "remark",
+            targetView: "crm",
             data: r
           });
         }
@@ -742,6 +847,7 @@ export default function App() {
               time: r.cargoAssignedAt ? new Date(r.cargoAssignedAt).toLocaleDateString("en-IN") : "Recent",
               read: readSet.has(notifId),
               type: "cargo_assigned",
+              targetView: "dashboard",
               data: r
             });
           }
@@ -756,6 +862,7 @@ export default function App() {
               time: r.actualReceivedDate || "Recent",
               read: readSet.has(notifId),
               type: "cargo_received",
+              targetView: "dashboard",
               data: r
             });
           }
@@ -764,7 +871,7 @@ export default function App() {
     }
 
     return list.sort((a, b) => (b.time || "").localeCompare(a.time || ""));
-  }, [currentUser, crmPartyRemarks, crmParties, requests, readNotificationIds]);
+  }, [currentUser, crmPartyRemarks, crmParties, requests, cargos, vendors, readNotificationIds]);
 
   const unreadNotificationsCount = userNotifications.filter(n => !n.read).length;
 
@@ -1027,7 +1134,8 @@ export default function App() {
             const event = JSON.parse(e.data);
             if (event.type === "MUTATION") {
               // Instant real-time live sync: a mutation happened on another laptop / tab!
-              loadData(true);
+              loadData(false);
+              playNotificationSound();
             }
           } catch (pe) {}
         };
@@ -3604,7 +3712,25 @@ const cancelRequests = async (requestIds, reason = "") => {
               >
                 <Bell size={18} />
                 {unreadNotificationsCount > 0 && (
-                  <span style={{ position: "absolute", top: "2px", right: "2px", width: "7px", height: "7px", borderRadius: "50%", background: "#ef4444", boxShadow: "0 0 4px #ef4444" }}></span>
+                  <span style={{ 
+                    position: "absolute", 
+                    top: "-3px", 
+                    right: "-6px", 
+                    minWidth: "16px", 
+                    height: "16px", 
+                    borderRadius: "8px", 
+                    background: "#ef4444", 
+                    color: "#fff", 
+                    fontSize: "0.62rem", 
+                    fontWeight: 800, 
+                    display: "flex", 
+                    alignItems: "center", 
+                    justifyContent: "center", 
+                    padding: "0 4px", 
+                    boxShadow: "0 0 6px rgba(239, 68, 68, 0.6)" 
+                  }}>
+                    {unreadNotificationsCount > 99 ? "99+" : unreadNotificationsCount}
+                  </span>
                 )}
               </div>
 
@@ -3664,7 +3790,7 @@ const cancelRequests = async (requestIds, reason = "") => {
                               setReadNotificationIds(next);
                               try { localStorage.setItem("makpower_read_notifications", JSON.stringify(next)); } catch(e) {}
                             }
-                            setActiveView("crm");
+                            setActiveView(n.targetView || "crm");
                             setShowNotificationDropdown(false);
                           }}
                           style={{
