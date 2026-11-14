@@ -271,22 +271,20 @@ const CARGOS_LIGHT_QUERY = `
   SELECT 
     "id", "vendorId", "cargoOrderDate", "cargoDetail", "cargoPrice", "cargoPriceUom", 
     "cbmPackingList", "totalCargoPrice", "modeOfTransport", "cargoShippingDate", "cargoEta", 
-    "packingListFile", 
+    "packingListFile", "invoiceFile", "cargoReceiptFile",
     CASE 
-      WHEN "packingListData" IS NOT NULL AND TRIM("packingListData") <> '' AND "packingListData" LIKE 'http%' THEN "packingListData"
-      WHEN "packingListData" IS NOT NULL AND TRIM("packingListData") <> '' THEN 'AVAILABLE' 
+      WHEN "packingListData" IS NOT NULL AND "packingListData" <> '' THEN 
+        CASE WHEN LEFT("packingListData", 4) = 'http' THEN "packingListData" ELSE 'AVAILABLE' END 
       ELSE '' 
     END as "packingListData",
-    "invoiceFile", 
     CASE 
-      WHEN "invoiceData" IS NOT NULL AND TRIM("invoiceData") <> '' AND "invoiceData" LIKE 'http%' THEN "invoiceData"
-      WHEN "invoiceData" IS NOT NULL AND TRIM("invoiceData") <> '' THEN 'AVAILABLE' 
+      WHEN "invoiceData" IS NOT NULL AND "invoiceData" <> '' THEN 
+        CASE WHEN LEFT("invoiceData", 4) = 'http' THEN "invoiceData" ELSE 'AVAILABLE' END 
       ELSE '' 
     END as "invoiceData",
-    "cargoReceiptFile", 
     CASE 
-      WHEN "cargoReceiptData" IS NOT NULL AND TRIM("cargoReceiptData") <> '' AND "cargoReceiptData" LIKE 'http%' THEN "cargoReceiptData"
-      WHEN "cargoReceiptData" IS NOT NULL AND TRIM("cargoReceiptData") <> '' THEN 'AVAILABLE' 
+      WHEN "cargoReceiptData" IS NOT NULL AND "cargoReceiptData" <> '' THEN 
+        CASE WHEN LEFT("cargoReceiptData", 4) = 'http' THEN "cargoReceiptData" ELSE 'AVAILABLE' END 
       ELSE '' 
     END as "cargoReceiptData",
     "isMaterialRec", "receivedDate", "currency", "cargoEtaHistory", "billUploadedAt", 
@@ -298,35 +296,40 @@ const CARGOS_LIGHT_QUERY = `
 // Lightweight serializer for outgoing cargos in lists/state endpoints (drops 52MB base64 down to 15KB)
 function formatCargoForResponse(c) {
   if (!c) return c;
-  const hasPacking = Boolean(c.packingListData && String(c.packingListData).trim());
-  const hasInvoice = Boolean(c.invoiceData && String(c.invoiceData).trim());
-  const hasReceipt = Boolean(c.cargoReceiptData && String(c.cargoReceiptData).trim());
+  try {
+    const hasPacking = Boolean(c.packingListData && String(c.packingListData).trim());
+    const hasInvoice = Boolean(c.invoiceData && String(c.invoiceData).trim());
+    const hasReceipt = Boolean(c.cargoReceiptData && String(c.cargoReceiptData).trim());
 
-  const getDocToken = (raw) => {
-    if (!raw) return "";
-    const s = String(raw).trim();
-    if (!s) return "";
-    if (s.startsWith("http://") || s.startsWith("https://")) return s;
-    return "AVAILABLE";
-  };
+    const getDocToken = (raw) => {
+      if (!raw) return "";
+      const s = String(raw).trim();
+      if (!s) return "";
+      if (s.startsWith("http://") || s.startsWith("https://")) return s;
+      return "AVAILABLE";
+    };
 
-  return {
-    ...c,
-    cargoEta: sanitizeDateStr(c.cargoEta),
-    cargoShippingDate: sanitizeDateStr(c.cargoShippingDate),
-    cargoOrderDate: sanitizeDateStr(c.cargoOrderDate),
-    actualReceivedDate: sanitizeDateStr(c.actualReceivedDate),
-    cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
-    cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
-    totalCargoPrice: getEffectiveTotalCargoPrice(c),
-    cargoEtaHistory: safeJsonParse(c.cargoEtaHistory, []),
-    packingListFile: hasPacking ? (c.packingListFile || "") : "",
-    packingListData: getDocToken(c.packingListData),
-    invoiceFile: hasInvoice ? (c.invoiceFile || "") : "",
-    invoiceData: getDocToken(c.invoiceData),
-    cargoReceiptFile: hasReceipt ? (c.cargoReceiptFile || "") : "",
-    cargoReceiptData: getDocToken(c.cargoReceiptData)
-  };
+    return {
+      ...c,
+      cargoEta: sanitizeDateStr(c.cargoEta),
+      cargoShippingDate: sanitizeDateStr(c.cargoShippingDate),
+      cargoOrderDate: sanitizeDateStr(c.cargoOrderDate),
+      actualReceivedDate: sanitizeDateStr(c.actualReceivedDate),
+      cargoPrice: c.cargoPrice ? parseFloat(c.cargoPrice) : "",
+      cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
+      totalCargoPrice: getEffectiveTotalCargoPrice(c),
+      cargoEtaHistory: safeJsonParse(c.cargoEtaHistory, []),
+      packingListFile: hasPacking ? (c.packingListFile || "") : "",
+      packingListData: getDocToken(c.packingListData),
+      invoiceFile: hasInvoice ? (c.invoiceFile || "") : "",
+      invoiceData: getDocToken(c.invoiceData),
+      cargoReceiptFile: hasReceipt ? (c.cargoReceiptFile || "") : "",
+      cargoReceiptData: getDocToken(c.cargoReceiptData)
+    };
+  } catch (err) {
+    console.warn("formatCargoForResponse fallback:", c?.id, err.message);
+    return c;
+  }
 }
 
 // Automatically invalidate full-state cache on any mutating request
@@ -3551,8 +3554,15 @@ app.get("/api/cargos", async (req, res) => {
       }
       inFlightCargosPromise = (async () => {
         try {
-          const result = await pool.query(CARGOS_LIGHT_QUERY + ' ORDER BY "cargoOrderDate" DESC');
-          let rows = result.rows || [];
+          let rows = [];
+          try {
+            const result = await pool.query(CARGOS_LIGHT_QUERY + ' ORDER BY "cargoOrderDate" DESC');
+            rows = result.rows || [];
+          } catch (queryErr) {
+            console.warn("CARGOS_LIGHT_QUERY notice, falling back to standard query:", queryErr.message);
+            const fbResult = await pool.query('SELECT * FROM cargos ORDER BY "cargoOrderDate" DESC');
+            rows = fbResult.rows || [];
+          }
           if (rows.length === 0 && (purchaserStateCache?.cargos?.length > 0 || lastKnownGoodPurchaserState?.cargos?.length > 0)) {
             rows = purchaserStateCache?.cargos || lastKnownGoodPurchaserState?.cargos || [];
           }
@@ -4422,8 +4432,15 @@ app.post("/api/cargos", async (req, res) => {
           "invoiceData" = CASE WHEN EXCLUDED."invoiceData" = 'AVAILABLE' THEN cargos."invoiceData" ELSE EXCLUDED."invoiceData" END,
           "cargoReceiptFile" = EXCLUDED."cargoReceiptFile",
           "cargoReceiptData" = CASE WHEN EXCLUDED."cargoReceiptData" = 'AVAILABLE' THEN cargos."cargoReceiptData" ELSE EXCLUDED."cargoReceiptData" END,
-          "isMaterialRec" = EXCLUDED."isMaterialRec",
-          "receivedDate" = EXCLUDED."receivedDate",
+          "isMaterialRec" = CASE 
+            WHEN EXCLUDED."isMaterialRec" = 'Yes' THEN 'Yes'
+            WHEN EXCLUDED."isMaterialRec" = 'No' AND cargos."isMaterialRec" = 'Yes' THEN 'Yes'
+            ELSE COALESCE(NULLIF(EXCLUDED."isMaterialRec", ''), cargos."isMaterialRec")
+          END,
+          "receivedDate" = CASE 
+            WHEN EXCLUDED."receivedDate" IS NOT NULL AND EXCLUDED."receivedDate" <> '' THEN EXCLUDED."receivedDate"
+            ELSE cargos."receivedDate"
+          END,
           "currency" = EXCLUDED."currency",
           "cargoEtaHistory" = COALESCE(NULLIF(EXCLUDED."cargoEtaHistory", ''), cargos."cargoEtaHistory"),
           "billUploadedAt" = EXCLUDED."billUploadedAt",
@@ -4449,6 +4466,38 @@ app.post("/api/cargos", async (req, res) => {
         c.cargoCompanyId || ""
       ];
       await pool.query(query, values);
+      // Synchronize cargo shipping date, ETA, and received status to all bundled requests in DB
+      try {
+        if (c.id) {
+          const reqSyncUpdates = [];
+          const reqSyncVals = [];
+          let syncIdx = 1;
+          if (c.cargoShippingDate) {
+            reqSyncUpdates.push(`"cargoShippingDate" = $${syncIdx++}`);
+            reqSyncVals.push(c.cargoShippingDate);
+          }
+          if (c.cargoEta) {
+            reqSyncUpdates.push(`"cargoEta" = $${syncIdx++}`);
+            reqSyncVals.push(c.cargoEta);
+          }
+          if (c.isMaterialRec === 'Yes') {
+            reqSyncUpdates.push(`"isMaterialRec" = 'Yes'`);
+            if (c.receivedDate) {
+              reqSyncUpdates.push(`"actualReceivedDate" = $${syncIdx++}`);
+              reqSyncVals.push(c.receivedDate);
+            }
+          }
+          if (reqSyncUpdates.length > 0) {
+            reqSyncVals.push(c.id);
+            await pool.query(
+              `UPDATE requests SET ${reqSyncUpdates.join(', ')} WHERE "cargoId" = $${syncIdx}`,
+              reqSyncVals
+            );
+          }
+        }
+      } catch (syncErr) {
+        console.warn("Notice: cargo request sync check in POST /api/cargos:", syncErr.message);
+      }
       invalidateStateCache();
       res.json({ success: true });
     } catch (err) {

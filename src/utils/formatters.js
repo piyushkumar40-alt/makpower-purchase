@@ -997,7 +997,17 @@ export const isCargoMatch = (reqCargoId, cargo) => {
  * a synthesized cargo shipment is created and included.
  */
 export const reconcileCargosWithRequests = (cargos = [], requests = []) => {
-  const base = Array.isArray(cargos) ? [...cargos] : [];
+  const base = Array.isArray(cargos) ? cargos.map(c => {
+    // If all active requests for this cargo are received in warehouse, guarantee cargo status reflects Received
+    if (c.isMaterialRec !== "Yes" && Array.isArray(requests) && requests.length > 0) {
+      const items = requests.filter(r => isCargoMatch(r.cargoId, c) && r.status !== "Cancelled");
+      if (items.length > 0 && items.every(it => it.isMaterialRec === "Yes")) {
+        const firstRecDate = items.find(it => it.actualReceivedDate)?.actualReceivedDate || c.receivedDate || "";
+        return { ...c, isMaterialRec: "Yes", receivedDate: firstRecDate };
+      }
+    }
+    return c;
+  }) : [];
   const knownKeys = new Set(
     base.flatMap(c => [
       String(c.id || "").trim().toLowerCase(),

@@ -1419,7 +1419,7 @@ const handleTriggerBatchCancel = () => {
                       <td>
                         <button
                           type="button"
-                          onClick={() => onNavigateStep && onNavigateStep(stage.stepTarget)}
+                          onClick={() => onNavigateStep && onNavigateStep(stage.stepTarget, r.cargoId, r._cargo)}
                           style={{
                             background: stage.bgColor,
                             color: stage.badgeColor,
@@ -1476,7 +1476,7 @@ const handleTriggerBatchCancel = () => {
                         {r.cargoId ? (
                           <div>
                             <span 
-                              onClick={() => onNavigateStep && onNavigateStep("shipments")}
+                              onClick={() => onNavigateStep && onNavigateStep("shipments", r.cargoId, r._cargo)}
                               style={{ 
                                 fontWeight: 700, 
                                 color: "#06b6d4", 
@@ -1484,12 +1484,16 @@ const handleTriggerBatchCancel = () => {
                                 fontSize: "0.82rem",
                                 textDecoration: "underline"
                               }}
-                              title="Click to view in Step 5: Transit Tracking"
+                              title={`Click to open Cargo #${r.cargoId} directly`}
                             >
                               📦 {r.cargoId}
                             </span>
                             {(r._cargo?.cargoDetail || r.cargoDetail) && (
-                              <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--primary)", marginTop: "2px" }} title="Cargo Name / Detail">
+                              <div 
+                                onClick={() => onNavigateStep && onNavigateStep("shipments", r.cargoId, r._cargo)}
+                                style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--primary)", marginTop: "2px", cursor: "pointer", textDecoration: "underline" }} 
+                                title={`Click to open Cargo "${r._cargo?.cargoDetail || r.cargoDetail}" directly`}
+                              >
                                 Cargo: <span>{r._cargo?.cargoDetail || r.cargoDetail}</span>
                               </div>
                             )}

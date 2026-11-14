@@ -59,7 +59,8 @@ export default function RahulDashboard({
   onDirectPull,
   loading = false,
   initialLoadComplete = true,
-  isMasterDataSilentlyLoading = false
+  isMasterDataSilentlyLoading = false,
+  initialTargetCargoId = null
 }) {
   const getPurchaserName = (r) => getPurchaserDisplayName(r, purchasers);
 
@@ -72,6 +73,22 @@ export default function RahulDashboard({
   });
 
   const [transitStatusFilter, setTransitStatusFilter] = useState("all");
+  const [targetCargoId, setTargetCargoId] = useState(initialTargetCargoId || null);
+
+  useEffect(() => {
+    if (initialTargetCargoId) {
+      setTargetCargoId(initialTargetCargoId);
+      setTransitStatusFilter("all");
+      setWorkflowStep("transit");
+    }
+  }, [initialTargetCargoId]);
+
+  const handleNavigateToCargo = (stepKey, cargoId) => {
+    setTargetCargoId(cargoId || null);
+    setTransitStatusFilter("all");
+    setWorkflowStep("transit");
+  };
+
   const [step2Filter, setStep2Filter] = useState("pending"); // "pending" | "overdue" | "due_today" | "awaiting_material" | "verified" | "all"
   const [step2Search, setStep2Search] = useState("");
 
@@ -351,7 +368,13 @@ export default function RahulDashboard({
   // Active requests for the current tab
   const currentTabRequests = isLookingForCancelled
     ? eligibleRequests
-    : (activeTab === "pending" ? pendingRequests : submittedRequests);
+    : (quickStatus === "all" || quickStatus === "coming" || quickStatus === "pipeline" || quickStatus === "delivered"
+        ? eligibleRequests
+        : (quickStatus === "pending_mark" 
+            ? pendingRequests 
+            : quickStatus === "marked" 
+            ? submittedRequests 
+            : (activeTab === "pending" ? pendingRequests : submittedRequests)));
 
   // Multi-Level Filtered Requests
   const filteredRequests = useMemo(() => {
@@ -1344,8 +1367,8 @@ export default function RahulDashboard({
       {workflowStep === "transit" && (
         <div className="card-fade-in">
           <BundledUpcomingShipments 
-            cargos={inTransitCargos}
-            requests={requests.filter(r => r.isMaterialRec !== "Yes" && r.status !== "Cancelled")}
+            cargos={cargos}
+            requests={requests.filter(r => r.status !== "Cancelled")}
             vendors={vendors}
             cargoCompanies={cargoCompanies}
             purchasers={purchasers}
@@ -1353,7 +1376,9 @@ export default function RahulDashboard({
             isViewOnly={false}
             onBatchUpdateRequests={onBatchUpdateRequests}
             onUpdateCargo={onUpdateCargo}
-            initialStatusFilter={transitStatusFilter}
+            initialStatusFilter={targetCargoId ? "all" : transitStatusFilter}
+            targetCargoId={targetCargoId}
+            onClearTargetCargo={() => setTargetCargoId(null)}
           />
         </div>
       )}
@@ -1375,6 +1400,7 @@ export default function RahulDashboard({
             purchasers={purchasers}
             currentUser={currentUser}
             isViewOnly={true}
+            onNavigateStep={(stepKey, targetCargo) => handleNavigateToCargo(stepKey, targetCargo)}
             loading={loading}
             initialLoadComplete={initialLoadComplete}
             isMasterDataSilentlyLoading={isMasterDataSilentlyLoading}
@@ -2010,10 +2036,16 @@ export default function RahulDashboard({
                           <td style={{ fontSize: "0.78rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
                             {cargo?.cargoOrderDate || "—"}
                           </td>
-                          <td style={{ fontSize: "0.78rem", maxWidth: "160px" }} title={`Cargo Name: ${cargo?.cargoDetail || "—"} | Code: ${r.cargoId || "—"}`}>
+                          <td 
+                            style={{ fontSize: "0.78rem", maxWidth: "160px", cursor: r.cargoId ? "pointer" : "default" }} 
+                            title={r.cargoId ? `Click to open Cargo #${r.cargoId} directly` : "—"}
+                            onClick={() => r.cargoId && handleNavigateToCargo("transit", r.cargoId)}
+                          >
                             {cargo?.cargoDetail ? (
                               <div>
-                                <div style={{ fontWeight: 700, color: "var(--primary)" }}>{cargo.cargoDetail}</div>
+                                <div style={{ fontWeight: 700, color: "var(--primary)", textDecoration: "underline" }}>
+                                  📦 {cargo.cargoDetail}
+                                </div>
                                 {r.cargoId && r.cargoId !== cargo.cargoDetail && (
                                   <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "1px" }}>#{r.cargoId}</div>
                                 )}
@@ -2025,7 +2057,9 @@ export default function RahulDashboard({
                               </div>
                             ) : (
                               <div>
-                                <span style={{ color: "var(--text-muted)" }}>{r.cargoId || "—"}</span>
+                                <span style={{ color: r.cargoId ? "var(--primary)" : "var(--text-muted)", textDecoration: r.cargoId ? "underline" : "none", fontWeight: r.cargoId ? 700 : 400 }}>
+                                  {r.cargoId ? `📦 #${r.cargoId}` : "—"}
+                                </span>
                                 {cargo && calculateCargoTotalCartons(cargo, requests) > 0 && (
                                   <div style={{ fontSize: "0.72rem", color: "#a855f7", fontWeight: 700, marginTop: "2px" }}>
                                     📦 {calculateCargoTotalCartons(cargo, requests)} Cartons

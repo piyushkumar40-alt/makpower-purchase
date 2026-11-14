@@ -16,6 +16,7 @@ export default function HomePage({
   cargos = [],
   cargoCompanies = [],
   onNavigateView,
+  onUpdateCargo,
   onLogout
 }) {
   const [storageMetrics, setStorageMetrics] = useState(null);
@@ -52,21 +53,52 @@ export default function HomePage({
   const [homeUpcomingTab, setHomeUpcomingTab] = useState("all"); // 'all' | 'cargos' | 'vendor_lots'
   const [homeExpandedCargos, setHomeExpandedCargos] = useState({});
   const [homeExpandedLots, setHomeExpandedLots] = useState({});
+  const [receiveModalCargo, setReceiveModalCargo] = useState(null);
+  const [receiveDateInput, setReceiveDateInput] = useState(todayStr);
+
+  const isAneesUser = currentUser?.id === "u-anees" || String(currentUser?.name || "").toLowerCase().includes("anees");
+  const [selectedPurchaserId, setSelectedPurchaserId] = useState(() => {
+    if (isAneesUser) return currentUser?.id || "u-anees";
+    return "all";
+  });
+
+  const activePurchasers = React.useMemo(() => {
+    return (users || []).filter(u => 
+      u.role === "purchaser" || 
+      u.role === "purchase_manager" || 
+      u.id === "u-anees" ||
+      (u.designation && u.designation.toLowerCase().includes("purchas"))
+    );
+  }, [users]);
 
   // Active non-cancelled requests
   const activeRequests = requests.filter(r => r.status !== "Cancelled");
 
-  // Purchaser-specific data
+  // Purchaser-specific data based on role and selected purchaser scope
   const isAdminOrManager = currentUser?.role === "superadmin" || currentUser?.role === "owner" || currentUser?.role === "purchase_manager";
-  const myRequests = activeRequests.filter(r => isAdminOrManager || isRequestForUser(r, currentUser, users));
+  
+  const myRequests = React.useMemo(() => {
+    if (selectedPurchaserId !== "all") {
+      const targetUser = activePurchasers.find(u => u.id === selectedPurchaserId) || { id: selectedPurchaserId };
+      return activeRequests.filter(r => isRequestForUser(r, targetUser, users));
+    }
+    if (isAdminOrManager) return activeRequests;
+    return activeRequests.filter(r => isRequestForUser(r, currentUser, users));
+  }, [activeRequests, selectedPurchaserId, isAdminOrManager, activePurchasers, currentUser, users]);
 
   // Purchaser-specific in-transit cargos
-  const myCargos = (cargos || []).filter(c => {
-    const cargoItems = (requests || []).filter(r => r.cargoId === c.id && r.status !== "Cancelled");
-    if (cargoItems.length === 0) return false;
-    if (isAdminOrManager) return true;
-    return cargoItems.some(r => isRequestForUser(r, currentUser, users));
-  });
+  const myCargos = React.useMemo(() => {
+    return (cargos || []).filter(c => {
+      const cargoItems = (requests || []).filter(r => r.cargoId === c.id && r.status !== "Cancelled");
+      if (cargoItems.length === 0) return false;
+      if (selectedPurchaserId !== "all") {
+        const targetUser = activePurchasers.find(u => u.id === selectedPurchaserId) || { id: selectedPurchaserId };
+        return cargoItems.some(r => isRequestForUser(r, targetUser, users));
+      }
+      if (isAdminOrManager) return true;
+      return cargoItems.some(r => isRequestForUser(r, currentUser, users));
+    });
+  }, [cargos, requests, selectedPurchaserId, isAdminOrManager, activePurchasers, currentUser, users]);
 
   const inTransitCargos = myCargos.filter(c => c.isMaterialRec !== "Yes");
 
@@ -212,7 +244,6 @@ export default function HomePage({
   }).length;
 
   // Person-wise delayed task breakdown for PC / Coordinator
-  const activePurchasers = users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active");
   const personWiseTaskStats = activePurchasers.map(p => {
     const pReqs = activeRequests.filter(r => isRequestForUser(r, p, activePurchasers));
     const total = pReqs.length;
@@ -265,6 +296,33 @@ export default function HomePage({
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+          {(isAdminOrManager || isAneesUser) && (
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(15, 23, 42, 0.6)", padding: "4px 10px", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+              <User size={14} style={{ color: "var(--primary)" }} />
+              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>Scope:</span>
+              <select
+                className="form-control"
+                value={selectedPurchaserId}
+                onChange={(e) => setSelectedPurchaserId(e.target.value)}
+                style={{
+                  fontSize: "0.82rem",
+                  padding: "4px 8px",
+                  borderRadius: "6px",
+                  fontWeight: 600,
+                  borderColor: selectedPurchaserId !== "all" ? "var(--primary)" : undefined,
+                  background: selectedPurchaserId !== "all" ? "rgba(56, 189, 248, 0.15)" : undefined,
+                  cursor: "pointer"
+                }}
+              >
+                <option value="all">🌐 All Purchasers</option>
+                {activePurchasers.map(p => (
+                  <option key={p.id} value={p.id}>
+                    👤 {p.name} {isAneesUser && (p.id === "u-anees" || String(p.name).toLowerCase().includes("anees")) ? "(Default)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <button onClick={fetchMetrics} className="btn btn-secondary btn-sm" title="Refresh Dashboard Data">
             <RefreshCw size={14} className={loadingMetrics ? "spin" : ""} /> Refresh Status
           </button>
@@ -502,11 +560,34 @@ export default function HomePage({
                                       {isExpanded ? "Hide" : "Items"}
                                     </button>
                                     <button 
-                                      onClick={() => onNavigateView("dashboard")} 
+                                      onClick={() => onNavigateView("dashboard", { targetCargoId: cargo.id })} 
                                       className="btn btn-primary btn-sm" 
                                       style={{ padding: "3px 8px", fontSize: "0.74rem" }}
+                                      title={`Open Cargo #${cargo.id} directly`}
                                     >
                                       Open Cargo
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setReceiveModalCargo(cargo);
+                                        setReceiveDateInput(todayStr);
+                                      }}
+                                      className="btn btn-sm"
+                                      style={{
+                                        padding: "3px 8px",
+                                        fontSize: "0.74rem",
+                                        background: "linear-gradient(135deg, #059669 0%, #10b981 100%)",
+                                        color: "#fff",
+                                        border: "1px solid #10b981",
+                                        fontWeight: 700,
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "3px"
+                                      }}
+                                      title="Directly receive this cargo and all bundled items at warehouse"
+                                    >
+                                      📥 Receive
                                     </button>
                                   </div>
                                 </td>
@@ -902,6 +983,63 @@ export default function HomePage({
       </div>
     </div>
   )}
+
+      {/* Direct Warehouse Receive Cargo Confirmation Modal */}
+      {receiveModalCargo && (
+        <div className="modal-overlay" style={{ zIndex: 9999 }}>
+          <div className="glass-panel modal-content" style={{ maxWidth: "520px", width: "95%" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px", marginBottom: "16px" }}>
+              <h3 style={{ margin: 0, fontSize: "1.1rem", display: "flex", alignItems: "center", gap: "8px", color: "var(--success, #10b981)" }}>
+                📥 Receive Cargo at Warehouse
+              </h3>
+              <button className="btn-close" onClick={() => setReceiveModalCargo(null)}>×</button>
+            </div>
+
+            <div style={{ marginBottom: "18px" }}>
+              <p style={{ fontSize: "0.92rem", color: "var(--text-main)", marginBottom: "10px", lineHeight: "1.5" }}>
+                Confirm receiving consignment <strong>📦 {receiveModalCargo.cargoName || receiveModalCargo.id}</strong> directly at warehouse?
+              </p>
+              <div style={{ background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.25)", padding: "10px 14px", borderRadius: "8px", fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: "14px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                <div>Vendor: <strong style={{ color: "var(--text-main)" }}>{receiveModalCargo.vendorName}</strong> | Transport: <strong style={{ color: "var(--text-main)" }}>{receiveModalCargo.modeOfTransport || "Sea"}</strong></div>
+                <div>Items: <strong style={{ color: "var(--text-main)" }}>{receiveModalCargo.totalPcs?.toLocaleString()} Pcs</strong> across <strong style={{ color: "var(--text-main)" }}>{receiveModalCargo.cargoItems?.length} item lines</strong></div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.82rem", fontWeight: 600 }}>Actual Warehouse Received Date</label>
+                <input 
+                  type="date"
+                  className="form-control"
+                  value={receiveDateInput}
+                  onChange={(e) => setReceiveDateInput(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setReceiveModalCargo(null)}>
+                Cancel
+              </button>
+              <button 
+                type="button" 
+                className="btn btn-primary"
+                style={{ background: "#10b981", borderColor: "#10b981" }}
+                onClick={async () => {
+                  if (onUpdateCargo) {
+                    await onUpdateCargo({
+                      ...receiveModalCargo,
+                      isMaterialRec: "Yes",
+                      receivedDate: receiveDateInput || todayStr
+                    });
+                  }
+                  setReceiveModalCargo(null);
+                }}
+              >
+                ✓ Confirm Material Received
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

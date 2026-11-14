@@ -42,15 +42,42 @@ export default function BundledUpcomingShipments({
   isViewOnly = false,
   onBatchUpdateRequests,
   onUpdateCargo,
-  initialStatusFilter = "upcoming"
+  initialStatusFilter = "upcoming",
+  targetCargoId = null,
+  onClearTargetCargo = null
 }) {
-  const [statusFilter, setStatusFilter] = useState(initialStatusFilter || "upcoming"); // "upcoming" | "delivered" | "all" | "pending_bill_verification" | "missing_bill"
+  const [statusFilter, setStatusFilter] = useState(targetCargoId ? "all" : (initialStatusFilter || "upcoming")); // "upcoming" | "delivered" | "all" | "pending_bill_verification" | "missing_bill"
 
   useEffect(() => {
-    if (initialStatusFilter) {
+    if (targetCargoId) {
+      setStatusFilter("all");
+      setVendorFilter("");
+      setCarrierFilter("");
+      setPurchaserFilter("");
+      setModeFilter("");
+      setFromDate("");
+      setToDate("");
+      setSearchQuery(String(targetCargoId));
+
+      const timer = setTimeout(() => {
+        const el = document.getElementById(`cargo-card-${targetCargoId}`) || 
+                   document.querySelector(`[id*="${targetCargoId}"]`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.style.transition = "all 0.4s ease";
+          el.style.boxShadow = "0 0 30px rgba(56, 189, 248, 0.8), 0 0 10px #38bdf8";
+          el.style.border = "2px solid #38bdf8";
+          setTimeout(() => {
+            el.style.boxShadow = "";
+            el.style.border = "";
+          }, 4500);
+        }
+      }, 350);
+      return () => clearTimeout(timer);
+    } else if (initialStatusFilter) {
       setStatusFilter(initialStatusFilter);
     }
-  }, [initialStatusFilter]);
+  }, [targetCargoId, initialStatusFilter]);
 
   const [vendorFilter, setVendorFilter] = useState("");
   const [carrierFilter, setCarrierFilter] = useState("");
@@ -115,21 +142,27 @@ export default function BundledUpcomingShipments({
     return map;
   }, [requests]);
 
-  // Enriched Cargos - In-Transit Goods Only
+  // Enriched Cargos
   const enrichedCargos = useMemo(() => {
     const allCargos = reconcileCargosWithRequests(cargos, requests);
     return (allCargos || [])
       .filter(cargo => {
         const isDelivered = cargo.isMaterialRec === "Yes" || cargo.status === "Delivered" || cargo.status === "Received";
-        if (isDelivered) return false;
+        const isTargetMatch = targetCargoId && (cargo.id === targetCargoId || cargo.cargoDetail === targetCargoId || String(cargo.id).toLowerCase().includes(String(targetCargoId).toLowerCase()));
+        if (isDelivered && statusFilter !== "delivered" && statusFilter !== "all" && !isTargetMatch) return false;
         const allItems = (requests || []).filter(r => isCargoMatch(r.cargoId, cargo) && r.status !== "Cancelled");
-        if (allItems.length > 0 && allItems.every(it => it.isMaterialRec === "Yes")) {
+        if (allItems.length > 0 && allItems.every(it => it.isMaterialRec === "Yes") && statusFilter !== "delivered" && statusFilter !== "all" && !isTargetMatch) {
           return false;
         }
         return true;
       })
       .map(cargo => {
-        const items = cargoItemsMap[cargo.id] || (requests || []).filter(r => isCargoMatch(r.cargoId, cargo) && r.status !== "Cancelled" && r.isMaterialRec !== "Yes");
+        const isDelivered = cargo.isMaterialRec === "Yes" || cargo.status === "Delivered" || cargo.status === "Received";
+        const isTargetMatch = targetCargoId && (cargo.id === targetCargoId || cargo.cargoDetail === targetCargoId || String(cargo.id).toLowerCase().includes(String(targetCargoId).toLowerCase()));
+        const items = (isDelivered || isTargetMatch || statusFilter === "all" || statusFilter === "delivered")
+          ? (requests || []).filter(r => isCargoMatch(r.cargoId, cargo) && r.status !== "Cancelled")
+          : (cargoItemsMap[cargo.id] || (requests || []).filter(r => isCargoMatch(r.cargoId, cargo) && r.status !== "Cancelled" && r.isMaterialRec !== "Yes"));
+
         const totalUnits = items.reduce((sum, it) => sum + (Number(it.orderQuantity) || 0), 0);
         const totalValueRmb = items.reduce((sum, it) => {
           const qty = Number(it.orderQuantity) || 0;
@@ -150,7 +183,7 @@ export default function BundledUpcomingShipments({
           carrierName
         };
       });
-  }, [cargos, requests, cargoItemsMap, vendorMap, carrierMap]);
+  }, [cargos, requests, cargoItemsMap, vendorMap, carrierMap, statusFilter, targetCargoId]);
 
   // Metrics Bar - In-Transit Goods Only
   const stats = useMemo(() => {
@@ -563,6 +596,55 @@ export default function BundledUpcomingShipments({
         </div>
       </div>
 
+      {/* Direct Cargo Target Alert Banner */}
+      {targetCargoId && (
+        <div style={{
+          marginBottom: "16px",
+          padding: "12px 18px",
+          borderRadius: "10px",
+          background: "linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(3, 105, 161, 0.1))",
+          border: "1px solid rgba(56, 189, 248, 0.4)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "12px",
+          flexWrap: "wrap",
+          boxShadow: "0 2px 12px rgba(56, 189, 248, 0.2)"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "1.3rem" }}>📦</span>
+            <div>
+              <span style={{ fontSize: "0.88rem", color: "#38bdf8", fontWeight: 700 }}>
+                Viewing Direct Cargo: #{targetCargoId}
+              </span>
+              <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>
+                Directly opened from Master Sheet / Workboard to inspect this cargo's items and documents.
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              resetFilters();
+              if (onClearTargetCargo) onClearTargetCargo();
+            }}
+            className="btn btn-sm"
+            style={{
+              fontSize: "0.76rem",
+              padding: "5px 14px",
+              background: "rgba(255, 255, 255, 0.1)",
+              color: "#fff",
+              border: "1px solid rgba(255, 255, 255, 0.25)",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontWeight: 600
+            }}
+          >
+            ✕ Show All Shipments
+          </button>
+        </div>
+      )}
+
       {/* Shipment Results Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
         <span style={{ fontSize: "0.86rem", color: "var(--text-muted)" }}>
@@ -577,7 +659,7 @@ export default function BundledUpcomingShipments({
           No cargo shipments match the selected filters.
           {hasActiveFilters && (
             <div style={{ marginTop: "12px" }}>
-              <button onClick={resetFilters} className="btn btn-secondary btn-sm">Reset Filters</button>
+              <button onClick={() => { resetFilters(); if (onClearTargetCargo) onClearTargetCargo(); }} className="btn btn-secondary btn-sm">Reset Filters</button>
             </div>
           )}
         </div>
@@ -586,14 +668,19 @@ export default function BundledUpcomingShipments({
           {filteredCargos.map(cargo => {
             const isDelivered = cargo.isDelivered;
             const carrierObj = cargoCompanies.find(cc => cc.id === cargo.cargoCompanyId);
+            const isTargeted = Boolean(targetCargoId && (cargo.id === targetCargoId || cargo.cargoDetail === targetCargoId || String(cargo.id).toLowerCase().includes(String(targetCargoId).toLowerCase())));
 
             return (
               <div 
                 key={cargo.id} 
+                id={`cargo-card-${cargo.id}`}
                 className="glass-panel" 
                 style={{ 
                   padding: "24px", 
-                  marginBottom: "20px"
+                  marginBottom: "20px",
+                  border: isTargeted ? "2px solid #38bdf8" : undefined,
+                  boxShadow: isTargeted ? "0 0 25px rgba(56, 189, 248, 0.35)" : undefined,
+                  transition: "all 0.4s ease"
                 }}
               >
                 {/* Cargo Header Info */}

@@ -504,7 +504,9 @@ export default function App() {
   // activeView: "login" | "home" | "requester" | "dashboard" | "admin" | "nitin" | "rahul" | "coordinator" | "itemcatalog" | "itemdetail"
   const [activeView, setActiveView] = useState(() => {
     const savedUser = localStorage.getItem("makpower_current_user");
-    const savedView = localStorage.getItem("makpower_active_view");
+    const sessionView = sessionStorage.getItem("makpower_active_view");
+    const localView = localStorage.getItem("makpower_active_view");
+    const savedView = sessionView || localView;
     if (savedUser) {
       if (savedView && savedView !== "itemdetail" && savedView !== "login") return savedView;
       try {
@@ -557,9 +559,11 @@ export default function App() {
   useEffect(() => {
     if (currentUser) {
       if (activeView !== "itemdetail") {
+        try { sessionStorage.setItem("makpower_active_view", activeView); } catch(e) {}
         localStorage.setItem("makpower_active_view", activeView);
       }
     } else {
+      try { sessionStorage.removeItem("makpower_active_view"); } catch(e) {}
       localStorage.removeItem("makpower_active_view");
     }
   }, [activeView, currentUser]);
@@ -693,13 +697,47 @@ export default function App() {
   const lastRefreshTsRef = React.useRef(null);
 
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
+  const [directTargetCargoId, setDirectTargetCargoId] = useState(null);
+
+  const getReadStorageKey = useCallback((uid) => {
+    return uid ? `makpower_read_notifs_${uid}` : "makpower_read_notifs_guest";
+  }, []);
+
   const [readNotificationIds, setReadNotificationIds] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem("makpower_read_notifications") || "[]");
+      const uid = currentUser?.id;
+      const key = uid ? `makpower_read_notifs_${uid}` : "makpower_read_notifs_guest";
+      return JSON.parse(localStorage.getItem(key) || "[]");
     } catch (e) {
       return [];
     }
   });
+
+  // Keep read IDs synced when current user switches / logs in
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    try {
+      const key = getReadStorageKey(currentUser.id);
+      const saved = JSON.parse(localStorage.getItem(key) || "[]");
+      setReadNotificationIds(Array.isArray(saved) ? saved : []);
+    } catch (e) {
+      setReadNotificationIds([]);
+    }
+  }, [currentUser?.id, getReadStorageKey]);
+
+  // Safe cumulative mark-as-read: performs set union so previous read IDs are never wiped out
+  const markNotificationsAsRead = useCallback((idsToMark) => {
+    const list = Array.isArray(idsToMark) ? idsToMark : [idsToMark];
+    if (list.length === 0) return;
+    setReadNotificationIds(prev => {
+      const next = Array.from(new Set([...prev, ...list]));
+      try {
+        const key = getReadStorageKey(currentUser?.id);
+        localStorage.setItem(key, JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+  }, [currentUser?.id, getReadStorageKey]);
 
   // Audio Chime notification on new work / live updates
   const playNotificationSound = useCallback(() => {
@@ -752,70 +790,219 @@ export default function App() {
       return st === "cancelled" || Boolean(r.cancelledAt) || (Boolean(r.cancellationReason) && st !== "active");
     };
 
-    // 1. Accounts Workboard Notifications for Rahul
+    // 1. Accounts Workboard Grouped Notifications for Rahul & Admin
     if (isAccountsOrAdmin) {
-      // 1a. Unmarked Priced Purchases awaiting Ledger Entry
-      (requests || [])
-        .filter(r => r && !isOrderCancelled(r) && r.priceRmb && r.purchaseUpdated !== "Yes")
-        .slice(0, 30)
-        .forEach(r => {
-          const notifId = `notif_ledger_pending_${r.id}`;
-          const vName = (vendors || []).find(v => v.id === r.vendorId)?.name || "Vendor Assigned";
-          list.push({
-            id: notifId,
-            title: `💰 Ledger Entry: ${r.model}`,
-            description: `Priced at ¥${r.priceRmb} RMB (${r.vendorOrderQuantity || r.orderQuantity || 1} Pcs) • ${vName}. Ready to mark in accounting ledger.`,
-            time: r.pricedAt ? new Date(r.pricedAt).toLocaleDateString("en-IN") : (r.orderDate || "Recent"),
-            timestamp: r.pricedAt ? new Date(r.pricedAt).getTime() : (r.timestamp ? new Date(r.timestamp).getTime() : 0),
-            read: readSet.has(notifId),
-            type: "ledger_pending",
-            targetView: "rahul",
-            data: r
-          });
-        });
+      // 1a. Cancelled Orders / Requisitions Notification (Highest Priority Alert)
+      // Group by cancellation date + cancelledByName
+      const cancelledRequests = (requests || []).filter(r => isOrderCancelled(r));
+      const cancelGroups = {};
+      cancelledRequests.forEach(r => {
+        let cancelDateKey = "unknown";
+        if (r.cancelledAt) {
+          try {
+            cancelDateKey = new Date(r.cancelledAt).toISOString().split("T")[0];
+          } catch(e) {
+            cancelDateKey = String(r.cancelledAt).slice(0, 10);
+          }
+        } else if (r.orderDate) {
+          cancelDateKey = r.orderDate;
+        }
+        const byUser = r.cancelledByName || "User";
+        const groupKey = `${cancelDateKey}_${byUser}`;
+        if (!cancelGroups[groupKey]) {
+          cancelGroups[groupKey] = {
+            date: cancelDateKey,
+            cancelledByName: byUser,
+            items: [],
+            latestTime: 0,
+            latestDisplayTime: "Recent"
+          };
+        }
+        cancelGroups[groupKey].items.push(r);
+        const itemTs = r.cancelledAt ? new Date(r.cancelledAt).getTime() : (r.timestamp ? new Date(r.timestamp).getTime() : 0);
+        if (itemTs >= cancelGroups[groupKey].latestTime) {
+          cancelGroups[groupKey].latestTime = itemTs;
+          if (r.cancelledAt) {
+            try {
+              const cDate = new Date(r.cancelledAt);
+              cancelGroups[groupKey].latestDisplayTime = cDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) + " " + cDate.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+            } catch(e) {
+              cancelGroups[groupKey].latestDisplayTime = cancelDateKey;
+            }
+          } else {
+            cancelGroups[groupKey].latestDisplayTime = cancelDateKey;
+          }
+        }
+      });
 
-      // 1b. New Requisitions Punched (Step 1 Starting)
-      (requests || [])
-        .filter(r => r && !isOrderCancelled(r) && !r.priceRmb)
-        .slice(0, 20)
-        .forEach(r => {
-          const notifId = `notif_new_requisition_${r.id}`;
-          list.push({
-            id: notifId,
-            title: `📋 New Order Punched: ${r.model}`,
-            description: `${r.orderQuantity || 1} Pcs entered by ${r.entryBy || "Requester"} (Order Date: ${r.orderDate || "Today"}).`,
-            time: r.orderDate || "Recent",
-            timestamp: r.timestamp ? new Date(r.timestamp).getTime() : (r.orderDate ? new Date(r.orderDate).getTime() : 0),
-            read: readSet.has(notifId),
-            type: "new_requisition",
-            targetView: "rahul",
-            data: r
-          });
-        });
+      Object.values(cancelGroups).forEach(grp => {
+        const totalOrders = grp.items.length;
+        const totalPcs = grp.items.reduce((s, it) => s + (Number(it.orderQuantity) || 1), 0);
+        const models = Array.from(new Set(grp.items.map(it => it.model).filter(Boolean)));
+        const modelsSummary = models.slice(0, 3).join(", ") + (models.length > 3 ? ` +${models.length - 3} more` : "");
+        const reasons = Array.from(new Set(grp.items.map(it => it.cancellationReason).filter(Boolean)));
+        const reasonText = reasons.length > 0 ? ` • Reason: "${reasons[0]}"` : "";
+        const notifId = `notif_grp_cancel_${grp.date}_${grp.cancelledByName.replace(/\s+/g, '_')}_cnt${totalOrders}`;
 
-      // 1c. Warehouse Received Material (Delivered)
-      (requests || [])
-        .filter(r => r && !isOrderCancelled(r) && r.isMaterialRec === "Yes" && r.purchaseUpdated !== "Yes")
-        .slice(0, 20)
-        .forEach(r => {
-          const notifId = `notif_delivered_${r.id}`;
-          list.push({
-            id: notifId,
-            title: `📦 Warehouse Received: ${r.model}`,
-            description: `${r.receivedQuantity || r.orderQuantity} Pcs arrived in warehouse. Ready for landed cost & ledger closure.`,
-            time: r.actualReceivedDate || "Recent",
-            timestamp: r.actualReceivedDate ? new Date(r.actualReceivedDate).getTime() : (r.timestamp ? new Date(r.timestamp).getTime() : 0),
-            read: readSet.has(notifId),
-            type: "warehouse_delivered",
-            targetView: "rahul",
-            data: r
-          });
+        list.push({
+          id: notifId,
+          title: totalOrders === 1 
+            ? `🚫 Order Cancelled: ${models[0] || "Item"} (${totalPcs} Pcs)` 
+            : `🚫 Orders Cancelled: ${totalOrders} Orders (${totalPcs} Pcs)`,
+          description: `${totalOrders} order${totalOrders > 1 ? "s" : ""} (${modelsSummary}) cancelled by ${grp.cancelledByName}${reasonText}. Review ledger & accounts.`,
+          time: grp.latestDisplayTime,
+          timestamp: grp.latestTime || Date.now(),
+          read: readSet.has(notifId),
+          type: "order_cancelled",
+          targetView: "rahul",
+          targetStage: "cancelled",
+          targetQuickStatus: "cancelled",
+          targetStep: "step1",
+          data: grp.items
         });
+      });
 
-      // 1d. Vendor Bills Pending Verification in Cargos
+      // 1b. Unmarked Priced Purchases awaiting Ledger Entry (Grouped by Vendor + Order Date)
+      const pendingLedgerRequests = (requests || []).filter(r => r && !isOrderCancelled(r) && r.priceRmb && r.purchaseUpdated !== "Yes");
+      const ledgerGroups = {};
+      pendingLedgerRequests.forEach(r => {
+        const vId = r.vendorId || "unassigned";
+        const oDate = r.orderDate || "unknown";
+        const groupKey = `${vId}_${oDate}`;
+        if (!ledgerGroups[groupKey]) {
+          const vName = (vendors || []).find(v => v.id === r.vendorId)?.name || "Assigned Vendor";
+          ledgerGroups[groupKey] = {
+            vendorId: vId,
+            vendorName: vName,
+            orderDate: oDate,
+            items: [],
+            latestTime: 0
+          };
+        }
+        ledgerGroups[groupKey].items.push(r);
+        const itemTs = r.pricedAt ? new Date(r.pricedAt).getTime() : (r.timestamp ? new Date(r.timestamp).getTime() : 0);
+        if (itemTs >= ledgerGroups[groupKey].latestTime) {
+          ledgerGroups[groupKey].latestTime = itemTs;
+        }
+      });
+
+      Object.values(ledgerGroups).forEach(grp => {
+        const totalOrders = grp.items.length;
+        const totalPcs = grp.items.reduce((s, it) => s + (Number(it.vendorOrderQuantity || it.orderQuantity) || 1), 0);
+        const totalRmb = grp.items.reduce((s, it) => {
+          const qty = Number(it.vendorOrderQuantity || it.orderQuantity) || 1;
+          const pr = Number(it.priceRmb) || 0;
+          return s + (qty * pr);
+        }, 0);
+        const models = Array.from(new Set(grp.items.map(it => it.model).filter(Boolean)));
+        const modelsSummary = models.slice(0, 3).join(", ") + (models.length > 3 ? ` +${models.length - 3} more` : "");
+        const notifId = `notif_grp_ledger_${grp.vendorId}_${grp.orderDate}_cnt${totalOrders}`;
+
+        list.push({
+          id: notifId,
+          title: `💰 Ledger Entry: ${grp.vendorName} (${grp.orderDate})`,
+          description: `${totalOrders} orders (${totalPcs} Pcs, ¥${totalRmb.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} RMB: ${modelsSummary}) ready to mark in accounting ledger.`,
+          time: grp.orderDate,
+          timestamp: grp.latestTime || (grp.orderDate ? new Date(grp.orderDate).getTime() : 0),
+          read: readSet.has(notifId),
+          type: "ledger_pending",
+          targetView: "rahul",
+          targetStage: "pending_ledger",
+          data: grp.items
+        });
+      });
+
+      // 1c. New Requisitions Punched (Step 1 Starting) - Grouped by Order Date + EntryBy
+      const newRequisitions = (requests || []).filter(r => r && !isOrderCancelled(r) && !r.priceRmb);
+      const newReqGroups = {};
+      newRequisitions.forEach(r => {
+        const oDate = r.orderDate || "unknown";
+        const eBy = r.entryBy || "Requester";
+        const groupKey = `${oDate}_${eBy}`;
+        if (!newReqGroups[groupKey]) {
+          newReqGroups[groupKey] = {
+            orderDate: oDate,
+            entryBy: eBy,
+            items: [],
+            latestTime: 0
+          };
+        }
+        newReqGroups[groupKey].items.push(r);
+        const itemTs = r.timestamp ? new Date(r.timestamp).getTime() : (r.orderDate ? new Date(r.orderDate).getTime() : 0);
+        if (itemTs >= newReqGroups[groupKey].latestTime) {
+          newReqGroups[groupKey].latestTime = itemTs;
+        }
+      });
+
+      Object.values(newReqGroups).forEach(grp => {
+        const totalOrders = grp.items.length;
+        const totalPcs = grp.items.reduce((s, it) => s + (Number(it.orderQuantity) || 1), 0);
+        const models = Array.from(new Set(grp.items.map(it => it.model).filter(Boolean)));
+        const modelsSummary = models.slice(0, 3).join(", ") + (models.length > 3 ? ` +${models.length - 3} more` : "");
+        const notifId = `notif_grp_new_${grp.orderDate}_${grp.entryBy.replace(/\s+/g, '_')}_cnt${totalOrders}`;
+
+        list.push({
+          id: notifId,
+          title: `📋 New Orders Punched: ${totalPcs} Pcs (${grp.orderDate})`,
+          description: `${totalOrders} orders (${totalPcs} Pcs: ${modelsSummary}) punched by ${grp.entryBy} on ${grp.orderDate}. Awaiting vendor assignment & pricing.`,
+          time: grp.orderDate,
+          timestamp: grp.latestTime || (grp.orderDate ? new Date(grp.orderDate).getTime() : 0),
+          read: readSet.has(notifId),
+          type: "new_requisition",
+          targetView: "rahul",
+          targetStage: "unpriced",
+          data: grp.items
+        });
+      });
+
+      // 1d. Warehouse Received Material (Delivered) - Grouped by CargoId / actualReceivedDate
+      const deliveredRequests = (requests || []).filter(r => r && !isOrderCancelled(r) && r.isMaterialRec === "Yes" && r.purchaseUpdated !== "Yes");
+      const deliveredGroups = {};
+      deliveredRequests.forEach(r => {
+        const cId = r.cargoId || "uncargo";
+        const rDate = r.actualReceivedDate || "Recent";
+        const groupKey = `${cId}_${rDate}`;
+        if (!deliveredGroups[groupKey]) {
+          const matchedCargo = (cargos || []).find(c => c.id === r.cargoId || c.cargoDetail === r.cargoId);
+          deliveredGroups[groupKey] = {
+            cargoId: r.cargoId,
+            cargoName: matchedCargo?.cargoDetail || (r.cargoId ? `Cargo #${r.cargoId}` : "Shipment"),
+            actualReceivedDate: rDate,
+            items: [],
+            latestTime: 0
+          };
+        }
+        deliveredGroups[groupKey].items.push(r);
+        const itemTs = r.actualReceivedDate ? new Date(r.actualReceivedDate).getTime() : (r.timestamp ? new Date(r.timestamp).getTime() : 0);
+        if (itemTs >= deliveredGroups[groupKey].latestTime) {
+          deliveredGroups[groupKey].latestTime = itemTs;
+        }
+      });
+
+      Object.values(deliveredGroups).forEach(grp => {
+        const totalOrders = grp.items.length;
+        const totalPcs = grp.items.reduce((s, it) => s + (Number(it.receivedQuantity || it.orderQuantity) || 1), 0);
+        const models = Array.from(new Set(grp.items.map(it => it.model).filter(Boolean)));
+        const modelsSummary = models.slice(0, 3).join(", ") + (models.length > 3 ? ` +${models.length - 3} more` : "");
+        const notifId = `notif_grp_deliv_${grp.cargoId || "no_c"}_${grp.actualReceivedDate}_cnt${totalOrders}`;
+
+        list.push({
+          id: notifId,
+          title: `📦 Warehouse Received: ${grp.cargoName} (${totalPcs} Pcs)`,
+          description: `${totalOrders} orders (${totalPcs} Pcs: ${modelsSummary}) arrived in warehouse. Ready for landed cost & ledger closure.`,
+          time: grp.actualReceivedDate,
+          timestamp: grp.latestTime || 0,
+          read: readSet.has(notifId),
+          type: "warehouse_delivered",
+          targetView: "rahul",
+          targetCargoId: grp.cargoId,
+          data: grp.items
+        });
+      });
+
+      // 1e. Vendor Bills Pending Verification in Cargos (1 per Cargo)
       (cargos || [])
         .filter(c => c && (c.invoiceFile || c.packingListFile) && (!c.vendorBillVerified || c.vendorBillVerified === "No"))
-        .slice(0, 15)
         .forEach(c => {
           const notifId = `notif_cargo_bill_${c.id}`;
           list.push({
@@ -827,49 +1014,8 @@ export default function App() {
             read: readSet.has(notifId),
             type: "bill_verification",
             targetView: "rahul",
+            targetCargoId: c.id,
             data: c
-          });
-        });
-
-      // 1e. Cancelled Orders / Requisitions Notification for Rahul & Accounts (Highest Priority Alert)
-      (requests || [])
-        .filter(r => isOrderCancelled(r))
-        .sort((a, b) => {
-          const tA = a.cancelledAt ? new Date(a.cancelledAt).getTime() : (a.timestamp ? new Date(a.timestamp).getTime() : 0);
-          const tB = b.cancelledAt ? new Date(b.cancelledAt).getTime() : (b.timestamp ? new Date(b.timestamp).getTime() : 0);
-          return tB - tA;
-        })
-        .slice(0, 40)
-        .forEach(r => {
-          const notifId = `notif_cancelled_${r.id}`;
-          const reasonText = r.cancellationReason ? ` • Reason: "${r.cancellationReason}"` : "";
-          const cancelledByText = r.cancelledByName ? ` by ${r.cancelledByName}` : "";
-          
-          let cancelDateDisplay = "Recent";
-          if (r.cancelledAt) {
-            try {
-              const cDate = new Date(r.cancelledAt);
-              cancelDateDisplay = cDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) + " " + cDate.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
-            } catch(e) {
-              cancelDateDisplay = r.cancelledAt.slice(0, 10);
-            }
-          } else if (r.orderDate) {
-            cancelDateDisplay = r.orderDate;
-          }
-
-          list.push({
-            id: notifId,
-            title: `🚫 Order Cancelled: ${r.model}`,
-            description: `Order #${r.id} (${r.orderQuantity || 1} Pcs) was cancelled${cancelledByText}${reasonText}. Review ledger & accounts accordingly.`,
-            time: cancelDateDisplay,
-            timestamp: r.cancelledAt ? new Date(r.cancelledAt).getTime() : (r.timestamp ? new Date(r.timestamp).getTime() : 0),
-            read: readSet.has(notifId),
-            type: "order_cancelled",
-            targetView: "rahul",
-            targetStage: "cancelled",
-            targetQuickStatus: "cancelled",
-            targetStep: "step1",
-            data: r
           });
         });
     }
@@ -2270,8 +2416,10 @@ const cancelRequests = async (requestIds, reason = "") => {
 
       const updatedReq = {
         ...r,
+        cargoEta: cargoWithDate.cargoEta || r.cargoEta || "",
+        cargoShippingDate: cargoWithDate.cargoShippingDate || r.cargoShippingDate || "",
         isMaterialRec: cargoWithDate.isMaterialRec,
-        actualReceivedDate: isNowReceived ? (r.actualReceivedDate || cargoWithDate.receivedDate || new Date().toISOString().split("T")[0]) : "",
+        actualReceivedDate: isNowReceived ? (r.actualReceivedDate || cargoWithDate.receivedDate || new Date().toISOString().split("T")[0]) : (cargoWithDate.isMaterialRec === "No" ? "" : r.actualReceivedDate),
         cargoReceivedBy: isNowReceived ? (r.cargoReceivedBy || currentUser?.id || "") : (r.cargoReceivedBy || ""),
         cargoReceivedByName: isNowReceived ? (r.cargoReceivedByName || currentUser?.name || "") : (r.cargoReceivedByName || ""),
         receivedQuantity: receivedQty,
@@ -3852,8 +4000,7 @@ const cancelRequests = async (requestIds, reason = "") => {
                       <button
                         onClick={() => {
                           const allIds = userNotifications.map(n => n.id);
-                          setReadNotificationIds(allIds);
-                          try { localStorage.setItem("makpower_read_notifications", JSON.stringify(allIds)); } catch(e) {}
+                          markNotificationsAsRead(allIds);
                         }}
                         style={{ background: "none", border: "none", color: "#38bdf8", fontSize: "0.74rem", cursor: "pointer", fontWeight: 600 }}
                       >
@@ -3874,9 +4021,10 @@ const cancelRequests = async (requestIds, reason = "") => {
                           key={n.id}
                           onClick={() => {
                             if (!n.read) {
-                              const next = [...readNotificationIds, n.id];
-                              setReadNotificationIds(next);
-                              try { localStorage.setItem("makpower_read_notifications", JSON.stringify(next)); } catch(e) {}
+                              markNotificationsAsRead(n.id);
+                            }
+                            if (n.targetCargoId) {
+                              setDirectTargetCargoId(n.targetCargoId);
                             }
                             if (n.targetView === "rahul" && n.targetStage) {
                               try { localStorage.setItem("makpower_rahul_stage_filter", n.targetStage); } catch(e) {}
@@ -4245,7 +4393,19 @@ const cancelRequests = async (requestIds, reason = "") => {
               vendors={vendors}
               cargos={cargos}
               cargoCompanies={cargoCompanies}
-              onNavigateView={setActiveView}
+              onNavigateView={(view, opts) => {
+                if (opts?.targetCargoId) setDirectTargetCargoId(opts.targetCargoId);
+                const isRahulUser = currentUser?.role === "rahul" || 
+                  currentUser?.id === "u-rahul" || 
+                  String(currentUser?.designation || "").toLowerCase().includes("account") ||
+                  String(currentUser?.role || "").toLowerCase().includes("account");
+                if (view === "dashboard" || view === "rahul") {
+                  setActiveView(isRahulUser ? "rahul" : "dashboard");
+                } else {
+                  setActiveView(view);
+                }
+              }}
+              onUpdateCargo={updateCargo}
               onLogout={handleLogout}
               loading={loading}
               initialLoadComplete={initialLoadComplete}
@@ -4305,6 +4465,7 @@ const cancelRequests = async (requestIds, reason = "") => {
             loading={loading}
             initialLoadComplete={initialLoadComplete}
             isMasterDataSilentlyLoading={isMasterDataSilentlyLoading}
+            initialTargetCargoId={directTargetCargoId}
           />
         )}
 
@@ -4504,6 +4665,7 @@ const cancelRequests = async (requestIds, reason = "") => {
             cargos={cargos}
             cargoCompanies={cargoCompanies}
             purchasers={users.filter(u => (u.role === "purchaser" || u.role === "purchase_manager") && u.status === "active")}
+            initialTargetCargoId={directTargetCargoId}
             onUpdateRequest={updateRequest}
             batchUpdateRequests={batchUpdateRequests}
             onCancelOrder={cancelRequest}
