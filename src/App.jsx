@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { LogIn, ShoppingCart, ShieldAlert, LogOut, Settings, BarChart2, Package, Sun, Moon, Home, Menu, X, Building2, RefreshCw, Search, Bell, Briefcase, Layers, Key, ArrowLeft, CheckCircle2 } from "lucide-react";
 import LoginPage from "./components/LoginPage";
 import RequesterForm from "./components/RequesterForm";
