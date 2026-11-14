@@ -70,6 +70,7 @@ let livePartyCategorySalesTimestamp = 0;
 const STATE_CACHE_TTL_MS = 600000; // 10 minutes cache ceiling (mutation-driven invalidation handles real-time updates)
 const LIVE_PARTY_CAT_CACHE_TTL_MS = 300000; // 5 minutes cache ceiling
 let lastServerMutationTimestamp = Date.now();
+let cacheGeneration = 0; // Incremented on every mutation to prevent stale in-flight query cache poisoning
 
 // ⚡ Active Memory Governor: Proactively prevents Render 512MB container OOM crashes
 setInterval(() => {
@@ -113,6 +114,7 @@ function broadcastSseMutation(extraData = {}) {
 }
 
 function invalidateStateCache(extraInfo = {}) {
+  cacheGeneration++;
   lastServerMutationTimestamp = Date.now();
   lastKnownGoodPurchaserState = null;
   stateCache = null;
@@ -2866,12 +2868,13 @@ app.get("/api/state", async (req, res) => {
     try {
       // ⚡ Fast Path: For purchasers, accounts (Rahul), packing (Nitin), coordinators, scope=purchases & unauthenticated users
       if (isPurchaseScope) {
-        if (inFlightPurchaserStatePromise) {
+        if (!isRefreshRequest && inFlightPurchaserStatePromise) {
           const concurrentData = await inFlightPurchaserStatePromise;
           return res.json(concurrentData);
         }
 
-        inFlightPurchaserStatePromise = (async () => {
+        const currentGen = cacheGeneration;
+        const fetchPurchaserPromise = (async () => {
           try {
             const [
               usersRes,
@@ -3030,19 +3033,28 @@ app.get("/api/state", async (req, res) => {
             };
 
             const hasRealData = requests.length > 0 || cargos.length > 0 || vendors.length > 0;
-            if (hasRealData) {
+            // 🛡️ Generation Guard: Discard stale cache if mutation occurred concurrently during database query
+            if (hasRealData && cacheGeneration === currentGen) {
               purchaserStateCache = purchaserState;
               purchaserStateCacheTimestamp = Date.now();
               lastKnownGoodPurchaserState = purchaserState;
+            } else if (cacheGeneration !== currentGen) {
+              console.log(`[Cache Guard] Discarded stale purchaserStateCache from gen ${currentGen} (current gen: ${cacheGeneration})`);
             }
 
             return purchaserState;
           } finally {
-            inFlightPurchaserStatePromise = null;
+            if (inFlightPurchaserStatePromise === fetchPurchaserPromise) {
+              inFlightPurchaserStatePromise = null;
+            }
           }
         })();
 
-        const resolvedPurchaserState = await inFlightPurchaserStatePromise;
+        if (!isRefreshRequest) {
+          inFlightPurchaserStatePromise = fetchPurchaserPromise;
+        }
+
+        const resolvedPurchaserState = await fetchPurchaserPromise;
         return res.json(resolvedPurchaserState);
       }
       let crmPartiesQuery = 'SELECT * FROM crm_parties ORDER BY "name" ASC';
@@ -3284,21 +3296,33 @@ app.get("/api/state", async (req, res) => {
         return fullState;
       };
 
+      const currentGeneralGen = cacheGeneration;
       let resolvedState;
       if (!isRestrictedRole) {
-        inFlightGeneralStatePromise = executeFetchGeneralState();
-        try {
+        if (!isRefreshRequest && inFlightGeneralStatePromise) {
           resolvedState = await inFlightGeneralStatePromise;
-        } finally {
-          inFlightGeneralStatePromise = null;
+        } else {
+          const fetchGenPromise = executeFetchGeneralState();
+          if (!isRefreshRequest) {
+            inFlightGeneralStatePromise = fetchGenPromise;
+          }
+          try {
+            resolvedState = await fetchGenPromise;
+          } finally {
+            if (inFlightGeneralStatePromise === fetchGenPromise) {
+              inFlightGeneralStatePromise = null;
+            }
+          }
         }
       } else {
         resolvedState = await executeFetchGeneralState();
       }
 
-      if (!isRestrictedRole && resolvedState) {
+      if (!isRestrictedRole && resolvedState && cacheGeneration === currentGeneralGen) {
         stateCache = resolvedState;
         stateCacheTimestamp = Date.now();
+      } else if (cacheGeneration !== currentGeneralGen) {
+        console.log(`[Cache Guard] Discarded stale general stateCache from gen ${currentGeneralGen} (current gen: ${cacheGeneration})`);
       }
 
       return res.json(resolvedState);

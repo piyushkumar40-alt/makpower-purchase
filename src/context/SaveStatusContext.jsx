@@ -234,13 +234,14 @@ export function SaveStatusProvider({ children }) {
       try {
         const response = await originalFetch.apply(this, args);
         if (isSaveOp && saveId) {
-          // Transient status codes (429 rate-limiting, 502/503/504 gateway wakeups) are automatically
-          // retried by postData with exponential backoff; do not treat them as fatal database write failures.
-          const isTransient = response.status === 429 || response.status === 502 || response.status === 503 || response.status === 504;
-          if (response.ok || isTransient) {
+          // Direct real-time link between browser and database confirmation:
+          // ONLY mark as "saved" when the database server actually returns HTTP 200..299 ok.
+          if (response.ok) {
             endSave(saveId, true);
           } else {
-            endSave(saveId, false, `Server returned HTTP ${response.status}`);
+            const isRateLimit = response.status === 429;
+            const errMsg = isRateLimit ? "Server busy (429 Rate Limit), retrying..." : `Server error (HTTP ${response.status})`;
+            endSave(saveId, false, errMsg);
           }
         }
         return response;

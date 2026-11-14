@@ -1083,12 +1083,12 @@ export default function App() {
     };
   }, [currentUser]);
 
-  // Immediate fresh sync whenever user switches dashboards/views
+  // Immediate fresh sync whenever user switches dashboards/views (bypasses delta-skip so fresh view data always renders)
   useEffect(() => {
     if (currentUser && loadDataRef.current) {
-      loadDataRef.current(!initialLoadComplete ? false : true);
+      loadDataRef.current(false);
     }
-  }, [activeView, currentUser, initialLoadComplete]);
+  }, [activeView, currentUser]);
 
   // Add Designation Handler
   const addDesignation = async (designationObj) => {
@@ -1585,24 +1585,45 @@ export default function App() {
         entryBy: req.entryBy || "Guest"
       };
     });
-    const saveRes = await postData("/api/requests/batch", reqsWithIds);
-    if (!saveRes || saveRes.success === false) {
-      const errText = saveRes?.error || "Failed to save order to database.";
-      console.error("[addRequests] Error saving orders to database:", errText);
-      throw new Error(errText);
-    }
+
+    // ⚡ 0ms INSTANT OPTIMISTIC DISPLAY:
+    // Update local React state immediately so user sees their new order in Step 1/Commercial & Timeline
+    // with zero waiting time in the same browser and window!
     setRequests(prev => [...reqsWithIds, ...prev]);
-    currentDataVersionRef.current = Date.now();
-    const creatorName = reqsWithIds[0]?.entryBy || currentUser?.name || "Requester";
-    const modelsSummary = reqsWithIds.map(r => `${r.model || "Item"} (${r.orderQuantity || 1} Pcs)`).join(", ");
-    logSystemActivity(
-      "CREATE_REQUEST", 
-      `"${creatorName}" submitted ${reqsWithIds.length} new requisition(s): ${modelsSummary}`, 
-      "Requisition", 
-      reqsWithIds[0]?.id, 
-      null, 
-      reqsWithIds
-    );
+
+    // Update persistent browser cache immediately so view switches or refreshes have the new order:
+    saveDashboardCache(currentUser || "rahul", {
+      requests: [...reqsWithIds, ...requests],
+      vendors,
+      cargos,
+      cargoCompanies,
+      items,
+      users
+    });
+
+    try {
+      const saveRes = await postData("/api/requests/batch", reqsWithIds);
+      if (!saveRes || saveRes.success === false) {
+        const errText = saveRes?.error || "Failed to save order to database.";
+        console.error("[addRequests] Error saving orders to database:", errText);
+        throw new Error(errText);
+      }
+      currentDataVersionRef.current = Date.now();
+      const creatorName = reqsWithIds[0]?.entryBy || currentUser?.name || "Requester";
+      const modelsSummary = reqsWithIds.map(r => `${r.model || "Item"} (${r.orderQuantity || 1} Pcs)`).join(", ");
+      logSystemActivity(
+        "CREATE_REQUEST", 
+        `"${creatorName}" submitted ${reqsWithIds.length} new requisition(s): ${modelsSummary}`, 
+        "Requisition", 
+        reqsWithIds[0]?.id, 
+        null, 
+        reqsWithIds
+      );
+    } catch (err) {
+      // Rollback optimistic update if server failed:
+      setRequests(prev => prev.filter(r => !reqsWithIds.some(nr => nr.id === r.id)));
+      throw err;
+    }
   };
 
   const updateRequest = async (updatedReq) => {
@@ -1612,8 +1633,25 @@ export default function App() {
       timestamp: updatedReq.timestamp || oldReq?.timestamp || updatedReq.orderDate || new Date().toISOString(),
       actualReceivedDate: updatedReq.isMaterialRec === "Yes" ? (updatedReq.actualReceivedDate || "2026-06-11") : ""
     };
-    await postData("/api/requests", newReq);
+    // ⚡ Optimistic local state update:
     setRequests(prev => prev.map(r => r.id === newReq.id ? newReq : r));
+    try {
+      await postData("/api/requests", newReq);
+      currentDataVersionRef.current = Date.now();
+      saveDashboardCache(currentUser || "rahul", {
+        requests: requests.map(r => r.id === newReq.id ? newReq : r),
+        vendors,
+        cargos,
+        cargoCompanies,
+        items,
+        users
+      });
+    } catch (err) {
+      if (oldReq) {
+        setRequests(prev => prev.map(r => r.id === oldReq.id ? oldReq : r));
+      }
+      throw err;
+    }
 
     const vName = vendors.find(v => v.id === newReq.vendorId)?.name || "N/A";
     let actionLabel = "UPDATE_REQUEST";
@@ -1639,11 +1677,29 @@ export default function App() {
       ...req,
       actualReceivedDate: req.isMaterialRec === "Yes" ? (req.actualReceivedDate || "2026-06-11") : ""
     }));
-    await postData("/api/requests/batch", mapped);
+    // ⚡ Optimistic local state update:
     setRequests(prev => prev.map(r => {
       const match = mapped.find(x => x.id === r.id);
       return match ? match : r;
     }));
+    try {
+      await postData("/api/requests/batch", mapped);
+      currentDataVersionRef.current = Date.now();
+      saveDashboardCache(currentUser || "rahul", {
+        requests: requests.map(r => {
+          const match = mapped.find(x => x.id === r.id);
+          return match ? match : r;
+        }),
+        vendors,
+        cargos,
+        cargoCompanies,
+        items,
+        users
+      });
+    } catch (err) {
+      if (loadDataRef.current) loadDataRef.current(false);
+      throw err;
+    }
     const modelsList = mapped.map(r => r.model).filter(Boolean).join(", ");
     const detailText = customDetails || `Bulk updated ${mapped.length} requisition(s)${modelsList ? `: ${modelsList}` : ""}`;
     logSystemActivity(customAction, detailText, "Requisition", mapped[0]?.id, null, mapped);
@@ -1977,6 +2033,15 @@ const cancelRequests = async (requestIds, reason = "") => {
       return [...newRemainingItems, ...updatedList];
     });
 
+    saveDashboardCache(currentUser || "rahul", {
+      requests: [...newRemainingItems, ...requests.map(r => updatedItems.find(x => x.id === r.id) || r)],
+      cargos: [newCargo, ...cargos],
+      vendors,
+      cargoCompanies,
+      items,
+      users
+    });
+
     const otherPurchaserNames = Array.from(new Set(
       updatedItems.filter(r => !isRequestForUser(r, currentUser, users)).map(r => r.purchaserName || users.find(u => u.id === r.purchaserId)?.name || "Other Purchaser")
     ));
@@ -2048,6 +2113,14 @@ const cancelRequests = async (requestIds, reason = "") => {
         const updatedMap = new Map(updatedItems.map(x => [x.id, x]));
         const updatedList = prev.map(r => updatedMap.has(r.id) ? updatedMap.get(r.id) : r);
         return [...newShortageItems, ...updatedList];
+      });
+      saveDashboardCache(currentUser || "rahul", {
+        requests: [...newShortageItems, ...requests.map(r => updatedItems.find(x => x.id === r.id) || r)],
+        cargos: cargos.map(c => c.id === cargoWithDate.id ? cargoWithDate : c),
+        vendors,
+        cargoCompanies,
+        items,
+        users
       });
     }
 
