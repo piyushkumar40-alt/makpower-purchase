@@ -2,18 +2,20 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { LogIn, ShoppingCart, ShieldAlert, LogOut, Settings, BarChart2, Package, Sun, Moon, Home, Menu, X, Building2, RefreshCw, Search, Bell, Briefcase, Layers, Key, ArrowLeft, CheckCircle2 } from "lucide-react";
 import LoginPage from "./components/LoginPage";
 import RequesterForm from "./components/RequesterForm";
-import PurchaserDashboard from "./components/PurchaserDashboard";
-import SuperAdminDashboard from "./components/SuperAdminDashboard";
-import NitinDashboard from "./components/NitinDashboard";
-import RahulDashboard from "./components/RahulDashboard";
-import CoordinatorDashboard from "./components/CoordinatorDashboard";
-import ItemMasterView from "./components/ItemMasterView";
-import ItemCatalogPanel from "./components/ItemCatalogPanel";
-import OwnerDashboard from "./components/OwnerDashboard";
-import ItemDetailModal from "./components/ItemDetailModal";
 import HomePage from "./components/HomePage";
-import CrmDashboard from "./components/CrmDashboard";
-import ImsDashboard from "./components/ImsDashboard";
+
+// Dynamic Code Splitting for ultra-fast startup & reduced memory footprint
+const PurchaserDashboard = React.lazy(() => import("./components/PurchaserDashboard"));
+const SuperAdminDashboard = React.lazy(() => import("./components/SuperAdminDashboard"));
+const NitinDashboard = React.lazy(() => import("./components/NitinDashboard"));
+const RahulDashboard = React.lazy(() => import("./components/RahulDashboard"));
+const CoordinatorDashboard = React.lazy(() => import("./components/CoordinatorDashboard"));
+import ItemMasterView from "./components/ItemMasterView";
+const ItemCatalogPanel = React.lazy(() => import("./components/ItemCatalogPanel"));
+const OwnerDashboard = React.lazy(() => import("./components/OwnerDashboard"));
+const ItemDetailModal = React.lazy(() => import("./components/ItemDetailModal"));
+const CrmDashboard = React.lazy(() => import("./components/CrmDashboard"));
+const ImsDashboard = React.lazy(() => import("./components/ImsDashboard"));
 import ChangePasswordModal, { isWeakPassword } from "./components/ChangePasswordModal";
 import GlobalDataLoadingOverlay from "./components/GlobalDataLoadingOverlay";
 import { initialUsers, initialVendors, initialRequests, initialCargoShipments, initialCargoCompanies, initialCrmParties, initialCrmSalesOrders, initialCrmDispatches, initialImsTransactions, initialSchemes } from "./mockData";
@@ -816,9 +818,9 @@ export default function App() {
 
         // Delta Check: In interval polling, query lightweight /api/state/meta (< 50 bytes)
         let serverMeta = null;
-        if (isInterval) {
+        if (isInterval && initialLoadComplete) {
           if (document.visibilityState !== "visible") {
-            return; // Completely pause polling when tab is not active in browser
+            return; // Completely pause polling when tab is not active in browser (only AFTER initial load is done)
           }
           if (currentDataVersionRef.current === null) {
             return; // Wait until initial load has completed before doing interval delta polling
@@ -1002,7 +1004,7 @@ export default function App() {
       } finally {
         isFetchingDataRef.current = false;
         clearTimeout(safetyTimer);
-        if (!isInterval) {
+        if (!isInterval || !initialLoadComplete) {
           setLoading(false);
           setInitialLoadComplete(true);
           finishLoading();
@@ -1013,12 +1015,47 @@ export default function App() {
     loadDataRef.current = loadData;
     loadData();
 
-    // High-performance real-time background sync across all devices: poll every 12s with lightweight delta check
+    // Real-Time Live Sync via Server-Sent Events (SSE)
+    let eventSource = null;
+    let sseReconnectTimer = null;
+
+    const setupLiveStream = () => {
+      if (typeof window === "undefined" || !window.EventSource || !currentUser) return;
+      try {
+        eventSource = new EventSource("/api/events");
+        eventSource.onmessage = (e) => {
+          if (!isMounted || !e.data) return;
+          try {
+            const event = JSON.parse(e.data);
+            if (event.type === "MUTATION") {
+              // Instant real-time live sync: a mutation happened on another laptop / tab!
+              loadData(true);
+            }
+          } catch (pe) {}
+        };
+        eventSource.onerror = () => {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          if (isMounted) {
+            clearTimeout(sseReconnectTimer);
+            sseReconnectTimer = setTimeout(setupLiveStream, 5000);
+          }
+        };
+      } catch (err) {
+        console.warn("[Live Stream] EventSource setup notice:", err);
+      }
+    };
+
+    setupLiveStream();
+
+    // Passive fallback heartbeat (runs only every 60s when SSE is idle, only if tab is visible)
     const intervalId = setInterval(() => {
       if (document.visibilityState === "visible" && currentUser) {
         loadData(true);
       }
-    }, 12000);
+    }, 60000);
 
     // Instant sync when switching back to tab/window (debounced to 3s)
     let lastFocusSyncTime = 0;
@@ -1037,6 +1074,11 @@ export default function App() {
       isMounted = false;
       loadDataRef.current = null;
       clearTimeout(safetyTimer);
+      clearTimeout(sseReconnectTimer);
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
       clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleFocusSync);
       window.removeEventListener("focus", handleFocusSync);
@@ -1046,9 +1088,9 @@ export default function App() {
   // Immediate fresh sync whenever user switches dashboards/views
   useEffect(() => {
     if (currentUser && loadDataRef.current) {
-      loadDataRef.current(true);
+      loadDataRef.current(!initialLoadComplete ? false : true);
     }
-  }, [activeView, currentUser]);
+  }, [activeView, currentUser, initialLoadComplete]);
 
   // Add Designation Handler
   const addDesignation = async (designationObj) => {
@@ -1111,10 +1153,10 @@ export default function App() {
         body: JSON.stringify(data)
       });
 
-      // If Rate-Limited (429) or Gateway Error (502/503/504), retry automatically with exponential backoff up to 2 times
-      if ((res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) && retryCount < 2) {
-        const delay = (retryCount + 1) * 1500;
-        console.warn(`[postData] Transient ${res.status} from ${url}. Retrying in ${delay}ms (attempt ${retryCount + 1}/2)...`);
+      // If Rate-Limited (429) or Gateway Error (502/503/504), retry automatically with exponential backoff + jitter up to 3 times
+      if ((res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) && retryCount < 3) {
+        const delay = (retryCount + 1) * 2000 + Math.floor(Math.random() * 800);
+        console.warn(`[postData] Transient ${res.status} from ${url}. Retrying in ${delay}ms (attempt ${retryCount + 1}/3)...`);
         await new Promise(r => setTimeout(r, delay));
         return postData(url, data, retryCount + 1);
       }
@@ -1142,8 +1184,8 @@ export default function App() {
       }
       return json;
     } catch (err) {
-      if ((err.name === "TypeError" || err.message?.includes("Failed to fetch")) && retryCount < 2) {
-        const delay = (retryCount + 1) * 1500;
+      if ((err.name === "TypeError" || err.message?.includes("Failed to fetch") || err.message?.includes("NetworkError")) && retryCount < 3) {
+        const delay = (retryCount + 1) * 2000 + Math.floor(Math.random() * 800);
         console.warn(`[postData] Network fetch failure for ${url}. Retrying in ${delay}ms...`);
         await new Promise(r => setTimeout(r, delay));
         return postData(url, data, retryCount + 1);
@@ -1163,8 +1205,8 @@ export default function App() {
     }
     try {
       const res = await fetch(url, { method: "DELETE" });
-      if ((res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) && retryCount < 2) {
-        const delay = (retryCount + 1) * 1500;
+      if ((res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) && retryCount < 3) {
+        const delay = (retryCount + 1) * 2000 + Math.floor(Math.random() * 800);
         await new Promise(r => setTimeout(r, delay));
         return deleteData(url, retryCount + 1);
       }
@@ -3900,6 +3942,12 @@ const cancelRequests = async (requestIds, reason = "") => {
       ) : (
         /* Main App Screens */
         <main className="main-content-area" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "50vh", gap: "14px" }}>
+              <div style={{ width: "42px", height: "42px", border: "4px solid rgba(56, 189, 248, 0.2)", borderTopColor: "#38bdf8", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+              <div style={{ fontSize: "0.9rem", color: "var(--text-muted)", fontWeight: 600 }}>Loading Module...</div>
+            </div>
+          }>
           {activeView === "login" && !currentUser && (
             <LoginPage onLogin={handleLogin} onEnterAsGuest={enterAsGuest} users={users} />
           )}
@@ -4246,6 +4294,7 @@ const cancelRequests = async (requestIds, reason = "") => {
             />
           </div>
         )}
+          </React.Suspense>
       </main>
       )}
 

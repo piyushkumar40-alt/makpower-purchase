@@ -492,8 +492,7 @@ export default function PurchaserDashboard({
     isMasterDataSilentlyLoading ||
     loadingModules?.requests ||
     loadingModules?.cargos ||
-    loadingModules?.vendors ||
-    (!requests || requests.length === 0)
+    loadingModules?.vendors
   );
 
   const renderTabLoader = (tabTitle, tabSubtitle) => (

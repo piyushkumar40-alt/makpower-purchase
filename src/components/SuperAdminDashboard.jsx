@@ -933,8 +933,8 @@ export default function SuperAdminDashboard({
   const [authAuditLogs, setAuthAuditLogs] = useState([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
 
-  const fetchSessionsData = async () => {
-    if (document.visibilityState !== "visible") return;
+  const fetchSessionsData = async (isPoll = false) => {
+    if (isPoll && document.visibilityState !== "visible") return;
     setLoadingSessions(true);
     try {
       const res = await fetch("/api/auth/sessions");
@@ -953,10 +953,10 @@ export default function SuperAdminDashboard({
   };
 
   React.useEffect(() => {
-    fetchSessionsData();
+    fetchSessionsData(false);
     const interval = setInterval(() => {
       if (document.visibilityState === "visible") {
-        fetchSessionsData();
+        fetchSessionsData(true);
       }
     }, 30000);
     return () => clearInterval(interval);

@@ -88,7 +88,31 @@ setInterval(() => {
   }
 }, 20000);
 
-function invalidateStateCache() {
+// ==================== REAL-TIME SSE (SERVER-SENT EVENTS) HUB ====================
+const sseClients = new Set();
+
+let sseBroadcastTimeout = null;
+function broadcastSseMutation(extraData = {}) {
+  if (sseClients.size === 0) return;
+  if (sseBroadcastTimeout) clearTimeout(sseBroadcastTimeout);
+  sseBroadcastTimeout = setTimeout(() => {
+    const payload = `data: ${JSON.stringify({
+      type: "MUTATION",
+      version: lastServerMutationTimestamp,
+      timestamp: Date.now(),
+      ...extraData
+    })}\n\n`;
+    for (const client of sseClients) {
+      try {
+        client.res.write(payload);
+      } catch (e) {
+        sseClients.delete(client);
+      }
+    }
+  }, 100);
+}
+
+function invalidateStateCache(extraInfo = {}) {
   lastServerMutationTimestamp = Date.now();
   lastKnownGoodPurchaserState = null;
   stateCache = null;
@@ -99,7 +123,42 @@ function invalidateStateCache() {
   livePartyCategorySalesTimestamp = 0;
   inFlightPurchaserStatePromise = null;
   inFlightRequestsPromise = null;
+  inFlightGeneralStatePromise = null;
+  broadcastSseMutation(extraInfo);
 }
+
+// GET /api/events - Real-time Server-Sent Events stream for instant live synchronization
+app.get("/api/events", (req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no"
+  });
+
+  const clientId = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const clientObj = { id: clientId, res };
+  sseClients.add(clientObj);
+
+  res.write(`data: ${JSON.stringify({ type: "CONNECTED", clientId, version: lastServerMutationTimestamp })}\n\n`);
+
+  req.on("close", () => {
+    sseClients.delete(clientObj);
+  });
+});
+
+// Keepalive heartbeat every 25s prevents proxy/Cloudflare connection timeouts
+setInterval(() => {
+  if (sseClients.size > 0) {
+    for (const client of sseClients) {
+      try {
+        client.res.write(": keepalive\n\n");
+      } catch (e) {
+        sseClients.delete(client);
+      }
+    }
+  }
+}, 25000);
 
 // GET /api/state/meta - Lightweight endpoint returning mutation version & current server date (for EOD delta sync)
 app.get("/api/state/meta", (req, res) => {
@@ -1015,6 +1074,17 @@ async function setupPgDatabase() {
       UPDATE cargos SET "cargoEta" = '20' || SUBSTRING("cargoEta", 3) WHERE "cargoEta" LIKE '00%-%' OR "cargoEta" LIKE '00%/%';
       UPDATE items SET "category" = 'Pouch Battery' WHERE LOWER("name") LIKE '%pouch%' AND ("category" IS NULL OR "category" = '' OR LOWER("category") LIKE '%polymer%' OR LOWER("category") LIKE '%poly%');
       UPDATE requests SET "category" = 'Pouch Battery' WHERE LOWER("model") LIKE '%pouch%' AND ("category" IS NULL OR "category" = '' OR LOWER("category") LIKE '%polymer%' OR LOWER("category") LIKE '%poly%');
+
+      -- High-Performance B-Tree indexes for lightning queries across 1,000 users
+      CREATE INDEX IF NOT EXISTS idx_requests_purchaser ON requests("purchaserId");
+      CREATE INDEX IF NOT EXISTS idx_requests_status ON requests("status");
+      CREATE INDEX IF NOT EXISTS idx_requests_order_date ON requests("orderDate" DESC);
+      CREATE INDEX IF NOT EXISTS idx_requests_cargo_id ON requests("cargoId");
+      CREATE INDEX IF NOT EXISTS idx_requests_vendor_id ON requests("vendorId");
+      CREATE INDEX IF NOT EXISTS idx_requests_timestamp ON requests("timestamp" DESC);
+      CREATE INDEX IF NOT EXISTS idx_requests_mat_rec ON requests("isMaterialRec");
+      CREATE INDEX IF NOT EXISTS idx_cargos_order_date ON cargos("cargoOrderDate" DESC);
+      CREATE INDEX IF NOT EXISTS idx_cargos_eta ON cargos("cargoEta" DESC);
     `);
 
     // Auto-populate vendorReadyDate for orders assigned to cargo if vendorReadyDate is missing
@@ -2780,10 +2850,10 @@ app.get("/api/state", async (req, res) => {
     invalidateStateCache();
   }
   const now = Date.now();
-  if (!isRefreshRequest && isPurchaseScope && purchaserStateCache?.requests?.length > 0 && (now - purchaserStateCacheTimestamp < STATE_CACHE_TTL_MS)) {
+  if (!isRefreshRequest && isPurchaseScope && purchaserStateCache && (now - purchaserStateCacheTimestamp < STATE_CACHE_TTL_MS)) {
     return res.json(purchaserStateCache);
   }
-  if (!isRefreshRequest && !isRestrictedRole && !isPurchaseScope && stateCache?.requests?.length > 0 && (now - stateCacheTimestamp < STATE_CACHE_TTL_MS)) {
+  if (!isRefreshRequest && !isRestrictedRole && !isPurchaseScope && stateCache && (now - stateCacheTimestamp < STATE_CACHE_TTL_MS)) {
     return res.json(stateCache);
   }
 
@@ -3024,20 +3094,28 @@ app.get("/api/state", async (req, res) => {
         crmPartiesParams = [userId || "", cleanName];
       }
 
-      const [
-        usersRes,
-        vendorsRes,
-        cargoCompaniesRes,
-        cargosRes,
-        requestsRes,
-        settingsRes,
-        itemsRes,
-        crmPartiesRes,
-        designationsRes,
-        itemPricesRes,
-        schemesRes,
-        partyCatSalesList
-      ] = await Promise.all([
+      if (!isRestrictedRole) {
+        if (inFlightGeneralStatePromise) {
+          const concurrentGeneralData = await inFlightGeneralStatePromise;
+          return res.json(concurrentGeneralData);
+        }
+      }
+
+      const executeFetchGeneralState = async () => {
+        const [
+          usersRes,
+          vendorsRes,
+          cargoCompaniesRes,
+          cargosRes,
+          requestsRes,
+          settingsRes,
+          itemsRes,
+          crmPartiesRes,
+          designationsRes,
+          itemPricesRes,
+          schemesRes,
+          partyCatSalesList
+        ] = await Promise.all([
         pool.query("SELECT * FROM users").catch(e => { console.error("users query err:", e.message); return { rows: [] }; }),
         pool.query("SELECT * FROM vendors").catch(e => { console.error("vendors query err:", e.message); return { rows: [] }; }),
         pool.query("SELECT * FROM cargo_companies").catch(e => { console.error("cargo_companies query err:", e.message); return { rows: [] }; }),
@@ -3203,12 +3281,27 @@ app.get("/api/state", async (req, res) => {
         version: lastServerMutationTimestamp
       };
 
+        return fullState;
+      };
+
+      let resolvedState;
       if (!isRestrictedRole) {
-        stateCache = fullState;
+        inFlightGeneralStatePromise = executeFetchGeneralState();
+        try {
+          resolvedState = await inFlightGeneralStatePromise;
+        } finally {
+          inFlightGeneralStatePromise = null;
+        }
+      } else {
+        resolvedState = await executeFetchGeneralState();
+      }
+
+      if (!isRestrictedRole && resolvedState) {
+        stateCache = resolvedState;
         stateCacheTimestamp = Date.now();
       }
 
-      res.json(fullState);
+      return res.json(resolvedState);
     } catch (err) {
       console.error("GET /api/state error:", err.message);
       if (isPurchaseOnlyRole && (purchaserStateCache?.requests?.length > 0 || lastKnownGoodPurchaserState?.requests?.length > 0)) {
