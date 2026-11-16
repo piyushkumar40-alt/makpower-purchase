@@ -60,6 +60,7 @@ export default function RahulDashboard({
   onCancelRequests,
   onReactivateRequests,
   onLogout,
+  onOpenProfile = null,
   onRefreshData,
   onDirectPull,
   loading = false,
@@ -840,6 +841,17 @@ export default function RahulDashboard({
           <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 12px", borderRadius: "8px", background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.2)", fontSize: "0.78rem", color: "#38bdf8" }}>
             <Eye size={14} /> Master Orders: View Only
           </div>
+          {onOpenProfile && (
+            <button 
+              type="button"
+              onClick={onOpenProfile} 
+              className="btn btn-secondary btn-sm" 
+              style={{ padding: "8px 14px", display: "inline-flex", alignItems: "center", gap: "6px" }}
+              title="View & Edit your profile and phone number"
+            >
+              <User size={14} style={{ color: "var(--primary)" }} /> Profile
+            </button>
+          )}
           <button onClick={onLogout} className="btn btn-secondary btn-sm" style={{ padding: "8px 14px" }}>
             <LogOut size={14} /> Logout
           </button>

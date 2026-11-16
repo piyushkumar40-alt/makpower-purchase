@@ -15,6 +15,7 @@ import HomePage from "./components/HomePage";
 import CrmDashboard from "./components/CrmDashboard";
 import ImsDashboard from "./components/ImsDashboard";
 import ChangePasswordModal, { isWeakPassword } from "./components/ChangePasswordModal";
+import UserProfileModal, { PhonePromptModal } from "./components/UserProfileModal";
 import GlobalDataLoadingOverlay from "./components/GlobalDataLoadingOverlay";
 import { initialUsers, initialVendors, initialRequests, initialCargoShipments, initialCargoCompanies, initialCrmParties, initialCrmSalesOrders, initialCrmDispatches, initialImsTransactions, initialSchemes } from "./mockData";
 import { 
@@ -224,6 +225,39 @@ export default function App() {
   // Password Update Modal & Weak Password Prompt States
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [isWeakPasswordPrompt, setIsWeakPasswordPrompt] = useState(false);
+
+  // User Profile & Phone Number Prompt States
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showPhonePromptModal, setShowPhonePromptModal] = useState(false);
+
+  // Check on dashboard open if logged-in user does not have a phone number (ask first, not compulsory, can skip)
+  useEffect(() => {
+    if (currentUser && currentUser.id) {
+      const hasPhone = Boolean(currentUser.phone && String(currentUser.phone).trim());
+      if (!hasPhone) {
+        const skipped = sessionStorage.getItem(`makpower_phone_skipped_${currentUser.id}`);
+        if (!skipped) {
+          setShowPhonePromptModal(true);
+        }
+      } else {
+        setShowPhonePromptModal(false);
+      }
+    }
+  }, [currentUser?.id, currentUser?.phone]);
+
+  const handleSaveUserPhone = async (phoneVal) => {
+    if (!currentUser) return;
+    await updateUserInfo(currentUser.id, { phone: phoneVal });
+    sessionStorage.removeItem(`makpower_phone_skipped_${currentUser.id}`);
+    setShowPhonePromptModal(false);
+  };
+
+  const handleSkipUserPhone = () => {
+    if (currentUser?.id) {
+      sessionStorage.setItem(`makpower_phone_skipped_${currentUser.id}`, "true");
+    }
+    setShowPhonePromptModal(false);
+  };
 
   // Check on mount if logged-in user has a weak password
   useEffect(() => {
@@ -4264,13 +4298,18 @@ const cancelRequests = async (requestIds, reason = "") => {
             {currentUser ? (
               <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
                 <div 
-                  onClick={() => setMobileMenuOpen(prev => !prev)}
-                  title={currentUser.name}
+                  onClick={() => setShowProfileModal(true)}
+                  title={`${currentUser.name} - Click to view profile`}
                   style={{ width: "28px", height: "28px", minWidth: "28px", borderRadius: "50%", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff", fontWeight: 800, fontSize: "0.75rem", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 8px rgba(99, 102, 241, 0.4)", cursor: "pointer" }}
                 >
                   {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : "AP"}
                 </div>
-                <div className="desktop-user-badge-text" style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
+                <div 
+                  className="desktop-user-badge-text" 
+                  onClick={() => setShowProfileModal(true)}
+                  title="Click to view & edit profile"
+                  style={{ display: "flex", flexDirection: "column", lineHeight: 1.1, cursor: "pointer" }}
+                >
                   <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-main)", whiteSpace: "nowrap" }}>
                     {currentUser.role === "superadmin" ? "Admin" : currentUser.name}
                   </span>
@@ -4278,6 +4317,25 @@ const cancelRequests = async (requestIds, reason = "") => {
                     ({currentUser.role === "rahul" ? "Accts" : currentUser.role === "nitin" ? "PACKING" : (currentUser.role?.toUpperCase() || "STAFF")})
                   </span>
                 </div>
+                <button 
+                  onClick={() => setShowProfileModal(true)} 
+                  className="btn btn-sm btn-secondary desktop-user-profile-btn" 
+                  style={{ 
+                    borderRadius: "8px", 
+                    padding: "3px 8px", 
+                    fontSize: "0.72rem", 
+                    fontWeight: 600,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    border: "1px solid var(--border-glass, rgba(255, 255, 255, 0.18))",
+                    flexShrink: 0
+                  }}
+                  title="View & Edit your profile / phone number"
+                >
+                  <User size={11} style={{ color: "var(--primary, #38bdf8)" }} />
+                  <span>Profile</span>
+                </button>
                 <button 
                   onClick={() => {
                     setIsWeakPasswordPrompt(false);
@@ -4360,7 +4418,12 @@ const cancelRequests = async (requestIds, reason = "") => {
 
             {/* User Profile Info Card */}
             {currentUser && (
-              <div className="mobile-user-card">
+              <div 
+                className="mobile-user-card" 
+                onClick={() => { setShowProfileModal(true); setMobileMenuOpen(false); }}
+                style={{ cursor: "pointer" }}
+                title="Click to view & edit your profile"
+              >
                 <span 
                   className="user-role-dot" 
                   style={{ background: currentUser.role === "superadmin" ? "#f59e0b" : currentUser.role === "nitin" ? "#ec4899" : currentUser.role === "rahul" ? "#10b981" : currentUser.role === "crm" ? "#6366f1" : currentUser.role === "rsm" ? "#8b5cf6" : "#38bdf8" }}
@@ -4541,6 +4604,15 @@ const cancelRequests = async (requestIds, reason = "") => {
                 <>
                   <button 
                     onClick={() => { 
+                      setShowProfileModal(true); 
+                      setMobileMenuOpen(false); 
+                    }} 
+                    className="mobile-nav-item"
+                  >
+                    <User size={18} style={{ color: "var(--primary, #38bdf8)" }} /> <span>My Profile & Phone</span>
+                  </button>
+                  <button 
+                    onClick={() => { 
                       setIsWeakPasswordPrompt(false);
                       setShowPasswordModal(true); 
                       setMobileMenuOpen(false); 
@@ -4663,6 +4735,7 @@ const cancelRequests = async (requestIds, reason = "") => {
             onCancelRequests={cancelRequests}
             onReactivateRequests={reactivateRequests}
             onLogout={handleLogout}
+            onOpenProfile={() => setShowProfileModal(true)}
             onRefreshData={() => handleRefreshFullData(false)}
             onDirectPull={handleDirectPull}
             loading={loading}
@@ -4986,6 +5059,31 @@ const cancelRequests = async (requestIds, reason = "") => {
           currentUser={currentUser}
           isWeakAlertMode={isWeakPasswordPrompt}
           onPasswordUpdated={handleUserPasswordUpdated}
+        />
+      )}
+
+      {/* User Profile & Contact Info Modal */}
+      {showProfileModal && currentUser && (
+        <UserProfileModal
+          isOpen={showProfileModal}
+          onClose={() => setShowProfileModal(false)}
+          currentUser={currentUser}
+          onUpdateUserInfo={updateUserInfo}
+          onChangePasswordClick={() => {
+            setIsWeakPasswordPrompt(false);
+            setShowPasswordModal(true);
+          }}
+        />
+      )}
+
+      {/* First-Time Dashboard Open Phone Number Prompt (Optional / Can Skip) */}
+      {showPhonePromptModal && currentUser && (
+        <PhonePromptModal
+          isOpen={showPhonePromptModal}
+          onClose={() => setShowPhonePromptModal(false)}
+          currentUser={currentUser}
+          onSavePhone={handleSaveUserPhone}
+          onSkip={handleSkipUserPhone}
         />
       )}
     </div>

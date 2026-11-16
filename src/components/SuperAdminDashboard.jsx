@@ -4,7 +4,7 @@ import {
   Upload, Eye, EyeOff, Truck, ChevronRight, Sliders, Package, ShieldCheck, Clock, 
   UserX, LogOut, Folder, HardDrive, Trash2, Copy, ExternalLink, Key, Check, 
   CheckCircle, CheckCircle2, Layers, AlertTriangle, ShieldAlert, X, Search, Edit2, Tag, DollarSign,
-  Award, Gift, Lock
+  Award, Gift, Lock, Phone
 } from "lucide-react";
 import TransferModal from "./TransferModal";
 import { getCurrencySymbol, CargoCompaniesPanel, VendorDetailModal, CargoCompanyDetailModal } from "./PurchaserDashboard";
@@ -896,6 +896,7 @@ export default function SuperAdminDashboard({
   const [pSalutation, setPSalutation] = useState("");
   const [pName, setPName] = useState("");
   const [pEmail, setPEmail] = useState("");
+  const [pPhone, setPPhone] = useState("");
   const [pPassword, setPPassword] = useState("");
   const [pRole, setPRole] = useState("crm");
   const [pDesignation, setPDesignation] = useState("CRM Executive");
@@ -909,6 +910,7 @@ export default function SuperAdminDashboard({
   const [editingStaffId, setEditingStaffId] = useState(null);
   const [editSalutationVal, setEditSalutationVal] = useState("");
   const [editNameVal, setEditNameVal] = useState("");
+  const [editPhoneVal, setEditPhoneVal] = useState("");
   const [editPasswordVal, setEditPasswordVal] = useState("");
   const [editDesignationVal, setEditDesignationVal] = useState("Purchaser");
   const [editRoleVal, setEditRoleVal] = useState("purchaser");
@@ -1565,6 +1567,22 @@ export default function SuperAdminDashboard({
                             </div>
                             <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "2px" }}>{staff.email}</div>
                             
+                            {/* Staff Phone Number Display */}
+                            <div style={{ fontSize: "0.78rem", color: staff.phone ? "var(--text-main)" : "var(--text-muted)", marginTop: "3px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                              <Phone size={12} style={{ color: staff.phone ? "#10b981" : "var(--text-muted)", flexShrink: 0 }} />
+                              {staff.phone ? (
+                                <a 
+                                  href={`tel:${staff.phone}`} 
+                                  style={{ color: "#38bdf8", fontWeight: 600, textDecoration: "none" }}
+                                  title="Click to call user"
+                                >
+                                  {staff.phone}
+                                </a>
+                              ) : (
+                                <span style={{ fontStyle: "italic", opacity: 0.7 }}>(No phone number)</span>
+                              )}
+                            </div>
+                            
                             {/* Super Admin User Password Pill (Sleek Modern Tag) */}
                             <div style={{
                               display: "inline-flex",
@@ -1664,6 +1682,7 @@ export default function SuperAdminDashboard({
                                 }
                                 setEditSalutationVal(sal);
                                 setEditNameVal(nm);
+                                setEditPhoneVal(staff.phone || "");
                                 setEditPasswordVal("");
                                 setEditDesignationVal(staff.designation || (staff.role === "rahul" ? "Accts" : staff.role === "nitin" ? "Packing" : "Purchaser"));
                                 setEditRoleVal(staff.role || ((staff.name?.toLowerCase().includes("rahul") && staff.name?.toLowerCase().includes("mann")) ? "rahul" : "purchaser"));
@@ -1853,6 +1872,18 @@ export default function SuperAdminDashboard({
                             )}
 
                             <div className="form-group" style={{ marginBottom: "4px", gap: "4px" }}>
+                              <label className="form-label" style={{ fontSize: "0.72rem" }}>Phone Number</label>
+                              <input 
+                                type="tel" 
+                                className="form-control" 
+                                style={{ padding: "6px 10px", fontSize: "0.85rem", height: "32px" }}
+                                placeholder="Phone Number (e.g. 9876543210)"
+                                value={editPhoneVal}
+                                onChange={e => setEditPhoneVal(e.target.value)}
+                              />
+                            </div>
+
+                            <div className="form-group" style={{ marginBottom: "4px", gap: "4px" }}>
                               <label className="form-label" style={{ fontSize: "0.72rem" }}>New Password (leave blank to keep current)</label>
                               <input 
                                 type="text" 
@@ -1877,7 +1908,8 @@ export default function SuperAdminDashboard({
                                   const updates = { 
                                     name: finalName, 
                                     designation: editDesignationVal,
-                                    role: roleVal 
+                                    role: roleVal,
+                                    phone: editPhoneVal.trim()
                                   };
                                   if (roleVal === "asm" || roleVal === "tsm" || roleVal === "rsm") {
                                     updates.parentCrmId = editParentCrmIdVal || "u-ankita";
@@ -1929,10 +1961,11 @@ export default function SuperAdminDashboard({
                   const finalPName = pSalutation ? `${pSalutation} ${cleanName}` : cleanName;
                   
                   const des = pDesignation === "Custom" ? customDesignationInput.trim() : pDesignation;
-                  onAddPurchaser(finalPName, pEmail.trim(), pPassword.trim(), des, pRole);
+                  onAddPurchaser(finalPName, pEmail.trim(), pPassword.trim(), des, pRole, pPhone.trim());
                   setPSuccess(`✅ Account for "${finalPName}" created successfully with role ${pRole.toUpperCase()}!`);
                   setPName("");
                   setPEmail("");
+                  setPPhone("");
                   setPPassword("");
                   setCustomDesignationInput("");
                   setTimeout(() => setPSuccess(""), 3500);
@@ -1976,6 +2009,17 @@ export default function SuperAdminDashboard({
                         value={pEmail}
                         onChange={e => setPEmail(e.target.value)}
                         required
+                      />
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">Phone Number (Optional)</label>
+                      <input 
+                        type="tel" 
+                        className="form-control"
+                        placeholder="e.g. 9876543210"
+                        value={pPhone}
+                        onChange={e => setPPhone(e.target.value)}
                       />
                     </div>
 
