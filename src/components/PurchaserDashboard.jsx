@@ -2206,7 +2206,16 @@ export default function PurchaserDashboard({
                               <span className={`badge ${alert.type === "danger" ? "badge-rejected" : "badge-pending"}`} style={{ marginRight: "10px" }}>
                                 {alert.label}
                               </span>
-                              <strong>Cargo: {cargo.cargoDetail || cargo.id}</strong> — Vendor: <strong>{vName}</strong> ({cargoItems.length} items bundled)
+                              <strong
+                                onClick={() => {
+                                  const fullCargo = (cargos || []).find(c => c.id === cargo.id || String(c.id) === String(cargo.id)) || cargo;
+                                  setEditingCargo(fullCargo);
+                                }}
+                                style={{ cursor: "pointer", color: "var(--primary, #38bdf8)", textDecoration: "underline" }}
+                                title="Click to view and edit cargo details"
+                              >
+                                Cargo: {cargo.cargoDetail || cargo.id}
+                              </strong> — Vendor: <strong>{vName}</strong> ({cargoItems.length} items bundled)
                               <div style={{ fontSize: "0.8rem", opacity: 0.85, marginTop: "3px" }}>
                                 {alert.type === "danger" 
                                   ? `Arrival Overdue by ${alert.days} days (Cargo ETA: ${cargo.cargoEta})`
@@ -2558,13 +2567,58 @@ export default function PurchaserDashboard({
                                 <tr style={{ background: isExpanded ? "rgba(56, 189, 248, 0.04)" : undefined }}>
                                   <td>
                                     <div style={{ fontWeight: 700, color: "var(--text-main)", fontSize: "0.92rem", display: "flex", alignItems: "center", gap: "6px" }}>
-                                      <span>📦 {cargo.cargoName}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const fullCargo = (cargos || []).find(c => c.id === cargo.id || String(c.id) === String(cargo.id)) || cargo;
+                                          setEditingCargo(fullCargo);
+                                        }}
+                                        style={{
+                                          background: "none",
+                                          border: "none",
+                                          padding: 0,
+                                          font: "inherit",
+                                          fontWeight: 700,
+                                          color: "var(--primary, #38bdf8)",
+                                          cursor: "pointer",
+                                          textAlign: "left",
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: "4px",
+                                          textDecoration: "underline",
+                                          textUnderlineOffset: "3px"
+                                        }}
+                                        title={`Click to view and edit details for cargo ${cargo.cargoName || cargo.id}`}
+                                      >
+                                        <span>📦 {cargo.cargoName}</span>
+                                      </button>
                                       <span className="badge badge-cargo" style={{ fontSize: "0.68rem", padding: "1px 5px" }}>
                                         {cargo.modeOfTransport || "Sea"}
                                       </span>
                                     </div>
                                     <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                                      Tracking Code: <span style={{ fontFamily: "monospace" }}>{cargo.id}</span>
+                                      Tracking Code:{" "}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const fullCargo = (cargos || []).find(c => c.id === cargo.id || String(c.id) === String(cargo.id)) || cargo;
+                                          setEditingCargo(fullCargo);
+                                        }}
+                                        style={{
+                                          background: "none",
+                                          border: "none",
+                                          padding: 0,
+                                          fontFamily: "monospace",
+                                          fontSize: "0.78rem",
+                                          color: "#06b6d4",
+                                          cursor: "pointer",
+                                          textDecoration: "underline",
+                                          textUnderlineOffset: "2px"
+                                        }}
+                                        title={`Click to view and edit details for cargo #${cargo.id}`}
+                                      >
+                                        {cargo.id}
+                                      </button>
                                     </div>
                                   </td>
 
@@ -2656,8 +2710,20 @@ export default function PurchaserDashboard({
                                 {isExpanded && (
                                   <tr style={{ background: "rgba(56, 189, 248, 0.02)" }}>
                                     <td colSpan="7" style={{ padding: "12px 20px" }}>
-                                      <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--primary)", marginBottom: "8px" }}>
-                                        Bundled Items in Cargo ({cargo.cargoName} - {cargo.id}):
+                                      <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--primary)", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+                                        <span>Bundled Items in Cargo (</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const fullCargo = (cargos || []).find(c => c.id === cargo.id || String(c.id) === String(cargo.id)) || cargo;
+                                            setEditingCargo(fullCargo);
+                                          }}
+                                          style={{ background: "none", border: "none", padding: 0, font: "inherit", fontWeight: 700, color: "var(--primary, #38bdf8)", cursor: "pointer", textDecoration: "underline" }}
+                                          title="Click to view and edit cargo details"
+                                        >
+                                          {cargo.cargoName} - {cargo.id}
+                                        </button>
+                                        <span>):</span>
                                       </div>
                                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "8px" }}>
                                         {cargo.cargoItems.map(item => (
@@ -5967,7 +6033,16 @@ export default function PurchaserDashboard({
                               </td>
                               <td>{vName}</td>
                               <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                                <div>{r.cargoId}</div>
+                                <div
+                                  onClick={() => {
+                                    const cg = allAvailableCargos.find(c => isCargoMatch(r.cargoId, c)) || (cargos || []).find(c => isCargoMatch(r.cargoId, c));
+                                    if (cg) setEditingCargo(cg);
+                                  }}
+                                  style={{ cursor: "pointer", color: "var(--primary, #38bdf8)", fontWeight: 700, textDecoration: "underline" }}
+                                  title={`Click to view and edit details for cargo #${r.cargoId}`}
+                                >
+                                  {r.cargoId}
+                                </div>
                                 {(() => {
                                   const cg = allAvailableCargos.find(c => isCargoMatch(r.cargoId, c));
                                   const cCartons = calculateCargoTotalCartons(cg, requests);
@@ -6235,7 +6310,15 @@ export default function PurchaserDashboard({
                         <div>
                           <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                             <h4 style={{ fontSize: "1.2rem", fontWeight: 700, margin: 0 }}>
-                              Cargo Code: {cargo.id}
+                              Cargo Code:{" "}
+                              <button
+                                type="button"
+                                onClick={() => setEditingCargo(cargo)}
+                                style={{ background: "none", border: "none", padding: 0, font: "inherit", fontWeight: 700, color: "var(--primary, #38bdf8)", cursor: "pointer", textDecoration: "underline" }}
+                                title="Click to view and edit cargo details"
+                              >
+                                {cargo.id}
+                              </button>
                             </h4>
                             <span className={`badge ${isReceived ? "badge-received" : "badge-cargo"}`}>
                               {isReceived ? "✓ Received" : "In Transit"}
@@ -6249,7 +6332,16 @@ export default function PurchaserDashboard({
                             <span>|</span>
                             <span>Transport Mode: <strong>{cargo.modeOfTransport}</strong></span>
                             <span>|</span>
-                            <span>Cargo Name / Company: <strong style={{ color: "var(--primary, #38bdf8)" }}>{cargoName}</strong></span>
+                            <span>Cargo Name / Company:{" "}
+                              <button
+                                type="button"
+                                onClick={() => setEditingCargo(cargo)}
+                                style={{ background: "none", border: "none", padding: 0, font: "inherit", cursor: "pointer" }}
+                                title="Click to view and edit cargo details"
+                              >
+                                <strong style={{ color: "var(--primary, #38bdf8)", textDecoration: "underline" }}>{cargoName}</strong>
+                              </button>
+                            </span>
                             {cargo.createdByName && (
                               <>
                                 <span>|</span>
@@ -6308,7 +6400,13 @@ export default function PurchaserDashboard({
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px", marginBottom: "16px", fontSize: "0.85rem" }}>
                         <div>
                           <div style={{ color: "var(--text-muted)" }}>Cargo Name / Detail:</div>
-                          <div style={{ fontWeight: 600, color: "var(--text-main)" }}>{cargoName}</div>
+                          <div 
+                            onClick={() => setEditingCargo(cargo)} 
+                            style={{ fontWeight: 600, color: "var(--primary, #38bdf8)", cursor: "pointer", textDecoration: "underline" }}
+                            title="Click to view and edit cargo details"
+                          >
+                            {cargoName}
+                          </div>
                           {cargo.cargoDetail && cargo.cargoDetail !== cargoName && (
                             <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "2px" }}>{cargo.cargoDetail}</div>
                           )}
@@ -7217,6 +7315,8 @@ export default function PurchaserDashboard({
           cargos={cargos}
           requests={requests}
           cargoCompanies={cargoCompanies}
+          purchasers={purchasers}
+          onAddCargoCompany={onAddCargoCompany}
           onClose={() => setEditingCargo(null)}
           onSave={(updated) => {
             onUpdateCargo(updated);
@@ -10167,7 +10267,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
 }
 
 // 4. EDIT CARGO MODAL
-function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = [], onAddCargoCompany, onClose, onSave }) {
+export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = [], purchasers = [], onAddCargoCompany, onClose, onSave }) {
   useModalEscape(onClose);
   const [detail, setDetail] = useState(cargo.cargoDetail || "");
   const [currency, setCurrency] = useState(cargo.currency || "RMB");
@@ -10180,6 +10280,7 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
   const [eta, setEta] = useState(cargo.cargoEta || "");
   const [editTotalCartons, setEditTotalCartons] = useState(cargo.totalCartons != null ? String(cargo.totalCartons) : "");
   const [showQuickCargoCompanyModal, setShowQuickCargoCompanyModal] = useState(false);
+  const [showItemsList, setShowItemsList] = useState(true);
   // File state: keep existing filename/data OR allow new upload
   const [packingListFile, setPackingListFile] = useState(
     cargo.packingListFile ? { name: cargo.packingListFile, data: cargo.packingListData || "" } : null
@@ -10243,7 +10344,7 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
     }
   };
 
-  const cargoItems = requests.filter(r => r.cargoId === cargo.id);
+  const cargoItems = (requests || []).filter(r => isCargoMatch(r.cargoId, cargo) && r.status !== "Cancelled");
   const totalItemPieces = cargoItems.reduce((sum, r) => sum + (parseFloat(r.vendorOrderQuantity || r.orderQuantity || 0)), 0);
   const totalCartons = calculateCargoTotalCartons(cargo, requests);
 
@@ -10280,11 +10381,72 @@ function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = []
 
   return (
     <div className="modal-overlay">
-      <div className="glass-panel modal-content" style={{ maxWidth: "600px" }}>
-        <h3 style={{ fontSize: "1.4rem", marginBottom: "6px", color: "var(--primary)" }}>Update Shipping & Cargo Details</h3>
-        <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "18px" }}>
-          Cargo Code: <strong>{cargo.id}</strong> | Items: <strong>{cargoItems.length}</strong> | Total Pieces: <strong>{totalItemPieces} Pcs</strong> | Total Cartons: <strong style={{ color: "var(--warning, #f59e0b)" }}>📦 {totalCartons} Cartons</strong>
-        </p>
+      <div className="glass-panel modal-content" style={{ maxWidth: "680px", maxHeight: "90vh", overflowY: "auto", position: "relative" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+          <div>
+            <h3 style={{ fontSize: "1.35rem", margin: 0, color: "var(--primary)", display: "flex", alignItems: "center", gap: "8px" }}>
+              <span>📦 Cargo Details & Shipping Editor</span>
+            </h3>
+            <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "3px" }}>
+              Edit shipment parameters, carrier assignment, ETAs, cartons, pricing, and documents.
+            </div>
+          </div>
+          <button 
+            type="button" 
+            onClick={onClose} 
+            className="btn-icon" 
+            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid var(--border-glass)", borderRadius: "50%", width: "32px", height: "32px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-muted)" }}
+            title="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.2)", borderRadius: "8px", padding: "10px 14px", marginBottom: "14px", display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", fontSize: "0.84rem" }}>
+          <div>Tracking / Code: <strong style={{ color: "#38bdf8", fontFamily: "monospace" }}>{cargo.id}</strong></div>
+          <div>|</div>
+          <div>Bundled Items: <strong style={{ color: "var(--text-main)" }}>{cargoItems.length} lines</strong></div>
+          <div>|</div>
+          <div>Total Pieces: <strong style={{ color: "var(--text-main)" }}>{totalItemPieces.toLocaleString()} Pcs</strong></div>
+          <div>|</div>
+          <div>Total Cartons: <strong style={{ color: "var(--warning, #f59e0b)" }}>📦 {totalCartons} Cartons</strong></div>
+        </div>
+
+        {/* Collapsible Bundled Items List */}
+        {cargoItems.length > 0 && (
+          <div style={{ marginBottom: "14px", border: "1px solid var(--border-glass)", borderRadius: "8px", padding: "10px 12px", background: "rgba(0, 0, 0, 0.14)" }}>
+            <div 
+              onClick={() => setShowItemsList(prev => !prev)}
+              style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--text-main)", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", userSelect: "none" }}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                <span>📦 Bundled Items in this Cargo ({cargoItems.length})</span>
+                <span style={{ fontSize: "0.75rem", color: "var(--primary)" }}>{showItemsList ? "▲ Hide" : "▼ Show"}</span>
+              </span>
+              <span style={{ fontSize: "0.76rem", color: "var(--text-muted)" }}>Total: {totalItemPieces.toLocaleString()} Pcs</span>
+            </div>
+            {showItemsList && (
+              <div style={{ maxHeight: "140px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "6px", marginTop: "8px" }}>
+                {cargoItems.map((itm, idx) => {
+                  const pName = itm.purchaserName || getPurchaserDisplayName(itm, purchasers);
+                  const qty = Number(itm.vendorOrderQuantity || itm.orderQuantity) || 0;
+                  return (
+                    <div key={itm.id || idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.78rem", padding: "5px 10px", background: "rgba(255,255,255,0.03)", borderRadius: "4px" }}>
+                      <div>
+                        <strong style={{ color: "var(--text-main)" }}>{itm.model || "Item"}</strong>
+                        <span style={{ color: "var(--text-muted)", marginLeft: "6px" }}>(#{itm.id})</span>
+                        {pName && <span style={{ color: "var(--primary)", marginLeft: "8px" }}>👤 {pName}</span>}
+                      </div>
+                      <div style={{ fontWeight: 600, color: "var(--text-main)" }}>
+                        {qty.toLocaleString()} Pcs
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           

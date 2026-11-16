@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
 import { isRequestForUser, calculateCargoTotalCartons, getOfficialPurchasersList } from "../utils/formatters";
+import { EditCargoModal } from "./PurchaserDashboard";
 
 export default function HomePage({
   currentUser,
@@ -22,6 +23,7 @@ export default function HomePage({
   const [storageMetrics, setStorageMetrics] = useState(null);
   const [activeSessions, setActiveSessions] = useState([]);
   const [loadingMetrics, setLoadingMetrics] = useState(false);
+  const [editingCargo, setEditingCargo] = useState(null);
 
   // Fetch metrics for SuperAdmin & system views
   const fetchMetrics = async () => {
@@ -501,13 +503,58 @@ export default function HomePage({
                               <tr>
                                 <td>
                                   <div style={{ fontWeight: 700, color: "var(--text-main)", display: "flex", alignItems: "center", gap: "6px" }}>
-                                    <span>📦 {cargo.cargoName}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const fullCargo = (cargos || []).find(c => c.id === cargo.id || String(c.id) === String(cargo.id)) || cargo;
+                                        setEditingCargo(fullCargo);
+                                      }}
+                                      style={{
+                                        background: "none",
+                                        border: "none",
+                                        padding: 0,
+                                        font: "inherit",
+                                        fontWeight: 700,
+                                        color: "var(--primary, #38bdf8)",
+                                        cursor: "pointer",
+                                        textAlign: "left",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "4px",
+                                        textDecoration: "underline",
+                                        textUnderlineOffset: "3px"
+                                      }}
+                                      title={`Click to view and edit details for cargo ${cargo.cargoName || cargo.id}`}
+                                    >
+                                      <span>📦 {cargo.cargoName}</span>
+                                    </button>
                                     <span className="badge badge-cargo" style={{ fontSize: "0.68rem", padding: "1px 5px" }}>
                                       {cargo.modeOfTransport || "Sea"}
                                     </span>
                                   </div>
-                                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontFamily: "monospace" }}>
-                                    {cargo.id}
+                                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontFamily: "monospace", marginTop: "2px" }}>
+                                    Tracking Code:{" "}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const fullCargo = (cargos || []).find(c => c.id === cargo.id || String(c.id) === String(cargo.id)) || cargo;
+                                        setEditingCargo(fullCargo);
+                                      }}
+                                      style={{
+                                        background: "none",
+                                        border: "none",
+                                        padding: 0,
+                                        fontFamily: "monospace",
+                                        fontSize: "0.75rem",
+                                        color: "#06b6d4",
+                                        cursor: "pointer",
+                                        textDecoration: "underline",
+                                        textUnderlineOffset: "2px"
+                                      }}
+                                      title={`Click to view and edit details for cargo #${cargo.id}`}
+                                    >
+                                      {cargo.id}
+                                    </button>
                                   </div>
                                 </td>
                                 <td><strong>{cargo.vendorName}</strong></td>
@@ -1025,6 +1072,22 @@ export default function HomePage({
             </div>
           </div>
         </div>
+      )}
+
+      {/* ==================== EDIT CARGO MODAL ==================== */}
+      {editingCargo && (
+        <EditCargoModal 
+          cargo={editingCargo}
+          cargos={cargos}
+          requests={requests}
+          cargoCompanies={cargoCompanies}
+          purchasers={users}
+          onClose={() => setEditingCargo(null)}
+          onSave={async (updated) => {
+            if (onUpdateCargo) await onUpdateCargo(updated);
+            setEditingCargo(null);
+          }}
+        />
       )}
 
     </div>

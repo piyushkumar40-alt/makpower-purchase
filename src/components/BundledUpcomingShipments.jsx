@@ -31,6 +31,7 @@ import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol, calcula
 import { uploadToCloudinary } from "../utils/upload";
 import CustomSelect from "./CustomSelect";
 import CargoDocumentModal from "./CargoDocumentModal";
+import { EditCargoModal } from "./PurchaserDashboard";
 
 export default function BundledUpcomingShipments({
   cargos = [],
@@ -93,6 +94,8 @@ export default function BundledUpcomingShipments({
   const [selectedEtaHistory, setSelectedEtaHistory] = useState(null);
   // Cargo Document Viewer & Attachment Modal
   const [viewingCargoDoc, setViewingCargoDoc] = useState(null);
+  // Cargo Details & Shipping Edit Modal
+  const [editingCargo, setEditingCargo] = useState(null);
 
   const handleOpenDocument = (cargo, docType, fileName, fileData, field, dataField) => {
     if (!fileName) return;
@@ -688,7 +691,45 @@ export default function BundledUpcomingShipments({
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                       <h4 style={{ fontSize: "1.2rem", fontWeight: 700, margin: 0 }}>
-                        Cargo Code: {cargo.id} {cargo.cargoDetail && cargo.cargoDetail !== cargo.id ? <span style={{ color: "var(--primary)", fontSize: "1rem", fontWeight: 700 }}>({cargo.cargoDetail})</span> : null}
+                        Cargo Code:{" "}
+                        <button
+                          type="button"
+                          onClick={() => setEditingCargo(cargo)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            font: "inherit",
+                            fontWeight: 700,
+                            color: "var(--primary, #38bdf8)",
+                            cursor: "pointer",
+                            textDecoration: "underline"
+                          }}
+                          title="Click to view and edit cargo details"
+                        >
+                          {cargo.id}
+                        </button>
+                        {cargo.cargoDetail && cargo.cargoDetail !== cargo.id ? (
+                          <button
+                            type="button"
+                            onClick={() => setEditingCargo(cargo)}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                              font: "inherit",
+                              color: "var(--primary)",
+                              fontSize: "1rem",
+                              fontWeight: 700,
+                              marginLeft: "6px",
+                              cursor: "pointer",
+                              textDecoration: "underline"
+                            }}
+                            title="Click to view and edit cargo details"
+                          >
+                            ({cargo.cargoDetail})
+                          </button>
+                        ) : null}
                       </h4>
                       <span className={`badge ${isDelivered ? "badge-received" : "badge-cargo"}`} style={{ fontSize: "0.75rem", padding: "3px 10px", fontWeight: 700 }}>
                         {isDelivered ? "Received" : "In Transit"}
@@ -1269,6 +1310,22 @@ export default function BundledUpcomingShipments({
           bundledRequests={requests.filter(r => r.cargoId === viewingCargoDoc?.cargo?.id)}
         />
       )}
+
+      {/* Cargo Details & Shipping Edit Modal */}
+      {editingCargo && (
+        <EditCargoModal
+          cargo={editingCargo}
+          cargos={cargos}
+          requests={requests}
+          cargoCompanies={cargoCompanies}
+          purchasers={purchasers}
+          onClose={() => setEditingCargo(null)}
+          onSave={async (updated) => {
+            if (onUpdateCargo) await onUpdateCargo(updated);
+            setEditingCargo(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1346,6 +1403,7 @@ export function OrderInspectionModal({ order: initialOrder, cargos = [], vendors
   const order = (requests || []).find(r => r.id === initialOrder.id) || initialOrder;
 
   const [viewingDoc, setViewingDoc] = useState(null);
+  const [editingCargo, setEditingCargo] = useState(null);
 
   const vendor = vendors.find(v => v.id === order.vendorId);
   const cargo = cargos.find(c => c.id === order.cargoId || String(c.id) === String(order.cargoId) || (order.cargoId && c.cargoDetail === order.cargoId));
@@ -1566,11 +1624,55 @@ export function OrderInspectionModal({ order: initialOrder, cargos = [], vendors
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "10px", padding: "14px", borderRadius: "10px", background: "rgba(255, 255, 255, 0.02)", border: "1px solid var(--border-glass)" }}>
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Cargo Code</div>
-              <div style={{ fontSize: "0.9rem", fontWeight: 700, marginTop: "2px" }}>{order.cargoId || "Not Consolidated"}</div>
+              {cargo ? (
+                <button
+                  type="button"
+                  onClick={() => setEditingCargo(cargo)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    font: "inherit",
+                    fontSize: "0.9rem",
+                    fontWeight: 700,
+                    color: "var(--primary, #38bdf8)",
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                    marginTop: "2px"
+                  }}
+                  title="Click to view and edit cargo details"
+                >
+                  {order.cargoId}
+                </button>
+              ) : (
+                <div style={{ fontSize: "0.9rem", fontWeight: 700, marginTop: "2px" }}>{order.cargoId || "Not Consolidated"}</div>
+              )}
             </div>
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Cargo Detail (Cargo Name)</div>
-              <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--primary)", marginTop: "2px" }}>{cargoDetail || "—"}</div>
+              {cargo ? (
+                <button
+                  type="button"
+                  onClick={() => setEditingCargo(cargo)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    font: "inherit",
+                    fontSize: "0.9rem",
+                    fontWeight: 700,
+                    color: "var(--primary, #38bdf8)",
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                    marginTop: "2px"
+                  }}
+                  title="Click to view and edit cargo details"
+                >
+                  {cargoDetail || "—"}
+                </button>
+              ) : (
+                <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--primary)", marginTop: "2px" }}>{cargoDetail || "—"}</div>
+              )}
             </div>
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Mode of Transport</div>
@@ -1689,6 +1791,22 @@ export function OrderInspectionModal({ order: initialOrder, cargos = [], vendors
             onClose={() => setViewingDoc(null)}
             onUpdateCargo={onUpdateCargo}
             bundledRequests={requests.filter(r => r.cargoId === cargo?.id)}
+          />
+        )}
+
+        {/* Cargo Details & Shipping Edit Modal inside Inspection */}
+        {editingCargo && (
+          <EditCargoModal
+            cargo={editingCargo}
+            cargos={cargos}
+            requests={requests}
+            cargoCompanies={cargoCompanies}
+            purchasers={purchasers}
+            onClose={() => setEditingCargo(null)}
+            onSave={async (updated) => {
+              if (onUpdateCargo) await onUpdateCargo(updated);
+              setEditingCargo(null);
+            }}
           />
         )}
       </div>
