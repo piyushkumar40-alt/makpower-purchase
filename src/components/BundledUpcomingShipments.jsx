@@ -43,6 +43,8 @@ export default function BundledUpcomingShipments({
   isViewOnly = false,
   onBatchUpdateRequests,
   onUpdateCargo,
+  onDeleteCargo = null,
+  onPurgeEmptyCargos = null,
   initialStatusFilter = "upcoming",
   targetCargoId = null,
   onClearTargetCargo = null
@@ -150,10 +152,11 @@ export default function BundledUpcomingShipments({
     const allCargos = reconcileCargosWithRequests(cargos, requests);
     return (allCargos || [])
       .filter(cargo => {
+        const allItems = (requests || []).filter(r => isCargoMatch(r.cargoId, cargo) && r.status !== "Cancelled");
+        if (allItems.length === 0) return false; // Filter out ghost/empty cargos with 0 items!
         const isDelivered = cargo.isMaterialRec === "Yes" || cargo.status === "Delivered" || cargo.status === "Received";
         const isTargetMatch = targetCargoId && (cargo.id === targetCargoId || cargo.cargoDetail === targetCargoId || String(cargo.id).toLowerCase().includes(String(targetCargoId).toLowerCase()));
         if (isDelivered && statusFilter !== "delivered" && statusFilter !== "all" && !isTargetMatch) return false;
-        const allItems = (requests || []).filter(r => isCargoMatch(r.cargoId, cargo) && r.status !== "Cancelled");
         if (allItems.length > 0 && allItems.every(it => it.isMaterialRec === "Yes") && statusFilter !== "delivered" && statusFilter !== "all" && !isTargetMatch) {
           return false;
         }
@@ -1319,6 +1322,10 @@ export default function BundledUpcomingShipments({
           requests={requests}
           cargoCompanies={cargoCompanies}
           purchasers={purchasers}
+          onDeleteCargo={onDeleteCargo}
+          onPurgeEmptyCargos={onPurgeEmptyCargos}
+          currentUser={currentUser}
+          isAdmin={currentUser?.role === "superadmin" || currentUser?.role === "owner" || currentUser?.role === "admin" || currentUser?.role === "rahul"}
           onClose={() => setEditingCargo(null)}
           onSave={async (updated) => {
             if (onUpdateCargo) await onUpdateCargo(updated);
@@ -1802,6 +1809,10 @@ export function OrderInspectionModal({ order: initialOrder, cargos = [], vendors
             requests={requests}
             cargoCompanies={cargoCompanies}
             purchasers={purchasers}
+            onDeleteCargo={onDeleteCargo}
+            onPurgeEmptyCargos={onPurgeEmptyCargos}
+            currentUser={currentUser}
+            isAdmin={currentUser?.role === "superadmin" || currentUser?.role === "owner" || currentUser?.role === "admin" || currentUser?.role === "rahul"}
             onClose={() => setEditingCargo(null)}
             onSave={async (updated) => {
               if (onUpdateCargo) await onUpdateCargo(updated);

@@ -4658,6 +4658,8 @@ const cancelRequests = async (requestIds, reason = "") => {
             purchasers={officialPurchasers}
             onBatchUpdateRequests={batchUpdateRequests}
             onUpdateCargo={updateCargo}
+            onDeleteCargo={deleteCargo}
+            onPurgeEmptyCargos={purgeEmptyCargos}
             onCancelRequests={cancelRequests}
             onReactivateRequests={reactivateRequests}
             onLogout={handleLogout}

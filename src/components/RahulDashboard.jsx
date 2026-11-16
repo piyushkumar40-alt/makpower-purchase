@@ -52,6 +52,8 @@ export default function RahulDashboard({
   items = [],
   onBatchUpdateRequests,
   onUpdateCargo,
+  onDeleteCargo = null,
+  onPurgeEmptyCargos = null,
   onCancelRequests,
   onReactivateRequests,
   onLogout,
@@ -233,8 +235,12 @@ export default function RahulDashboard({
       }
     });
 
-    // Upcoming bundled shipments count
-    const upcomingShipmentsCount = cargos.filter(c => c.status !== "Delivered" && c.isDelivered !== "Yes").length;
+    // Upcoming bundled shipments count (strictly excluding empty ghost cargos with 0 items)
+    const upcomingShipmentsCount = cargos.filter(c => {
+      if (c.status === "Delivered" || c.isMaterialRec === "Yes" || c.isDelivered === "Yes") return false;
+      const cargoItems = (requests || []).filter(r => (r.cargoId === c.id || (r.cargoId && c.cargoDetail === r.cargoId)) && r.status !== "Cancelled");
+      return cargoItems.length > 0;
+    }).length;
 
     return {
       totalOrders: activeRequests.length,
@@ -251,25 +257,30 @@ export default function RahulDashboard({
       pendingCargoPriceTotal,
       upcomingShipmentsCount
     };
-  }, [activeRequests, cargos]);
+  }, [activeRequests, cargos, requests]);
 
-  // In-transit cargos strictly (excluding delivered/received cargos and completed cargos)
+  // In-transit cargos strictly (excluding delivered/received cargos and empty ghost cargos with 0 items)
   const inTransitCargos = useMemo(() => {
     return (cargos || []).filter(c => {
       const isDelivered = c.isMaterialRec === "Yes" || c.status === "Delivered" || c.status === "Received";
       if (isDelivered) return false;
-      const cargoItems = (requests || []).filter(r => r.cargoId === c.id && r.status !== "Cancelled");
-      if (cargoItems.length > 0 && cargoItems.every(it => it.isMaterialRec === "Yes")) {
+      const cargoItems = (requests || []).filter(r => (r.cargoId === c.id || (r.cargoId && c.cargoDetail === r.cargoId)) && r.status !== "Cancelled");
+      if (cargoItems.length === 0) return false; // Filter out empty ghost cargos with 0 items
+      if (cargoItems.every(it => it.isMaterialRec === "Yes")) {
         return false;
       }
       return true;
     });
   }, [cargos, requests]);
 
-  // All cargos where vendor bill is uploaded by purchaser (Step 2 Scope)
+  // All cargos where vendor bill is uploaded by purchaser (Step 2 Scope - strictly with items)
   const billCargos = useMemo(() => {
-    return (cargos || []).filter(c => Boolean(c.invoiceFile && c.invoiceData));
-  }, [cargos]);
+    return (cargos || []).filter(c => {
+      const cargoItems = (requests || []).filter(r => (r.cargoId === c.id || (r.cargoId && c.cargoDetail === r.cargoId)) && r.status !== "Cancelled");
+      if (cargoItems.length === 0) return false; // Empty cargos with 0 items should not appear on bill board
+      return Boolean(c.invoiceFile && c.invoiceData);
+    });
+  }, [cargos, requests]);
 
   // SLA stats calculated with Sunday exclusion and 2 scenarios across all uploaded bills
   const billVerificationStats = useMemo(() => {
@@ -1376,6 +1387,8 @@ export default function RahulDashboard({
             isViewOnly={false}
             onBatchUpdateRequests={onBatchUpdateRequests}
             onUpdateCargo={onUpdateCargo}
+            onDeleteCargo={onDeleteCargo}
+            onPurgeEmptyCargos={onPurgeEmptyCargos}
             initialStatusFilter={targetCargoId ? "all" : transitStatusFilter}
             targetCargoId={targetCargoId}
             onClearTargetCargo={() => setTargetCargoId(null)}
