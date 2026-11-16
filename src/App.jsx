@@ -844,7 +844,7 @@ export default function App() {
         const modelsSummary = models.slice(0, 3).join(", ") + (models.length > 3 ? ` +${models.length - 3} more` : "");
         const reasons = Array.from(new Set(grp.items.map(it => it.cancellationReason).filter(Boolean)));
         const reasonText = reasons.length > 0 ? ` • Reason: "${reasons[0]}"` : "";
-        const notifId = `notif_grp_cancel_${grp.date}_${grp.cancelledByName.replace(/\s+/g, '_')}_cnt${totalOrders}`;
+        const notifId = `notif_grp_cancel_${grp.date}_${grp.cancelledByName.replace(/\s+/g, '_')}`;
 
         list.push({
           id: notifId,
@@ -882,7 +882,7 @@ export default function App() {
           };
         }
         ledgerGroups[groupKey].items.push(r);
-        const itemTs = r.pricedAt ? new Date(r.pricedAt).getTime() : (r.timestamp ? new Date(r.timestamp).getTime() : 0);
+        const itemTs = r.pricedAt ? new Date(r.pricedAt).getTime() : (r.timestamp ? new Date(r.timestamp).getTime() : (r.orderDate ? new Date(r.orderDate).getTime() : 0));
         if (itemTs >= ledgerGroups[groupKey].latestTime) {
           ledgerGroups[groupKey].latestTime = itemTs;
         }
@@ -898,13 +898,21 @@ export default function App() {
         }, 0);
         const models = Array.from(new Set(grp.items.map(it => it.model).filter(Boolean)));
         const modelsSummary = models.slice(0, 3).join(", ") + (models.length > 3 ? ` +${models.length - 3} more` : "");
-        const notifId = `notif_grp_ledger_${grp.vendorId}_${grp.orderDate}_cnt${totalOrders}`;
+        const notifId = `notif_grp_ledger_${grp.vendorId}_${grp.orderDate}`;
+
+        let displayTime = grp.orderDate;
+        if (grp.latestTime > 0) {
+          try {
+            const d = new Date(grp.latestTime);
+            displayTime = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) + " " + d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+          } catch(e) {}
+        }
 
         list.push({
           id: notifId,
           title: `💰 Ledger Entry: ${grp.vendorName} (${grp.orderDate})`,
           description: `${totalOrders} orders (${totalPcs} Pcs, ¥${totalRmb.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} RMB: ${modelsSummary}) ready to mark in accounting ledger.`,
-          time: grp.orderDate,
+          time: displayTime,
           timestamp: grp.latestTime || (grp.orderDate ? new Date(grp.orderDate).getTime() : 0),
           read: readSet.has(notifId),
           type: "ledger_pending",
@@ -914,7 +922,65 @@ export default function App() {
         });
       });
 
-      // 1c. New Requisitions Punched (Step 1 Starting) - Grouped by Order Date + EntryBy
+      // 1c. Recently Marked Purchases in Ledger (Last 7 days history so it never vanishes)
+      const recentlyMarkedRequests = (requests || []).filter(r => {
+        if (!r || isOrderCancelled(r) || r.purchaseUpdated !== "Yes") return false;
+        const markTs = r.purchaseUpdatedAt ? new Date(r.purchaseUpdatedAt).getTime() : 0;
+        return markTs > 0 && (Date.now() - markTs) < 7 * 86400000;
+      });
+      const markedGroups = {};
+      recentlyMarkedRequests.forEach(r => {
+        const vId = r.vendorId || "unassigned";
+        const mDate = r.purchaseUpdatedAt ? String(r.purchaseUpdatedAt).slice(0, 10) : (r.orderDate || "recent");
+        const groupKey = `${vId}_${mDate}`;
+        if (!markedGroups[groupKey]) {
+          const vName = (vendors || []).find(v => v.id === r.vendorId)?.name || "Assigned Vendor";
+          markedGroups[groupKey] = {
+            vendorId: vId,
+            vendorName: vName,
+            markDate: mDate,
+            purchaseUpdatedBy: r.purchaseUpdatedBy || "Accounts",
+            items: [],
+            latestTime: 0
+          };
+        }
+        markedGroups[groupKey].items.push(r);
+        const itemTs = r.purchaseUpdatedAt ? new Date(r.purchaseUpdatedAt).getTime() : 0;
+        if (itemTs >= markedGroups[groupKey].latestTime) {
+          markedGroups[groupKey].latestTime = itemTs;
+        }
+      });
+
+      Object.values(markedGroups).forEach(grp => {
+        const totalOrders = grp.items.length;
+        const totalPcs = grp.items.reduce((s, it) => s + (Number(it.vendorOrderQuantity || it.orderQuantity) || 1), 0);
+        const models = Array.from(new Set(grp.items.map(it => it.model).filter(Boolean)));
+        const modelsSummary = models.slice(0, 3).join(", ") + (models.length > 3 ? ` +${models.length - 3} more` : "");
+        const notifId = `notif_grp_ledger_done_${grp.vendorId}_${grp.markDate}`;
+
+        let displayTime = grp.markDate;
+        if (grp.latestTime > 0) {
+          try {
+            const d = new Date(grp.latestTime);
+            displayTime = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) + " " + d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+          } catch(e) {}
+        }
+
+        list.push({
+          id: notifId,
+          title: `✅ Ledger Marked: ${grp.vendorName}`,
+          description: `${totalOrders} order${totalOrders > 1 ? "s" : ""} (${totalPcs} Pcs: ${modelsSummary}) verified and marked in ledger by ${grp.purchaseUpdatedBy}.`,
+          time: displayTime,
+          timestamp: grp.latestTime || Date.now(),
+          read: true,
+          type: "ledger_updated",
+          targetView: "rahul",
+          targetStage: "submitted_ledger",
+          data: grp.items
+        });
+      });
+
+      // 1d. New Requisitions Punched (Step 1 Starting) - Grouped by Order Date + EntryBy
       const newRequisitions = (requests || []).filter(r => r && !isOrderCancelled(r) && !r.priceRmb);
       const newReqGroups = {};
       newRequisitions.forEach(r => {
@@ -941,7 +1007,7 @@ export default function App() {
         const totalPcs = grp.items.reduce((s, it) => s + (Number(it.orderQuantity) || 1), 0);
         const models = Array.from(new Set(grp.items.map(it => it.model).filter(Boolean)));
         const modelsSummary = models.slice(0, 3).join(", ") + (models.length > 3 ? ` +${models.length - 3} more` : "");
-        const notifId = `notif_grp_new_${grp.orderDate}_${grp.entryBy.replace(/\s+/g, '_')}_cnt${totalOrders}`;
+        const notifId = `notif_grp_new_${grp.orderDate}_${grp.entryBy.replace(/\s+/g, '_')}`;
 
         list.push({
           id: notifId,
@@ -957,7 +1023,7 @@ export default function App() {
         });
       });
 
-      // 1d. Warehouse Received Material (Delivered) - Grouped by CargoId / actualReceivedDate
+      // 1e. Warehouse Received Material (Delivered) - Grouped by CargoId / actualReceivedDate
       const deliveredRequests = (requests || []).filter(r => r && !isOrderCancelled(r) && r.isMaterialRec === "Yes" && r.purchaseUpdated !== "Yes");
       const deliveredGroups = {};
       deliveredRequests.forEach(r => {
@@ -986,7 +1052,7 @@ export default function App() {
         const totalPcs = grp.items.reduce((s, it) => s + (Number(it.receivedQuantity || it.orderQuantity) || 1), 0);
         const models = Array.from(new Set(grp.items.map(it => it.model).filter(Boolean)));
         const modelsSummary = models.slice(0, 3).join(", ") + (models.length > 3 ? ` +${models.length - 3} more` : "");
-        const notifId = `notif_grp_deliv_${grp.cargoId || "no_c"}_${grp.actualReceivedDate}_cnt${totalOrders}`;
+        const notifId = `notif_grp_deliv_${grp.cargoId || "no_c"}_${grp.actualReceivedDate}`;
 
         list.push({
           id: notifId,
@@ -1084,25 +1150,118 @@ export default function App() {
       });
     }
 
+    // 3. Dedicated Vendor Assignment Notifications (For Accounts, Admins, and Purchasers)
+    // Ensures entering a vendor creates an enduring notification that DOES NOT vanish when purchase is marked or state changes!
+    const vendorAssignedRequests = (requests || []).filter(r => {
+      if (!r || isOrderCancelled(r) || !r.vendorId) return false;
+      const isRelevant = isAccountsOrAdmin || 
+        cleanRole === "purchaser" || 
+        cleanDesig.includes("purchas") ||
+        isRequestForUser(r, currentUser, users) || 
+        r.entryBy === currentUser?.name || 
+        r.createdById === currentUser?.id || 
+        r.purchaserId === currentUser?.id;
+      return isRelevant;
+    });
+
+    const vendorGroups = {};
+    vendorAssignedRequests.forEach(r => {
+      const vId = r.vendorId;
+      let dateKey = "recent";
+      if (r.vendorAssignedAt) {
+        try { dateKey = new Date(r.vendorAssignedAt).toISOString().split("T")[0]; } catch(e) { dateKey = String(r.vendorAssignedAt).slice(0, 10); }
+      } else if (r.pricedAt) {
+        try { dateKey = new Date(r.pricedAt).toISOString().split("T")[0]; } catch(e) { dateKey = String(r.pricedAt).slice(0, 10); }
+      } else if (r.orderDate) {
+        dateKey = r.orderDate;
+      }
+
+      const byUser = r.vendorAssignedByName || r.purchaserName || "Purchaser";
+      const groupKey = `${vId}_${dateKey}_${byUser}`;
+      if (!vendorGroups[groupKey]) {
+        const vName = (vendors || []).find(v => v.id === r.vendorId)?.name || "Assigned Vendor";
+        vendorGroups[groupKey] = {
+          vendorId: vId,
+          vendorName: vName,
+          dateKey,
+          assignedByName: byUser,
+          items: [],
+          latestTime: 0
+        };
+      }
+      vendorGroups[groupKey].items.push(r);
+      const itemTs = r.vendorAssignedAt 
+        ? new Date(r.vendorAssignedAt).getTime() 
+        : (r.pricedAt ? new Date(r.pricedAt).getTime() : (r.timestamp ? new Date(r.timestamp).getTime() : (r.orderDate ? new Date(r.orderDate).getTime() : 0)));
+      if (itemTs >= vendorGroups[groupKey].latestTime) {
+        vendorGroups[groupKey].latestTime = itemTs;
+      }
+    });
+
+    Object.values(vendorGroups).forEach(grp => {
+      const now = Date.now();
+      const ageDays = grp.latestTime ? (now - grp.latestTime) / 86400000 : 0;
+      // Retain active or recent (last 14 days) vendor assignments
+      if (ageDays > 14 && grp.items.every(it => it.isMaterialRec === "Yes" && it.purchaseUpdated === "Yes")) return;
+
+      const totalOrders = grp.items.length;
+      const totalPcs = grp.items.reduce((s, it) => s + (Number(it.vendorOrderQuantity || it.orderQuantity) || 1), 0);
+      const totalRmb = grp.items.reduce((s, it) => {
+        const qty = Number(it.vendorOrderQuantity || it.orderQuantity) || 1;
+        const pr = Number(it.priceRmb) || 0;
+        return s + (qty * pr);
+      }, 0);
+      const models = Array.from(new Set(grp.items.map(it => it.model).filter(Boolean)));
+      const modelsSummary = models.slice(0, 3).join(", ") + (models.length > 3 ? ` +${models.length - 3} more` : "");
+      
+      const notifId = `notif_grp_vendor_${grp.vendorId}_${grp.dateKey}_${grp.assignedByName.replace(/\s+/g, '_')}`;
+
+      let displayTime = grp.dateKey;
+      if (grp.latestTime > 0) {
+        try {
+          const d = new Date(grp.latestTime);
+          displayTime = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) + " " + d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+        } catch(e) {}
+      }
+
+      list.push({
+        id: notifId,
+        title: `🏢 Vendor Assigned: ${grp.vendorName} (${totalPcs} Pcs)`,
+        description: `${totalOrders} order${totalOrders > 1 ? "s" : ""} (${modelsSummary}) assigned to ${grp.vendorName}${totalRmb > 0 ? ` [¥${totalRmb.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} RMB]` : ""}${grp.assignedByName ? ` by ${grp.assignedByName}` : ""}.`,
+        time: displayTime,
+        timestamp: grp.latestTime || Date.now(),
+        read: readSet.has(notifId),
+        type: "vendor_assigned",
+        targetView: isAccountsOrAdmin ? "rahul" : "dashboard",
+        targetStage: "pending_ledger",
+        targetVendorId: grp.vendorId,
+        data: grp.items
+      });
+    });
+
     return list.sort((a, b) => {
       // 1. Unread notifications appear first
       if (a.read !== b.read) return a.read ? 1 : -1;
-      // 2. High priority types (cancelled orders are top priority alerts for Accounts)
+      // 2. Chronological Recency: Most recent first by numeric timestamp (Today's events ALWAYS appear at top!)
+      const timeA = Number(a.timestamp) || 0;
+      const timeB = Number(b.timestamp) || 0;
+      if (timeA !== timeB) return timeB - timeA;
+      // 3. Priority tie-breaker when timestamps are identical
       const priorityMap = {
         order_cancelled: 1,
-        ledger_pending: 2,
-        bill_verification: 3,
-        warehouse_delivered: 4,
-        new_requisition: 5,
-        remark: 6,
-        cargo_assigned: 7,
-        cargo_received: 8
+        vendor_assigned: 2,
+        ledger_pending: 3,
+        bill_verification: 4,
+        warehouse_delivered: 5,
+        new_requisition: 6,
+        remark: 7,
+        cargo_assigned: 8,
+        cargo_received: 9,
+        ledger_updated: 10
       };
-      const pA = priorityMap[a.type] || 10;
-      const pB = priorityMap[b.type] || 10;
-      if (pA !== pB) return pA - pB;
-      // 3. Most recent first by numeric timestamp
-      return (b.timestamp || 0) - (a.timestamp || 0);
+      const pA = priorityMap[a.type] || 20;
+      const pB = priorityMap[b.type] || 20;
+      return pA - pB;
     });
   }, [currentUser, crmPartyRemarks, crmParties, requests, cargos, vendors, readNotificationIds, activeView]);
 
@@ -1971,6 +2130,9 @@ export default function App() {
     const oldReq = requests.find(r => r.id === updatedReq.id);
     const newReq = {
       ...updatedReq,
+      vendorAssignedAt: (updatedReq.vendorId && !updatedReq.vendorAssignedAt) ? new Date().toISOString() : (updatedReq.vendorAssignedAt || oldReq?.vendorAssignedAt || ""),
+      vendorAssignedBy: updatedReq.vendorAssignedBy || (updatedReq.vendorId ? (currentUser?.id || "") : (oldReq?.vendorAssignedBy || "")),
+      vendorAssignedByName: updatedReq.vendorAssignedByName || (updatedReq.vendorId ? (currentUser?.name || currentUser?.role || "Purchaser") : (oldReq?.vendorAssignedByName || "")),
       timestamp: updatedReq.timestamp || oldReq?.timestamp || updatedReq.orderDate || new Date().toISOString(),
       actualReceivedDate: updatedReq.isMaterialRec === "Yes" ? (updatedReq.actualReceivedDate || "2026-06-11") : ""
     };
@@ -2016,6 +2178,9 @@ export default function App() {
   const batchUpdateRequests = async (updatedReqs, customAction = "BATCH_UPDATE_REQUESTS", customDetails = "") => {
     const mapped = updatedReqs.map(req => ({
       ...req,
+      vendorAssignedAt: (req.vendorId && !req.vendorAssignedAt) ? new Date().toISOString() : (req.vendorAssignedAt || ""),
+      vendorAssignedBy: req.vendorAssignedBy || (req.vendorId ? (currentUser?.id || "") : ""),
+      vendorAssignedByName: req.vendorAssignedByName || (req.vendorId ? (currentUser?.name || currentUser?.role || "Purchaser") : ""),
       actualReceivedDate: req.isMaterialRec === "Yes" ? (req.actualReceivedDate || "2026-06-11") : ""
     }));
     // ⚡ Optimistic local state update:
@@ -3979,9 +4144,10 @@ const cancelRequests = async (requestIds, reason = "") => {
                     position: "absolute",
                     top: "32px",
                     right: "-10px",
-                    width: "320px",
-                    maxHeight: "380px",
+                    width: "340px",
+                    maxHeight: "min(520px, 80vh)",
                     overflowY: "auto",
+                    scrollbarWidth: "thin",
                     zIndex: 1200,
                     padding: "14px",
                     background: "var(--bg-card, #1e293b)",
@@ -4034,14 +4200,26 @@ const cancelRequests = async (requestIds, reason = "") => {
                                 detail: { stage: n.targetStage, quickStatus: n.targetQuickStatus || "all", step: n.targetStep || "step1" } 
                               }));
                             }
-                            setActiveView(n.targetView || "crm");
+                            setActiveView(n.targetView || "dashboard");
                             setShowNotificationDropdown(false);
                           }}
                           style={{
                             padding: "8px 10px",
                             borderRadius: "8px",
-                            background: n.read ? "transparent" : n.type === "order_cancelled" ? "rgba(239, 68, 68, 0.08)" : "rgba(56, 189, 248, 0.08)",
-                            border: n.read ? "1px solid rgba(255,255,255,0.05)" : n.type === "order_cancelled" ? "1px solid rgba(239, 68, 68, 0.3)" : "1px solid rgba(56, 189, 248, 0.25)",
+                            background: n.read 
+                              ? "transparent" 
+                              : n.type === "order_cancelled" 
+                                ? "rgba(239, 68, 68, 0.08)" 
+                                : (n.type === "vendor_assigned" || n.type === "ledger_updated")
+                                  ? "rgba(16, 185, 129, 0.08)" 
+                                  : "rgba(56, 189, 248, 0.08)",
+                            border: n.read 
+                              ? "1px solid rgba(255,255,255,0.06)" 
+                              : n.type === "order_cancelled" 
+                                ? "1px solid rgba(239, 68, 68, 0.3)" 
+                                : (n.type === "vendor_assigned" || n.type === "ledger_updated")
+                                  ? "1px solid rgba(16, 185, 129, 0.3)" 
+                                  : "1px solid rgba(56, 189, 248, 0.25)",
                             cursor: "pointer",
                             display: "flex",
                             flexDirection: "column",
@@ -4049,8 +4227,29 @@ const cancelRequests = async (requestIds, reason = "") => {
                           }}
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <span style={{ fontSize: "0.78rem", fontWeight: 700, color: n.type === "order_cancelled" ? "#f87171" : "var(--primary)" }}>{n.title}</span>
-                            <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>{n.time}</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              {!n.read && (
+                                <span style={{ 
+                                  width: "6px", 
+                                  height: "6px", 
+                                  borderRadius: "50%", 
+                                  background: n.type === "order_cancelled" ? "#ef4444" : (n.type === "vendor_assigned" || n.type === "ledger_updated" ? "#10b981" : "#38bdf8"), 
+                                  flexShrink: 0 
+                                }} />
+                              )}
+                              <span style={{ 
+                                fontSize: "0.78rem", 
+                                fontWeight: 700, 
+                                color: n.type === "order_cancelled" 
+                                  ? "#f87171" 
+                                  : (n.type === "vendor_assigned" || n.type === "ledger_updated")
+                                    ? "#34d399" 
+                                    : "var(--primary)" 
+                              }}>
+                                {n.title}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: "0.68rem", color: "var(--text-muted)", whiteSpace: "nowrap", marginLeft: "6px" }}>{n.time}</span>
                           </div>
                           <div style={{ fontSize: "0.75rem", color: "var(--text-main)", lineHeight: 1.3 }}>{n.description}</div>
                         </div>

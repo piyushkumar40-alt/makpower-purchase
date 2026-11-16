@@ -989,7 +989,10 @@ export default function PurchaserDashboard({
         purchaseUpdatedAt: r.purchaseUpdatedAt || "",
         purchaseUpdatedBy: r.purchaseUpdatedBy || "",
         purchaseUpdatedById: r.purchaseUpdatedById || "",
-        pricedAt: r.pricedAt || new Date().toISOString()
+        pricedAt: r.pricedAt || new Date().toISOString(),
+        vendorAssignedAt: r.vendorAssignedAt || new Date().toISOString(),
+        vendorAssignedBy: r.vendorAssignedBy || currentUser?.id || "",
+        vendorAssignedByName: r.vendorAssignedByName || currentUser?.name || currentUser?.role || "Purchaser"
       });
     });
 
@@ -7625,7 +7628,10 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
       purchaseUpdatedAt: request.purchaseUpdatedAt || "",
       purchaseUpdatedBy: request.purchaseUpdatedBy || "",
       purchaseUpdatedById: request.purchaseUpdatedById || "",
-      pricedAt: priceNum ? (request.pricedAt || new Date().toISOString()) : ""
+      pricedAt: priceNum ? (request.pricedAt || new Date().toISOString()) : "",
+      vendorAssignedAt: finalVendorId ? (request.vendorAssignedAt || new Date().toISOString()) : "",
+      vendorAssignedBy: finalVendorId ? (request.vendorAssignedBy || currentUser?.id || "") : "",
+      vendorAssignedByName: finalVendorId ? (request.vendorAssignedByName || currentUser?.name || currentUser?.role || "Purchaser") : ""
     });
   };
 
