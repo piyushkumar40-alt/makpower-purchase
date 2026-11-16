@@ -1666,7 +1666,7 @@ export default function PurchaserDashboard({
 
     const cargosList = inTransit.map(cargo => {
       const vName = (vendors || []).find(v => v.id === cargo.vendorId)?.name || cargo.vendorName || "Unknown Vendor";
-      const cargoName = (cargoCompanies || []).find(cc => cc.id === cargo.cargoCompanyId)?.name || cargo.cargoDetail || cargo.cargoCompanyName || "—";
+      const cargoName = (cargoCompanies || []).find(cc => cc.id === cargo.cargoCompanyId)?.name || (cargo.cargoDetail && !cargo.cargoDetail.startsWith("cargo-") ? cargo.cargoDetail : null) || (cargo.carrierName && cargo.carrierName !== "—" ? cargo.carrierName : null) || cargo.cargoCompanyName || (cargo.vendorName ? `${cargo.vendorName} Cargo` : (cargo.id ? `Cargo #${cargo.id.slice(-6)}` : "—"));
       
       const cargoItems = hasFullPurchaseAccess
         ? (requests || []).filter(r => isCargoMatch(r.cargoId, cargo) && r.status !== "Cancelled")

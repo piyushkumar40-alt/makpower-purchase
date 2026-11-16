@@ -693,8 +693,8 @@ export default function BundledUpcomingShipments({
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid var(--border-glass)", paddingBottom: "16px", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <h4 style={{ fontSize: "1.2rem", fontWeight: 700, margin: 0 }}>
-                        Cargo Code:{" "}
+                      <h4 style={{ fontSize: "1.2rem", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                        <span>Cargo:</span>
                         <button
                           type="button"
                           onClick={() => setEditingCargo(cargo)}
@@ -703,36 +703,20 @@ export default function BundledUpcomingShipments({
                             border: "none",
                             padding: 0,
                             font: "inherit",
-                            fontWeight: 700,
+                            fontWeight: 800,
                             color: "var(--primary, #38bdf8)",
                             cursor: "pointer",
                             textDecoration: "underline"
                           }}
                           title="Click to view and edit cargo details"
                         >
-                          {cargo.id}
+                          {cargo.cargoDetail && cargo.cargoDetail !== cargo.id && !cargo.cargoDetail.startsWith("cargo-")
+                            ? cargo.cargoDetail
+                            : (cargo.carrierName && cargo.carrierName !== "—" ? cargo.carrierName : (cargo.vendorName ? `${cargo.vendorName} Cargo` : cargo.id))}
                         </button>
-                        {cargo.cargoDetail && cargo.cargoDetail !== cargo.id ? (
-                          <button
-                            type="button"
-                            onClick={() => setEditingCargo(cargo)}
-                            style={{
-                              background: "none",
-                              border: "none",
-                              padding: 0,
-                              font: "inherit",
-                              color: "var(--primary)",
-                              fontSize: "1rem",
-                              fontWeight: 700,
-                              marginLeft: "6px",
-                              cursor: "pointer",
-                              textDecoration: "underline"
-                            }}
-                            title="Click to view and edit cargo details"
-                          >
-                            ({cargo.cargoDetail})
-                          </button>
-                        ) : null}
+                        <span style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontFamily: "monospace", fontWeight: 500 }}>
+                          (#{cargo.id})
+                        </span>
                       </h4>
                       <span className={`badge ${isDelivered ? "badge-received" : "badge-cargo"}`} style={{ fontSize: "0.75rem", padding: "3px 10px", fontWeight: 700 }}>
                         {isDelivered ? "Received" : "In Transit"}

@@ -475,8 +475,19 @@ export default function RahulDashboard({
       }
 
       // 5. Cargo Filter
-      if (filterCargo && r.cargoId !== filterCargo) {
-        return false;
+      if (filterCargo) {
+        const cObj = cargos.find(c => c.id === r.cargoId);
+        const rCargoDetail = (cObj?.cargoDetail || "").toLowerCase().trim();
+        const rCarrier = (cObj?.carrierName || "").toLowerCase().trim();
+        const filterLower = filterCargo.toLowerCase().trim();
+
+        const matches = r.cargoId === filterCargo ||
+                        (rCargoDetail && rCargoDetail === filterLower) ||
+                        (rCarrier && rCarrier === filterLower) ||
+                        (r.vendorName && `${r.vendorName.toLowerCase().trim()} cargo` === filterLower);
+        if (!matches) {
+          return false;
+        }
       }
 
       // 6. Transport Mode Filter
@@ -548,12 +559,26 @@ export default function RahulDashboard({
         if (!map.has(groupKey)) {
           const isUnassigned = cId === "unassigned_cargo";
           const cargoObj = isUnassigned ? null : cargos.find(c => c.id === cId || (cId && c.cargoDetail === cId));
-          const cargoDetail = isUnassigned 
-            ? "Pending Cargo Consolidation (Unassigned)"
-            : (cargoObj?.cargoDetail || r.cargoDetail || cId);
+          const companyObj = cargoCompanies.find(cc => cc.id === cargoObj?.cargoCompanyId);
+          let cargoDetail = isUnassigned ? "Pending Cargo Consolidation (Unassigned)" : "";
+          if (!isUnassigned) {
+            if (cargoObj?.cargoDetail && !cargoObj.cargoDetail.startsWith("cargo-")) {
+              cargoDetail = cargoObj.cargoDetail;
+            } else if (companyObj?.name) {
+              cargoDetail = companyObj.name;
+            } else if (cargoObj?.carrierName && cargoObj.carrierName !== "—") {
+              cargoDetail = cargoObj.carrierName;
+            } else if (cId && !cId.startsWith("cargo-")) {
+              cargoDetail = cId;
+            } else if (r.vendorName) {
+              cargoDetail = `${r.vendorName} Cargo`;
+            } else {
+              cargoDetail = `Cargo #${cId.slice(-6)}`;
+            }
+          }
           const carrierName = isUnassigned
             ? "—"
-            : (cargoCompanies.find(cc => cc.id === cargoObj?.cargoCompanyId)?.name || cargoObj?.carrierName || "Direct Logistics Carrier");
+            : (companyObj?.name || cargoObj?.carrierName || "Direct Logistics Carrier");
           const modeOfTransport = isUnassigned
             ? "—"
             : (cargoObj?.modeOfTransport || r.modeOfTransport || "Sea Freight");
@@ -883,14 +908,38 @@ export default function RahulDashboard({
     ...uniqueCategories.map(cat => ({ value: cat, label: cat }))
   ], [uniqueCategories]);
 
-  const cargoOptions = useMemo(() => [
-    { value: "", label: "All Cargo Batches" },
-    ...uniqueCargos.map(cid => {
-      const cObj = cargos.find(c => c.id === cid);
-      const nameStr = cObj?.cargoDetail && cObj.cargoDetail !== cid ? ` [${cObj.cargoDetail}]` : "";
-      return { value: cid, label: `${cid}${nameStr}` };
-    })
-  ], [uniqueCargos, cargos]);
+  const cargoOptions = useMemo(() => {
+    const nameMap = new Map();
+
+    uniqueCargos.forEach(cid => {
+      const cObj = cargos.find(c => c.id === cid || c.cargoDetail === cid);
+      let name = "";
+      if (cObj?.cargoDetail && !cObj.cargoDetail.startsWith("cargo-")) {
+        name = cObj.cargoDetail.trim();
+      } else if (cargoCompanies.find(cc => cc.id === cObj?.cargoCompanyId)?.name) {
+        name = cargoCompanies.find(cc => cc.id === cObj?.cargoCompanyId).name.trim();
+      } else if (cObj?.carrierName && cObj.carrierName !== "—") {
+        name = cObj.carrierName.trim();
+      } else if (cid && !cid.startsWith("cargo-")) {
+        name = cid.trim();
+      } else if (cObj?.vendorName) {
+        name = `${cObj.vendorName.trim()} Cargo`;
+      } else {
+        name = `Cargo #${cid.slice(-6)}`;
+      }
+
+      if (!nameMap.has(name)) {
+        nameMap.set(name, { value: name, label: name });
+      }
+    });
+
+    const sortedNames = Array.from(nameMap.values()).sort((a, b) => a.label.localeCompare(b.label));
+
+    return [
+      { value: "", label: "All Cargo Names" },
+      ...sortedNames
+    ];
+  }, [uniqueCargos, cargos, cargoCompanies]);
 
   const transportOptions = [
     { value: "", label: "All Modes" },
@@ -1092,9 +1141,9 @@ export default function RahulDashboard({
         
         {/* KPI 1: What's Coming (In Transit & Ready) */}
         <div 
-          onClick={() => { setWorkflowStep("transit"); }}
+          onClick={() => { setQuickStatus("coming"); setFilterStage("all"); }}
           className="glass-panel card-fade-in" 
-          style={{ padding: "16px 18px", cursor: "pointer", border: workflowStep === "transit" ? "1px solid #38bdf8" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
+          style={{ padding: "16px 18px", cursor: "pointer", border: quickStatus === "coming" ? "1px solid #38bdf8" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
             <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>🚚 What's Coming</span>
@@ -1113,9 +1162,9 @@ export default function RahulDashboard({
 
         {/* KPI 2: Total Order Value RMB */}
         <div 
-          onClick={() => { setWorkflowStep("masterorder"); }}
+          onClick={() => { setQuickStatus("all"); setFilterStage("all"); }}
           className="glass-panel card-fade-in" 
-          style={{ padding: "16px 18px", cursor: "pointer", border: workflowStep === "masterorder" ? "1px solid #f59e0b" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
+          style={{ padding: "16px 18px", cursor: "pointer", border: quickStatus === "all" && filterStage === "all" ? "1px solid #f59e0b" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
             <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>💰 Total RMB Committed</span>
@@ -1123,7 +1172,7 @@ export default function RahulDashboard({
               <DollarSign size={16} />
             </div>
           </div>
-          <div style={{ fontSize: "1.45rem", fontWeight: 800, color: "#f59e0b" }}>
+          <div style={{ fontSize: "1.45rem", fontWeight: 800, color: "var(--warning, #b45309)" }}>
             ¥{Math.round(kpiStats.totalRmbValue).toLocaleString()}
           </div>
           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px" }}>
@@ -1133,9 +1182,9 @@ export default function RahulDashboard({
 
         {/* KPI 3: Where Items Are Now (Active Pipeline) */}
         <div 
-          onClick={() => { setWorkflowStep("masterorder"); }}
+          onClick={() => { setQuickStatus("pipeline"); setFilterStage("all"); }}
           className="glass-panel card-fade-in" 
-          style={{ padding: "16px 18px", cursor: "pointer", transition: "all 0.2s" }}
+          style={{ padding: "16px 18px", cursor: "pointer", border: quickStatus === "pipeline" ? "1px solid #818cf8" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
             <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>📍 Where Item Is Now</span>
@@ -1153,9 +1202,9 @@ export default function RahulDashboard({
 
         {/* KPI 4: Delivered (Warehouse Receipts) */}
         <div 
-          onClick={() => { setWorkflowStep("masterorder"); }}
+          onClick={() => { setQuickStatus("delivered"); setFilterStage("all"); }}
           className="glass-panel card-fade-in" 
-          style={{ padding: "16px 18px", cursor: "pointer", transition: "all 0.2s" }}
+          style={{ padding: "16px 18px", cursor: "pointer", border: quickStatus === "delivered" ? "1px solid #10b981" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
             <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>✅ What is Delivered</span>
@@ -1173,9 +1222,9 @@ export default function RahulDashboard({
 
         {/* KPI 5: Step 1 Pending Ledger Mark Purchases */}
         <div 
-          onClick={() => { setWorkflowStep("step1"); setActiveTab("pending"); setCheckedIds([]); }}
+          onClick={() => { setQuickStatus("pending_mark"); setActiveTab("pending"); setCheckedIds([]); }}
           className="glass-panel card-fade-in" 
-          style={{ padding: "16px 18px", cursor: "pointer", border: workflowStep === "step1" ? "1px solid #ec4899" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
+          style={{ padding: "16px 18px", cursor: "pointer", border: quickStatus === "pending_mark" ? "1px solid #ec4899" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
             <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>📝 Step 1: Mark Purchases</span>
@@ -1198,94 +1247,7 @@ export default function RahulDashboard({
 
       </div>
 
-      {/* ==================== WORKFLOW STEP DROPDOWN SELECTOR ==================== */}
-      <div className="glass-panel" style={{ padding: "14px 20px", marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "14px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-          <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            Workflow Step:
-          </div>
-          <div style={{ minWidth: "360px", maxWidth: "480px" }}>
-            <select
-              value={workflowStep}
-              onChange={e => {
-                setWorkflowStep(e.target.value);
-                if (e.target.value === "step1") setActiveTab("pending");
-                setCheckedIds([]);
-              }}
-              className="form-control"
-              style={{
-                fontWeight: 700,
-                fontSize: "0.95rem",
-                padding: "8px 14px",
-                borderRadius: "8px",
-                background: "rgba(15, 23, 42, 0.9)",
-                color: workflowStep === "step1" ? "#ec4899" : workflowStep === "step2" ? "#f59e0b" : "#38bdf8",
-                border: `2px solid ${workflowStep === "step1" ? "rgba(236, 72, 153, 0.6)" : workflowStep === "step2" ? "rgba(245, 158, 11, 0.6)" : "rgba(56, 189, 248, 0.5)"}`,
-                cursor: "pointer"
-              }}
-            >
-              <option value="step1">Step 1: Mark Purchases (Ledger Entry) — ({pendingRequests.length} Pending)</option>
-              <option value="step2">Step 2: Vendor Bill Verification &amp; Entry — ({billVerificationStats.pendingCount} Pending{billVerificationStats.overdueCount > 0 ? ` • ${billVerificationStats.overdueCount} OVERDUE!` : ""})</option>
-              <option value="transit">In-Transit Cargo Tracking — ({inTransitCargos.length} Shipments)</option>
-              <option value="masterorder">Master Order Tracker — (All 6 Stages)</option>
-              <option value="create_order">Master Requisitions (View-Only)</option>
-              <option value="itemmaster">Item Catalog &amp; Stock</option>
-            </select>
-          </div>
-        </div>
 
-        {/* Step Quick Switcher Tabs */}
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-          <button
-            type="button"
-            onClick={() => { setWorkflowStep("step1"); setActiveTab("pending"); setCheckedIds([]); }}
-            className={`btn btn-sm ${workflowStep === "step1" ? "btn-primary" : "btn-secondary"}`}
-            style={{ fontWeight: 700, fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: "5px" }}
-          >
-            <Clock size={14} /> Step 1: Mark Purchases ({pendingRequests.length})
-          </button>
-          
-          <button
-            type="button"
-            onClick={() => { setWorkflowStep("step2"); setCheckedIds([]); }}
-            className={`btn btn-sm ${workflowStep === "step2" ? "btn-warning" : "btn-secondary"}`}
-            style={{ 
-              fontWeight: 700, 
-              fontSize: "0.82rem", 
-              display: "inline-flex", 
-              alignItems: "center", 
-              gap: "5px",
-              color: workflowStep === "step2" ? "#000" : (billVerificationStats.overdueCount > 0 ? "#ef4444" : "#f59e0b"),
-              borderColor: billVerificationStats.overdueCount > 0 ? "rgba(239, 68, 68, 0.5)" : "rgba(245, 158, 11, 0.4)"
-            }}
-          >
-            <FileText size={14} /> Step 2: Verify Bills ({billVerificationStats.pendingCount})
-            {billVerificationStats.overdueCount > 0 && (
-              <span style={{ background: "#ef4444", color: "#fff", padding: "1px 6px", borderRadius: "8px", fontSize: "0.7rem", fontWeight: 800 }}>
-                {billVerificationStats.overdueCount} OVERDUE
-              </span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => { setWorkflowStep("transit"); setCheckedIds([]); }}
-            className={`btn btn-sm ${workflowStep === "transit" ? "btn-primary" : "btn-secondary"}`}
-            style={{ fontWeight: 600, fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: "5px", color: workflowStep === "transit" ? "#fff" : "#38bdf8" }}
-          >
-            <Ship size={14} /> In-Transit ({inTransitCargos.length})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => { setWorkflowStep("masterorder"); setCheckedIds([]); }}
-            className={`btn btn-sm ${workflowStep === "masterorder" ? "btn-primary" : "btn-secondary"}`}
-            style={{ fontWeight: 600, fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: "5px", color: workflowStep === "masterorder" ? "#fff" : "#f59e0b" }}
-          >
-            <Layers size={14} /> Master Tracker
-          </button>
-        </div>
-      </div>
 
       {/* ==================== WORKFLOW: STEP 2 VENDOR BILL VERIFICATION WORKBOARD ==================== */}
       {workflowStep === "step2" && (
@@ -1962,67 +1924,7 @@ export default function RahulDashboard({
               </button>
             </div>
 
-            {/* Real-time Cancelled Orders Alert Banner for Accounts */}
-            {cancelledRequestsCount > 0 && quickStatus !== "cancelled" && filterStage !== "cancelled" && (
-              <div 
-                style={{
-                  margin: "0 0 14px 0",
-                  padding: "10px 16px",
-                  borderRadius: "10px",
-                  background: "linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(220, 38, 38, 0.05))",
-                  border: "1px solid rgba(239, 68, 68, 0.35)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "12px",
-                  flexWrap: "wrap",
-                  boxShadow: "0 2px 8px rgba(239, 68, 68, 0.08)"
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <span style={{ fontSize: "1.2rem" }}>🚫</span>
-                  <div>
-                    <span style={{ fontSize: "0.85rem", color: "#f87171", fontWeight: 700 }}>
-                      Notice: {cancelledRequestsCount} Purchase Order(s) Cancelled
-                    </span>
-                    <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>
-                      Recent cancellations recorded. Review them to prevent duplicate payments or incorrect ledger postings.
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setQuickStatus("cancelled");
-                    setFilterStage("cancelled");
-                    setFilterVendor("");
-                    setFilterPurchaser("");
-                    setFilterCategory("");
-                    setFilterCargo("");
-                    setFilterTransport("");
-                    setSearchQuery("");
-                    setFromDate("");
-                    setToDate("");
-                  }}
-                  className="btn btn-sm"
-                  style={{
-                    fontSize: "0.78rem",
-                    padding: "6px 14px",
-                    background: "#ef4444",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "6px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    boxShadow: "0 2px 6px rgba(239, 68, 68, 0.3)"
-                  }}
-                >
-                  View Cancelled Orders ({cancelledRequestsCount}) →
-                </button>
-              </div>
-            )}
+
 
             {/* Level 2 & 3: Filter Dropdowns Grid */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", marginBottom: "14px" }}>
@@ -2083,7 +1985,7 @@ export default function RahulDashboard({
 
               {/* Cargo filter */}
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: "0.76rem" }}>Cargo Batch / Name</label>
+                <label className="form-label" style={{ fontSize: "0.76rem" }}>Cargo Name</label>
                 <CustomSelect 
                   value={filterCargo}
                   onChange={val => setFilterCargo(val)}
@@ -2186,7 +2088,7 @@ export default function RahulDashboard({
             
             {/* View Mode Toggle Pill: Grouped Orders vs Flat Items */}
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(15, 23, 42, 0.45)", padding: "4px", borderRadius: "10px", border: "1px solid var(--border-glass)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "var(--bg-card, #ffffff)", padding: "4px", borderRadius: "10px", border: "1px solid var(--border-glass, #cbd5e1)", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
                 <button
                   type="button"
                   onClick={() => setWorkboardViewMode("grouped")}
@@ -2207,7 +2109,7 @@ export default function RahulDashboard({
 
               {/* Sub-Grouping Mode Switcher (Active when Grouped View is selected) */}
               {workboardViewMode === "grouped" && (
-                <div style={{ display: "flex", alignItems: "center", gap: "4px", background: "rgba(15, 23, 42, 0.45)", padding: "4px 8px", borderRadius: "10px", border: "1px solid var(--border-glass)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "4px", background: "var(--bg-card, #ffffff)", padding: "4px 8px", borderRadius: "10px", border: "1px solid var(--border-glass, #cbd5e1)", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
                   <span style={{ fontSize: "0.74rem", color: "var(--text-muted)", fontWeight: 700, marginRight: "4px", textTransform: "uppercase" }}>Group:</span>
                   <button
                     type="button"
@@ -2239,7 +2141,7 @@ export default function RahulDashboard({
                 </span>
                 {checkedIds.length > 0 && (
                   <span style={{ fontSize: "0.82rem", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                    <span>(Total Goods: <strong style={{ color: "#f59e0b" }}>¥{Math.round(pendingRequests.filter(r => checkedIds.includes(r.id)).reduce((sum, r) => sum + ((r.orderQuantity || 0) * (r.priceRmb || 0)), 0)).toLocaleString()}</strong></span>
+                    <span>(Total Goods: <strong style={{ color: "var(--warning, #b45309)" }}>¥{Math.round(pendingRequests.filter(r => checkedIds.includes(r.id)).reduce((sum, r) => sum + ((r.orderQuantity || 0) * (r.priceRmb || 0)), 0)).toLocaleString()}</strong></span>
                     {(() => {
                       const selectedReqs = pendingRequests.filter(r => checkedIds.includes(r.id));
                       const totalCartons = selectedReqs.reduce((sum, r) => sum + (r.totalCartons || (r.itemsPerCarton ? Math.ceil((r.orderQuantity || 0) / r.itemsPerCarton) : 0)), 0);
@@ -2544,7 +2446,7 @@ export default function RahulDashboard({
                               </td>
 
                               {/* Total RMB */}
-                              <td style={{ fontWeight: 800, color: "#f59e0b", fontSize: "0.88rem" }}>
+                              <td style={{ fontWeight: 800, color: "var(--warning, #b45309)", fontSize: "0.88rem" }}>
                                 <div>¥{Math.round(group.totalGoodsRmb).toLocaleString()}</div>
                                 {group.cargoFreightPrice > 0 && (
                                   <div style={{ fontSize: "0.7rem", color: "#10b981", fontWeight: 700, marginTop: "1px" }} title="Cargo Freight Price">
@@ -2719,7 +2621,7 @@ export default function RahulDashboard({
                             {/* Inline Expanded Items Sub-Table for Cargo */}
                             {isExpanded && (
                               <tr>
-                                <td colSpan={14} style={{ padding: "12px 20px", background: "rgba(15, 23, 42, 0.55)", borderBottom: "2px solid rgba(56, 189, 248, 0.3)" }}>
+                                <td colSpan={14} style={{ padding: "12px 20px", background: "var(--bg-main, #f8fafc)", borderBottom: "2px solid var(--primary, #38bdf8)" }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                                     <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--primary)" }}>
                                       📦 Bundled Cargo Items: {group.cargoDetail} ({group.items.length} items)
@@ -2733,7 +2635,7 @@ export default function RahulDashboard({
                                       <Maximize2 size={12} /> Open in Dedicated Window
                                     </button>
                                   </div>
-                                  <table className="custom-table" style={{ fontSize: "0.79rem", margin: 0, background: "rgba(0,0,0,0.25)" }}>
+                                  <table className="custom-table" style={{ fontSize: "0.79rem", margin: 0, background: "var(--bg-card, #ffffff)" }}>
                                     <thead>
                                       <tr>
                                         <th style={{ width: "32px", textAlign: "center" }}>✓</th>
@@ -2776,8 +2678,8 @@ export default function RahulDashboard({
                                             <td style={{ whiteSpace: "nowrap", fontWeight: 600 }}>{vName}</td>
                                             <td>{it.category || "—"}</td>
                                             <td style={{ fontWeight: 600 }}>{itQty.toLocaleString()} Pcs</td>
-                                            <td style={{ color: "#f59e0b" }}>{itPrice > 0 ? `¥${itPrice.toFixed(2)}` : "—"}</td>
-                                            <td style={{ fontWeight: 700, color: "#f59e0b" }}>{itTotalRmb > 0 ? `¥${Math.round(itTotalRmb).toLocaleString()}` : "—"}</td>
+                                            <td style={{ color: "var(--warning, #b45309)", fontWeight: 600 }}>{itPrice > 0 ? `¥${itPrice.toFixed(2)}` : "—"}</td>
+                                            <td style={{ fontWeight: 700, color: "var(--warning, #b45309)" }}>{itTotalRmb > 0 ? `¥${Math.round(itTotalRmb).toLocaleString()}` : "—"}</td>
                                             <td>
                                               <span style={{ padding: "2px 6px", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 700, background: itStage.bgColor, color: itStage.badgeColor }}>
                                                 {itStage.label}
@@ -2922,7 +2824,7 @@ export default function RahulDashboard({
                             </td>
 
                             {/* Total RMB */}
-                            <td style={{ fontWeight: 800, color: "#f59e0b", fontSize: "0.88rem" }}>
+                            <td style={{ fontWeight: 800, color: "var(--warning, #b45309)", fontSize: "0.88rem" }}>
                               {group.totalRmb > 0 ? `¥${Math.round(group.totalRmb).toLocaleString()}` : "—"}
                             </td>
 
@@ -3033,7 +2935,7 @@ export default function RahulDashboard({
                           {/* Inline Expanded Items Sub-Table */}
                           {isExpanded && (
                             <tr>
-                              <td colSpan={13} style={{ padding: "12px 20px", background: "rgba(15, 23, 42, 0.55)", borderBottom: "2px solid rgba(56, 189, 248, 0.3)" }}>
+                              <td colSpan={13} style={{ padding: "12px 20px", background: "var(--bg-main, #f8fafc)", borderBottom: "2px solid var(--primary, #38bdf8)" }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                                   <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--primary)" }}>
                                     📦 Order Items: {group.vendorName} ({group.orderDate})
@@ -3047,7 +2949,7 @@ export default function RahulDashboard({
                                     <Maximize2 size={12} /> Open in Dedicated Window
                                   </button>
                                 </div>
-                                <table className="custom-table" style={{ fontSize: "0.79rem", margin: 0, background: "rgba(0,0,0,0.25)" }}>
+                                <table className="custom-table" style={{ fontSize: "0.79rem", margin: 0, background: "var(--bg-card, #ffffff)" }}>
                                   <thead>
                                     <tr>
                                       <th style={{ width: "32px", textAlign: "center" }}>✓</th>
@@ -3088,8 +2990,8 @@ export default function RahulDashboard({
                                           </td>
                                           <td>{it.category || "—"}</td>
                                           <td style={{ fontWeight: 600 }}>{itQty.toLocaleString()} Pcs</td>
-                                          <td style={{ color: "#f59e0b" }}>{itPrice > 0 ? `¥${itPrice.toFixed(2)}` : "—"}</td>
-                                          <td style={{ fontWeight: 700, color: "#f59e0b" }}>{itTotalRmb > 0 ? `¥${Math.round(itTotalRmb).toLocaleString()}` : "—"}</td>
+                                          <td style={{ color: "var(--warning, #b45309)", fontWeight: 600 }}>{itPrice > 0 ? `¥${itPrice.toFixed(2)}` : "—"}</td>
+                                          <td style={{ fontWeight: 700, color: "var(--warning, #b45309)" }}>{itTotalRmb > 0 ? `¥${Math.round(itTotalRmb).toLocaleString()}` : "—"}</td>
                                           <td>
                                             <span style={{ padding: "2px 6px", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 700, background: itStage.bgColor, color: itStage.badgeColor }}>
                                               {itStage.label}
@@ -3300,12 +3202,12 @@ export default function RahulDashboard({
                           </td>
 
                           {/* Price RMB */}
-                          <td style={{ fontWeight: 600, color: "#f59e0b" }}>
+                          <td style={{ fontWeight: 600, color: "var(--warning, #b45309)" }}>
                             {price > 0 ? `¥${price.toFixed(2)}` : "—"}
                           </td>
 
                           {/* Total RMB */}
-                          <td style={{ fontWeight: 800, color: "#f59e0b" }}>
+                          <td style={{ fontWeight: 800, color: "var(--warning, #b45309)" }}>
                             {totalRmb > 0 ? `¥${Math.round(totalRmb).toLocaleString()}` : "—"}
                           </td>
 

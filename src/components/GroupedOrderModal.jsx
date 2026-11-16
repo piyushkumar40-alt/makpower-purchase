@@ -187,8 +187,9 @@ export default function GroupedOrderModal({
           overflow: "hidden", 
           borderRadius: "16px", 
           border: "1px solid var(--border-glass)", 
-          boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.6)",
-          background: "var(--card-bg, #1e293b)"
+          boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.45)",
+          background: "var(--bg-card, #ffffff)",
+          color: "var(--text-main, #0f172a)"
         }}
       >
         {/* ==================== HEADER ==================== */}
@@ -232,7 +233,11 @@ export default function GroupedOrderModal({
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                 <h3 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 800, color: "var(--text-main)" }}>
-                  {isCargoGroup ? (orderGroup.cargoDetail || orderGroup.cargoId || "Cargo Shipment") : vendorName}
+                  {isCargoGroup 
+                    ? ((orderGroup.cargoDetail && !orderGroup.cargoDetail.startsWith("cargo-") ? orderGroup.cargoDetail : null) || 
+                       (orderGroup.carrierName && orderGroup.carrierName !== "—" ? orderGroup.carrierName : null) || 
+                       (orderGroup.vendorSummary ? `${orderGroup.vendorSummary} Cargo` : (orderGroup.cargoId ? `Cargo #${orderGroup.cargoId.slice(-6)}` : "Cargo Shipment")))
+                    : vendorName}
                 </h3>
                 {isCargoGroup ? (
                   <>
@@ -343,12 +348,12 @@ export default function GroupedOrderModal({
             gridTemplateColumns: isCargoGroup && (orderGroup.cargoFreightPrice > 0 || orderGroup.cargoObj) ? "repeat(auto-fit, minmax(150px, 1fr))" : "repeat(auto-fit, minmax(180px, 1fr))", 
             gap: "12px", 
             padding: "14px 24px", 
-            background: "rgba(15, 23, 42, 0.35)", 
-            borderBottom: "1px solid var(--border-glass)" 
+            background: "var(--bg-main, #f8fafc)", 
+            borderBottom: "1px solid var(--border-glass, #cbd5e1)" 
           }}
         >
           {/* Models & Requisitions */}
-          <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 14px", borderRadius: "10px", border: "1px solid rgba(255, 255, 255, 0.05)" }}>
+          <div style={{ background: "var(--bg-card, #ffffff)", padding: "10px 14px", borderRadius: "10px", border: "1px solid var(--border-glass, #cbd5e1)", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
             <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>
               {isCargoGroup ? "Cargo Lines / Items" : "Order Models / Lines"}
             </div>
@@ -361,7 +366,7 @@ export default function GroupedOrderModal({
           </div>
 
           {/* Total Quantity */}
-          <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 14px", borderRadius: "10px", border: "1px solid rgba(255, 255, 255, 0.05)" }}>
+          <div style={{ background: "var(--bg-card, #ffffff)", padding: "10px 14px", borderRadius: "10px", border: "1px solid var(--border-glass, #cbd5e1)", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
             <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>
               Total Quantity & Cartons
             </div>
@@ -374,11 +379,11 @@ export default function GroupedOrderModal({
           </div>
 
           {/* Total Goods RMB */}
-          <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 14px", borderRadius: "10px", border: "1px solid rgba(255, 255, 255, 0.05)" }}>
+          <div style={{ background: "var(--bg-card, #ffffff)", padding: "10px 14px", borderRadius: "10px", border: "1px solid var(--border-glass, #cbd5e1)", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
             <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>
               Goods RMB Total
             </div>
-            <div style={{ fontSize: "1.15rem", fontWeight: 800, color: "#f59e0b", marginTop: "2px" }}>
+            <div style={{ fontSize: "1.15rem", fontWeight: 800, color: "var(--warning, #b45309)", marginTop: "2px" }}>
               ¥{Math.round(totalRmb).toLocaleString()}
             </div>
             <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>
@@ -388,7 +393,7 @@ export default function GroupedOrderModal({
 
           {/* Cargo Freight (if cargo group) */}
           {isCargoGroup && (orderGroup.cargoFreightPrice > 0 || orderGroup.cargoObj) && (
-            <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 14px", borderRadius: "10px", border: "1px solid rgba(255, 255, 255, 0.05)" }}>
+            <div style={{ background: "var(--bg-card, #ffffff)", padding: "10px 14px", borderRadius: "10px", border: "1px solid var(--border-glass, #cbd5e1)", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>
                 Cargo Freight Price
               </div>
@@ -402,14 +407,14 @@ export default function GroupedOrderModal({
           )}
 
           {/* Purchase Update Progress */}
-          <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 14px", borderRadius: "10px", border: "1px solid rgba(255, 255, 255, 0.05)" }}>
+          <div style={{ background: "var(--bg-card, #ffffff)", padding: "10px 14px", borderRadius: "10px", border: "1px solid var(--border-glass, #cbd5e1)", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
             <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>
               Ledger Punch Progress
             </div>
             <div style={{ fontSize: "1.15rem", fontWeight: 800, color: isAllMarked ? "#10b981" : "#38bdf8", marginTop: "2px" }}>
               {markedCount} / {liveItems.length} <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>Marked</span>
             </div>
-            <div style={{ width: "100%", height: "4px", background: "rgba(255, 255, 255, 0.1)", borderRadius: "4px", marginTop: "6px", overflow: "hidden" }}>
+            <div style={{ width: "100%", height: "4px", background: "var(--border-glass, rgba(148, 163, 184, 0.3))", borderRadius: "4px", marginTop: "6px", overflow: "hidden" }}>
               <div 
                 style={{ 
                   height: "100%", 
@@ -433,7 +438,7 @@ export default function GroupedOrderModal({
             alignItems: "center", 
             gap: "12px", 
             flexWrap: "wrap",
-            background: "rgba(15, 23, 42, 0.2)"
+            background: "var(--bg-card, #ffffff)"
           }}
         >
           {/* Left: Quick search & status filter */}
@@ -652,12 +657,12 @@ export default function GroupedOrderModal({
                     </td>
 
                     {/* Price RMB */}
-                    <td style={{ fontWeight: 600, color: "#f59e0b" }}>
+                    <td style={{ fontWeight: 600, color: "var(--warning, #b45309)" }}>
                       {price > 0 ? `¥${price.toFixed(2)}` : "—"}
                     </td>
 
                     {/* Total RMB */}
-                    <td style={{ fontWeight: 800, color: "#f59e0b" }}>
+                    <td style={{ fontWeight: 800, color: "var(--warning, #b45309)" }}>
                       {totalRmbVal > 0 ? `¥${Math.round(totalRmbVal).toLocaleString()}` : "—"}
                     </td>
 
@@ -798,13 +803,13 @@ export default function GroupedOrderModal({
             display: "flex", 
             justifyContent: "space-between", 
             alignItems: "center",
-            background: "rgba(15, 23, 42, 0.4)",
+            background: "var(--bg-main, #f8fafc)",
             flexWrap: "wrap",
             gap: "10px"
           }}
         >
           <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
-            Showing <strong>{filteredModalItems.length}</strong> of <strong>{liveItems.length}</strong> items • Total: <strong style={{ color: "var(--primary)" }}>{totalPcs.toLocaleString()} Pcs</strong> • Value: <strong style={{ color: "#f59e0b" }}>¥{Math.round(totalRmb).toLocaleString()}</strong>
+            Showing <strong>{filteredModalItems.length}</strong> of <strong>{liveItems.length}</strong> items • Total: <strong style={{ color: "var(--primary)" }}>{totalPcs.toLocaleString()} Pcs</strong> • Value: <strong style={{ color: "var(--warning, #b45309)" }}>¥{Math.round(totalRmb).toLocaleString()}</strong>
           </div>
 
           <button 
