@@ -15,7 +15,11 @@ import {
   Layers,
   ArrowRight,
   TrendingUp,
-  FileText
+  FileText,
+  Truck,
+  Ship,
+  Plane,
+  Edit3
 } from "lucide-react";
 import { useModalEscape } from "../utils/useModalEscape";
 import { getPurchaserDisplayName, formatPunchDateTime, calculateTotalCargoPrice } from "../utils/formatters";
@@ -26,12 +30,14 @@ export default function GroupedOrderModal({
   requests = [],
   cargos = [],
   vendors = [],
+  cargoCompanies = [],
   purchasers = [],
   currentUser = {},
   onClose,
   onBatchUpdateRequests,
   onInspectSingleOrder = null,
-  onOpenDocument = null
+  onOpenDocument = null,
+  onEditCargo = null
 }) {
   useModalEscape(onClose);
 
@@ -40,6 +46,8 @@ export default function GroupedOrderModal({
   const [modalCheckedIds, setModalCheckedIds] = useState([]);
 
   if (!orderGroup) return null;
+
+  const isCargoGroup = orderGroup.groupType === "cargo";
 
   // Resolve live items from current requests state
   const liveItems = useMemo(() => {
@@ -191,33 +199,84 @@ export default function GroupedOrderModal({
             display: "flex", 
             justifyContent: "space-between", 
             alignItems: "center",
-            background: "linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(99, 102, 241, 0.04))"
+            background: isCargoGroup 
+              ? "linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(16, 185, 129, 0.06))"
+              : "linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(99, 102, 241, 0.04))"
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "14px", flex: 1, minWidth: 0 }}>
             <div 
               style={{ 
-                width: "44px", 
-                height: "44px", 
+                width: "46px", 
+                height: "46px", 
                 borderRadius: "12px", 
-                background: "linear-gradient(135deg, #0284c7, #2563eb)", 
+                background: isCargoGroup
+                  ? "linear-gradient(135deg, #0284c7, #0d9488)"
+                  : "linear-gradient(135deg, #0284c7, #2563eb)", 
                 display: "flex", 
                 alignItems: "center", 
                 justifyContent: "center", 
                 color: "#fff",
-                boxShadow: "0 4px 12px rgba(37, 99, 235, 0.35)"
+                boxShadow: "0 4px 12px rgba(37, 99, 235, 0.35)",
+                flexShrink: 0
               }}
             >
-              <Package size={24} />
+              {isCargoGroup ? (
+                orderGroup.modeOfTransport?.toLowerCase().includes("air") ? <Plane size={24} /> :
+                orderGroup.modeOfTransport?.toLowerCase().includes("road") ? <Truck size={24} /> :
+                <Ship size={24} />
+              ) : (
+                <Package size={24} />
+              )}
             </div>
-            <div>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700, color: "var(--text-main)" }}>
-                  {vendorName}
+                <h3 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 800, color: "var(--text-main)" }}>
+                  {isCargoGroup ? (orderGroup.cargoDetail || orderGroup.cargoId || "Cargo Shipment") : vendorName}
                 </h3>
-                <span className="badge badge-cargo" style={{ fontSize: "0.76rem" }}>
-                  📅 Order Date: {orderDate}
-                </span>
+                {isCargoGroup ? (
+                  <>
+                    {orderGroup.modeOfTransport && orderGroup.modeOfTransport !== "—" && (
+                      <span className="badge badge-cargo" style={{ fontSize: "0.76rem" }}>
+                        {orderGroup.modeOfTransport}
+                      </span>
+                    )}
+                    {orderGroup.carrierName && orderGroup.carrierName !== "—" && (
+                      <span className="badge badge-secondary" style={{ fontSize: "0.76rem" }}>
+                        🚚 {orderGroup.carrierName}
+                      </span>
+                    )}
+                    {orderGroup.cargoShippingDate && orderGroup.cargoShippingDate !== "—" && (
+                      <span className="badge badge-cargo" style={{ fontSize: "0.76rem" }}>
+                        🚢 Shipped: {orderGroup.cargoShippingDate}
+                      </span>
+                    )}
+                    {orderGroup.cargoEta && orderGroup.cargoEta !== "—" && (
+                      <span className="badge badge-secondary" style={{ fontSize: "0.76rem", color: "#38bdf8", fontWeight: 700 }}>
+                        ⏱️ ETA: {orderGroup.cargoEta}
+                      </span>
+                    )}
+                    {orderGroup.arrivalStatus && (
+                      <span 
+                        style={{ 
+                          padding: "3px 8px", 
+                          borderRadius: "6px", 
+                          fontSize: "0.74rem", 
+                          fontWeight: 700, 
+                          background: orderGroup.arrivalStatus.bgColor, 
+                          color: orderGroup.arrivalStatus.badgeColor, 
+                          border: `1px solid ${orderGroup.arrivalStatus.borderColor}` 
+                        }}
+                      >
+                        {orderGroup.arrivalStatus.label}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="badge badge-cargo" style={{ fontSize: "0.76rem" }}>
+                    📅 Order Date: {orderDate}
+                  </span>
+                )}
                 <span 
                   style={{ 
                     fontSize: "0.76rem", 
@@ -232,31 +291,56 @@ export default function GroupedOrderModal({
                   {isAllMarked ? "✓ Fully Marked in Ledger" : (markedCount > 0 ? `⚡ ${markedCount}/${liveItems.length} Marked` : "⏳ Pending Mark in Ledger")}
                 </span>
               </div>
-              <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "3px", display: "flex", gap: "14px", flexWrap: "wrap" }}>
-                <span>Purchaser: <strong style={{ color: "var(--primary)" }}>{purchaserName}</strong></span>
-                <span>•</span>
-                <span>Vendor EDD: <strong style={{ color: "#38bdf8" }}>{eddDisplay}</strong></span>
-                <span>•</span>
-                <span>Lot: <code>{orderGroup.groupKey}</code></span>
+              <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "4px", display: "flex", gap: "14px", flexWrap: "wrap", alignItems: "center" }}>
+                {isCargoGroup ? (
+                  <>
+                    <span>Vendors Included: <strong style={{ color: "var(--text-main)" }}>{orderGroup.vendorSummary || "—"}</strong></span>
+                    <span>•</span>
+                    <span>Purchasers: <strong style={{ color: "var(--primary)" }}>{orderGroup.purchaserSummary || purchaserName}</strong></span>
+                    <span>•</span>
+                    <span>Cargo Code: <code>{orderGroup.cargoId || "—"}</code></span>
+                  </>
+                ) : (
+                  <>
+                    <span>Purchaser: <strong style={{ color: "var(--primary)" }}>{purchaserName}</strong></span>
+                    <span>•</span>
+                    <span>Vendor EDD: <strong style={{ color: "#38bdf8" }}>{eddDisplay}</strong></span>
+                    <span>•</span>
+                    <span>Lot: <code>{orderGroup.groupKey}</code></span>
+                  </>
+                )}
               </div>
             </div>
           </div>
 
-          <button 
-            onClick={onClose} 
-            className="btn btn-secondary btn-sm"
-            style={{ padding: "8px", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center" }}
-            title="Close popup (Esc)"
-          >
-            <X size={20} />
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+            {isCargoGroup && onEditCargo && (orderGroup.cargoObj || orderGroup.cargoId) && (
+              <button
+                type="button"
+                onClick={() => onEditCargo(orderGroup.cargoObj || { id: orderGroup.cargoId, cargoDetail: orderGroup.cargoDetail })}
+                className="btn btn-warning btn-sm"
+                style={{ padding: "6px 12px", fontSize: "0.78rem", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "5px" }}
+                title="Edit Cargo Shipping Details, Carrier & Documents"
+              >
+                <Edit3 size={14} /> Edit Cargo Details
+              </button>
+            )}
+            <button 
+              onClick={onClose} 
+              className="btn btn-secondary btn-sm"
+              style={{ padding: "8px", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center" }}
+              title="Close popup (Esc)"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         {/* ==================== SUMMARY KPI STATS ==================== */}
         <div 
           style={{ 
             display: "grid", 
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", 
+            gridTemplateColumns: isCargoGroup && (orderGroup.cargoFreightPrice > 0 || orderGroup.cargoObj) ? "repeat(auto-fit, minmax(150px, 1fr))" : "repeat(auto-fit, minmax(180px, 1fr))", 
             gap: "12px", 
             padding: "14px 24px", 
             background: "rgba(15, 23, 42, 0.35)", 
@@ -266,7 +350,7 @@ export default function GroupedOrderModal({
           {/* Models & Requisitions */}
           <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 14px", borderRadius: "10px", border: "1px solid rgba(255, 255, 255, 0.05)" }}>
             <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>
-              Order Models / Lines
+              {isCargoGroup ? "Cargo Lines / Items" : "Order Models / Lines"}
             </div>
             <div style={{ fontSize: "1.15rem", fontWeight: 800, color: "var(--text-main)", marginTop: "2px" }}>
               {liveItems.length} <span style={{ fontSize: "0.8rem", fontWeight: 500, color: "var(--text-muted)" }}>Requisitions</span>
@@ -285,14 +369,14 @@ export default function GroupedOrderModal({
               {totalPcs.toLocaleString()} <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>Pcs</span>
             </div>
             <div style={{ fontSize: "0.72rem", color: "#a855f7", fontWeight: 600, marginTop: "2px" }}>
-              📦 {totalCartons.toLocaleString()} Cartons
+              📦 {(isCargoGroup && orderGroup.totalCartons ? orderGroup.totalCartons : totalCartons).toLocaleString()} Cartons
             </div>
           </div>
 
-          {/* Total RMB Value */}
+          {/* Total Goods RMB */}
           <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 14px", borderRadius: "10px", border: "1px solid rgba(255, 255, 255, 0.05)" }}>
             <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>
-              Total RMB Value
+              Goods RMB Total
             </div>
             <div style={{ fontSize: "1.15rem", fontWeight: 800, color: "#f59e0b", marginTop: "2px" }}>
               ¥{Math.round(totalRmb).toLocaleString()}
@@ -301,6 +385,21 @@ export default function GroupedOrderModal({
               Avg: ¥{(totalPcs > 0 ? (totalRmb / totalPcs).toFixed(2) : "0.00")}/pc
             </div>
           </div>
+
+          {/* Cargo Freight (if cargo group) */}
+          {isCargoGroup && (orderGroup.cargoFreightPrice > 0 || orderGroup.cargoObj) && (
+            <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 14px", borderRadius: "10px", border: "1px solid rgba(255, 255, 255, 0.05)" }}>
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>
+                Cargo Freight Price
+              </div>
+              <div style={{ fontSize: "1.15rem", fontWeight: 800, color: "#10b981", marginTop: "2px" }}>
+                ¥{Math.round(orderGroup.cargoFreightPrice || 0).toLocaleString()}
+              </div>
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                Grand: <strong>¥{Math.round(totalRmb + (orderGroup.cargoFreightPrice || 0)).toLocaleString()}</strong>
+              </div>
+            </div>
+          )}
 
           {/* Purchase Update Progress */}
           <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 14px", borderRadius: "10px", border: "1px solid rgba(255, 255, 255, 0.05)" }}>
@@ -468,13 +567,14 @@ export default function GroupedOrderModal({
                 </th>
                 <th style={{ width: "55px", textAlign: "center" }}>Inspect</th>
                 <th>Model / Item</th>
+                {isCargoGroup && <th>Vendor</th>}
                 <th>Category</th>
                 <th>Qty</th>
                 <th>Price (¥)</th>
                 <th>Total RMB (¥)</th>
                 <th>Where Item Is Now</th>
-                <th>Vendor EDD</th>
-                <th>Cargo / Transport</th>
+                {!isCargoGroup && <th>Vendor EDD</th>}
+                {!isCargoGroup && <th>Cargo / Transport</th>}
                 <th>Purchase Status</th>
                 <th style={{ textAlign: "center", width: "130px" }}>Action</th>
               </tr>
@@ -524,6 +624,16 @@ export default function GroupedOrderModal({
                       <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>#{r.id}</div>
                     </td>
 
+                    {/* Vendor (when cargo group) */}
+                    {isCargoGroup && (
+                      <td style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                          <Building2 size={13} style={{ color: "var(--primary)", flexShrink: 0 }} />
+                          <span>{vendors.find(v => v.id === r.vendorId)?.name || r.vendorName || "—"}</span>
+                        </div>
+                      </td>
+                    )}
+
                     {/* Category */}
                     <td>
                       <span style={{ fontSize: "0.76rem", color: "var(--text-muted)" }}>
@@ -570,28 +680,32 @@ export default function GroupedOrderModal({
                       </span>
                     </td>
 
-                    {/* Vendor EDD */}
-                    <td style={{ whiteSpace: "nowrap" }}>
-                      {r.vendorEdd || "—"}
-                    </td>
+                    {/* Vendor EDD (only when not cargo group) */}
+                    {!isCargoGroup && (
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        {r.vendorEdd || "—"}
+                      </td>
+                    )}
 
-                    {/* Cargo / Transport */}
-                    <td style={{ fontSize: "0.78rem" }}>
-                      {cargo ? (
-                        <div>
-                          <div style={{ fontWeight: 700, color: "var(--primary)" }}>
-                            📦 {cargo.cargoDetail || `#${cargo.id}`}
-                          </div>
-                          {cargo.modeOfTransport && (
-                            <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
-                              {cargo.modeOfTransport}
+                    {/* Cargo / Transport (only when not cargo group) */}
+                    {!isCargoGroup && (
+                      <td style={{ fontSize: "0.78rem" }}>
+                        {cargo ? (
+                          <div>
+                            <div style={{ fontWeight: 700, color: "var(--primary)" }}>
+                              📦 {cargo.cargoDetail || `#${cargo.id}`}
                             </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span style={{ color: "var(--text-muted)" }}>—</span>
-                      )}
-                    </td>
+                            {cargo.modeOfTransport && (
+                              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                                {cargo.modeOfTransport}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: "var(--text-muted)" }}>—</span>
+                        )}
+                      </td>
+                    )}
 
                     {/* Purchase Status */}
                     <td>
