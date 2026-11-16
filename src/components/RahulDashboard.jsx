@@ -28,6 +28,8 @@ import {
   User,
   ExternalLink,
   ChevronRight,
+  ChevronDown,
+  Maximize2,
   FileSpreadsheet,
   Zap
 } from "lucide-react";
@@ -37,6 +39,7 @@ import MasterOrderTracker, { getOrderStage } from "./MasterOrderTracker";
 import RequesterForm from "./RequesterForm";
 import CustomSelect from "./CustomSelect";
 import CargoDocumentModal from "./CargoDocumentModal";
+import GroupedOrderModal from "./GroupedOrderModal";
 import RahulDashboardLoading from "./RahulDashboardLoading";
 import { useSortableData } from "../utils/useSortableData";
 import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, formatPunchDateTime } from "../utils/formatters";
@@ -128,6 +131,20 @@ export default function RahulDashboard({
   const [inspectedOrder, setInspectedOrder] = useState(null);
   // Cargo Document Modal state
   const [viewingCargoDoc, setViewingCargoDoc] = useState(null);
+
+  // Grouped Orders vs Flat Items View Mode (Default is "grouped" for clean readability)
+  const [workboardViewMode, setWorkboardViewMode] = useState(() => {
+    return localStorage.getItem("makpower_rahul_view_mode") || "grouped";
+  });
+  useEffect(() => {
+    localStorage.setItem("makpower_rahul_view_mode", workboardViewMode);
+  }, [workboardViewMode]);
+
+  // Collapsed by default - tracks which group rows are expanded inline
+  const [expandedGroupKeys, setExpandedGroupKeys] = useState({});
+
+  // Grouped Order Modal popup state - opens full order in dedicated window on click
+  const [selectedOrderGroup, setSelectedOrderGroup] = useState(null);
 
   const handleOpenDocument = (cargo, docType, fileName, fileData, field, dataField) => {
     if (!fileName) return;
@@ -497,6 +514,99 @@ export default function RahulDashboard({
 
   const { items: sortedDisplayRequests, RenderSortHeader } = useSortableData(filteredRequests);
 
+  // Group filtered requests by Vendor + Order Date + Purchaser
+  const groupedOrders = useMemo(() => {
+    const map = new Map();
+
+    filteredRequests.forEach(r => {
+      const vId = r.vendorId || "unassigned";
+      const oDate = r.orderDate || "No Date";
+      const pName = getPurchaserName(r) || "Unassigned Purchaser";
+      const groupKey = `${vId}__${oDate}__${pName}`;
+
+      if (!map.has(groupKey)) {
+        const vendorObj = vendors.find(v => v.id === vId);
+        const vendorName = vendorObj ? vendorObj.name : (r.vendorName || (vId === "unassigned" ? "Unassigned Vendor" : vId));
+        
+        map.set(groupKey, {
+          groupKey,
+          vendorId: vId,
+          vendorName,
+          orderDate: oDate,
+          purchaserName: pName,
+          purchaserId: r.purchaserId || r.assignedPurchaser || "",
+          items: [],
+          totalQty: 0,
+          totalRmb: 0,
+          totalCartons: 0,
+          vendorEdds: new Set(),
+          cargoIds: new Set(),
+          categories: new Set(),
+          models: [],
+          stageCounts: {}
+        });
+      }
+
+      const grp = map.get(groupKey);
+      grp.items.push(r);
+
+      const qty = parseInt(r.vendorOrderQuantity || r.orderQuantity, 10) || 0;
+      const price = parseFloat(r.priceRmb) || 0;
+      grp.totalQty += qty;
+      grp.totalRmb += qty * price;
+
+      const ipc = parseInt(r.itemsPerCarton, 10);
+      const ctns = r.totalCartons || (ipc > 0 ? Math.ceil(qty / ipc) : 0);
+      grp.totalCartons += ctns;
+
+      if (r.vendorEdd) grp.vendorEdds.add(r.vendorEdd);
+      if (r.cargoId) grp.cargoIds.add(r.cargoId);
+      if (r.category) grp.categories.add(r.category);
+      if (r.model && !grp.models.includes(r.model)) grp.models.push(r.model);
+
+      const cargo = cargos.find(c => c.id === r.cargoId);
+      const stage = getOrderStage(r, cargo);
+      grp.stageCounts[stage.label] = (grp.stageCounts[stage.label] || 0) + 1;
+    });
+
+    return Array.from(map.values()).map(grp => {
+      const markedCount = grp.items.filter(r => r.purchaseUpdated === "Yes").length;
+      const pendingCount = grp.items.length - markedCount;
+      const isAllMarked = grp.items.length > 0 && markedCount === grp.items.length;
+      const isPartiallyMarked = markedCount > 0 && markedCount < grp.items.length;
+      const isNoneMarked = markedCount === 0;
+
+      const eddArr = Array.from(grp.vendorEdds).filter(Boolean).sort();
+      let eddDisplay = "—";
+      if (eddArr.length === 1) {
+        eddDisplay = eddArr[0];
+      } else if (eddArr.length > 1) {
+        eddDisplay = `${eddArr[0]} ~ ${eddArr[eddArr.length - 1]}`;
+      }
+
+      const modelsSummary = grp.models.length > 0
+        ? (grp.models.length <= 2 ? grp.models.join(", ") : `${grp.models.slice(0, 2).join(", ")} +${grp.models.length - 2} more`)
+        : "—";
+
+      // Dominant stage
+      const dominantStage = Object.entries(grp.stageCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
+
+      return {
+        ...grp,
+        markedCount,
+        pendingCount,
+        isAllMarked,
+        isPartiallyMarked,
+        isNoneMarked,
+        eddDisplay,
+        modelsSummary,
+        dominantStage
+      };
+    });
+  }, [filteredRequests, vendors, cargos, purchasers]);
+
+  const { items: sortedGroupedOrders, RenderSortHeader: RenderGroupSortHeader } = useSortableData(groupedOrders);
+
   // Extract filter options dynamically
   const uniqueVendors = useMemo(() => {
     return Array.from(new Set(eligibleRequests.map(r => r.vendorId)))
@@ -615,6 +725,45 @@ export default function RahulDashboard({
     }));
     onBatchUpdateRequests(updated);
     setCheckedIds([]);
+  };
+
+  // Group-wise and individual marking helper
+  const handleMarkGroup = (groupOrItems, isMarked = true) => {
+    const list = Array.isArray(groupOrItems) ? groupOrItems : (groupOrItems.items || []);
+    if (list.length === 0) return;
+    const now = new Date().toISOString();
+    const punchByName = currentUser?.name || "Mr. Rahul Mann";
+    const punchById = currentUser?.id || "u-rahul";
+    const targets = isMarked ? list.filter(r => r.purchaseUpdated !== "Yes") : list.filter(r => r.purchaseUpdated === "Yes");
+    if (targets.length === 0) return;
+    const updated = targets.map(r => ({
+      ...r,
+      purchaseUpdated: isMarked ? "Yes" : "No",
+      purchaseUpdatedAt: isMarked ? now : "",
+      purchaseUpdatedBy: isMarked ? punchByName : "",
+      purchaseUpdatedById: isMarked ? punchById : ""
+    }));
+    onBatchUpdateRequests(updated);
+  };
+
+  // Toggle selection for an entire group
+  const handleToggleGroupSelect = (groupItems) => {
+    const ids = groupItems.map(it => it.id);
+    const allSelected = ids.length > 0 && ids.every(id => checkedIds.includes(id));
+    if (allSelected) {
+      setCheckedIds(prev => prev.filter(id => !ids.includes(id)));
+    } else {
+      setCheckedIds(prev => Array.from(new Set([...prev, ...ids])));
+    }
+  };
+
+  // Toggle inline expand for a group row
+  const toggleExpandGroup = (groupKey, e) => {
+    if (e) e.stopPropagation();
+    setExpandedGroupKeys(prev => ({
+      ...prev,
+      [groupKey]: !prev[groupKey]
+    }));
   };
 
   const resetFilters = () => {
@@ -1787,11 +1936,33 @@ export default function RahulDashboard({
 
           </div>
 
-          {/* ==================== ACTION ROW FOR MARKING PURCHASES ==================== */}
-          {activeTab === "pending" && (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <span style={{ fontSize: "0.88rem", color: "var(--text-muted)" }}>
+          {/* ==================== VIEW MODE SWITCHER & ACTION ROW FOR MARKING PURCHASES ==================== */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
+            
+            {/* View Mode Toggle Pill: Grouped Orders vs Flat Items */}
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(15, 23, 42, 0.45)", padding: "4px", borderRadius: "10px", border: "1px solid var(--border-glass)" }}>
+              <button
+                type="button"
+                onClick={() => setWorkboardViewMode("grouped")}
+                className={`btn btn-sm ${workboardViewMode === "grouped" ? "btn-primary" : "btn-secondary"}`}
+                style={{ fontSize: "0.78rem", padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: workboardViewMode === "grouped" ? 700 : 500 }}
+              >
+                <Package size={15} /> 📦 Grouped by Orders ({groupedOrders.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setWorkboardViewMode("flat")}
+                className={`btn btn-sm ${workboardViewMode === "flat" ? "btn-primary" : "btn-secondary"}`}
+                style={{ fontSize: "0.78rem", padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: workboardViewMode === "flat" ? 700 : 500 }}
+              >
+                <Layers size={15} /> 📋 All Individual Items ({filteredRequests.length})
+              </button>
+            </div>
+
+            {/* Selection Status & Batch Marking Controls */}
+            {activeTab === "pending" && (
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
                   Selected: <strong style={{ color: "var(--primary)" }}>{checkedIds.length}</strong> of {filteredRequests.length} pending items
                 </span>
                 {checkedIds.length > 0 && (
@@ -1824,42 +1995,42 @@ export default function RahulDashboard({
                     <span>)</span>
                   </span>
                 )}
+                <button 
+                  onClick={handleSubmitUpdate}
+                  disabled={checkedIds.length === 0}
+                  className="btn btn-primary"
+                  style={{ padding: "8px 18px", display: "inline-flex", alignItems: "center", gap: "8px", fontWeight: 700 }}
+                >
+                  <CheckCircle size={16} /> Confirm & Mark {checkedIds.length || ""} Purchases as Updated
+                </button>
               </div>
-              <button 
-                onClick={handleSubmitUpdate}
-                disabled={checkedIds.length === 0}
-                className="btn btn-primary"
-                style={{ padding: "10px 22px", display: "inline-flex", alignItems: "center", gap: "8px", fontWeight: 700 }}
-              >
-                <CheckCircle size={17} /> Confirm & Mark {checkedIds.length || ""} Purchases as Updated
-              </button>
-            </div>
-          )}
+            )}
 
-          {activeTab === "submitted" && (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
-              <span style={{ fontSize: "0.88rem", color: "var(--text-muted)" }}>
-                Selected: <strong style={{ color: "#38bdf8" }}>{checkedIds.length}</strong> of {filteredRequests.length} marked items
-              </span>
-              <button 
-                onClick={handleUnsubmitUpdate}
-                disabled={checkedIds.length === 0}
-                className="btn btn-secondary"
-                style={{ 
-                  padding: "10px 20px", 
-                  color: "#ef4444", 
-                  borderColor: "rgba(239, 68, 68, 0.4)", 
-                  background: "rgba(239, 68, 68, 0.1)",
-                  fontWeight: 600,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "8px"
-                }}
-              >
-                <RotateCcw size={16} /> Mark {checkedIds.length || ""} Selected as Unsubmitted (Bulk Undo)
-              </button>
-            </div>
-          )}
+            {activeTab === "submitted" && (
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                  Selected: <strong style={{ color: "#38bdf8" }}>{checkedIds.length}</strong> of {filteredRequests.length} marked items
+                </span>
+                <button 
+                  onClick={handleUnsubmitUpdate}
+                  disabled={checkedIds.length === 0}
+                  className="btn btn-secondary"
+                  style={{ 
+                    padding: "8px 16px", 
+                    color: "#ef4444", 
+                    borderColor: "rgba(239, 68, 68, 0.4)", 
+                    background: "rgba(239, 68, 68, 0.1)",
+                    fontWeight: 600,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "8px"
+                  }}
+                >
+                  <RotateCcw size={15} /> Mark {checkedIds.length || ""} Selected as Unsubmitted (Bulk Undo)
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* ==================== WORKBOARD TABLE ==================== */}
           {filteredRequests.length === 0 ? (
@@ -1875,7 +2046,359 @@ export default function RahulDashboard({
                 </button>
               )}
             </div>
+          ) : workboardViewMode === "grouped" ? (
+            /* ==================== GROUPED ORDERS WORKBOARD ==================== */
+            <div className="glass-panel" style={{ padding: "4px" }}>
+              <div className="table-container" style={{ maxHeight: "680px", overflowY: "auto" }}>
+                <table className="custom-table" style={{ fontSize: "0.84rem" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: "42px", textAlign: "center" }}>
+                        <input 
+                          type="checkbox" 
+                          className="checkbox-input"
+                          checked={filteredRequests.length > 0 && checkedIds.length === filteredRequests.length}
+                          onChange={handleSelectAll}
+                          title="Select / deselect all items across all orders"
+                        />
+                      </th>
+                      <th style={{ width: "42px", textAlign: "center" }}>Expand</th>
+                      <th style={{ width: "75px", textAlign: "center" }}>Inspect</th>
+                      <RenderGroupSortHeader colKey="vendorName" title="Vendor Name" />
+                      <RenderGroupSortHeader colKey="orderDate" title="Order Date" />
+                      <RenderGroupSortHeader colKey="purchaserName" title="Purchaser" />
+                      <RenderGroupSortHeader colKey="eddDisplay" title="Vendor EDD" />
+                      <RenderGroupSortHeader colKey="itemsCount" title="Items & Models" getValue={g => g.items.length} />
+                      <RenderGroupSortHeader colKey="totalQty" title="Total Qty" />
+                      <RenderGroupSortHeader colKey="totalRmb" title="Total RMB (¥)" />
+                      <RenderGroupSortHeader colKey="dominantStage" title="Where Items Are Now" />
+                      <RenderGroupSortHeader colKey="markedStatus" title="Ledger Status" getValue={g => (g.isAllMarked ? 2 : (g.markedCount > 0 ? 1 : 0))} />
+                      <th style={{ textAlign: "center", minWidth: "130px" }}>Group Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedGroupedOrders.map(group => {
+                      const isAllChecked = group.items.length > 0 && group.items.every(it => checkedIds.includes(it.id));
+                      const isSomeChecked = !isAllChecked && group.items.some(it => checkedIds.includes(it.id));
+                      const isExpanded = !!expandedGroupKeys[group.groupKey];
+
+                      return (
+                        <React.Fragment key={group.groupKey}>
+                          <tr 
+                            className={isAllChecked ? "planner-row-selected" : ""}
+                            style={{ 
+                              cursor: "pointer", 
+                              transition: "background 0.15s ease",
+                              background: isAllChecked ? "rgba(56, 189, 248, 0.1)" : (isExpanded ? "rgba(255, 255, 255, 0.03)" : undefined) 
+                            }}
+                            onClick={() => setSelectedOrderGroup(group)}
+                            title="Click to open full order popup window"
+                          >
+                            {/* Group Checkbox */}
+                            <td style={{ textAlign: "center" }} onClick={e => e.stopPropagation()}>
+                              <input 
+                                type="checkbox" 
+                                className="checkbox-input"
+                                checked={isAllChecked}
+                                ref={el => { if (el) el.indeterminate = isSomeChecked; }}
+                                onChange={() => handleToggleGroupSelect(group.items)}
+                                title={`Select all ${group.items.length} items in this order`}
+                              />
+                            </td>
+
+                            {/* Inline Expand Toggle Arrow */}
+                            <td style={{ textAlign: "center" }} onClick={e => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={(e) => toggleExpandGroup(group.groupKey, e)}
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: "3px 6px", fontSize: "0.72rem", border: "none", background: "transparent", color: isExpanded ? "var(--primary)" : "var(--text-muted)" }}
+                                title={isExpanded ? "Collapse items inline" : "Expand items inline"}
+                              >
+                                {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                              </button>
+                            </td>
+
+                            {/* Inspect Order Popup Button */}
+                            <td style={{ textAlign: "center" }} onClick={e => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedOrderGroup(group)}
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: "3px 8px", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "3px" }}
+                                title="Open full order popup window"
+                              >
+                                <Eye size={12} /> View
+                              </button>
+                            </td>
+
+                            {/* Vendor Name */}
+                            <td style={{ fontWeight: 700, whiteSpace: "nowrap" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                <Building2 size={14} style={{ color: "var(--primary)", flexShrink: 0 }} />
+                                <span style={{ color: "var(--text-main)" }}>{group.vendorName}</span>
+                              </div>
+                            </td>
+
+                            {/* Order Date */}
+                            <td style={{ whiteSpace: "nowrap" }}>
+                              <span className="badge badge-cargo" style={{ fontSize: "0.74rem" }}>
+                                {group.orderDate}
+                              </span>
+                            </td>
+
+                            {/* Purchaser */}
+                            <td style={{ fontWeight: 700, color: "var(--primary)", whiteSpace: "nowrap" }}>
+                              {group.purchaserName}
+                            </td>
+
+                            {/* Vendor EDD */}
+                            <td style={{ whiteSpace: "nowrap", color: "#38bdf8", fontWeight: 600 }}>
+                              {group.eddDisplay}
+                            </td>
+
+                            {/* Items & Models */}
+                            <td style={{ maxWidth: "220px" }}>
+                              <div style={{ fontWeight: 700, color: "var(--text-main)" }}>
+                                {group.items.length} Line{group.items.length !== 1 ? "s" : ""} • {group.models.length} Model{group.models.length !== 1 ? "s" : ""}
+                              </div>
+                              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }} title={group.models.join(", ")}>
+                                {group.modelsSummary}
+                              </div>
+                            </td>
+
+                            {/* Total Qty */}
+                            <td style={{ fontWeight: 700 }}>
+                              <div>{group.totalQty.toLocaleString()} Pcs</div>
+                              {group.totalCartons > 0 && (
+                                <div style={{ fontSize: "0.72rem", color: "#a855f7", fontWeight: 600, marginTop: "1px" }}>
+                                  📦 {group.totalCartons.toLocaleString()} Ctns
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Total RMB */}
+                            <td style={{ fontWeight: 800, color: "#f59e0b", fontSize: "0.88rem" }}>
+                              {group.totalRmb > 0 ? `¥${Math.round(group.totalRmb).toLocaleString()}` : "—"}
+                            </td>
+
+                            {/* Dominant Stage */}
+                            <td>
+                              <span 
+                                style={{ 
+                                  padding: "3px 8px", 
+                                  borderRadius: "6px", 
+                                  fontSize: "0.72rem", 
+                                  fontWeight: 700, 
+                                  background: "rgba(56, 189, 248, 0.12)", 
+                                  color: "#38bdf8", 
+                                  border: "1px solid rgba(56, 189, 248, 0.3)",
+                                  whiteSpace: "nowrap",
+                                  display: "inline-block"
+                                }}
+                              >
+                                {group.dominantStage}
+                              </span>
+                            </td>
+
+                            {/* Ledger Status */}
+                            <td>
+                              {group.isAllMarked ? (
+                                <span 
+                                  style={{ 
+                                    padding: "3px 8px", 
+                                    borderRadius: "6px", 
+                                    fontSize: "0.72rem", 
+                                    fontWeight: 700, 
+                                    background: "rgba(16, 185, 129, 0.15)", 
+                                    color: "#10b981", 
+                                    border: "1px solid rgba(16, 185, 129, 0.35)",
+                                    whiteSpace: "nowrap",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px"
+                                  }}
+                                >
+                                  ✓ Marked in Ledger ({group.items.length})
+                                </span>
+                              ) : group.isPartiallyMarked ? (
+                                <span 
+                                  style={{ 
+                                    padding: "3px 8px", 
+                                    borderRadius: "6px", 
+                                    fontSize: "0.72rem", 
+                                    fontWeight: 700, 
+                                    background: "rgba(56, 189, 248, 0.15)", 
+                                    color: "#38bdf8", 
+                                    border: "1px solid rgba(56, 189, 248, 0.35)",
+                                    whiteSpace: "nowrap",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px"
+                                  }}
+                                >
+                                  ⚡ {group.markedCount}/{group.items.length} Marked
+                                </span>
+                              ) : (
+                                <span 
+                                  style={{ 
+                                    padding: "3px 8px", 
+                                    borderRadius: "6px", 
+                                    fontSize: "0.72rem", 
+                                    fontWeight: 700, 
+                                    background: "rgba(245, 158, 11, 0.15)", 
+                                    color: "#f59e0b", 
+                                    border: "1px solid rgba(245, 158, 11, 0.35)",
+                                    whiteSpace: "nowrap",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px"
+                                  }}
+                                >
+                                  ⏳ Pending Mark ({group.items.length})
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Group Action Button */}
+                            <td style={{ textAlign: "center" }} onClick={e => e.stopPropagation()}>
+                              {group.pendingCount > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMarkGroup(group.items, true)}
+                                  className="btn btn-primary btn-sm"
+                                  style={{ padding: "4px 10px", fontSize: "0.74rem", fontWeight: 700, background: "#10b981", borderColor: "#10b981" }}
+                                  title={`Mark all ${group.pendingCount} pending items in this order as purchased`}
+                                >
+                                  ✓ Mark Order
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMarkGroup(group.items, false)}
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ padding: "3px 8px", fontSize: "0.72rem", color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.4)", background: "rgba(239, 68, 68, 0.08)" }}
+                                  title="Revert all items in this order to unsubmitted / pending"
+                                >
+                                  <RotateCcw size={12} style={{ marginRight: "3px" }} /> Undo Order
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+
+                          {/* Inline Expanded Items Sub-Table */}
+                          {isExpanded && (
+                            <tr>
+                              <td colSpan={13} style={{ padding: "12px 20px", background: "rgba(15, 23, 42, 0.55)", borderBottom: "2px solid rgba(56, 189, 248, 0.3)" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                                  <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--primary)" }}>
+                                    📦 Order Items: {group.vendorName} ({group.orderDate})
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedOrderGroup(group)}
+                                    className="btn btn-secondary btn-sm"
+                                    style={{ fontSize: "0.72rem", padding: "3px 10px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                                  >
+                                    <Maximize2 size={12} /> Open in Dedicated Window
+                                  </button>
+                                </div>
+                                <table className="custom-table" style={{ fontSize: "0.79rem", margin: 0, background: "rgba(0,0,0,0.25)" }}>
+                                  <thead>
+                                    <tr>
+                                      <th style={{ width: "32px", textAlign: "center" }}>✓</th>
+                                      <th>Model / Item</th>
+                                      <th>Category</th>
+                                      <th>Qty</th>
+                                      <th>Price (¥)</th>
+                                      <th>Total RMB</th>
+                                      <th>Stage</th>
+                                      <th>Vendor EDD</th>
+                                      <th>Status</th>
+                                      <th style={{ textAlign: "center", width: "110px" }}>Action</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {group.items.map(it => {
+                                      const isItChecked = checkedIds.includes(it.id);
+                                      const itQty = parseInt(it.vendorOrderQuantity || it.orderQuantity, 10) || 0;
+                                      const itPrice = parseFloat(it.priceRmb) || 0;
+                                      const itTotalRmb = itQty * itPrice;
+                                      const itMarked = it.purchaseUpdated === "Yes";
+                                      const itCargo = cargos.find(c => c.id === it.cargoId);
+                                      const itStage = getOrderStage(it, itCargo);
+
+                                      return (
+                                        <tr key={it.id}>
+                                          <td style={{ textAlign: "center" }}>
+                                            <input 
+                                              type="checkbox"
+                                              className="checkbox-input"
+                                              checked={isItChecked}
+                                              onChange={() => handleToggleSelect(it.id)}
+                                            />
+                                          </td>
+                                          <td style={{ fontWeight: 700 }}>
+                                            <div>{it.model}</div>
+                                            <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>#{it.id}</div>
+                                          </td>
+                                          <td>{it.category || "—"}</td>
+                                          <td style={{ fontWeight: 600 }}>{itQty.toLocaleString()} Pcs</td>
+                                          <td style={{ color: "#f59e0b" }}>{itPrice > 0 ? `¥${itPrice.toFixed(2)}` : "—"}</td>
+                                          <td style={{ fontWeight: 700, color: "#f59e0b" }}>{itTotalRmb > 0 ? `¥${Math.round(itTotalRmb).toLocaleString()}` : "—"}</td>
+                                          <td>
+                                            <span style={{ padding: "2px 6px", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 700, background: itStage.bgColor, color: itStage.badgeColor }}>
+                                              {itStage.label}
+                                            </span>
+                                          </td>
+                                          <td>{it.vendorEdd || "—"}</td>
+                                          <td>
+                                            {itMarked ? (
+                                              <span style={{ color: "#10b981", fontWeight: 700 }}>✓ Marked</span>
+                                            ) : (
+                                              <span style={{ color: "#f59e0b", fontWeight: 700 }}>⏳ Pending</span>
+                                            )}
+                                          </td>
+                                          <td style={{ textAlign: "center" }}>
+                                            {itMarked ? (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleMarkGroup([it], false)}
+                                                className="btn btn-secondary btn-sm"
+                                                style={{ padding: "2px 7px", fontSize: "0.7rem", color: "#ef4444" }}
+                                                title="Undo marked purchase status"
+                                              >
+                                                Undo
+                                              </button>
+                                            ) : (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleMarkGroup([it], true)}
+                                                className="btn btn-primary btn-sm"
+                                                style={{ padding: "2px 9px", fontSize: "0.7rem", fontWeight: 700, background: "#10b981", borderColor: "#10b981" }}
+                                                title="Mark this individual item as purchased"
+                                              >
+                                                Mark
+                                              </button>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           ) : (
+            /* ==================== FLAT INDIVIDUAL ITEMS TABLE ==================== */
             <div className="glass-panel" style={{ padding: "4px" }}>
               <div className="table-container" style={{ maxHeight: "680px", overflowY: "auto" }}>
                 <table className="custom-table" style={{ fontSize: "0.84rem" }}>
@@ -2223,6 +2746,22 @@ export default function RahulDashboard({
           onClose={() => setViewingCargoDoc(null)}
           onUpdateCargo={onUpdateCargo}
           bundledRequests={requests.filter(r => r.cargoId === viewingCargoDoc?.cargo?.id)}
+        />
+      )}
+
+      {/* ==================== GROUPED ORDER INSPECTION & BATCH MODAL ==================== */}
+      {selectedOrderGroup && (
+        <GroupedOrderModal
+          orderGroup={selectedOrderGroup}
+          requests={requests}
+          cargos={cargos}
+          vendors={vendors}
+          purchasers={purchasers}
+          currentUser={currentUser}
+          onClose={() => setSelectedOrderGroup(null)}
+          onBatchUpdateRequests={onBatchUpdateRequests}
+          onInspectSingleOrder={(singleOrder) => setInspectedOrder(singleOrder)}
+          onOpenDocument={handleOpenDocument}
         />
       )}
 
