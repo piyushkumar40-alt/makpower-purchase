@@ -864,6 +864,35 @@ export const calculateBillSlaStatus = (cargo) => {
   };
 };
 
+// Calculate default Cargo ETA (45 days after the provided shipping date)
+export const calculateDefaultCargoEta = (dateVal, days = 45) => {
+  if (!dateVal) return "";
+  const normalized = parseFlexibleDate(dateVal) || String(dateVal).split("T")[0];
+  const parts = normalized.split("-");
+  if (parts.length === 3) {
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+      const d = new Date(year, month, day, 12, 0, 0);
+      d.setDate(d.getDate() + days);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const dt = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${dt}`;
+    }
+  }
+  const d = new Date(dateVal);
+  if (!isNaN(d.getTime())) {
+    d.setDate(d.getDate() + days);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dt = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dt}`;
+  }
+  return "";
+};
+
 export const calculateCargoTotalCartons = (cargo, requests = []) => {
   if (!cargo) return 0;
   if (cargo.totalCartons != null && cargo.totalCartons !== "" && !isNaN(parseInt(cargo.totalCartons, 10))) {

@@ -10,7 +10,7 @@ import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
-import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons, formatCancelDate, formatCancelTime, parsePastedPriceLine, isModelMatch, isCargoMatch, reconcileCargosWithRequests, getOfficialPurchasersList } from "../utils/formatters";
+import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons, calculateDefaultCargoEta, formatCancelDate, formatCancelTime, parsePastedPriceLine, isModelMatch, isCargoMatch, reconcileCargosWithRequests, getOfficialPurchasersList } from "../utils/formatters";
 import { useModalEscape, pushBackHandler } from "../utils/useModalEscape";
 import MasterOrderTracker from "./MasterOrderTracker";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
@@ -10248,12 +10248,25 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
                 type="date" 
                 className="form-control" 
                 value={shipDate}
-                onChange={e => setShipDate(e.target.value)}
+                onChange={e => {
+                  const val = e.target.value;
+                  setShipDate(val);
+                  if (val) {
+                    setEta(calculateDefaultCargoEta(val, 45));
+                  }
+                }}
               />
             </div>
             
             <div className="form-group">
-              <label className="form-label">Expected Cargo ETA</label>
+              <label className="form-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>Expected Cargo ETA</span>
+                {shipDate && eta && eta === calculateDefaultCargoEta(shipDate, 45) && (
+                  <span style={{ fontSize: "0.72rem", color: "var(--primary)", fontWeight: 500 }}>
+                    Auto (+45 days)
+                  </span>
+                )}
+              </label>
               <input 
                 type="date" 
                 className="form-control" 
@@ -10696,12 +10709,25 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
                 type="date" 
                 className="form-control" 
                 value={shipDate}
-                onChange={e => setShipDate(e.target.value)}
+                onChange={e => {
+                  const val = e.target.value;
+                  setShipDate(val);
+                  if (val) {
+                    setEta(calculateDefaultCargoEta(val, 45));
+                  }
+                }}
               />
             </div>
             
             <div className="form-group">
-              <label className="form-label">Expected Cargo ETA</label>
+              <label className="form-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>Expected Cargo ETA</span>
+                {shipDate && eta && eta === calculateDefaultCargoEta(shipDate, 45) && (
+                  <span style={{ fontSize: "0.72rem", color: "var(--primary)", fontWeight: 500 }}>
+                    Auto (+45 days)
+                  </span>
+                )}
+              </label>
               <input 
                 type="date" 
                 className="form-control" 
