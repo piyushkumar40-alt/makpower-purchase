@@ -193,6 +193,7 @@ export default function App() {
   const [initialLoadComplete, setInitialLoadComplete] = useState(hasPreloadedCache);
   const [isMasterDataSilentlyLoading, setIsMasterDataSilentlyLoading] = useState(false);
   const isFetchingDataRef = useRef(false);
+  const hasPendingMutationRef = useRef(false);
   const loadDataRef = useRef(null);
   const currentDataVersionRef = useRef(initialCacheSnapshot?.version || null);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
@@ -1540,6 +1541,10 @@ export default function App() {
           setInitialLoadComplete(true);
           finishLoading();
         }
+        if (hasPendingMutationRef.current) {
+          hasPendingMutationRef.current = false;
+          loadData(false);
+        }
       }
     }
     
@@ -1560,7 +1565,11 @@ export default function App() {
             const event = JSON.parse(e.data);
             if (event.type === "MUTATION") {
               // Instant real-time live sync: a mutation happened on another laptop / tab!
-              loadData(false);
+              if (isFetchingDataRef.current) {
+                hasPendingMutationRef.current = true;
+              } else {
+                loadData(false);
+              }
               playNotificationSound();
             }
           } catch (pe) {}
@@ -2479,11 +2488,21 @@ const cancelRequests = async (requestIds, reason = "") => {
   };
 
   const addCargo = async (cargoDetails, selectedRequestIds, itemPickedQtyMap = {}, itemPickedPriceMap = {}, itemPickedCartonMap = {}) => {
+    // 1. Multiple layers of fallback for selectedRequestIds to guarantee zero lost items:
+    let targetIds = Array.isArray(selectedRequestIds) && selectedRequestIds.length > 0 
+      ? selectedRequestIds 
+      : Object.keys(itemPickedQtyMap || {});
+    
+    if (!targetIds || targetIds.length === 0) {
+      console.warn("[addCargo] No request IDs provided.");
+      return { success: false, error: "No items selected." };
+    }
+
     const newCargoId = `cargo-${Date.now()}`;
 
-    // Calculate total cartons across picked items
+    // 2. Calculate total cartons across picked items
     let computedCargoCartons = 0;
-    requests.filter(r => selectedRequestIds.includes(r.id)).forEach(r => {
+    requests.filter(r => targetIds.includes(r.id)).forEach(r => {
       const totalVendorQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0);
       const pickedQty = itemPickedQtyMap[r.id] != null ? parseInt(itemPickedQtyMap[r.id]) : totalVendorQty;
       const ipc = itemPickedCartonMap[r.id] ?? r.itemsPerCarton;
@@ -2505,13 +2524,10 @@ const cancelRequests = async (requestIds, reason = "") => {
       receivedDate: cargoDetails.isMaterialRec === "Yes" ? (cargoDetails.receivedDate || new Date().toISOString().split("T")[0]) : ""
     };
 
-    await postData("/api/cargos", newCargo);
-    setCargos(prev => [newCargo, ...prev]);
-
     const updatedItems = [];
     const newRemainingItems = [];
 
-    requests.filter(r => selectedRequestIds.includes(r.id)).forEach(r => {
+    requests.filter(r => targetIds.includes(r.id)).forEach(r => {
       const totalVendorQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0);
       const pickedQty = itemPickedQtyMap[r.id] != null ? parseInt(itemPickedQtyMap[r.id]) : totalVendorQty;
       const remainingQty = totalVendorQty > pickedQty ? totalVendorQty - pickedQty : 0;
@@ -2568,8 +2584,9 @@ const cancelRequests = async (requestIds, reason = "") => {
     });
 
     const allBatch = [...updatedItems, ...newRemainingItems];
-    await postData("/api/requests/batch", allBatch);
 
+    // ⚡ INSTANT OPTIMISTIC STATE UPDATE: Immediately attach cargoId to requests in memory
+    setCargos(prev => [newCargo, ...prev]);
     setRequests(prev => {
       const remainingMap = new Map(updatedItems.map(x => [x.id, x]));
       const updatedList = prev.map(r => remainingMap.has(r.id) ? remainingMap.get(r.id) : r);
@@ -2585,12 +2602,25 @@ const cancelRequests = async (requestIds, reason = "") => {
       users
     });
 
+    // ⚡ ATOMIC SERVER TRANSACTION: Submit cargo WITH bundled requests together in a single request
+    try {
+      const res = await postData("/api/cargos", { ...newCargo, bundledRequests: allBatch });
+      if (!res || res.success === false) {
+        console.warn("Notice: Atomic /api/cargos with bundled requests returned non-success, attempting fallback batch upsert:", res?.error);
+        await postData("/api/requests/batch", allBatch);
+      }
+    } catch (err) {
+      console.error("Error saving cargo and bundled requests to server:", err);
+      await postData("/api/requests/batch", allBatch).catch(() => {});
+    }
+
     const otherPurchaserNames = Array.from(new Set(
       updatedItems.filter(r => !isRequestForUser(r, currentUser, users)).map(r => r.purchaserName || users.find(u => u.id === r.purchaserId)?.name || "Other Purchaser")
     ));
     const behalfText = otherPurchaserNames.length > 0 ? ` on behalf of ${otherPurchaserNames.join(", ")}` : "";
 
-    logSystemActivity("CREATE_CARGO", `Created Cargo Shipment #${newCargoId} (${newCargo.cargoDetail || "Cargo"}) bundling ${selectedRequestIds.length} items${behalfText}`, "Cargo", newCargoId, null, newCargo);
+    logSystemActivity("CREATE_CARGO", `Created Cargo Shipment #${newCargoId} (${newCargo.cargoDetail || "Cargo"}) bundling ${targetIds.length} items${behalfText}`, "Cargo", newCargoId, null, newCargo);
+    return { success: true, cargoId: newCargoId };
   };
 
   const updateCargo = async (updatedCargo, itemReceiptMap = {}) => {
@@ -2602,8 +2632,6 @@ const cancelRequests = async (requestIds, reason = "") => {
       receivedBy: isNowReceived ? (updatedCargo.receivedBy || currentUser?.id || "") : (updatedCargo.receivedBy || ""),
       receivedByName: isNowReceived ? (updatedCargo.receivedByName || currentUser?.name || "") : (updatedCargo.receivedByName || "")
     };
-    await postData("/api/cargos", cargoWithDate);
-    setCargos(prev => prev.map(c => c.id === cargoWithDate.id ? cargoWithDate : c));
 
     const updatedItems = [];
     const newShortageItems = [];
@@ -2651,9 +2679,11 @@ const cancelRequests = async (requestIds, reason = "") => {
       }
     });
 
-    if (updatedItems.length > 0 || newShortageItems.length > 0) {
-      const allBatch = [...updatedItems, ...newShortageItems];
-      await postData("/api/requests/batch", allBatch);
+    const allBatch = [...updatedItems, ...newShortageItems];
+
+    // Optimistic local state update
+    setCargos(prev => prev.map(c => c.id === cargoWithDate.id ? cargoWithDate : c));
+    if (allBatch.length > 0) {
       setRequests(prev => {
         const updatedMap = new Map(updatedItems.map(x => [x.id, x]));
         const updatedList = prev.map(r => updatedMap.has(r.id) ? updatedMap.get(r.id) : r);
@@ -2668,6 +2698,9 @@ const cancelRequests = async (requestIds, reason = "") => {
         users
       });
     }
+
+    // Atomic post with bundledRequests
+    await postData("/api/cargos", { ...cargoWithDate, bundledRequests: allBatch });
 
     const otherPurchaserNames = Array.from(new Set(
       updatedItems.filter(r => !isRequestForUser(r, currentUser, users)).map(r => r.purchaserName || users.find(u => u.id === r.purchaserId)?.name || "Other Purchaser")

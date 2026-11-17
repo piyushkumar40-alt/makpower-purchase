@@ -51,10 +51,21 @@ export default function GroupedOrderModal({
 
   // Resolve live items from current requests state
   const liveItems = useMemo(() => {
+    if (isCargoGroup && (orderGroup.cargoId || orderGroup.cargoObj)) {
+      const cId = orderGroup.cargoId || orderGroup.cargoObj?.id;
+      const cDetail = orderGroup.cargoDetail || orderGroup.cargoObj?.cargoDetail;
+      const allCargoItems = (requests || []).filter(r => {
+        if (r.status === "Cancelled") return false;
+        if (cId && (r.cargoId === cId || String(r.cargoId) === String(cId))) return true;
+        if (cDetail && r.cargoId === cDetail) return true;
+        return false;
+      });
+      if (allCargoItems.length > 0) return allCargoItems;
+    }
     const groupItemIds = new Set((orderGroup.items || []).map(it => it.id));
     const matched = (requests || []).filter(r => groupItemIds.has(r.id));
     return matched.length > 0 ? matched : (orderGroup.items || []);
-  }, [requests, orderGroup]);
+  }, [requests, orderGroup, isCargoGroup]);
 
   // Vendor & Purchaser Details
   const vendorObj = vendors.find(v => v.id === orderGroup.vendorId);
@@ -83,6 +94,21 @@ export default function GroupedOrderModal({
       return sum + ctns;
     }, 0);
   }, [liveItems]);
+
+  // Cargo Freight Price and Per-Piece Calculation
+  const modalCargoFreightPrice = useMemo(() => {
+    if (!isCargoGroup) return 0;
+    if (orderGroup.cargoFreightPrice > 0) return orderGroup.cargoFreightPrice;
+    if (orderGroup.cargoObj) return calculateTotalCargoPrice(orderGroup.cargoObj);
+    const match = liveItems.find(it => it.totalCargoPrice || it.cargoPrice);
+    if (match) return calculateTotalCargoPrice(match);
+    return 0;
+  }, [isCargoGroup, orderGroup, liveItems]);
+
+  const modalCargoPerPc = useMemo(() => {
+    if (!isCargoGroup || totalPcs === 0 || modalCargoFreightPrice === 0) return 0;
+    return modalCargoFreightPrice / totalPcs;
+  }, [isCargoGroup, totalPcs, modalCargoFreightPrice]);
 
   const markedItems = useMemo(() => liveItems.filter(r => r.purchaseUpdated === "Yes"), [liveItems]);
   const pendingItems = useMemo(() => liveItems.filter(r => r.purchaseUpdated !== "Yes"), [liveItems]);
@@ -392,16 +418,17 @@ export default function GroupedOrderModal({
           </div>
 
           {/* Cargo Freight (if cargo group) */}
-          {isCargoGroup && (orderGroup.cargoFreightPrice > 0 || orderGroup.cargoObj) && (
+          {isCargoGroup && (modalCargoFreightPrice > 0 || orderGroup.cargoObj) && (
             <div style={{ background: "var(--bg-card, #ffffff)", padding: "10px 14px", borderRadius: "10px", border: "1px solid var(--border-glass, #cbd5e1)", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>
                 Cargo Freight Price
               </div>
               <div style={{ fontSize: "1.15rem", fontWeight: 800, color: "#10b981", marginTop: "2px" }}>
-                ¥{Math.round(orderGroup.cargoFreightPrice || 0).toLocaleString()}
+                ¥{Math.round(modalCargoFreightPrice || 0).toLocaleString()}
               </div>
-              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                Grand: <strong>¥{Math.round(totalRmb + (orderGroup.cargoFreightPrice || 0)).toLocaleString()}</strong>
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "2px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "4px" }}>
+                <span>Avg: <strong style={{ color: "#10b981" }}>¥{modalCargoPerPc.toFixed(2)}/pc</strong></span>
+                <span>Grand: <strong>¥{Math.round(totalRmb + modalCargoFreightPrice).toLocaleString()}</strong></span>
               </div>
             </div>
           )}
@@ -576,7 +603,10 @@ export default function GroupedOrderModal({
                 <th>Category</th>
                 <th>Qty</th>
                 <th>Price (¥)</th>
+                {isCargoGroup && <th>Cargo / Pc</th>}
                 <th>Total RMB (¥)</th>
+                {isCargoGroup && <th>Total Cargo (¥)</th>}
+                {isCargoGroup && <th>Grand Total (¥)</th>}
                 <th>Where Item Is Now</th>
                 {!isCargoGroup && <th>Vendor EDD</th>}
                 {!isCargoGroup && <th>Cargo / Transport</th>}
@@ -595,6 +625,25 @@ export default function GroupedOrderModal({
                 const totalRmbVal = qty * price;
                 const ipc = parseInt(r.itemsPerCarton, 10);
                 const ctns = r.totalCartons || (ipc > 0 ? Math.ceil(qty / ipc) : 0);
+
+                let itemCargoPerPc = 0;
+                let itemTotalCargo = 0;
+                if (isCargoGroup) {
+                  itemCargoPerPc = modalCargoPerPc;
+                  itemTotalCargo = qty * itemCargoPerPc;
+                } else if (cargo) {
+                  const cFreight = calculateTotalCargoPrice(cargo, r);
+                  const allCargoItems = (requests || []).filter(x => (x.cargoId === cargo.id || (cargo.cargoDetail && x.cargoId === cargo.cargoDetail)) && x.status !== "Cancelled");
+                  const cTotalPcs = allCargoItems.reduce((sum, x) => sum + (parseInt(x.vendorOrderQuantity || x.orderQuantity, 10) || 0), 0);
+                  if (cTotalPcs > 0 && cFreight > 0) {
+                    itemCargoPerPc = cFreight / cTotalPcs;
+                    itemTotalCargo = qty * itemCargoPerPc;
+                  }
+                } else if (r.totalCargoPrice || r.cargoPrice) {
+                  itemTotalCargo = calculateTotalCargoPrice(r);
+                  itemCargoPerPc = qty > 0 ? itemTotalCargo / qty : 0;
+                }
+                const itemGrandTotal = totalRmbVal + itemTotalCargo;
 
                 return (
                   <tr key={r.id} className={isChecked ? "planner-row-selected" : ""}>
@@ -657,14 +706,38 @@ export default function GroupedOrderModal({
                     </td>
 
                     {/* Price RMB */}
-                    <td style={{ fontWeight: 600, color: "var(--warning, #b45309)" }}>
+                    <td style={{ fontWeight: 600, color: "var(--warning, #b45309)", whiteSpace: "nowrap" }}>
                       {price > 0 ? `¥${price.toFixed(2)}` : "—"}
                     </td>
 
+                    {/* Cargo / Pc (when cargo group) */}
+                    {isCargoGroup && (
+                      <td style={{ fontWeight: 600, color: "#10b981", whiteSpace: "nowrap" }}>
+                        {itemCargoPerPc > 0 ? `¥${itemCargoPerPc.toFixed(2)}` : "—"}
+                      </td>
+                    )}
+
                     {/* Total RMB */}
-                    <td style={{ fontWeight: 800, color: "var(--warning, #b45309)" }}>
-                      {totalRmbVal > 0 ? `¥${Math.round(totalRmbVal).toLocaleString()}` : "—"}
+                    <td style={{ fontWeight: 800, color: "var(--warning, #b45309)", whiteSpace: "nowrap" }}>
+                      <div>{totalRmbVal > 0 ? `¥${Math.round(totalRmbVal).toLocaleString()}` : "—"}</div>
+                      {isCargoGroup && <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", fontWeight: 500 }}>Goods</div>}
                     </td>
+
+                    {/* Total Cargo (when cargo group) */}
+                    {isCargoGroup && (
+                      <td style={{ fontWeight: 700, color: "#10b981", whiteSpace: "nowrap" }}>
+                        <div>{itemTotalCargo > 0 ? `¥${Math.round(itemTotalCargo).toLocaleString()}` : "—"}</div>
+                        <div style={{ fontSize: "0.68rem", color: "#059669", fontWeight: 500 }}>Cargo</div>
+                      </td>
+                    )}
+
+                    {/* Grand Total (when cargo group) */}
+                    {isCargoGroup && (
+                      <td style={{ fontWeight: 800, color: "var(--text-main)", whiteSpace: "nowrap" }}>
+                        <div>{itemGrandTotal > 0 ? `¥${Math.round(itemGrandTotal).toLocaleString()}` : "—"}</div>
+                        <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", fontWeight: 500 }}>Grand</div>
+                      </td>
+                    )}
 
                     {/* Stage Badge */}
                     <td>
@@ -809,7 +882,13 @@ export default function GroupedOrderModal({
           }}
         >
           <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
-            Showing <strong>{filteredModalItems.length}</strong> of <strong>{liveItems.length}</strong> items • Total: <strong style={{ color: "var(--primary)" }}>{totalPcs.toLocaleString()} Pcs</strong> • Value: <strong style={{ color: "var(--warning, #b45309)" }}>¥{Math.round(totalRmb).toLocaleString()}</strong>
+            Showing <strong>{filteredModalItems.length}</strong> of <strong>{liveItems.length}</strong> items • Total: <strong style={{ color: "var(--primary)" }}>{totalPcs.toLocaleString()} Pcs</strong> • Goods: <strong style={{ color: "var(--warning, #b45309)" }}>¥{Math.round(totalRmb).toLocaleString()}</strong>
+            {isCargoGroup && modalCargoFreightPrice > 0 && (
+              <>
+                {" "}• Cargo: <strong style={{ color: "#10b981" }}>¥{Math.round(modalCargoFreightPrice).toLocaleString()}</strong> (¥{modalCargoPerPc.toFixed(2)}/pc)
+                {" "}• Grand: <strong style={{ color: "var(--text-main)" }}>¥{Math.round(totalRmb + modalCargoFreightPrice).toLocaleString()}</strong>
+              </>
+            )}
           </div>
 
           <button 

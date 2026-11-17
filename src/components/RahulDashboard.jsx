@@ -415,16 +415,16 @@ export default function RahulDashboard({
   const pendingRequests = useMemo(() => eligibleRequests.filter(r => r.purchaseUpdated !== "Yes"), [eligibleRequests]);
   const submittedRequests = useMemo(() => eligibleRequests.filter(r => r.purchaseUpdated === "Yes"), [eligibleRequests]);
 
-  // Active requests for the current tab
-  const currentTabRequests = isLookingForCancelled
-    ? eligibleRequests
-    : (quickStatus === "all" || quickStatus === "coming" || quickStatus === "pipeline" || quickStatus === "delivered"
-        ? eligibleRequests
-        : (quickStatus === "pending_mark" 
-            ? pendingRequests 
-            : quickStatus === "marked" 
-            ? submittedRequests 
-            : (activeTab === "pending" ? pendingRequests : submittedRequests)));
+  // Active requests for the current tab:
+  // When looking for cancelled orders, look across eligible requests.
+  // When on "pending" tab (Pending Mark Purchases), base is pendingRequests (items awaiting punch into ledger).
+  // When on "submitted" tab (Marked in Ledger Archive), base is submittedRequests (items already punched into ledger).
+  const currentTabRequests = useMemo(() => {
+    if (isLookingForCancelled) return eligibleRequests;
+    if (quickStatus === "pending_mark") return pendingRequests;
+    if (quickStatus === "marked") return submittedRequests;
+    return activeTab === "pending" ? pendingRequests : submittedRequests;
+  }, [isLookingForCancelled, eligibleRequests, quickStatus, activeTab, pendingRequests, submittedRequests]);
 
   // Multi-Level Filtered Requests
   const filteredRequests = useMemo(() => {
@@ -648,7 +648,7 @@ export default function RahulDashboard({
           ? parseInt(grp.cargoObj.totalCartons, 10) 
           : grp.calcCartons;
 
-        // Cargo Freight Price
+        // Cargo Freight Price & Rate per Piece
         let cargoFreightPrice = 0;
         if (grp.cargoObj) {
           cargoFreightPrice = calculateTotalCargoPrice(grp.cargoObj);
@@ -657,6 +657,19 @@ export default function RahulDashboard({
           if (matchItem) cargoFreightPrice = calculateTotalCargoPrice(matchItem);
         }
         const grandTotalRmb = grp.totalGoodsRmb + cargoFreightPrice;
+
+        const cId = grp.cargoId;
+        const allActiveCargoItems = (requests || []).filter(req => 
+          (cId && (req.cargoId === cId || (grp.cargoObj?.cargoDetail && req.cargoId === grp.cargoObj.cargoDetail))) && 
+          !isRequestCancelled(req)
+        );
+        const totalCargoAllPcs = allActiveCargoItems.reduce((sum, it) => sum + (parseInt(it.vendorOrderQuantity || it.orderQuantity, 10) || 0), 0);
+        const allCargoMarkedCount = allActiveCargoItems.filter(r => r.purchaseUpdated === "Yes").length;
+        const allCargoPendingCount = allActiveCargoItems.length - allCargoMarkedCount;
+
+        const cargoPricePerPc = totalCargoAllPcs > 0 && cargoFreightPrice > 0
+          ? (cargoFreightPrice / totalCargoAllPcs)
+          : (grp.totalQty > 0 && cargoFreightPrice > 0 ? (cargoFreightPrice / grp.totalQty) : 0);
 
         // Arrival Status & Countdown Badge
         let arrivalStatus = {
@@ -750,6 +763,10 @@ export default function RahulDashboard({
           isNoneMarked,
           totalCartons,
           cargoFreightPrice,
+          cargoPricePerPc,
+          allCargoTotalItems: allActiveCargoItems.length || grp.items.length,
+          allCargoMarkedCount,
+          allCargoPendingCount,
           grandTotalRmb,
           arrivalStatus,
           arrivalDiffDays: arrivalStatus.diffDays ?? 9999,
@@ -830,6 +847,15 @@ export default function RahulDashboard({
       const isPartiallyMarked = markedCount > 0 && markedCount < grp.items.length;
       const isNoneMarked = markedCount === 0;
 
+      const allActiveLotItems = (requests || []).filter(req => 
+        req.vendorId === grp.vendorId && 
+        req.orderDate === grp.orderDate && 
+        !isRequestCancelled(req) &&
+        (grp.purchaserId ? (req.purchaserId === grp.purchaserId || req.entryBy === grp.purchaserName) : true)
+      );
+      const allCargoMarkedCount = allActiveLotItems.filter(r => r.purchaseUpdated === "Yes").length;
+      const allCargoPendingCount = allActiveLotItems.length - allCargoMarkedCount;
+
       const eddArr = Array.from(grp.vendorEdds).filter(Boolean).sort();
       let eddDisplay = "—";
       if (eddArr.length === 1) {
@@ -852,6 +878,9 @@ export default function RahulDashboard({
         isAllMarked,
         isPartiallyMarked,
         isNoneMarked,
+        allCargoTotalItems: allActiveLotItems.length || grp.items.length,
+        allCargoMarkedCount,
+        allCargoPendingCount,
         eddDisplay,
         modelsSummary,
         dominantStage
@@ -981,7 +1010,8 @@ export default function RahulDashboard({
     const now = new Date().toISOString();
     const punchByName = currentUser?.name || "Mr. Rahul Mann";
     const punchById = currentUser?.id || "u-rahul";
-    const updated = pendingRequests.filter(r => checkedIds.includes(r.id)).map(r => ({
+    const targetPool = (requests && requests.length > 0) ? requests : pendingRequests;
+    const updated = targetPool.filter(r => checkedIds.includes(r.id)).map(r => ({
       ...r,
       purchaseUpdated: "Yes",
       purchaseUpdatedAt: now,
@@ -994,7 +1024,8 @@ export default function RahulDashboard({
 
   const handleUnsubmitUpdate = () => {
     if (checkedIds.length === 0) return;
-    const updated = submittedRequests.filter(r => checkedIds.includes(r.id)).map(r => ({
+    const targetPool = (requests && requests.length > 0) ? requests : submittedRequests;
+    const updated = targetPool.filter(r => checkedIds.includes(r.id)).map(r => ({
       ...r,
       purchaseUpdated: "No",
       purchaseUpdatedAt: "",
@@ -1805,7 +1836,11 @@ export default function RahulDashboard({
           {/* Step 1 Sub-Tab Switcher (Pending Confirmation vs Archive) */}
           <div style={{ display: "flex", gap: "8px", marginBottom: "18px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "10px", flexWrap: "wrap" }}>
             <button 
-              onClick={() => { setActiveTab("pending"); setCheckedIds([]); }} 
+              onClick={() => { 
+                setActiveTab("pending"); 
+                if (quickStatus === "marked") setQuickStatus("all"); 
+                setCheckedIds([]); 
+              }} 
               className={`tab-btn ${activeTab === "pending" ? "active" : ""}`}
               style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
             >
@@ -1813,7 +1848,11 @@ export default function RahulDashboard({
             </button>
 
             <button 
-              onClick={() => { setActiveTab("submitted"); setCheckedIds([]); }} 
+              onClick={() => { 
+                setActiveTab("submitted"); 
+                if (quickStatus === "pending_mark") setQuickStatus("all"); 
+                setCheckedIds([]); 
+              }} 
               className={`tab-btn ${activeTab === "submitted" ? "active" : ""}`}
               style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
             >
@@ -1876,7 +1915,7 @@ export default function RahulDashboard({
               </button>
 
               <button 
-                onClick={() => { setQuickStatus("pending_mark"); setGroupingTypeOverride(null); }}
+                onClick={() => { setActiveTab("pending"); setQuickStatus("pending_mark"); setGroupingTypeOverride(null); setCheckedIds([]); }}
                 className={`btn btn-sm ${quickStatus === "pending_mark" ? "btn-primary" : "btn-secondary"}`}
                 style={{ fontSize: "0.78rem", padding: "5px 12px", color: quickStatus === "pending_mark" ? "#fff" : "#ec4899", borderColor: "rgba(236, 72, 153, 0.4)" }}
               >
@@ -1884,7 +1923,7 @@ export default function RahulDashboard({
               </button>
 
               <button 
-                onClick={() => { setQuickStatus("marked"); setGroupingTypeOverride(null); }}
+                onClick={() => { setActiveTab("submitted"); setQuickStatus("marked"); setGroupingTypeOverride(null); setCheckedIds([]); }}
                 className={`btn btn-sm ${quickStatus === "marked" ? "btn-primary" : "btn-secondary"}`}
                 style={{ fontSize: "0.78rem", padding: "5px 12px", color: quickStatus === "marked" ? "#fff" : "#a855f7", borderColor: "rgba(168, 85, 247, 0.4)" }}
               >
@@ -2446,11 +2485,23 @@ export default function RahulDashboard({
                               </td>
 
                               {/* Total RMB */}
-                              <td style={{ fontWeight: 800, color: "var(--warning, #b45309)", fontSize: "0.88rem" }}>
-                                <div>¥{Math.round(group.totalGoodsRmb).toLocaleString()}</div>
+                              <td style={{ fontSize: "0.88rem" }}>
+                                <div style={{ fontWeight: 800, color: "var(--warning, #b45309)" }}>
+                                  ¥{Math.round(group.totalGoodsRmb).toLocaleString()} <span style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--text-muted)" }}>Goods</span>
+                                </div>
                                 {group.cargoFreightPrice > 0 && (
-                                  <div style={{ fontSize: "0.7rem", color: "#10b981", fontWeight: 700, marginTop: "1px" }} title="Cargo Freight Price">
-                                    +¥{Math.round(group.cargoFreightPrice).toLocaleString()} Freight
+                                  <div style={{ fontSize: "0.74rem", color: "#10b981", fontWeight: 700, marginTop: "2px" }} title="Total Cargo Freight Price & Rate Per Piece">
+                                    +¥{Math.round(group.cargoFreightPrice).toLocaleString()} Cargo
+                                    {group.cargoPricePerPc > 0 && (
+                                      <span style={{ fontSize: "0.7rem", color: "#059669", marginLeft: "4px", fontWeight: 600 }}>
+                                        (¥{group.cargoPricePerPc.toFixed(2)}/pc)
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                                {group.cargoFreightPrice > 0 && (
+                                  <div style={{ fontSize: "0.72rem", color: "var(--text-main)", fontWeight: 700, marginTop: "2px" }}>
+                                    Grand: ¥{Math.round(group.grandTotalRmb).toLocaleString()}
                                   </div>
                                 )}
                               </td>
@@ -2521,73 +2572,95 @@ export default function RahulDashboard({
 
                               {/* Ledger Status */}
                               <td>
-                                {group.isAllMarked ? (
-                                  <span 
-                                    style={{ 
-                                      padding: "3px 8px", 
-                                      borderRadius: "6px", 
-                                      fontSize: "0.72rem", 
-                                      fontWeight: 700, 
-                                      background: "rgba(16, 185, 129, 0.15)", 
-                                      color: "#10b981", 
-                                      border: "1px solid rgba(16, 185, 129, 0.35)",
-                                      whiteSpace: "nowrap",
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "4px"
-                                    }}
-                                  >
-                                    ✓ Marked in Ledger ({group.items.length})
-                                  </span>
-                                ) : group.isPartiallyMarked ? (
-                                  <span 
-                                    style={{ 
-                                      padding: "3px 8px", 
-                                      borderRadius: "6px", 
-                                      fontSize: "0.72rem", 
-                                      fontWeight: 700, 
-                                      background: "rgba(56, 189, 248, 0.15)", 
-                                      color: "#38bdf8", 
-                                      border: "1px solid rgba(56, 189, 248, 0.35)",
-                                      whiteSpace: "nowrap",
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "4px"
-                                    }}
-                                  >
-                                    ⚡ {group.markedCount}/{group.items.length} Marked
-                                  </span>
+                                {activeTab === "pending" ? (
+                                  group.allCargoMarkedCount > 0 ? (
+                                    <span 
+                                      style={{ 
+                                        padding: "3px 8px", 
+                                        borderRadius: "6px", 
+                                        fontSize: "0.72rem", 
+                                        fontWeight: 700, 
+                                        background: "rgba(56, 189, 248, 0.15)", 
+                                        color: "#38bdf8", 
+                                        border: "1px solid rgba(56, 189, 248, 0.35)",
+                                        whiteSpace: "nowrap",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "4px"
+                                      }}
+                                    >
+                                      ⚡ {group.allCargoMarkedCount}/{group.allCargoTotalItems || group.items.length} Marked ({group.items.length} Pending)
+                                    </span>
+                                  ) : (
+                                    <span 
+                                      style={{ 
+                                        padding: "3px 8px", 
+                                        borderRadius: "6px", 
+                                        fontSize: "0.72rem", 
+                                        fontWeight: 700, 
+                                        background: "rgba(245, 158, 11, 0.15)", 
+                                        color: "#f59e0b", 
+                                        border: "1px solid rgba(245, 158, 11, 0.35)",
+                                        whiteSpace: "nowrap",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "4px"
+                                      }}
+                                    >
+                                      ⏳ Pending Mark ({group.items.length})
+                                    </span>
+                                  )
                                 ) : (
-                                  <span 
-                                    style={{ 
-                                      padding: "3px 8px", 
-                                      borderRadius: "6px", 
-                                      fontSize: "0.72rem", 
-                                      fontWeight: 700, 
-                                      background: "rgba(245, 158, 11, 0.15)", 
-                                      color: "#f59e0b", 
-                                      border: "1px solid rgba(245, 158, 11, 0.35)",
-                                      whiteSpace: "nowrap",
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "4px"
-                                    }}
-                                  >
-                                    ⏳ Pending Mark ({group.items.length})
-                                  </span>
+                                  group.allCargoPendingCount === 0 ? (
+                                    <span 
+                                      style={{ 
+                                        padding: "3px 8px", 
+                                        borderRadius: "6px", 
+                                        fontSize: "0.72rem", 
+                                        fontWeight: 700, 
+                                        background: "rgba(16, 185, 129, 0.15)", 
+                                        color: "#10b981", 
+                                        border: "1px solid rgba(16, 185, 129, 0.35)",
+                                        whiteSpace: "nowrap",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "4px"
+                                      }}
+                                    >
+                                      ✓ Marked in Ledger ({group.items.length})
+                                    </span>
+                                  ) : (
+                                    <span 
+                                      style={{ 
+                                        padding: "3px 8px", 
+                                        borderRadius: "6px", 
+                                        fontSize: "0.72rem", 
+                                        fontWeight: 700, 
+                                        background: "rgba(56, 189, 248, 0.15)", 
+                                        color: "#38bdf8", 
+                                        border: "1px solid rgba(56, 189, 248, 0.35)",
+                                        whiteSpace: "nowrap",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "4px"
+                                      }}
+                                    >
+                                      ⚡ {group.allCargoMarkedCount}/{group.allCargoTotalItems || group.items.length} Marked ({group.allCargoPendingCount} Pending)
+                                    </span>
+                                  )
                                 )}
                               </td>
 
                               {/* Actions */}
                               <td style={{ textAlign: "center", whiteSpace: "nowrap" }} onClick={e => e.stopPropagation()}>
                                 <div style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
-                                  {group.pendingCount > 0 ? (
+                                  {activeTab === "pending" ? (
                                     <button
                                       type="button"
                                       onClick={() => handleMarkGroup(group.items, true)}
                                       className="btn btn-primary btn-sm"
                                       style={{ padding: "4px 8px", fontSize: "0.72rem", fontWeight: 700, background: "#10b981", borderColor: "#10b981" }}
-                                      title={`Mark all ${group.pendingCount} pending items in this cargo shipment as purchased`}
+                                      title={`Mark all ${group.items.length} pending items in this cargo shipment as purchased`}
                                     >
                                       ✓ Mark Cargo
                                     </button>
@@ -2644,7 +2717,10 @@ export default function RahulDashboard({
                                         <th>Category</th>
                                         <th>Qty</th>
                                         <th>Price (¥)</th>
-                                        <th>Total RMB</th>
+                                        <th>Cargo / Pc</th>
+                                        <th>Total Goods (¥)</th>
+                                        <th>Total Cargo (¥)</th>
+                                        <th>Grand Total (¥)</th>
                                         <th>Stage</th>
                                         <th>Status</th>
                                         <th style={{ textAlign: "center", width: "110px" }}>Action</th>
@@ -2655,7 +2731,10 @@ export default function RahulDashboard({
                                         const isItChecked = checkedIds.includes(it.id);
                                         const itQty = parseInt(it.vendorOrderQuantity || it.orderQuantity, 10) || 0;
                                         const itPrice = parseFloat(it.priceRmb) || 0;
-                                        const itTotalRmb = itQty * itPrice;
+                                        const itGoodsRmb = itQty * itPrice;
+                                        const itCargoPerPc = group.cargoPricePerPc || 0;
+                                        const itCargoRmb = itQty * itCargoPerPc;
+                                        const itGrandTotal = itGoodsRmb + itCargoRmb;
                                         const itMarked = it.purchaseUpdated === "Yes";
                                         const itCargo = cargos.find(c => c.id === it.cargoId);
                                         const itStage = getOrderStage(it, itCargo);
@@ -2679,7 +2758,10 @@ export default function RahulDashboard({
                                             <td>{it.category || "—"}</td>
                                             <td style={{ fontWeight: 600 }}>{itQty.toLocaleString()} Pcs</td>
                                             <td style={{ color: "var(--warning, #b45309)", fontWeight: 600 }}>{itPrice > 0 ? `¥${itPrice.toFixed(2)}` : "—"}</td>
-                                            <td style={{ fontWeight: 700, color: "var(--warning, #b45309)" }}>{itTotalRmb > 0 ? `¥${Math.round(itTotalRmb).toLocaleString()}` : "—"}</td>
+                                            <td style={{ color: "#10b981", fontWeight: 600 }}>{itCargoPerPc > 0 ? `¥${itCargoPerPc.toFixed(2)}` : "—"}</td>
+                                            <td style={{ fontWeight: 700, color: "var(--warning, #b45309)" }}>{itGoodsRmb > 0 ? `¥${Math.round(itGoodsRmb).toLocaleString()}` : "—"}</td>
+                                            <td style={{ fontWeight: 700, color: "#10b981" }}>{itCargoRmb > 0 ? `¥${Math.round(itCargoRmb).toLocaleString()}` : "—"}</td>
+                                            <td style={{ fontWeight: 800, color: "var(--text-main)" }}>{itGrandTotal > 0 ? `¥${Math.round(itGrandTotal).toLocaleString()}` : "—"}</td>
                                             <td>
                                               <span style={{ padding: "2px 6px", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 700, background: itStage.bgColor, color: itStage.badgeColor }}>
                                                 {itStage.label}
@@ -2849,72 +2931,94 @@ export default function RahulDashboard({
 
                             {/* Ledger Status */}
                             <td>
-                              {group.isAllMarked ? (
-                                <span 
-                                  style={{ 
-                                    padding: "3px 8px", 
-                                    borderRadius: "6px", 
-                                    fontSize: "0.72rem", 
-                                    fontWeight: 700, 
-                                    background: "rgba(16, 185, 129, 0.15)", 
-                                    color: "#10b981", 
-                                    border: "1px solid rgba(16, 185, 129, 0.35)",
-                                    whiteSpace: "nowrap",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: "4px"
-                                  }}
-                                >
-                                  ✓ Marked in Ledger ({group.items.length})
-                                </span>
-                              ) : group.isPartiallyMarked ? (
-                                <span 
-                                  style={{ 
-                                    padding: "3px 8px", 
-                                    borderRadius: "6px", 
-                                    fontSize: "0.72rem", 
-                                    fontWeight: 700, 
-                                    background: "rgba(56, 189, 248, 0.15)", 
-                                    color: "#38bdf8", 
-                                    border: "1px solid rgba(56, 189, 248, 0.35)",
-                                    whiteSpace: "nowrap",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: "4px"
-                                  }}
-                                >
-                                  ⚡ {group.markedCount}/{group.items.length} Marked
-                                </span>
+                              {activeTab === "pending" ? (
+                                group.allCargoMarkedCount > 0 ? (
+                                  <span 
+                                    style={{ 
+                                      padding: "3px 8px", 
+                                      borderRadius: "6px", 
+                                      fontSize: "0.72rem", 
+                                      fontWeight: 700, 
+                                      background: "rgba(56, 189, 248, 0.15)", 
+                                      color: "#38bdf8", 
+                                      border: "1px solid rgba(56, 189, 248, 0.35)",
+                                      whiteSpace: "nowrap",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px"
+                                    }}
+                                  >
+                                    ⚡ {group.allCargoMarkedCount}/{group.allCargoTotalItems || group.items.length} Marked ({group.items.length} Pending)
+                                  </span>
+                                ) : (
+                                  <span 
+                                    style={{ 
+                                      padding: "3px 8px", 
+                                      borderRadius: "6px", 
+                                      fontSize: "0.72rem", 
+                                      fontWeight: 700, 
+                                      background: "rgba(245, 158, 11, 0.15)", 
+                                      color: "#f59e0b", 
+                                      border: "1px solid rgba(245, 158, 11, 0.35)",
+                                      whiteSpace: "nowrap",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px"
+                                    }}
+                                  >
+                                    ⏳ Pending Mark ({group.items.length})
+                                  </span>
+                                )
                               ) : (
-                                <span 
-                                  style={{ 
-                                    padding: "3px 8px", 
-                                    borderRadius: "6px", 
-                                    fontSize: "0.72rem", 
-                                    fontWeight: 700, 
-                                    background: "rgba(245, 158, 11, 0.15)", 
-                                    color: "#f59e0b", 
-                                    border: "1px solid rgba(245, 158, 11, 0.35)",
-                                    whiteSpace: "nowrap",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: "4px"
-                                  }}
-                                >
-                                  ⏳ Pending Mark ({group.items.length})
-                                </span>
+                                group.allCargoPendingCount === 0 ? (
+                                  <span 
+                                    style={{ 
+                                      padding: "3px 8px", 
+                                      borderRadius: "6px", 
+                                      fontSize: "0.72rem", 
+                                      fontWeight: 700, 
+                                      background: "rgba(16, 185, 129, 0.15)", 
+                                      color: "#10b981", 
+                                      border: "1px solid rgba(16, 185, 129, 0.35)",
+                                      whiteSpace: "nowrap",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px"
+                                    }}
+                                  >
+                                    ✓ Marked in Ledger ({group.items.length})
+                                  </span>
+                                ) : (
+                                  <span 
+                                    style={{ 
+                                      padding: "3px 8px", 
+                                      borderRadius: "6px", 
+                                      fontSize: "0.72rem", 
+                                      fontWeight: 700, 
+                                      background: "rgba(56, 189, 248, 0.15)", 
+                                      color: "#38bdf8", 
+                                      border: "1px solid rgba(56, 189, 248, 0.35)",
+                                      whiteSpace: "nowrap",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px"
+                                    }}
+                                  >
+                                    ⚡ {group.allCargoMarkedCount}/{group.allCargoTotalItems || group.items.length} Marked ({group.allCargoPendingCount} Pending)
+                                  </span>
+                                )
                               )}
                             </td>
 
                             {/* Group Action Button */}
                             <td style={{ textAlign: "center" }} onClick={e => e.stopPropagation()}>
-                              {group.pendingCount > 0 ? (
+                              {activeTab === "pending" ? (
                                 <button
                                   type="button"
                                   onClick={() => handleMarkGroup(group.items, true)}
                                   className="btn btn-primary btn-sm"
                                   style={{ padding: "4px 10px", fontSize: "0.74rem", fontWeight: 700, background: "#10b981", borderColor: "#10b981" }}
-                                  title={`Mark all ${group.pendingCount} pending items in this order as purchased`}
+                                  title={`Mark all ${group.items.length} pending items in this order as purchased`}
                                 >
                                   ✓ Mark Order
                                 </button>
@@ -3266,6 +3370,10 @@ export default function RahulDashboard({
                               const rate = c?.cargoPrice || r.cargoPrice;
                               const cur = c?.currency || r.currency || "RMB";
                               const uom = c?.cargoPriceUom || r.cargoPriceUom;
+
+                              const allCargoItems = c ? (requests || []).filter(x => (x.cargoId === c.id || (c.cargoDetail && x.cargoId === c.cargoDetail)) && x.status !== "Cancelled") : [r];
+                              const cTotalPcs = allCargoItems.reduce((sum, it) => sum + (parseInt(it.vendorOrderQuantity || it.orderQuantity, 10) || 0), 0);
+                              const perPcRate = cTotalPcs > 0 && total > 0 ? (total / cTotalPcs) : (uom === "per Pc" ? parseFloat(rate || 0) : 0);
                               
                               if (total > 0 || rate) {
                                 return (
@@ -3275,9 +3383,14 @@ export default function RahulDashboard({
                                         ? `${getCurrencySymbol(cur)}${Number(total).toLocaleString()}` 
                                         : `${getCurrencySymbol(cur)}${rate}`}
                                     </div>
-                                    {rate && (
-                                      <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
-                                        Rate: {getCurrencySymbol(cur)}{rate} {uom ? `(${uom})` : ""}
+                                    {perPcRate > 0 && (
+                                      <div style={{ fontSize: "0.72rem", color: "#059669", fontWeight: 600 }}>
+                                        {getCurrencySymbol(cur)}{perPcRate.toFixed(2)}/pc
+                                      </div>
+                                    )}
+                                    {rate && uom && uom !== "per Pc" && (
+                                      <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>
+                                        Rate: {getCurrencySymbol(cur)}{rate} ({uom})
                                       </div>
                                     )}
                                   </div>

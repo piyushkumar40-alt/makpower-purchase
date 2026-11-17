@@ -7137,14 +7137,23 @@ export default function PurchaserDashboard({
           cargoCompanies={cargoCompanies}
           onAddCargoCompany={onAddCargoCompany}
           onClose={() => setCreatingCargo(false)}
-          onSave={(cargoDetails, itemPickedQtyMap, itemPickedCartonMap) => {
-            onAddCargo(cargoDetails, checkedRequestIds, itemPickedQtyMap, plannerNewPriceMap, itemPickedCartonMap || plannerItemsPerCartonMap);
+          onSave={async (cargoDetails, itemPickedQtyMap, itemPickedCartonMap, modalSelectedIds) => {
+            const finalIds = (modalSelectedIds && modalSelectedIds.length > 0)
+              ? modalSelectedIds
+              : ((checkedRequestIds && checkedRequestIds.length > 0) ? checkedRequestIds : Object.keys(itemPickedQtyMap || {}));
             setCreatingCargo(false);
             setCheckedRequestIds([]);
             setPlannerNewQtyMap({});
             setPlannerNewPriceMap({});
             setPlannerItemsPerCartonMap({});
-            setActiveTab("cargopickup"); // Go to Cargo Pickup step next
+            try {
+              if (onAddCargo) {
+                await onAddCargo(cargoDetails, finalIds, itemPickedQtyMap, plannerNewPriceMap, itemPickedCartonMap || plannerItemsPerCartonMap);
+              }
+              setActiveTab("cargopickup"); // Go to Cargo Pickup step next
+            } catch (err) {
+              console.error("Error adding cargo shipment:", err);
+            }
           }}
         />
       )}
@@ -9874,7 +9883,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
       cargoReceiptFile: cargoReceiptFile?.name || "",
       cargoReceiptData: cargoReceiptFile?.data || "",
       isMaterialRec: "No"
-    }, itemPickedQtyMap, itemPickedCartonMap);
+    }, itemPickedQtyMap, itemPickedCartonMap, selectedIds);
   };
 
   return (

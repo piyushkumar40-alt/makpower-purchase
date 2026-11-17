@@ -3917,121 +3917,146 @@ app.get("/api/crm/dispatches", async (req, res) => {
   }
 });
 
+// Centralized Request Upsert Builder ensuring 100% parameter type safety across single, batch & cargo transactions
+function buildRequestUpsert(r) {
+  if (r.cargoId && (!r.vendorReadyDate || !r.vendorReadyDate.trim())) {
+    r.vendorReadyDate = r.cargoShippingDate || (r.cargoAssignedAt ? r.cargoAssignedAt.split("T")[0] : new Date().toISOString().split("T")[0]);
+  }
+  const query = `
+    INSERT INTO requests (
+      "id", "purchaserId", "vendorId", "orderDate", "type", "model", "orderQuantity",
+      "priceRmb", "totalRmb", "advancePayment", "balancePayment", "photo", "vendorEdd",
+      "cargoId", "isMaterialRec", "actualReceivedDate", "notes", "itemNature", "category",
+      "requiredByDate", "entryBy", "packingOrderedByNitin", "purchaseUpdated", "status",
+      "cancellationReason", "cancelledAt", "cargoAssignedAt",
+      "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency", "timestamp", "vendorEddHistory",
+      "itemsPerCarton", "totalCartons", "cancelledBy", "cancelledByName",
+      "purchaseUpdatedAt", "purchaseUpdatedBy", "purchaseUpdatedById"
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43)
+    ON CONFLICT ("id") DO UPDATE SET
+      "purchaserId" = EXCLUDED."purchaserId",
+      "vendorId" = EXCLUDED."vendorId",
+      "orderDate" = EXCLUDED."orderDate",
+      "type" = EXCLUDED."type",
+      "model" = EXCLUDED."model",
+      "orderQuantity" = EXCLUDED."orderQuantity",
+      "priceRmb" = EXCLUDED."priceRmb",
+      "totalRmb" = EXCLUDED."totalRmb",
+      "advancePayment" = EXCLUDED."advancePayment",
+      "balancePayment" = EXCLUDED."balancePayment",
+      "photo" = EXCLUDED."photo",
+      "vendorEdd" = EXCLUDED."vendorEdd",
+      "cargoId" = EXCLUDED."cargoId",
+      "isMaterialRec" = EXCLUDED."isMaterialRec",
+      "actualReceivedDate" = EXCLUDED."actualReceivedDate",
+      "notes" = EXCLUDED."notes",
+      "itemNature" = EXCLUDED."itemNature",
+      "category" = EXCLUDED."category",
+      "requiredByDate" = EXCLUDED."requiredByDate",
+      "entryBy" = EXCLUDED."entryBy",
+      "packingOrderedByNitin" = EXCLUDED."packingOrderedByNitin",
+      "purchaseUpdated" = EXCLUDED."purchaseUpdated",
+      "status" = EXCLUDED."status",
+      "cancellationReason" = EXCLUDED."cancellationReason",
+      "cancelledAt" = EXCLUDED."cancelledAt",
+      "cargoAssignedAt" = EXCLUDED."cargoAssignedAt",
+      "vendorOrderQuantity" = EXCLUDED."vendorOrderQuantity",
+      "cargoPickedQty" = EXCLUDED."cargoPickedQty",
+      "receivedQuantity" = EXCLUDED."receivedQuantity",
+      "shortageQty" = EXCLUDED."shortageQty",
+      "parentRequestId" = EXCLUDED."parentRequestId",
+      "vendorReadyDate" = EXCLUDED."vendorReadyDate",
+      "currency" = EXCLUDED."currency",
+      "timestamp" = COALESCE(EXCLUDED."timestamp", requests."timestamp"),
+      "vendorEddHistory" = COALESCE(NULLIF(EXCLUDED."vendorEddHistory", ''), requests."vendorEddHistory"),
+      "itemsPerCarton" = COALESCE(EXCLUDED."itemsPerCarton", requests."itemsPerCarton"),
+      "totalCartons" = COALESCE(EXCLUDED."totalCartons", requests."totalCartons"),
+      "cancelledBy" = COALESCE(EXCLUDED."cancelledBy", requests."cancelledBy"),
+      "cancelledByName" = COALESCE(EXCLUDED."cancelledByName", requests."cancelledByName"),
+      "purchaseUpdatedAt" = EXCLUDED."purchaseUpdatedAt",
+      "purchaseUpdatedBy" = EXCLUDED."purchaseUpdatedBy",
+      "purchaseUpdatedById" = EXCLUDED."purchaseUpdatedById"
+  `;
+
+  const parsedItemsPerCarton = safeInt(r.itemsPerCarton);
+  const orderQty = safeInt(r.orderQuantity, 0) || 0;
+  const vendorOrderQty = safeInt(r.vendorOrderQuantity);
+  const baseQty = vendorOrderQty != null ? vendorOrderQty : orderQty;
+  const calculatedCartons = (parsedItemsPerCarton && parsedItemsPerCarton > 0)
+    ? Math.ceil(baseQty / parsedItemsPerCarton)
+    : safeInt(r.totalCartons);
+
+  const eddHistoryVal = (typeof r.vendorEddHistory === "object" && r.vendorEddHistory !== null)
+    ? JSON.stringify(r.vendorEddHistory)
+    : (r.vendorEddHistory ? String(r.vendorEddHistory) : "[]");
+
+  const values = [
+    r.id, r.purchaserId || "", r.vendorId || "", r.orderDate || "", r.type || "Import", r.model || "", orderQty,
+    safeNum(r.priceRmb), safeNum(r.totalRmb),
+    safeNum(r.advancePayment), safeNum(r.balancePayment),
+    r.photo || "", r.vendorEdd || "", r.cargoId || "", r.isMaterialRec || "No", r.actualReceivedDate || "",
+    r.notes || "", r.itemNature || "Non Consumables", r.category || "", r.requiredByDate || "", r.entryBy || "",
+    r.packingOrderedByNitin || "No", r.purchaseUpdated || "No", r.status || "Active",
+    r.cancellationReason || "", r.cancelledAt || "", r.cargoAssignedAt || "",
+    vendorOrderQty,
+    safeInt(r.cargoPickedQty),
+    safeInt(r.receivedQuantity),
+    safeInt(r.shortageQty),
+    r.parentRequestId || "",
+    r.vendorReadyDate || "",
+    r.currency || "RMB",
+    r.timestamp || r.orderDate || new Date().toISOString(),
+    eddHistoryVal,
+    parsedItemsPerCarton,
+    calculatedCartons,
+    r.cancelledBy || "",
+    r.cancelledByName || "",
+    r.purchaseUpdatedAt || "",
+    r.purchaseUpdatedBy || "",
+    r.purchaseUpdatedById || ""
+  ];
+
+  return { query, values };
+}
+
+function upsertRequestsLocalJson(data, reqs) {
+  if (!Array.isArray(data.requests)) data.requests = [];
+  reqs.forEach(r => {
+    r.timestamp = r.timestamp || r.orderDate || new Date().toISOString();
+    if (r.cargoId && (!r.vendorReadyDate || !r.vendorReadyDate.trim())) {
+      r.vendorReadyDate = r.cargoShippingDate || (r.cargoAssignedAt ? r.cargoAssignedAt.split("T")[0] : new Date().toISOString().split("T")[0]);
+    }
+    r.vendorEddHistory = safeJsonParse(r.vendorEddHistory, []);
+    const idx = data.requests.findIndex(x => x.id === r.id);
+    if (idx !== -1) {
+      data.requests[idx] = { ...data.requests[idx], ...r };
+    } else {
+      data.requests.unshift(r);
+    }
+  });
+}
+
 // 2. POST /api/requests - Adds or Updates requests
 app.post("/api/requests", async (req, res) => {
   const r = req.body;
-  if (r.cargoId && (!r.vendorReadyDate || !r.vendorReadyDate.trim())) {
-    r.vendorReadyDate = r.cargoShippingDate || (r.cargoAssignedAt ? r.cargoAssignedAt.split("T")[0] : new Date().toISOString().split("T")[0]);
+  if (!r || !r.id) {
+    return res.status(400).json({ success: false, error: "Request object with id is required." });
   }
   isOrderDataDirty = true;
   if (isPg) {
     try {
-      const query = `
-        INSERT INTO requests (
-          "id", "purchaserId", "vendorId", "orderDate", "type", "model", "orderQuantity",
-          "priceRmb", "totalRmb", "advancePayment", "balancePayment", "photo", "vendorEdd",
-          "cargoId", "isMaterialRec", "actualReceivedDate", "notes", "itemNature", "category",
-          "requiredByDate", "entryBy", "packingOrderedByNitin", "purchaseUpdated", "status",
-            "cancellationReason", "cancelledAt", "cargoAssignedAt",
-            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency", "timestamp", "vendorEddHistory",
-            "itemsPerCarton", "totalCartons", "cancelledBy", "cancelledByName",
-            "purchaseUpdatedAt", "purchaseUpdatedBy", "purchaseUpdatedById"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43)
-          ON CONFLICT ("id") DO UPDATE SET
-            "purchaserId" = EXCLUDED."purchaserId",
-            "vendorId" = EXCLUDED."vendorId",
-            "orderDate" = EXCLUDED."orderDate",
-            "type" = EXCLUDED."type",
-            "model" = EXCLUDED."model",
-            "orderQuantity" = EXCLUDED."orderQuantity",
-            "priceRmb" = EXCLUDED."priceRmb",
-            "totalRmb" = EXCLUDED."totalRmb",
-            "advancePayment" = EXCLUDED."advancePayment",
-            "balancePayment" = EXCLUDED."balancePayment",
-            "photo" = EXCLUDED."photo",
-            "vendorEdd" = EXCLUDED."vendorEdd",
-            "cargoId" = EXCLUDED."cargoId",
-            "isMaterialRec" = EXCLUDED."isMaterialRec",
-            "actualReceivedDate" = EXCLUDED."actualReceivedDate",
-            "notes" = EXCLUDED."notes",
-            "itemNature" = EXCLUDED."itemNature",
-            "category" = EXCLUDED."category",
-            "requiredByDate" = EXCLUDED."requiredByDate",
-            "entryBy" = EXCLUDED."entryBy",
-            "packingOrderedByNitin" = EXCLUDED."packingOrderedByNitin",
-            "purchaseUpdated" = EXCLUDED."purchaseUpdated",
-            "status" = EXCLUDED."status",
-            "cancellationReason" = EXCLUDED."cancellationReason",
-            "cancelledAt" = EXCLUDED."cancelledAt",
-            "cargoAssignedAt" = EXCLUDED."cargoAssignedAt",
-            "vendorOrderQuantity" = EXCLUDED."vendorOrderQuantity",
-            "cargoPickedQty" = EXCLUDED."cargoPickedQty",
-            "receivedQuantity" = EXCLUDED."receivedQuantity",
-            "shortageQty" = EXCLUDED."shortageQty",
-            "parentRequestId" = EXCLUDED."parentRequestId",
-            "vendorReadyDate" = EXCLUDED."vendorReadyDate",
-            "currency" = EXCLUDED."currency",
-            "timestamp" = COALESCE(EXCLUDED."timestamp", requests."timestamp"),
-            "vendorEddHistory" = COALESCE(NULLIF(EXCLUDED."vendorEddHistory", ''), requests."vendorEddHistory"),
-            "itemsPerCarton" = COALESCE(EXCLUDED."itemsPerCarton", requests."itemsPerCarton"),
-            "totalCartons" = COALESCE(EXCLUDED."totalCartons", requests."totalCartons"),
-            "cancelledBy" = COALESCE(EXCLUDED."cancelledBy", requests."cancelledBy"),
-            "cancelledByName" = COALESCE(EXCLUDED."cancelledByName", requests."cancelledByName"),
-            "purchaseUpdatedAt" = EXCLUDED."purchaseUpdatedAt",
-            "purchaseUpdatedBy" = EXCLUDED."purchaseUpdatedBy",
-            "purchaseUpdatedById" = EXCLUDED."purchaseUpdatedById"
-        `;
-        const parsedItemsPerCarton = safeInt(r.itemsPerCarton);
-        const orderQty = safeInt(r.orderQuantity, 0) || 0;
-        const vendorOrderQty = safeInt(r.vendorOrderQuantity);
-        const baseQty = vendorOrderQty != null ? vendorOrderQty : orderQty;
-        const calculatedCartons = (parsedItemsPerCarton && parsedItemsPerCarton > 0)
-          ? Math.ceil(baseQty / parsedItemsPerCarton)
-          : safeInt(r.totalCartons);
-
-        const values = [
-          r.id, r.purchaserId || "", r.vendorId || "", r.orderDate || "", r.type || "Import", r.model || "", orderQty,
-          safeNum(r.priceRmb), safeNum(r.totalRmb),
-          safeNum(r.advancePayment), safeNum(r.balancePayment),
-          r.photo || "", r.vendorEdd || "", r.cargoId || "", r.isMaterialRec || "No", r.actualReceivedDate || "",
-          r.notes || "", r.itemNature || "Non Consumables", r.category || "", r.requiredByDate || "", r.entryBy || "",
-          r.packingOrderedByNitin || "No", r.purchaseUpdated || "No", r.status || "Active",
-          r.cancellationReason || "", r.cancelledAt || "", r.cargoAssignedAt || "",
-          vendorOrderQty,
-          safeInt(r.cargoPickedQty),
-          safeInt(r.receivedQuantity),
-          safeInt(r.shortageQty),
-          r.parentRequestId || "",
-          r.vendorReadyDate || "",
-          r.currency || "RMB",
-          r.timestamp || r.orderDate || new Date().toISOString(),
-          Array.isArray(r.vendorEddHistory) ? JSON.stringify(r.vendorEddHistory) : (r.vendorEddHistory || "[]"),
-          parsedItemsPerCarton,
-          calculatedCartons,
-          r.cancelledBy || "",
-          r.cancelledByName || "",
-          r.purchaseUpdatedAt || "",
-          r.purchaseUpdatedBy || "",
-          r.purchaseUpdatedById || ""
-        ];
-        await pool.query(query, values);
-        invalidateStateCache();
-        markAppActivity();
-        res.json({ success: true });
+      const { query, values } = buildRequestUpsert(r);
+      await pool.query(query, values);
+      invalidateStateCache();
+      markAppActivity();
+      res.json({ success: true });
     } catch (err) {
       console.error("POST /api/requests error:", err.message);
       res.status(500).json({ success: false, error: "Failed to upsert request: " + err.message });
     }
   } else {
     const data = readLocalJson();
-    r.timestamp = r.timestamp || r.orderDate || new Date().toISOString();
-    r.vendorEddHistory = safeJsonParse(r.vendorEddHistory, []);
-    const index = data.requests.findIndex(x => x.id === r.id);
-    if (index !== -1) {
-      data.requests[index] = r;
-    } else {
-      data.requests.unshift(r); // Add to top
-    }
+    upsertRequestsLocalJson(data, [r]);
     writeLocalJson(data);
     invalidateStateCache();
     markAppActivity();
@@ -4203,107 +4228,16 @@ app.post("/api/requests/bulk-edd", async (req, res) => {
 app.post("/api/requests/batch", async (req, res) => {
   const reqs = req.body; // Array
   if (!Array.isArray(reqs)) {
-    return res.status(400).json({ error: "Body must be an array." });
+    return res.status(400).json({ success: false, error: "Body must be an array." });
   }
 
-  reqs.forEach(r => {
-    if (r.cargoId && (!r.vendorReadyDate || !r.vendorReadyDate.trim())) {
-      r.vendorReadyDate = r.cargoShippingDate || (r.cargoAssignedAt ? r.cargoAssignedAt.split("T")[0] : new Date().toISOString().split("T")[0]);
-    }
-  });
-
+  isOrderDataDirty = true;
   if (isPg) {
     try {
       await pool.query("BEGIN");
       for (const r of reqs) {
-        const query = `
-          INSERT INTO requests (
-            "id", "purchaserId", "vendorId", "orderDate", "type", "model", "orderQuantity",
-            "priceRmb", "totalRmb", "advancePayment", "balancePayment", "photo", "vendorEdd",
-            "cargoId", "isMaterialRec", "actualReceivedDate", "notes", "itemNature", "category",
-            "requiredByDate", "entryBy", "packingOrderedByNitin", "purchaseUpdated", "status",
-            "cancellationReason", "cancelledAt", "cargoAssignedAt",
-            "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency", "timestamp", "vendorEddHistory",
-            "itemsPerCarton", "totalCartons", "cancelledBy", "cancelledByName",
-            "purchaseUpdatedAt", "purchaseUpdatedBy", "purchaseUpdatedById"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43)
-          ON CONFLICT ("id") DO UPDATE SET
-            "purchaserId" = EXCLUDED."purchaserId",
-            "vendorId" = EXCLUDED."vendorId",
-            "orderDate" = EXCLUDED."orderDate",
-            "type" = EXCLUDED."type",
-            "model" = EXCLUDED."model",
-            "orderQuantity" = EXCLUDED."orderQuantity",
-            "priceRmb" = EXCLUDED."priceRmb",
-            "totalRmb" = EXCLUDED."totalRmb",
-            "advancePayment" = EXCLUDED."advancePayment",
-            "balancePayment" = EXCLUDED."balancePayment",
-            "photo" = EXCLUDED."photo",
-            "vendorEdd" = EXCLUDED."vendorEdd",
-            "cargoId" = EXCLUDED."cargoId",
-            "isMaterialRec" = EXCLUDED."isMaterialRec",
-            "actualReceivedDate" = EXCLUDED."actualReceivedDate",
-            "notes" = EXCLUDED."notes",
-            "itemNature" = EXCLUDED."itemNature",
-            "category" = EXCLUDED."category",
-            "requiredByDate" = EXCLUDED."requiredByDate",
-            "entryBy" = EXCLUDED."entryBy",
-            "packingOrderedByNitin" = EXCLUDED."packingOrderedByNitin",
-            "purchaseUpdated" = EXCLUDED."purchaseUpdated",
-            "status" = EXCLUDED."status",
-            "cancellationReason" = EXCLUDED."cancellationReason",
-            "cancelledAt" = EXCLUDED."cancelledAt",
-            "cargoAssignedAt" = EXCLUDED."cargoAssignedAt",
-            "vendorOrderQuantity" = EXCLUDED."vendorOrderQuantity",
-            "cargoPickedQty" = EXCLUDED."cargoPickedQty",
-            "receivedQuantity" = EXCLUDED."receivedQuantity",
-            "shortageQty" = EXCLUDED."shortageQty",
-            "parentRequestId" = EXCLUDED."parentRequestId",
-            "vendorReadyDate" = EXCLUDED."vendorReadyDate",
-            "currency" = EXCLUDED."currency",
-            "timestamp" = COALESCE(EXCLUDED."timestamp", requests."timestamp"),
-            "vendorEddHistory" = COALESCE(NULLIF(EXCLUDED."vendorEddHistory", ''), requests."vendorEddHistory"),
-            "itemsPerCarton" = COALESCE(EXCLUDED."itemsPerCarton", requests."itemsPerCarton"),
-            "totalCartons" = COALESCE(EXCLUDED."totalCartons", requests."totalCartons"),
-            "cancelledBy" = COALESCE(EXCLUDED."cancelledBy", requests."cancelledBy"),
-            "cancelledByName" = COALESCE(EXCLUDED."cancelledByName", requests."cancelledByName"),
-            "purchaseUpdatedAt" = EXCLUDED."purchaseUpdatedAt",
-            "purchaseUpdatedBy" = EXCLUDED."purchaseUpdatedBy",
-            "purchaseUpdatedById" = EXCLUDED."purchaseUpdatedById"
-        `;
-        const parsedItemsPerCarton = safeInt(r.itemsPerCarton);
-        const orderQty = safeInt(r.orderQuantity, 0) || 0;
-        const vendorOrderQty = safeInt(r.vendorOrderQuantity);
-        const baseQty = vendorOrderQty != null ? vendorOrderQty : orderQty;
-        const calculatedCartons = (parsedItemsPerCarton && parsedItemsPerCarton > 0)
-          ? Math.ceil(baseQty / parsedItemsPerCarton)
-          : safeInt(r.totalCartons);
-
-        const values = [
-          r.id, r.purchaserId || "", r.vendorId || "", r.orderDate || "", r.type || "Import", r.model || "", orderQty,
-          safeNum(r.priceRmb), safeNum(r.totalRmb),
-          safeNum(r.advancePayment), safeNum(r.balancePayment),
-          r.photo || "", r.vendorEdd || "", r.cargoId || "", r.isMaterialRec || "No", r.actualReceivedDate || "",
-          r.notes || "", r.itemNature || "Non Consumables", r.category || "", r.requiredByDate || "", r.entryBy || "",
-          r.packingOrderedByNitin || "No", r.purchaseUpdated || "No", r.status || "Active",
-          r.cancellationReason || "", r.cancelledAt || "", r.cargoAssignedAt || "",
-          vendorOrderQty,
-          safeInt(r.cargoPickedQty),
-          safeInt(r.receivedQuantity),
-          safeInt(r.shortageQty),
-          r.parentRequestId || "",
-          r.vendorReadyDate || "",
-          r.currency || "RMB",
-          r.timestamp || r.orderDate || new Date().toISOString(),
-          Array.isArray(r.vendorEddHistory) ? JSON.stringify(r.vendorEddHistory) : (r.vendorEddHistory || "[]"),
-          parsedItemsPerCarton,
-          calculatedCartons,
-          r.cancelledBy || "",
-          r.cancelledByName || "",
-          r.purchaseUpdatedAt || "",
-          r.purchaseUpdatedBy || "",
-          r.purchaseUpdatedById || ""
-        ];
+        if (!r || !r.id) continue;
+        const { query, values } = buildRequestUpsert(r);
         await pool.query(query, values);
       }
       await pool.query("COMMIT");
@@ -4317,15 +4251,7 @@ app.post("/api/requests/batch", async (req, res) => {
     }
   } else {
     const data = readLocalJson();
-    reqs.forEach(r => {
-      r.timestamp = r.timestamp || r.orderDate || new Date().toISOString();
-      const idx = data.requests.findIndex(x => x.id === r.id);
-      if (idx !== -1) {
-        data.requests[idx] = r;
-      } else {
-        data.requests.unshift(r);
-      }
-    });
+    upsertRequestsLocalJson(data, reqs);
     writeLocalJson(data);
     invalidateStateCache();
     markAppActivity();
@@ -4417,11 +4343,14 @@ app.post("/api/requests/delete-by-date", async (req, res) => {
   }
 });
 
-// 4. POST /api/cargos - Upserts cargo shipments
+// 4. POST /api/cargos - Upserts cargo shipments (with optional atomic bundledRequests batch upsert)
 app.post("/api/cargos", async (req, res) => {
   const c = sanitizeCargoDocuments(req.body);
+  const bundledRequests = Array.isArray(req.body.bundledRequests) ? req.body.bundledRequests : (Array.isArray(c.bundledRequests) ? c.bundledRequests : null);
+  isOrderDataDirty = true;
   if (isPg) {
     try {
+      await pool.query("BEGIN");
       const query = `
         INSERT INTO cargos (
           "id", "vendorId", "cargoOrderDate", "cargoDetail", "cargoPrice", "cargoPriceUom",
@@ -4481,43 +4410,44 @@ app.post("/api/cargos", async (req, res) => {
         c.cargoCompanyId || ""
       ];
       await pool.query(query, values);
-      // Synchronize cargo shipping date, ETA, and received status to all bundled requests in DB
+
+      // Atomic Bundled Requests Upsert: guarantees orders and cargo shipment advance simultaneously
+      if (bundledRequests && bundledRequests.length > 0) {
+        for (const reqItem of bundledRequests) {
+          if (!reqItem || !reqItem.id) continue;
+          const { query: rQuery, values: rValues } = buildRequestUpsert(reqItem);
+          await pool.query(rQuery, rValues);
+        }
+      }
+
+      // Synchronize cargo received status to all bundled requests in DB
       try {
-        if (c.id) {
-          const reqSyncUpdates = [];
+        if (c.id && c.isMaterialRec === 'Yes') {
+          const reqSyncUpdates = [`"isMaterialRec" = 'Yes'`];
           const reqSyncVals = [];
           let syncIdx = 1;
-          if (c.cargoShippingDate) {
-            reqSyncUpdates.push(`"cargoShippingDate" = $${syncIdx++}`);
-            reqSyncVals.push(c.cargoShippingDate);
+          if (c.receivedDate) {
+            reqSyncUpdates.push(`"actualReceivedDate" = $${syncIdx++}`);
+            reqSyncVals.push(c.receivedDate);
           }
-          if (c.cargoEta) {
-            reqSyncUpdates.push(`"cargoEta" = $${syncIdx++}`);
-            reqSyncVals.push(c.cargoEta);
-          }
-          if (c.isMaterialRec === 'Yes') {
-            reqSyncUpdates.push(`"isMaterialRec" = 'Yes'`);
-            if (c.receivedDate) {
-              reqSyncUpdates.push(`"actualReceivedDate" = $${syncIdx++}`);
-              reqSyncVals.push(c.receivedDate);
-            }
-          }
-          if (reqSyncUpdates.length > 0) {
-            reqSyncVals.push(c.id);
-            await pool.query(
-              `UPDATE requests SET ${reqSyncUpdates.join(', ')} WHERE "cargoId" = $${syncIdx}`,
-              reqSyncVals
-            );
-          }
+          reqSyncVals.push(c.id);
+          await pool.query(
+            `UPDATE requests SET ${reqSyncUpdates.join(', ')} WHERE "cargoId" = $${syncIdx}`,
+            reqSyncVals
+          );
         }
       } catch (syncErr) {
         console.warn("Notice: cargo request sync check in POST /api/cargos:", syncErr.message);
       }
+
+      await pool.query("COMMIT");
       invalidateStateCache();
+      markAppActivity();
       res.json({ success: true });
     } catch (err) {
+      await pool.query("ROLLBACK");
       console.error("POST /api/cargos error:", err.message);
-      res.status(500).json({ error: "Failed to upsert cargo." });
+      res.status(500).json({ success: false, error: "Failed to upsert cargo: " + err.message });
     }
   } else {
     const data = readLocalJson();
@@ -4536,8 +4466,12 @@ app.post("/api/cargos", async (req, res) => {
     } else {
       data.cargos.unshift(c);
     }
+    if (bundledRequests && bundledRequests.length > 0) {
+      upsertRequestsLocalJson(data, bundledRequests);
+    }
     writeLocalJson(data);
     invalidateStateCache();
+    markAppActivity();
     res.json({ success: true });
   }
 });
