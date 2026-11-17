@@ -317,18 +317,33 @@ export default function MasterOrderTracker({
     // 6. Search Query
     if (excludeKey !== "search" && searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
-      const modelLower = (r.model || "").toLowerCase();
-      const catLower = (r.category || "").toLowerCase();
-      const modelMatch = modelLower.includes(q) || (q.length >= 3 && modelLower.startsWith(q.slice(0, 3)));
-      const categoryMatch = catLower.includes(q) || (q.length >= 3 && catLower.startsWith(q.slice(0, 3)));
-      const idMatch = (r.id || "").toLowerCase().includes(q);
-      const vendorMatch = (r._vendor?.name || "").toLowerCase().includes(q);
-      const cargoMatch = (r.cargoId || "").toLowerCase().includes(q) || (r._cargo?.cargoDetail || "").toLowerCase().includes(q) || (r.cargoDetail || "").toLowerCase().includes(q);
-      const purchaserMatch = (r._purchaser?.name || "").toLowerCase().includes(q) || (r.purchaserName || "").toLowerCase().includes(q);
-      const remarksMatch = (r.remarks || "").toLowerCase().includes(q);
-      const entryByMatch = (r.entryBy || "").toLowerCase().includes(q);
+      const qTokens = q.split(/\s+/).filter(Boolean);
 
-      if (!modelMatch && !categoryMatch && !idMatch && !vendorMatch && !cargoMatch && !purchaserMatch && !remarksMatch && !entryByMatch) {
+      const modelLower = (r.model || "").toLowerCase();
+      const modelClean = modelLower.replace(/[\s\-_]/g, "");
+      const catLower = (r.category || "").toLowerCase();
+      const idLower = (r.id || "").toLowerCase();
+      const vendorLower = (r._vendor?.name || "").toLowerCase();
+      const cargoLower = ((r.cargoId || "") + " " + (r._cargo?.cargoDetail || "") + " " + (r.cargoDetail || "")).toLowerCase();
+      const purchaserLower = ((r._purchaser?.name || "") + " " + (r.purchaserName || "")).toLowerCase();
+      const remarksLower = (r.remarks || "").toLowerCase();
+      const entryByLower = (r.entryBy || "").toLowerCase();
+
+      // Check that every token matches at least one field (e.g. "DC46 Dongfeng" matches model + vendor)
+      const matchesAllTokens = qTokens.every(tok => {
+        const tokClean = tok.replace(/[\s\-_]/g, "");
+        const modelMatch = modelLower.includes(tok) || (tokClean && modelClean.includes(tokClean));
+        const categoryMatch = catLower.includes(tok);
+        const idMatch = idLower.includes(tok);
+        const vendorMatch = vendorLower.includes(tok);
+        const cargoMatch = cargoLower.includes(tok);
+        const purchaserMatch = purchaserLower.includes(tok);
+        const remarksMatch = remarksLower.includes(tok);
+        const entryByMatch = entryByLower.includes(tok);
+        return modelMatch || categoryMatch || idMatch || vendorMatch || cargoMatch || purchaserMatch || remarksMatch || entryByMatch;
+      });
+
+      if (!matchesAllTokens) {
         return false;
       }
     }
