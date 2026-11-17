@@ -650,6 +650,16 @@ export default function PurchaserDashboard({
       packingListData: url
     });
   };
+
+  const handlePurchaserReceiptUpload = async (cargoObj, file) => {
+    if (!file || !onUpdateCargo) return;
+    const url = await uploadToCloudinary(file, "makpower_docs");
+    onUpdateCargo({
+      ...cargoObj,
+      cargoReceiptFile: file.name,
+      cargoReceiptData: url
+    });
+  };
   // Vendor-ready bulk selection
   const [vrFilter, setVrFilter] = useState("");        // vendor filter for vendor-ready tab
   const [vrSelectedOrderDate, setVrSelectedOrderDate] = useState(""); // order date filter for vendor-ready tab
@@ -6601,33 +6611,64 @@ export default function PurchaserDashboard({
                             </div>
                           )}
                         </div>
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                          Cargo Receipt: {(cargo.cargoReceiptFile && cargo.cargoReceiptData) ? (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenDocument(cargo, "Cargo Receipt", cargo.cargoReceiptFile, cargo.cargoReceiptData, "cargoReceiptFile", "cargoReceiptData")}
-                              title={`Click to open ${cargo.cargoReceiptFile}`}
-                              className="doc-link-btn"
-                              style={{
-                                background: "rgba(56, 189, 248, 0.12)",
-                                border: "1px solid rgba(56, 189, 248, 0.35)",
-                                padding: "3px 10px",
-                                borderRadius: "6px",
-                                cursor: "pointer",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "6px",
-                                color: "var(--primary, #38bdf8)",
-                                textDecoration: "none",
-                                fontWeight: 600,
-                                fontSize: "0.83rem"
-                              }}
-                            >
-                              📄 {cargo.cargoReceiptFile}
-                              <ExternalLink size={12} style={{ opacity: 0.85 }} />
-                            </button>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                          <span>Cargo Receipt / Slip:</span>
+                          {(cargo.cargoReceiptFile && cargo.cargoReceiptData) ? (
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenDocument(cargo, "Cargo Receipt", cargo.cargoReceiptFile, cargo.cargoReceiptData, "cargoReceiptFile", "cargoReceiptData")}
+                                title={`Click to open ${cargo.cargoReceiptFile}`}
+                                className="doc-link-btn"
+                                style={{
+                                  background: "rgba(56, 189, 248, 0.12)",
+                                  border: "1px solid rgba(56, 189, 248, 0.35)",
+                                  padding: "3px 10px",
+                                  borderRadius: "6px",
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                  color: "var(--primary, #38bdf8)",
+                                  textDecoration: "none",
+                                  fontWeight: 600,
+                                  fontSize: "0.83rem"
+                                }}
+                              >
+                                📄 {cargo.cargoReceiptFile}
+                                <ExternalLink size={12} style={{ opacity: 0.85 }} />
+                              </button>
+                              <label
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: "2px 7px", fontSize: "0.72rem", cursor: "pointer", margin: 0, height: "24px", display: "inline-flex", alignItems: "center", gap: "3px" }}
+                                title="Replace or re-upload Cargo Slip"
+                              >
+                                <Upload size={11} /> Replace
+                                <input
+                                  type="file"
+                                  accept=".pdf,.xlsx,.xls,.csv,image/*"
+                                  onChange={e => handlePurchaserReceiptUpload(cargo, e.target.files[0])}
+                                  style={{ display: "none" }}
+                                />
+                              </label>
+                            </div>
                           ) : (
-                            <span style={{ color: "var(--text-muted)" }}>Missing</span>
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                              <span style={{ color: "var(--text-muted)" }}>Missing</span>
+                              <label
+                                className="btn btn-primary btn-sm"
+                                style={{ padding: "2px 8px", fontSize: "0.74rem", cursor: "pointer", margin: 0, height: "24px", display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 700, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.4)" }}
+                                title="Upload Cargo Receipt / Slip for this shipment"
+                              >
+                                <Upload size={12} /> Upload Slip
+                                <input
+                                  type="file"
+                                  accept=".pdf,.xlsx,.xls,.csv,image/*"
+                                  onChange={e => handlePurchaserReceiptUpload(cargo, e.target.files[0])}
+                                  style={{ display: "none" }}
+                                />
+                              </label>
+                            </div>
                           )}
                         </div>
                       </div>

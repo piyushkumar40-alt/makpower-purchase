@@ -1871,6 +1871,7 @@ async function formatAllRequestsForGoogleSheets() {
     vendors = vRes.rows || [];
     cargos = cRes.rows || [];
   } else {
+    const memoryDb = readLocalJson();
     requests = memoryDb.requests || [];
     users = memoryDb.users || [];
     vendors = memoryDb.vendors || [];
@@ -2076,8 +2077,10 @@ async function performGoogleSheetSync() {
         ON CONFLICT ("key") DO UPDATE SET "value" = $1
       `, [nowStr]);
     } else {
-      if (!memoryDb.settings) memoryDb.settings = {};
-      memoryDb.settings.lastGoogleSheetSyncTime = nowStr;
+      const data = readLocalJson();
+      data.settings = data.settings || {};
+      data.settings.lastGoogleSheetSyncTime = nowStr;
+      writeLocalJson(data);
     }
 
     recordAuthAuditLog("system", "System Auto-Sync", "system", "Google Sheets Sync", `Synced ${syncCount} rows to Google Sheets`);

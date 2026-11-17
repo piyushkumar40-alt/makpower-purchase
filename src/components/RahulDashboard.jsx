@@ -151,7 +151,18 @@ export default function RahulDashboard({
   const [selectedOrderGroup, setSelectedOrderGroup] = useState(null);
 
   const handleOpenDocument = (cargo, docType, fileName, fileData, field, dataField) => {
-    if (!fileName) return;
+    let effectiveFileName = fileName;
+    if (!effectiveFileName) {
+      if (docType?.toLowerCase().includes("receipt") || field?.toLowerCase().includes("receipt")) {
+        effectiveFileName = "CargoReceipt.pdf";
+      } else if (docType?.toLowerCase().includes("invoice") || docType?.toLowerCase().includes("bill") || field?.toLowerCase().includes("invoice")) {
+        effectiveFileName = "Invoice.pdf";
+      } else if (docType?.toLowerCase().includes("packing") || field?.toLowerCase().includes("packing")) {
+        effectiveFileName = "PackingList.xlsx";
+      } else {
+        effectiveFileName = "Document.pdf";
+      }
+    }
     let effectiveData = fileData;
     if (!effectiveData && docType?.toLowerCase().includes("packing")) {
       const match = (requests || []).find(r => r.cargoId === cargo?.id && r.itemPackingListData);
@@ -162,7 +173,7 @@ export default function RahulDashboard({
     setViewingCargoDoc({
       cargo,
       docType,
-      fileName,
+      fileName: effectiveFileName,
       fileData: effectiveData || "",
       field,
       dataField,
@@ -750,9 +761,9 @@ export default function RahulDashboard({
         const dominantStage = Object.entries(grp.stageCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
 
         // Cargo Documents
-        const hasPackingList = Boolean(grp.cargoObj?.packingListFileName || grp.cargoObj?.packingList || grp.items.some(it => it.itemPackingListData));
-        const hasVendorBill = Boolean(grp.cargoObj?.vendorBillFileName || grp.cargoObj?.vendorBill);
-        const hasCargoReceipt = Boolean(grp.cargoObj?.cargoReceiptFileName || grp.cargoObj?.cargoReceipt);
+        const hasPackingList = Boolean(grp.cargoObj?.packingListFile || grp.cargoObj?.packingListFileName || grp.cargoObj?.packingList || grp.cargoObj?.packingListData || grp.items.some(it => it.itemPackingListData));
+        const hasVendorBill = Boolean(grp.cargoObj?.invoiceFile || grp.cargoObj?.vendorBillFileName || grp.cargoObj?.vendorBill || grp.cargoObj?.invoiceData);
+        const hasCargoReceipt = Boolean(grp.cargoObj?.cargoReceiptFile || grp.cargoObj?.cargoReceiptFileName || grp.cargoObj?.cargoReceipt || grp.cargoObj?.cargoReceiptData);
 
         return {
           ...grp,
@@ -2285,7 +2296,9 @@ export default function RahulDashboard({
                         <RenderGroupSortHeader colKey="cargoEta" title="Upcoming Cargo ETA" />
                         <RenderGroupSortHeader colKey="arrivalDiffDays" title="Arrival Status" getValue={g => g.arrivalStatus?.diffDays ?? 9999} />
                         <RenderGroupSortHeader colKey="totalQty" title="Items & Cartons" />
-                        <RenderGroupSortHeader colKey="grandTotalRmb" title="Total RMB (¥)" getValue={g => g.grandTotalRmb} />
+                        <RenderGroupSortHeader colKey="totalGoodsRmb" title="Item Value (¥)" getValue={g => g.totalGoodsRmb} />
+                        <RenderGroupSortHeader colKey="cargoFreightPrice" title="Cargo Value (¥)" getValue={g => g.cargoFreightPrice} />
+                        <RenderGroupSortHeader colKey="grandTotalRmb" title="Grand Total (¥)" getValue={g => g.grandTotalRmb} />
                         <th style={{ textAlign: "center" }}>Documents</th>
                         <RenderGroupSortHeader colKey="dominantStage" title="Where Cargo Is Now" />
                         <RenderGroupSortHeader colKey="markedStatus" title="Ledger Status" getValue={g => (g.isAllMarked ? 2 : (g.markedCount > 0 ? 1 : 0))} />
@@ -2484,26 +2497,39 @@ export default function RahulDashboard({
                                 </div>
                               </td>
 
-                              {/* Total RMB */}
-                              <td style={{ fontSize: "0.88rem" }}>
+                              {/* Item Value (Goods Total) */}
+                              <td style={{ fontSize: "0.88rem", whiteSpace: "nowrap" }}>
                                 <div style={{ fontWeight: 800, color: "var(--warning, #b45309)" }}>
-                                  ¥{Math.round(group.totalGoodsRmb).toLocaleString()} <span style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--text-muted)" }}>Goods</span>
+                                  ¥{Math.round(group.totalGoodsRmb).toLocaleString()}
                                 </div>
-                                {group.cargoFreightPrice > 0 && (
-                                  <div style={{ fontSize: "0.74rem", color: "#10b981", fontWeight: 700, marginTop: "2px" }} title="Total Cargo Freight Price & Rate Per Piece">
-                                    +¥{Math.round(group.cargoFreightPrice).toLocaleString()} Cargo
+                                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", fontWeight: 600 }}>
+                                  Goods ({group.totalQty.toLocaleString()} pcs)
+                                </div>
+                              </td>
+
+                              {/* Cargo Value (Freight) */}
+                              <td style={{ fontSize: "0.88rem", whiteSpace: "nowrap" }}>
+                                {group.cargoFreightPrice > 0 ? (
+                                  <div>
+                                    <div style={{ fontSize: "0.85rem", color: "#10b981", fontWeight: 700 }}>
+                                      ¥{Math.round(group.cargoFreightPrice).toLocaleString()}
+                                    </div>
                                     {group.cargoPricePerPc > 0 && (
-                                      <span style={{ fontSize: "0.7rem", color: "#059669", marginLeft: "4px", fontWeight: 600 }}>
+                                      <div style={{ fontSize: "0.72rem", color: "#059669", fontWeight: 600 }}>
                                         (¥{group.cargoPricePerPc.toFixed(2)}/pc)
-                                      </span>
+                                      </div>
                                     )}
                                   </div>
+                                ) : (
+                                  <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>—</span>
                                 )}
-                                {group.cargoFreightPrice > 0 && (
-                                  <div style={{ fontSize: "0.72rem", color: "var(--text-main)", fontWeight: 700, marginTop: "2px" }}>
-                                    Grand: ¥{Math.round(group.grandTotalRmb).toLocaleString()}
-                                  </div>
-                                )}
+                              </td>
+
+                              {/* Grand Total */}
+                              <td style={{ fontSize: "0.88rem", whiteSpace: "nowrap" }}>
+                                <div style={{ fontWeight: 800, color: "var(--text-main)" }}>
+                                  ¥{Math.round(group.grandTotalRmb).toLocaleString()}
+                                </div>
                               </td>
 
                               {/* Documents */}
@@ -2512,7 +2538,11 @@ export default function RahulDashboard({
                                   {group.hasPackingList ? (
                                     <button
                                       type="button"
-                                      onClick={() => handleOpenDocument(group.cargoObj, "Cargo Packing List", group.cargoObj?.packingListFileName || "PackingList.pdf", group.cargoObj?.packingList, "packingListFileName", "packingList")}
+                                      onClick={() => {
+                                        const fName = group.cargoObj?.packingListFile || group.cargoObj?.packingListFileName || "PackingList.xlsx";
+                                        const fData = group.cargoObj?.packingListData || group.cargoObj?.packingList;
+                                        handleOpenDocument(group.cargoObj, "Cargo Packing List", fName, fData, "packingListFile", "packingListData");
+                                      }}
                                       className="badge badge-received"
                                       style={{ cursor: "pointer", border: "1px solid rgba(16, 185, 129, 0.4)", fontSize: "0.68rem", padding: "2px 5px" }}
                                       title="Open Packing List"
@@ -2525,7 +2555,11 @@ export default function RahulDashboard({
                                   {group.hasVendorBill ? (
                                     <button
                                       type="button"
-                                      onClick={() => handleOpenDocument(group.cargoObj, "Vendor Bill (Invoice)", group.cargoObj?.vendorBillFileName || "Invoice.pdf", group.cargoObj?.vendorBill, "vendorBillFileName", "vendorBill")}
+                                      onClick={() => {
+                                        const fName = group.cargoObj?.invoiceFile || group.cargoObj?.vendorBillFileName || "Invoice.pdf";
+                                        const fData = group.cargoObj?.invoiceData || group.cargoObj?.vendorBill;
+                                        handleOpenDocument(group.cargoObj, "Vendor Bill (Invoice)", fName, fData, "invoiceFile", "invoiceData");
+                                      }}
                                       className="badge badge-warning"
                                       style={{ cursor: "pointer", border: "1px solid rgba(245, 158, 11, 0.4)", fontSize: "0.68rem", padding: "2px 5px" }}
                                       title="Open Vendor Bill"
@@ -2538,15 +2572,31 @@ export default function RahulDashboard({
                                   {group.hasCargoReceipt ? (
                                     <button
                                       type="button"
-                                      onClick={() => handleOpenDocument(group.cargoObj, "Cargo Delivery Receipt", group.cargoObj?.cargoReceiptFileName || "Receipt.pdf", group.cargoObj?.cargoReceipt, "cargoReceiptFileName", "cargoReceipt")}
+                                      onClick={() => {
+                                        const fName = group.cargoObj?.cargoReceiptFile || group.cargoObj?.cargoReceiptFileName || "Receipt.pdf";
+                                        const fData = group.cargoObj?.cargoReceiptData || group.cargoObj?.cargoReceipt;
+                                        handleOpenDocument(group.cargoObj, "Cargo Delivery Receipt", fName, fData, "cargoReceiptFile", "cargoReceiptData");
+                                      }}
                                       className="badge badge-cargo"
                                       style={{ cursor: "pointer", border: "1px solid rgba(56, 189, 248, 0.4)", fontSize: "0.68rem", padding: "2px 5px" }}
-                                      title="Open Cargo Receipt"
+                                      title="Open Cargo Receipt / Slip"
                                     >
                                       📄 CR
                                     </button>
                                   ) : (
-                                    <span style={{ fontSize: "0.68rem", opacity: 0.35, color: "var(--text-muted)" }}>—</span>
+                                    group.cargoObj ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenDocument(group.cargoObj, "Cargo Delivery Receipt", "CargoReceipt.pdf", "", "cargoReceiptFile", "cargoReceiptData")}
+                                        className="badge"
+                                        style={{ cursor: "pointer", border: "1px dashed rgba(56, 189, 248, 0.5)", background: "rgba(56, 189, 248, 0.08)", color: "#38bdf8", fontSize: "0.68rem", padding: "2px 5px" }}
+                                        title="Upload Missing Cargo Slip"
+                                      >
+                                        +CR
+                                      </button>
+                                    ) : (
+                                      <span style={{ fontSize: "0.68rem", opacity: 0.35, color: "var(--text-muted)" }}>—</span>
+                                    )
                                   )}
                                 </div>
                               </td>
@@ -2694,7 +2744,7 @@ export default function RahulDashboard({
                             {/* Inline Expanded Items Sub-Table for Cargo */}
                             {isExpanded && (
                               <tr>
-                                <td colSpan={14} style={{ padding: "12px 20px", background: "var(--bg-main, #f8fafc)", borderBottom: "2px solid var(--primary, #38bdf8)" }}>
+                                <td colSpan={16} style={{ padding: "12px 20px", background: "var(--bg-main, #f8fafc)", borderBottom: "2px solid var(--primary, #38bdf8)" }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                                     <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--primary)" }}>
                                       📦 Bundled Cargo Items: {group.cargoDetail} ({group.items.length} items)
