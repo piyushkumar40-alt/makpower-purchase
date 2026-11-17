@@ -196,6 +196,7 @@ export default function App() {
   const hasPendingMutationRef = useRef(false);
   const loadDataRef = useRef(null);
   const currentDataVersionRef = useRef(initialCacheSnapshot?.version || null);
+  const lastLoadedScopeRef = useRef(null);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
 
   const handleRefreshFullData = React.useCallback((isInterval = false) => {
@@ -1361,7 +1362,7 @@ export default function App() {
             const metaRes = await fetch(`/api/state/meta?_t=${cacheBuster}`);
             if (metaRes.ok) {
               serverMeta = await metaRes.json();
-              if (serverMeta && serverMeta.version && serverMeta.version === currentDataVersionRef.current) {
+              if (serverMeta && serverMeta.version && String(serverMeta.version) === String(currentDataVersionRef.current)) {
                 return; // Server version unchanged; skip full fetch
               }
             }
@@ -1370,16 +1371,31 @@ export default function App() {
           }
         }
 
-        const isPurchaseView = ["dashboard", "rahul", "nitin", "coordinator", "admin"].includes(activeView);
+        const isPurchaseView = ["dashboard", "rahul", "nitin", "coordinator", "admin", "owner"].includes(activeView);
+        const currentScope = isPurchaseView ? "purchases" : "full";
         const scopeParam = isPurchaseView ? "&scope=purchases" : "";
         const roleClean = String(currentUser.role || (currentUser.id === "u-rahul" ? "rahul" : "staff")).trim().toLowerCase();
-        const q = `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(roleClean)}&userName=${encodeURIComponent(currentUser.name || '')}${scopeParam}&_t=${cacheBuster}`;
 
-        const res = await fetch(`/api/state${q}`);
+        // ⚡ Conditional 304 Revalidation: Pass &v= and ETag if same scope was previously loaded
+        const canUseConditionalVersion = currentDataVersionRef.current && (lastLoadedScopeRef.current === currentScope);
+        const versionParam = canUseConditionalVersion ? `&v=${encodeURIComponent(currentDataVersionRef.current)}` : "";
+        const q = `?userId=${encodeURIComponent(currentUser.id)}&userRole=${encodeURIComponent(roleClean)}&userName=${encodeURIComponent(currentUser.name || '')}${scopeParam}${versionParam}&_t=${cacheBuster}`;
+
+        const reqHeaders = canUseConditionalVersion ? { "If-None-Match": `"${currentDataVersionRef.current}"` } : {};
+        const res = await fetch(`/api/state${q}`, { headers: reqHeaders });
+        if (res.status === 304) {
+          // Version is unchanged on server! Zero extra bandwidth.
+          return;
+        }
+
         let data = {};
         if (res.ok) {
           try {
             data = await res.json();
+            if (data.unmodified) {
+              if (data.version) currentDataVersionRef.current = data.version;
+              return;
+            }
           } catch (pe) {
             console.warn("Error parsing /api/state response:", pe);
           }
@@ -1510,6 +1526,7 @@ export default function App() {
         if (serverVersion) {
           currentDataVersionRef.current = serverVersion;
         }
+        lastLoadedScopeRef.current = currentScope;
 
         // Save to high-performance persistent browser cache
         if (effectiveRequests.length > 0 || effectiveCargos.length > 0) {
@@ -1525,7 +1542,7 @@ export default function App() {
           });
         }
 
-        if (!isInterval) {
+        if (!isInterval && (roleClean === "admin" || roleClean === "superadmin")) {
           fetch(`/api/audit-logs?_t=${cacheBuster}`)
             .then(r => r.json())
             .then(logs => { if (isMounted && Array.isArray(logs)) setAuditLogs(logs); })
@@ -1564,6 +1581,10 @@ export default function App() {
           try {
             const event = JSON.parse(e.data);
             if (event.type === "MUTATION") {
+              // If we already have this mutation version, skip redundant full-state re-download
+              if (event.version && currentDataVersionRef.current && String(event.version) === String(currentDataVersionRef.current)) {
+                return;
+              }
               // Instant real-time live sync: a mutation happened on another laptop / tab!
               if (isFetchingDataRef.current) {
                 hasPendingMutationRef.current = true;
@@ -1591,18 +1612,18 @@ export default function App() {
 
     setupLiveStream();
 
-    // Passive fallback heartbeat (runs only every 60s when SSE is idle, only if tab is visible)
+    // Passive fallback heartbeat (runs every 180s when SSE is idle, only if tab is visible)
     const intervalId = setInterval(() => {
       if (document.visibilityState === "visible" && currentUser) {
         loadData(true);
       }
-    }, 60000);
+    }, 180000);
 
-    // Instant sync when switching back to tab/window (debounced to 3s)
+    // Instant sync when switching back to tab/window (debounced to 10s)
     let lastFocusSyncTime = 0;
     const handleFocusSync = () => {
       const now = Date.now();
-      if (now - lastFocusSyncTime < 3000) return; // Debounce 3s to prevent duplicate calls
+      if (now - lastFocusSyncTime < 10000) return; // Debounce 10s to prevent rapid duplicate calls
       lastFocusSyncTime = now;
       if (document.visibilityState === "visible" && currentUser) {
         loadData(true);

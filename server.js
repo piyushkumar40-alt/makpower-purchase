@@ -48,12 +48,21 @@ app.use(compression({
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-// HTTP Cache-Busting: Guarantee fresh, non-stale data across all browsers/devices
+// Smart HTTP Caching & Revalidation:
+// - Immutable long-term caching for static media (photos, documents)
+// - Fast conditional revalidation (ETag / 304 Not Modified) for GET requests
+// - Strict no-store for mutations (POST, PUT, DELETE, PATCH)
 app.use("/api", (req, res, next) => {
-  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-  res.setHeader("Pragma", "no-cache");
-  res.setHeader("Expires", "0");
-  res.setHeader("Surrogate-Control", "no-store");
+  if (req.path.endsWith("/photo") || req.path.includes("/document/")) {
+    res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+  } else if (req.method === "GET") {
+    res.setHeader("Cache-Control", "no-cache, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+  } else {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+  }
   next();
 });
 
@@ -329,6 +338,52 @@ function formatCargoForResponse(c) {
   } catch (err) {
     console.warn("formatCargoForResponse fallback:", c?.id, err.message);
     return c;
+  }
+}
+
+// Lightweight serializer for outgoing requests in lists/state endpoints (strips multi-megabyte base64 photos)
+function formatRequestForResponse(r) {
+  if (!r) return r;
+  try {
+    let photo = r.photo || "";
+    if (photo && photo.startsWith("data:")) {
+      photo = `/api/requests/${encodeURIComponent(r.id)}/photo`;
+    }
+    return {
+      ...r,
+      photo,
+      orderDate: sanitizeDateStr(r.orderDate),
+      vendorEdd: sanitizeDateStr(r.vendorEdd),
+      vendorReadyDate: sanitizeDateStr(r.vendorReadyDate),
+      requiredByDate: sanitizeDateStr(r.requiredByDate),
+      actualReceivedDate: sanitizeDateStr(r.actualReceivedDate),
+      orderQuantity: r.orderQuantity ? parseInt(r.orderQuantity, 10) : 0,
+      priceRmb: r.priceRmb ? parseFloat(r.priceRmb) : "",
+      totalRmb: r.totalRmb ? parseFloat(r.totalRmb) : "",
+      advancePayment: r.advancePayment ? parseFloat(r.advancePayment) : "",
+      balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : "",
+      vendorEddHistory: safeJsonParse(r.vendorEddHistory, []),
+      purchaseUpdated: r.purchaseUpdated || "No"
+    };
+  } catch (err) {
+    return r;
+  }
+}
+
+// Lightweight serializer for outgoing items in lists/state endpoints (strips multi-megabyte base64 photos)
+function formatItemForResponse(item) {
+  if (!item) return item;
+  try {
+    let photo = item.photo || "";
+    if (photo && photo.startsWith("data:")) {
+      photo = `/api/items/${encodeURIComponent(item.id)}/photo`;
+    }
+    return {
+      ...item,
+      photo
+    };
+  } catch (err) {
+    return item;
   }
 }
 
@@ -2920,6 +2975,20 @@ app.get("/api/state", async (req, res) => {
   if (isRefreshRequest) {
     invalidateStateCache();
   }
+
+  // ⚡ Bandwidth Saver: Check client mutation version or ETag
+  const clientVersion = req.query.v || (req.headers["if-none-match"] ? req.headers["if-none-match"].replace(/^W\//, '').replace(/"/g, '') : null);
+
+  // Set ETag on state response
+  res.setHeader("ETag", `"${lastServerMutationTimestamp}"`);
+
+  if (!isRefreshRequest && clientVersion && String(clientVersion) === String(lastServerMutationTimestamp)) {
+    if (req.headers["if-none-match"]) {
+      return res.status(304).end();
+    }
+    return res.status(200).json({ unmodified: true, version: lastServerMutationTimestamp });
+  }
+
   const now = Date.now();
   if (!isRefreshRequest && isPurchaseScope && purchaserStateCache && (now - purchaserStateCacheTimestamp < STATE_CACHE_TTL_MS)) {
     return res.json(purchaserStateCache);
@@ -2997,20 +3066,7 @@ app.get("/api/state", async (req, res) => {
             if (effectiveReqRows.length === 0 && (purchaserStateCache?.requests?.length > 0 || lastKnownGoodPurchaserState?.requests?.length > 0)) {
               effectiveReqRows = (purchaserStateCache?.requests || lastKnownGoodPurchaserState?.requests || []);
             }
-            const requests = effectiveReqRows.map(r => ({
-              ...r,
-              orderDate: sanitizeDateStr(r.orderDate),
-              vendorEdd: sanitizeDateStr(r.vendorEdd),
-              vendorReadyDate: sanitizeDateStr(r.vendorReadyDate),
-              requiredByDate: sanitizeDateStr(r.requiredByDate),
-              actualReceivedDate: sanitizeDateStr(r.actualReceivedDate),
-              orderQuantity: r.orderQuantity ? parseInt(r.orderQuantity) : 0,
-              priceRmb: r.priceRmb ? parseFloat(r.priceRmb) : "",
-              totalRmb: r.totalRmb ? parseFloat(r.totalRmb) : "",
-              advancePayment: r.advancePayment ? parseFloat(r.advancePayment) : "",
-              balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : "",
-              vendorEddHistory: safeJsonParse(r.vendorEddHistory, [])
-            }));
+            const requests = effectiveReqRows.map(formatRequestForResponse);
 
             let effectiveCargoRows = cargosRes.rows || [];
             if (effectiveCargoRows.length === 0 && isPg) {
@@ -3084,7 +3140,7 @@ app.get("/api/state", async (req, res) => {
               cargos,
               requests,
               settings,
-              items: itemsRes.rows || [],
+              items: (itemsRes.rows || []).map(formatItemForResponse),
               designations: (designationsRes.rows && designationsRes.rows.length > 0) ? designationsRes.rows : initialDesignations,
               crmParties: [],
               crmSalesOrders: [],
@@ -3296,15 +3352,7 @@ app.get("/api/state", async (req, res) => {
         purchaserIds: safeJsonParse(v.purchaserIds, [])
       }));
 
-      const requests = (requestsRes.rows || []).map(r => ({
-        ...r,
-        orderQuantity: r.orderQuantity ? parseInt(r.orderQuantity) : 0,
-        priceRmb: r.priceRmb ? parseFloat(r.priceRmb) : "",
-        totalRmb: r.totalRmb ? parseFloat(r.totalRmb) : "",
-        advancePayment: r.advancePayment ? parseFloat(r.advancePayment) : "",
-        balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : "",
-        vendorEddHistory: safeJsonParse(r.vendorEddHistory, [])
-      }));
+      const requests = (requestsRes.rows || []).map(formatRequestForResponse);
 
       const cargos = (cargosRes.rows || []).map(formatCargoForResponse);
 
@@ -3324,7 +3372,7 @@ app.get("/api/state", async (req, res) => {
         cargos,
         requests,
         settings,
-        items: itemsRes.rows || [],
+        items: (itemsRes.rows || []).map(formatItemForResponse),
         designations: (designationsRes.rows && designationsRes.rows.length > 0) ? designationsRes.rows : initialDesignations,
         crmParties: myParties,
         crmSalesOrders: (crmSalesOrdersRes.rows || []).map(so => ({
@@ -3413,7 +3461,7 @@ app.get("/api/state", async (req, res) => {
         return res.json({
           users: (uR.rows || []).map(u => ({ ...u, status: u.status || "active" })),
           vendors: (vR.rows || []).map(v => ({ ...v, purchaserIds: safeJsonParse(v.purchaserIds, []) })),
-          requests: (rR.rows || []).map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })),
+          requests: (rR.rows || []).map(formatRequestForResponse),
           cargos: (cR.rows || []).map(formatCargoForResponse),
           cargoCompanies: [],
           items: [],
@@ -3428,12 +3476,16 @@ app.get("/api/state", async (req, res) => {
         console.error("GET /api/state ultimate fallback:", fbErr.message);
         const data = readLocalJson();
         if (data.cargos) data.cargos = data.cargos.map(formatCargoForResponse);
+        if (data.requests) data.requests = data.requests.map(formatRequestForResponse);
+        if (data.items) data.items = data.items.map(formatItemForResponse);
         return res.json(data);
       }
     }
   } else {
     const data = readLocalJson();
     if (data.cargos) data.cargos = data.cargos.map(formatCargoForResponse);
+    if (data.requests) data.requests = data.requests.map(formatRequestForResponse);
+    if (data.items) data.items = data.items.map(formatItemForResponse);
     if (isPurchaseOnlyRole) {
       return res.json({
         ...data,
@@ -3630,6 +3682,70 @@ app.get("/api/cargos/:id/document/:field", async (req, res) => {
   }
 });
 
+// GET /api/requests/:id/photo - Fast cached on-demand photo download (bypasses base64 bloating full state)
+app.get("/api/requests/:id/photo", async (req, res) => {
+  const { id } = req.params;
+  try {
+    let photo = "";
+    if (isPg) {
+      const q = await pool.query('SELECT photo FROM requests WHERE id = $1', [id]);
+      if (q.rows.length > 0) photo = q.rows[0].photo;
+    } else {
+      const data = readLocalJson();
+      const r = (data.requests || []).find(x => x.id === id);
+      if (r) photo = r.photo;
+    }
+    if (!photo || !photo.trim()) return res.status(404).send("Photo not found");
+
+    if (photo.startsWith("data:")) {
+      const matches = photo.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      if (matches && matches.length === 3) {
+        const contentType = matches[1];
+        const buffer = Buffer.from(matches[2], "base64");
+        res.setHeader("Content-Type", contentType);
+        res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+        return res.send(buffer);
+      }
+    }
+    return res.redirect(photo);
+  } catch (err) {
+    console.error(`GET /api/requests/${id}/photo error:`, err.message);
+    return res.status(500).send("Error fetching photo");
+  }
+});
+
+// GET /api/items/:id/photo - Fast cached on-demand item photo download
+app.get("/api/items/:id/photo", async (req, res) => {
+  const { id } = req.params;
+  try {
+    let photo = "";
+    if (isPg) {
+      const q = await pool.query('SELECT photo FROM items WHERE id = $1', [id]);
+      if (q.rows.length > 0) photo = q.rows[0].photo;
+    } else {
+      const data = readLocalJson();
+      const itm = (data.items || []).find(x => x.id === id);
+      if (itm) photo = itm.photo;
+    }
+    if (!photo || !photo.trim()) return res.status(404).send("Photo not found");
+
+    if (photo.startsWith("data:")) {
+      const matches = photo.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      if (matches && matches.length === 3) {
+        const contentType = matches[1];
+        const buffer = Buffer.from(matches[2], "base64");
+        res.setHeader("Content-Type", contentType);
+        res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+        return res.send(buffer);
+      }
+    }
+    return res.redirect(photo);
+  } catch (err) {
+    console.error(`GET /api/items/${id}/photo error:`, err.message);
+    return res.status(500).send("Error fetching photo");
+  }
+});
+
 // GET /api/requests - On-demand Purchase Requests pull
 app.get("/api/requests", async (req, res) => {
   if (isPg) {
@@ -3645,20 +3761,7 @@ app.get("/api/requests", async (req, res) => {
           if (rows.length === 0 && (purchaserStateCache?.requests?.length > 0 || lastKnownGoodPurchaserState?.requests?.length > 0)) {
             rows = purchaserStateCache?.requests || lastKnownGoodPurchaserState?.requests || [];
           }
-          return rows.map(r => ({
-            ...r,
-            orderDate: sanitizeDateStr(r.orderDate),
-            vendorEdd: sanitizeDateStr(r.vendorEdd),
-            vendorReadyDate: sanitizeDateStr(r.vendorReadyDate),
-            requiredByDate: sanitizeDateStr(r.requiredByDate),
-            actualReceivedDate: sanitizeDateStr(r.actualReceivedDate),
-            orderQuantity: r.orderQuantity ? parseInt(r.orderQuantity) : 0,
-            priceRmb: r.priceRmb ? parseFloat(r.priceRmb) : "",
-            totalRmb: r.totalRmb ? parseFloat(r.totalRmb) : "",
-            advancePayment: r.advancePayment ? parseFloat(r.advancePayment) : "",
-            balancePayment: r.balancePayment ? parseFloat(r.balancePayment) : "",
-            vendorEddHistory: safeJsonParse(r.vendorEddHistory, [])
-          }));
+          return rows.map(formatRequestForResponse);
         } finally {
           inFlightRequestsPromise = null;
         }
@@ -3668,13 +3771,13 @@ app.get("/api/requests", async (req, res) => {
     } catch (err) {
       console.error("GET /api/requests error:", err.message);
       if (purchaserStateCache?.requests?.length > 0 || lastKnownGoodPurchaserState?.requests?.length > 0) {
-        return res.json(purchaserStateCache?.requests || lastKnownGoodPurchaserState?.requests || []);
+        return res.json((purchaserStateCache?.requests || lastKnownGoodPurchaserState?.requests || []).map(formatRequestForResponse));
       }
       res.status(500).json({ error: "Failed to fetch requests." });
     }
   } else {
     const data = readLocalJson();
-    res.json(data.requests || []);
+    res.json((data.requests || []).map(formatRequestForResponse));
   }
 });
 
@@ -6965,14 +7068,14 @@ app.get("/api/items", async (req, res) => {
   if (isPg) {
     try {
       const result = await pool.query(`SELECT * FROM items ORDER BY LENGTH("id") ASC, "id" ASC`);
-      res.json(result.rows || []);
+      res.json((result.rows || []).map(formatItemForResponse));
     } catch (err) {
       console.error("GET /api/items error:", err.message);
       res.status(500).json({ error: "Failed to fetch items." });
     }
   } else {
     const data = readLocalJson();
-    res.json(data.items || []);
+    res.json((data.items || []).map(formatItemForResponse));
   }
 });
 
