@@ -2605,6 +2605,8 @@ const cancelRequests = async (requestIds, reason = "") => {
     });
 
     const allBatch = [...updatedItems, ...newRemainingItems];
+    const prevCargosSnapshot = cargos;
+    const prevRequestsSnapshot = requests;
 
     // ⚡ INSTANT OPTIMISTIC STATE UPDATE: Immediately attach cargoId to requests in memory
     setCargos(prev => [newCargo, ...prev]);
@@ -2628,11 +2630,18 @@ const cancelRequests = async (requestIds, reason = "") => {
       const res = await postData("/api/cargos", { ...newCargo, bundledRequests: allBatch });
       if (!res || res.success === false) {
         console.warn("Notice: Atomic /api/cargos with bundled requests returned non-success, attempting fallback batch upsert:", res?.error);
-        await postData("/api/requests/batch", allBatch);
+        const batchRes = await postData("/api/requests/batch", allBatch);
+        if (!batchRes || batchRes.success === false) {
+          setCargos(prevCargosSnapshot);
+          setRequests(prevRequestsSnapshot);
+          throw new Error(res?.error || batchRes?.error || "Failed to save cargo to server");
+        }
       }
     } catch (err) {
       console.error("Error saving cargo and bundled requests to server:", err);
-      await postData("/api/requests/batch", allBatch).catch(() => {});
+      setCargos(prevCargosSnapshot);
+      setRequests(prevRequestsSnapshot);
+      throw err;
     }
 
     const otherPurchaserNames = Array.from(new Set(

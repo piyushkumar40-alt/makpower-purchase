@@ -99,10 +99,10 @@ export function SaveStatusProvider({ children }) {
         setSaveStatus("error");
         setSaveError(errorMsg || "An error occurred while saving to database.");
 
-        // Auto-revert transient error to "saved" after 6 seconds so the header doesn't stay permanently stuck
+        // Clear transient error state after 6 seconds so the header doesn't stay permanently stuck in red
         if (autoClearErrorTimeoutRef.current) clearTimeout(autoClearErrorTimeoutRef.current);
         autoClearErrorTimeoutRef.current = setTimeout(() => {
-          setSaveStatus(prev => (prev === "error" ? (lastSavedTimeRef.current ? "saved" : "idle") : prev));
+          setSaveStatus(prev => (prev === "error" ? "idle" : prev));
           setSaveError(null);
         }, 6000);
       }

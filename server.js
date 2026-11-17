@@ -4050,7 +4050,11 @@ function buildRequestUpsert(r) {
       "totalRmb" = EXCLUDED."totalRmb",
       "advancePayment" = EXCLUDED."advancePayment",
       "balancePayment" = EXCLUDED."balancePayment",
-      "photo" = EXCLUDED."photo",
+      "photo" = CASE 
+        WHEN EXCLUDED."photo" LIKE '/api/requests/%' THEN requests."photo"
+        WHEN EXCLUDED."photo" IS NOT NULL AND EXCLUDED."photo" <> '' THEN EXCLUDED."photo"
+        ELSE requests."photo"
+      END,
       "vendorEdd" = EXCLUDED."vendorEdd",
       "cargoId" = EXCLUDED."cargoId",
       "isMaterialRec" = EXCLUDED."isMaterialRec",
@@ -4339,21 +4343,29 @@ app.post("/api/requests/batch", async (req, res) => {
 
   isOrderDataDirty = true;
   if (isPg) {
+    let client;
     try {
-      await pool.query("BEGIN");
+      client = await pool.connect();
+      await client.query("BEGIN");
       for (const r of reqs) {
         if (!r || !r.id) continue;
         const { query, values } = buildRequestUpsert(r);
-        await pool.query(query, values);
+        await client.query(query, values);
       }
-      await pool.query("COMMIT");
+      await client.query("COMMIT");
       invalidateStateCache();
       markAppActivity();
       res.json({ success: true });
     } catch (err) {
-      await pool.query("ROLLBACK");
+      if (client) {
+        try {
+          await client.query("ROLLBACK");
+        } catch (rbErr) {}
+      }
       console.error("POST /api/requests/batch error:", err.message);
       res.status(500).json({ success: false, error: "Failed to batch upsert requests: " + err.message });
+    } finally {
+      if (client) client.release();
     }
   } else {
     const data = readLocalJson();
@@ -4455,8 +4467,10 @@ app.post("/api/cargos", async (req, res) => {
   const bundledRequests = Array.isArray(req.body.bundledRequests) ? req.body.bundledRequests : (Array.isArray(c.bundledRequests) ? c.bundledRequests : null);
   isOrderDataDirty = true;
   if (isPg) {
+    let client;
     try {
-      await pool.query("BEGIN");
+      client = await pool.connect();
+      await client.query("BEGIN");
       const query = `
         INSERT INTO cargos (
           "id", "vendorId", "cargoOrderDate", "cargoDetail", "cargoPrice", "cargoPriceUom",
@@ -4505,24 +4519,24 @@ app.post("/api/cargos", async (req, res) => {
       const effectiveTotal = getEffectiveTotalCargoPrice(c);
       const values = [
         c.id, c.vendorId, c.cargoOrderDate, c.cargoDetail,
-        c.cargoPrice === "" || c.cargoPrice == null ? null : parseFloat(c.cargoPrice), c.cargoPriceUom || "",
-        c.cbmPackingList === "" || c.cbmPackingList == null ? null : parseFloat(c.cbmPackingList),
-        effectiveTotal === "" || effectiveTotal == null ? null : parseFloat(effectiveTotal),
+        safeNum(c.cargoPrice), c.cargoPriceUom || "",
+        safeNum(c.cbmPackingList),
+        safeNum(effectiveTotal),
         c.modeOfTransport || "", c.cargoShippingDate || "", c.cargoEta || "",
         c.packingListFile || "", c.packingListData || "", c.invoiceFile || "", c.invoiceData || "", c.cargoReceiptFile || "", c.cargoReceiptData || "", c.isMaterialRec || "No", c.receivedDate || "", c.currency || "RMB",
         Array.isArray(c.cargoEtaHistory) ? JSON.stringify(c.cargoEtaHistory) : (c.cargoEtaHistory || "[]"),
         c.billUploadedAt || "", c.billUploadedBy || "", c.billStatus || "", c.billVerifiedAt || "", c.billVerifiedBy || "", c.billVerificationNotes || "",
-        c.totalCartons != null && c.totalCartons !== "" ? parseInt(c.totalCartons) : null,
+        safeInt(c.totalCartons),
         c.cargoCompanyId || ""
       ];
-      await pool.query(query, values);
+      await client.query(query, values);
 
       // Atomic Bundled Requests Upsert: guarantees orders and cargo shipment advance simultaneously
       if (bundledRequests && bundledRequests.length > 0) {
         for (const reqItem of bundledRequests) {
           if (!reqItem || !reqItem.id) continue;
           const { query: rQuery, values: rValues } = buildRequestUpsert(reqItem);
-          await pool.query(rQuery, rValues);
+          await client.query(rQuery, rValues);
         }
       }
 
@@ -4537,7 +4551,7 @@ app.post("/api/cargos", async (req, res) => {
             reqSyncVals.push(c.receivedDate);
           }
           reqSyncVals.push(c.id);
-          await pool.query(
+          await client.query(
             `UPDATE requests SET ${reqSyncUpdates.join(', ')} WHERE "cargoId" = $${syncIdx}`,
             reqSyncVals
           );
@@ -4546,14 +4560,20 @@ app.post("/api/cargos", async (req, res) => {
         console.warn("Notice: cargo request sync check in POST /api/cargos:", syncErr.message);
       }
 
-      await pool.query("COMMIT");
+      await client.query("COMMIT");
       invalidateStateCache();
       markAppActivity();
       res.json({ success: true });
     } catch (err) {
-      await pool.query("ROLLBACK");
+      if (client) {
+        try {
+          await client.query("ROLLBACK");
+        } catch (rbErr) {}
+      }
       console.error("POST /api/cargos error:", err.message);
       res.status(500).json({ success: false, error: "Failed to upsert cargo: " + err.message });
+    } finally {
+      if (client) client.release();
     }
   } else {
     const data = readLocalJson();
@@ -8528,15 +8548,17 @@ app.post("/api/backup/import", async (req, res) => {
   }
 
   if (isPg) {
+    let client;
     try {
-      await pool.query("BEGIN");
+      client = await pool.connect();
+      await client.query("BEGIN");
 
       // Truncate tables
-      await pool.query("TRUNCATE TABLE users, vendors, cargo_companies, cargos, requests");
+      await client.query("TRUNCATE TABLE users, vendors, cargo_companies, cargos, requests");
 
       // Re-seed Users
       for (const u of data.users) {
-        await pool.query(
+        await client.query(
           `INSERT INTO users ("id", "name", "email", "password", "role", "status") VALUES ($1, $2, $3, $4, $5, $6)`,
           [u.id, u.name, u.email, u.password, u.role, u.status]
         );
@@ -8544,7 +8566,7 @@ app.post("/api/backup/import", async (req, res) => {
 
       // Re-seed Vendors
       for (const v of data.vendors) {
-        await pool.query(
+        await client.query(
           `INSERT INTO vendors ("id", "name", "location", "phone", "history", "status", "purchaserIds") VALUES ($1, $2, $3, $4, $5, $6, $7)`,
           [v.id, v.name, v.location, v.phone, v.history, v.status, JSON.stringify(v.purchaserIds)]
         );
@@ -8553,7 +8575,7 @@ app.post("/api/backup/import", async (req, res) => {
       // Re-seed Cargo Companies
       if (data.cargoCompanies) {
         for (const cc of data.cargoCompanies) {
-          await pool.query(
+          await client.query(
             `INSERT INTO cargo_companies ("id", "name", "location", "phone", "history", "status") VALUES ($1, $2, $3, $4, $5, $6)`,
             [cc.id, cc.name, cc.location, cc.phone, cc.history, cc.status]
           );
@@ -8562,7 +8584,7 @@ app.post("/api/backup/import", async (req, res) => {
 
       // Re-seed Cargos
       for (const c of data.cargos) {
-        await pool.query(
+        await client.query(
           `INSERT INTO cargos (
             "id", "vendorId", "cargoOrderDate", "cargoDetail", "cargoPrice", "cargoPriceUom",
             "cbmPackingList", "totalCargoPrice", "modeOfTransport", "cargoShippingDate", "cargoEta",
@@ -8578,7 +8600,7 @@ app.post("/api/backup/import", async (req, res) => {
 
       // Re-seed Requests
       for (const r of data.requests) {
-        await pool.query(
+        await client.query(
           `INSERT INTO requests (
             "id", "purchaserId", "vendorId", "orderDate", "type", "model", "orderQuantity",
             "priceRmb", "totalRmb", "advancePayment", "balancePayment", "photo", "vendorEdd",
@@ -8597,12 +8619,18 @@ app.post("/api/backup/import", async (req, res) => {
         );
       }
 
-      await pool.query("COMMIT");
+      await client.query("COMMIT");
       res.json({ success: true });
     } catch (err) {
-      await pool.query("ROLLBACK");
+      if (client) {
+        try {
+          await client.query("ROLLBACK");
+        } catch (rbErr) {}
+      }
       console.error("POST /api/backup/import error:", err.message);
       res.status(500).json({ error: "Failed to import database backup." });
+    } finally {
+      if (client) client.release();
     }
   } else {
     writeLocalJson(data);
