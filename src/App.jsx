@@ -820,6 +820,12 @@ export default function App() {
       cleanRole.includes("acct") || 
       cleanDesig.includes("mark purchase") || 
       activeView === "rahul";
+    const isNitin = cleanRole === "nitin" || 
+      cleanId === "u-nitin" || 
+      cleanName.includes("nitin") || 
+      cleanDesig.includes("packing") || 
+      cleanRole.includes("packing") || 
+      activeView === "nitin";
     const isAccountsOrAdmin = isRahul || cleanRole === "superadmin" || cleanRole === "owner" || cleanRole === "admin";
 
     const isOrderCancelled = (r) => {
@@ -828,8 +834,8 @@ export default function App() {
       return st === "cancelled" || Boolean(r.cancelledAt) || (Boolean(r.cancellationReason) && st !== "active");
     };
 
-    // 1. Accounts Workboard Grouped Notifications for Rahul & Admin
-    if (isAccountsOrAdmin) {
+    // 1. Accounts & Operations Workboard Grouped Notifications for Rahul, Nitin & Admin
+    if (isAccountsOrAdmin || isNitin) {
       // 1a. Cancelled Orders / Requisitions Notification (Highest Priority Alert)
       // Group by cancellation date + cancelledByName
       const cancelledRequests = (requests || []).filter(r => isOrderCancelled(r));
@@ -887,18 +893,21 @@ export default function App() {
           title: totalOrders === 1 
             ? `🚫 Order Cancelled: ${models[0] || "Item"} (${totalPcs} Pcs)` 
             : `🚫 Orders Cancelled: ${totalOrders} Orders (${totalPcs} Pcs)`,
-          description: `${totalOrders} order${totalOrders > 1 ? "s" : ""} (${modelsSummary}) cancelled by ${grp.cancelledByName}${reasonText}. Review ledger & accounts.`,
+          description: `${totalOrders} order${totalOrders > 1 ? "s" : ""} (${modelsSummary}) cancelled by ${grp.cancelledByName}${reasonText}. ${isNitin ? "Review packing status." : "Review ledger & accounts."}`,
           time: grp.latestDisplayTime,
           timestamp: grp.latestTime || Date.now(),
           read: readSet.has(notifId),
           type: "order_cancelled",
-          targetView: "rahul",
+          targetView: isNitin ? "nitin" : "rahul",
           targetStage: "cancelled",
           targetQuickStatus: "cancelled",
           targetStep: "step1",
           data: grp.items
         });
       });
+    }
+
+    if (isAccountsOrAdmin) {
 
       // 1b. Unmarked Priced Purchases awaiting Ledger Entry (Grouped by Vendor + Order Date)
       const pendingLedgerRequests = (requests || []).filter(r => r && !isOrderCancelled(r) && r.priceRmb && r.purchaseUpdated !== "Yes");
@@ -1186,11 +1195,69 @@ export default function App() {
       });
     }
 
-    // 3. Dedicated Vendor Assignment Notifications (For Accounts, Admins, and Purchasers)
+    // 2-nitin. Nitin Packing Workboard Grouped Notifications
+    if (isNitin) {
+      const pendingPackingRequests = (requests || []).filter(r => r && !isOrderCancelled(r) && r.packingOrderedByNitin !== "Yes");
+      const packingGroups = {};
+      pendingPackingRequests.forEach(r => {
+        const vId = r.vendorId || "unassigned";
+        const oDate = r.orderDate || "unknown";
+        const groupKey = `${vId}_${oDate}`;
+        if (!packingGroups[groupKey]) {
+          const vName = (vendors || []).find(v => v.id === r.vendorId)?.name || "Assigned Vendor";
+          packingGroups[groupKey] = {
+            vendorId: vId,
+            vendorName: vName,
+            orderDate: oDate,
+            items: [],
+            latestTime: 0
+          };
+        }
+        packingGroups[groupKey].items.push(r);
+        const itemTs = r.timestamp ? new Date(r.timestamp).getTime() : (r.orderDate ? new Date(r.orderDate).getTime() : 0);
+        if (itemTs >= packingGroups[groupKey].latestTime) {
+          packingGroups[groupKey].latestTime = itemTs;
+        }
+      });
+
+      Object.values(packingGroups).forEach(grp => {
+        const totalOrders = grp.items.length;
+        const totalPcs = grp.items.reduce((s, it) => s + (Number(it.vendorOrderQuantity || it.orderQuantity) || 1), 0);
+        const models = Array.from(new Set(grp.items.map(it => it.model).filter(Boolean)));
+        const modelsSummary = models.slice(0, 3).join(", ") + (models.length > 3 ? ` +${models.length - 3} more` : "");
+        const notifId = `notif_grp_packing_${grp.vendorId}_${grp.orderDate}`;
+
+        let displayTime = grp.orderDate;
+        if (grp.latestTime > 0) {
+          try {
+            const d = new Date(grp.latestTime);
+            displayTime = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) + " " + d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+          } catch(e) {}
+        }
+
+        list.push({
+          id: notifId,
+          title: `📦 Packing Order Needed: ${grp.vendorName} (${grp.orderDate})`,
+          description: `${totalOrders} orders (${totalPcs} Pcs: ${modelsSummary}) awaiting outer packing confirmation.`,
+          time: displayTime,
+          timestamp: grp.latestTime || (grp.orderDate ? new Date(grp.orderDate).getTime() : 0),
+          read: readSet.has(notifId),
+          type: "packing_pending",
+          targetView: "nitin",
+          targetStage: "pending",
+          targetQuickStatus: "pending",
+          targetStep: "step1",
+          data: grp.items
+        });
+      });
+    }
+
+    // 3. Dedicated Vendor Assignment Notifications (For Accounts, Admins, Nitin, and Purchasers)
     // Ensures entering a vendor creates an enduring notification that DOES NOT vanish when purchase is marked or state changes!
     const vendorAssignedRequests = (requests || []).filter(r => {
       if (!r || isOrderCancelled(r) || !r.vendorId) return false;
       const isRelevant = isAccountsOrAdmin || 
+        isNitin ||
         cleanRole === "purchaser" || 
         cleanDesig.includes("purchas") ||
         isRequestForUser(r, currentUser, users) || 
@@ -1268,8 +1335,8 @@ export default function App() {
         timestamp: grp.latestTime || Date.now(),
         read: readSet.has(notifId),
         type: "vendor_assigned",
-        targetView: isAccountsOrAdmin ? "rahul" : "dashboard",
-        targetStage: "pending_ledger",
+        targetView: isAccountsOrAdmin ? "rahul" : (isNitin ? "nitin" : "dashboard"),
+        targetStage: isNitin ? "pending" : "pending_ledger",
         targetVendorId: grp.vendorId,
         data: grp.items
       });
@@ -4291,9 +4358,11 @@ const cancelRequests = async (requestIds, reason = "") => {
                             if (n.targetCargoId) {
                               setDirectTargetCargoId(n.targetCargoId);
                             }
-                            if (n.targetView === "rahul" && n.targetStage) {
-                              try { localStorage.setItem("makpower_rahul_stage_filter", n.targetStage); } catch(e) {}
-                              window.dispatchEvent(new CustomEvent("makpower_rahul_navigate", { 
+                            if ((n.targetView === "rahul" || n.targetView === "nitin") && n.targetStage) {
+                              const prefix = n.targetView === "nitin" ? "makpower_nitin_" : "makpower_rahul_";
+                              const eventName = n.targetView === "nitin" ? "makpower_nitin_navigate" : "makpower_rahul_navigate";
+                              try { localStorage.setItem(`${prefix}stage_filter`, n.targetStage); } catch(e) {}
+                              window.dispatchEvent(new CustomEvent(eventName, { 
                                 detail: { stage: n.targetStage, quickStatus: n.targetQuickStatus || "all", step: n.targetStep || "step1" } 
                               }));
                             }
@@ -4772,12 +4841,24 @@ const cancelRequests = async (requestIds, reason = "") => {
             requests={requests}
             vendors={vendors}
             cargos={cargos}
+            cargoCompanies={cargoCompanies}
+            users={users}
             items={items}
             purchasers={officialPurchasers}
             onBatchUpdateRequests={batchUpdateRequests}
+            onUpdateCargo={updateCargo}
+            onDeleteCargo={deleteCargo}
+            onPurgeEmptyCargos={purgeEmptyCargos}
+            onCancelRequests={cancelRequests}
+            onReactivateRequests={reactivateRequests}
             onLogout={handleLogout}
+            onOpenProfile={() => setShowProfileModal(true)}
+            onRefreshData={() => handleRefreshFullData(false)}
+            onDirectPull={handleDirectPull}
             loading={loading}
             initialLoadComplete={initialLoadComplete}
+            isMasterDataSilentlyLoading={isMasterDataSilentlyLoading}
+            initialTargetCargoId={directTargetCargoId}
           />
         )}
 

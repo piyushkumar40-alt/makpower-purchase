@@ -4,7 +4,9 @@ import { RefreshCw, Shield, Database, Truck, FileSpreadsheet, CheckCircle2, Arro
 export default function RahulDashboardLoading({ 
   currentUser, 
   onDirectPull, 
-  onLogout 
+  onLogout,
+  panelTitle,
+  userName
 }) {
   const [elapsed, setElapsed] = useState(0);
   const [activeStep, setActiveStep] = useState(1);
@@ -70,10 +72,10 @@ export default function RahulDashboardLoading({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px", flexWrap: "wrap", gap: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <span style={{ fontSize: "0.8rem", padding: "4px 10px", borderRadius: "6px", background: "rgba(56, 189, 248, 0.12)", color: "#38bdf8", fontWeight: 700, border: "1px solid rgba(56, 189, 248, 0.25)" }}>
-              Accounts & Purchase Marking Panel
+              {panelTitle || "Accounts & Purchase Marking Panel"}
             </span>
             <span style={{ fontSize: "0.8rem", padding: "4px 10px", borderRadius: "6px", background: "rgba(16, 185, 129, 0.12)", color: "#10b981", fontWeight: 700, border: "1px solid rgba(16, 185, 129, 0.25)" }}>
-              {currentUser?.name || "Mr. Rahul Mann"}
+              {userName || currentUser?.name || "Mr. Rahul Mann"}
             </span>
           </div>
           {onLogout && (
@@ -107,7 +109,7 @@ export default function RahulDashboardLoading({
           </div>
 
           <h2 style={{ fontSize: "1.45rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "6px" }}>
-            Synchronizing Accounts & Commercial Ledgers
+            {panelTitle ? `Synchronizing ${panelTitle}` : "Synchronizing Accounts & Commercial Ledgers"}
           </h2>
           <p style={{ color: "var(--text-muted)", fontSize: "0.88rem", maxWidth: "480px", margin: "0 auto" }}>
             Connecting to high-speed purchase database, loading requisitions, cargo shipments, and preparing ledger records.

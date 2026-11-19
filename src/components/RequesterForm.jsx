@@ -347,14 +347,134 @@ export default function RequesterForm({
 
   const selectCategoryOption = (rowId, categoryName) => {
     const cleanedCat = cleanCategoryName(categoryName);
-    const isRmCat = cleanedCat.toUpperCase() === "RM" || cleanedCat.toUpperCase().includes("RAW MATERIAL");
+    const itemsInCat = combinedItems.filter(i => cleanCategoryName(i.category || "").toLowerCase() === cleanedCat.toLowerCase());
+    let inferredType = null;
+    if (itemsInCat.length > 0) {
+      const rmCount = itemsInCat.filter(i => (i.itemType || "RM").toUpperCase() === "RM").length;
+      const fgCount = itemsInCat.filter(i => (i.itemType || "FG").toUpperCase() === "FG").length;
+      if (rmCount > fgCount) inferredType = "RM";
+      else if (fgCount > rmCount) inferredType = "FG";
+    }
+    const isRmCat = inferredType === "RM" || cleanedCat.toUpperCase() === "RM" || cleanedCat.toUpperCase().includes("RAW MATERIAL") || cleanedCat.toUpperCase().includes("POUCH");
     setRows(prev => prev.map(r => r.id === rowId ? {
       ...r,
       category: cleanedCat,
-      itemType: isRmCat ? "RM" : r.itemType
+      itemType: isRmCat ? "RM" : (inferredType || r.itemType)
     } : r));
     setActiveDropdown(null);
     setHighlightedIndex(0);
+  };
+
+  const getFilteredCategories = (row) => {
+    if (!row) return catalogCategories;
+    const query = (row.category || "").trim().toLowerCase();
+    const rowItemType = (row.itemType || "").toUpperCase();
+
+    if (query) {
+      return catalogCategories.filter(cat => cat.toLowerCase().includes(query));
+    }
+
+    const itemsForType = combinedItems.filter(i => 
+      !rowItemType || !i.itemType || i.itemType.toUpperCase() === rowItemType
+    );
+    const catsForType = Array.from(
+      new Set(itemsForType.map(i => cleanCategoryName(i.category || "")).filter(Boolean))
+    ).sort();
+    return catsForType.length > 0 ? catsForType : catalogCategories;
+  };
+
+  const getFilteredModels = (row) => {
+    if (!row) return [];
+    const rawModel = row.model || "";
+    const cleanQuery = rawModel.trim().toLowerCase();
+    const normalizedQuery = cleanQuery.replace(/\s+/g, " ");
+    const queryTokens = normalizedQuery.split(/\s+/).filter(Boolean);
+    const queryNoSpace = cleanQuery.replace(/[\s\-_]/g, "");
+    const rowItemType = (row.itemType || "").toUpperCase();
+    const catQuery = (row.category || "").trim().toLowerCase();
+
+    if (queryTokens.length > 0) {
+      // Search across ALL combined items in the catalog (both FG and RM)!
+      const matches = combinedItems.filter(i => {
+        if (!i || !i.name) return false;
+        const nameLower = i.name.toLowerCase();
+        const nameNoSpace = nameLower.replace(/[\s\-_]/g, "");
+        const idLower = String(i.id || "").toLowerCase();
+        const catLower = (i.category || "").toLowerCase();
+
+        // Direct or token-based matching:
+        // Every token in the query must match the item's name, id, or category
+        const matchesAllTokens = queryTokens.every(tok => {
+          const tokClean = tok.replace(/[\s\-_]/g, "");
+          return nameLower.includes(tok) || 
+                 (tokClean && nameNoSpace.includes(tokClean)) || 
+                 idLower.includes(tok) ||
+                 catLower.includes(tok);
+        });
+
+        return (
+          matchesAllTokens ||
+          nameLower.includes(normalizedQuery) ||
+          (queryNoSpace && nameNoSpace.includes(queryNoSpace)) ||
+          idLower === cleanQuery
+        );
+      });
+
+      // Sort matches intelligently:
+      // 1. Exact match first
+      // 2. Starts with clean query
+      // 3. Current itemType match (if row has itemType)
+      // 4. Current category match
+      // 5. Alphabetical
+      matches.sort((a, b) => {
+        const aName = a.name.toLowerCase();
+        const bName = b.name.toLowerCase();
+        const aExact = aName === cleanQuery;
+        const bExact = bName === cleanQuery;
+        if (aExact && !bExact) return -1;
+        if (!aExact && bExact) return 1;
+
+        const aStarts = aName.startsWith(cleanQuery);
+        const bStarts = bName.startsWith(cleanQuery);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+
+        if (rowItemType) {
+          const aTypeMatch = (a.itemType || "FG").toUpperCase() === rowItemType;
+          const bTypeMatch = (b.itemType || "FG").toUpperCase() === rowItemType;
+          if (aTypeMatch && !bTypeMatch) return -1;
+          if (!aTypeMatch && bTypeMatch) return 1;
+        }
+
+        if (catQuery) {
+          const aCatMatch = (a.category || "").toLowerCase().includes(catQuery);
+          const bCatMatch = (b.category || "").toLowerCase().includes(catQuery);
+          if (aCatMatch && !bCatMatch) return -1;
+          if (!aCatMatch && bCatMatch) return 1;
+        }
+
+        return aName.localeCompare(bName);
+      });
+
+      return matches;
+    }
+
+    // When query is empty: filter by row's selected itemType and category
+    let candidateItems = combinedItems;
+    if (rowItemType) {
+      const forType = combinedItems.filter(i => (i.itemType || "FG").toUpperCase() === rowItemType);
+      if (forType.length > 0) candidateItems = forType;
+    }
+    if (catQuery) {
+      const inCat = candidateItems.filter(i =>
+        i.category && (
+          i.category.toLowerCase().includes(catQuery) ||
+          catQuery.includes(i.category.toLowerCase())
+        )
+      );
+      if (inCat.length > 0) candidateItems = inCat;
+    }
+    return candidateItems;
   };
 
   const selectModelOption = (rowId, item) => {
@@ -624,17 +744,14 @@ export default function RequesterForm({
     }
   }, [currentUser, resolvedPurchaserId, defaultPurchaserId]);
 
-  // Strict Validation: Item Model MUST match a valid model in combinedItems (if items exist in system) and match row's itemType (FG/RM)
+  // Strict Validation: Item Model MUST match a valid model in combinedItems (if items exist in system)
   const isValidModel = (modelName, rowItemType = null) => {
     if (!modelName) return false;
     const cleanStr = String(modelName).replace(/^["'\s]+|["'\s]+$/g, "").replace(/[\r\n\t]+/g, " ").trim();
     if (!cleanStr) return false;
     if (combinedItems.length > 0) {
-      const match = combinedItems.find(i => i.name.trim().toLowerCase() === cleanStr.toLowerCase());
+      const match = combinedItems.find(i => (i.name || "").trim().toLowerCase() === cleanStr.toLowerCase());
       if (!match) return false;
-      if (rowItemType && match.itemType) {
-        return match.itemType.toUpperCase() === rowItemType.toUpperCase();
-      }
       return true;
     }
     return true;
@@ -1287,20 +1404,21 @@ export default function RequesterForm({
                         handleCellSelect(index, "category");
                         openDropdown(e, row.id, "category");
                       }}
-                      onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
+                      onBlur={() => {
+                        setTimeout(() => setActiveDropdown(null), 200);
+                        const trimmed = (row.category || "").trim();
+                        if (trimmed !== row.category) {
+                          updateCell(row.id, "category", trimmed);
+                        }
+                      }}
                       onChange={e => {
-                        updateCell(row.id, "category", e.target.value);
+                        updateCell(row.id, "category", e.target.value.replace(/\s{2,}/g, " "));
                         openDropdown(e, row.id, "category");
                       }}
                       onPaste={e => handleCellPaste(e, index, "category")}
                       onKeyDown={e => {
                         if (activeDropdown?.rowId === row.id && activeDropdown?.field === "category") {
-                          const query = (row.category || "").trim().toLowerCase();
-                          const rowItemType = (row.itemType || "FG").toUpperCase();
-                          const itemsForType = combinedItems.filter(i => !i.itemType || i.itemType.toUpperCase() === rowItemType);
-                          const catsForType = Array.from(new Set(itemsForType.map(i => i.category && i.category.trim()).filter(Boolean))).sort();
-                          const candidateCats = catsForType.length > 0 ? catsForType : catalogCategories;
-                          const filteredCats = candidateCats.filter(cat => !query || cat.toLowerCase().includes(query));
+                          const filteredCats = getFilteredCategories(row);
 
                           if (e.key === "ArrowDown") {
                             e.preventDefault();
@@ -1321,20 +1439,7 @@ export default function RequesterForm({
                     />
                     {activeDropdown?.rowId === row.id && activeDropdown?.field === "category" && (() => {
                       const query = (row.category || "").trim().toLowerCase();
-                      const rowItemType = (row.itemType || "FG").toUpperCase();
-
-                      // Filter items matching row's selected Item Type (FG or RM)
-                      const itemsForType = combinedItems.filter(i => 
-                        !i.itemType || i.itemType.toUpperCase() === rowItemType
-                      );
-
-                      // Get unique categories for this Item Type
-                      const catsForType = Array.from(
-                        new Set(itemsForType.map(i => cleanCategoryName(i.category || "")).filter(Boolean))
-                      ).sort();
-
-                      const candidateCats = catsForType.length > 0 ? catsForType : catalogCategories;
-                      const filteredCats = candidateCats.filter(cat => !query || cat.toLowerCase().includes(query));
+                      const filteredCats = getFilteredCategories(row);
 
                       return (
                         <div 
@@ -1376,7 +1481,7 @@ export default function RequesterForm({
                             ))
                           ) : (
                             <div style={{ padding: "10px 12px", fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic" }}>
-                              {query ? `Custom category "${row.category}"` : `No saved ${row.itemType || "FG"} categories`}
+                              {query ? `Custom category "${row.category}"` : `No saved categories`}
                             </div>
                           )}
                         </div>
@@ -1414,36 +1519,45 @@ export default function RequesterForm({
                         handleCellSelect(index, "model");
                         openDropdown(e, row.id, "model");
                       }}
-                      onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
+                      onBlur={() => {
+                        setTimeout(() => setActiveDropdown(null), 200);
+                        const trimmed = (row.model || "").trim();
+                        if (trimmed !== row.model) {
+                          updateCell(row.id, "model", trimmed);
+                        }
+                        if (trimmed) {
+                          const matchedItem = combinedItems.find(i => (i.name || "").trim().toLowerCase() === trimmed.toLowerCase());
+                          if (matchedItem) {
+                            selectModelOption(row.id, matchedItem);
+                          }
+                        }
+                      }}
                       onChange={e => {
-                        const rawVal = e.target.value;
-                        const cleanVal = rawVal.replace(/^["'\s]+|["'\s]+$/g, "").replace(/[\r\n\t]+/g, " ").trim();
+                        const rawVal = e.target.value.replace(/\s{2,}/g, " ");
+                        updateCell(row.id, "model", rawVal);
                         openDropdown(e, row.id, "model");
-                        const matchedItem = combinedItems.find(i => 
-                          i.name.trim().toLowerCase() === (cleanVal || rawVal.trim()).toLowerCase()
-                        );
-                        if (matchedItem) {
-                          selectModelOption(row.id, matchedItem);
-                        } else {
-                          updateCell(row.id, "model", rawVal);
+
+                        // Auto-sync category and itemType if trimmed model matches a catalog item, keeping dropdown open
+                        const cleanVal = rawVal.trim().toLowerCase();
+                        if (cleanVal) {
+                          const matchedItem = combinedItems.find(i => (i.name || "").trim().toLowerCase() === cleanVal);
+                          if (matchedItem) {
+                            const itemCat = cleanCategoryName(matchedItem.category || row.category);
+                            const isRmItem = matchedItem.itemType === "RM" || (itemCat && itemCat.toUpperCase() === "RM") || matchedItem.name.toUpperCase().includes(" (RM)") || matchedItem.name.toUpperCase().startsWith("RM ");
+                            setRows(prev => prev.map(r => r.id === row.id ? {
+                              ...r,
+                              category: itemCat || r.category,
+                              itemType: isRmItem ? "RM" : (matchedItem.itemType || r.itemType || "FG"),
+                              type: matchedItem.type || r.type,
+                              itemNature: matchedItem.itemNature || r.itemNature
+                            } : r));
+                          }
                         }
                       }}
                       onPaste={e => handleCellPaste(e, index, "model")}
                       onKeyDown={e => {
                         if (activeDropdown?.rowId === row.id && activeDropdown?.field === "model") {
-                          const modelQuery = (row.model || "").trim().toLowerCase();
-                          const catQuery = (row.category || "").trim().toLowerCase();
-                          const rowItemType = (row.itemType || "FG").toUpperCase();
-
-                          let candidateItems = combinedItems.filter(i =>
-                            !i.itemType || i.itemType.toUpperCase() === rowItemType
-                          );
-                          if (candidateItems.length === 0) candidateItems = combinedItems;
-                          if (catQuery) {
-                            const inCat = candidateItems.filter(i => i.category && (i.category.toLowerCase().includes(catQuery) || catQuery.includes(i.category.toLowerCase())));
-                            if (inCat.length > 0) candidateItems = inCat;
-                          }
-                          const filteredModels = candidateItems.filter(i => !modelQuery || i.name.toLowerCase().includes(modelQuery));
+                          const filteredModels = getFilteredModels(row);
 
                           if (e.key === "ArrowDown") {
                             e.preventDefault();
@@ -1464,39 +1578,12 @@ export default function RequesterForm({
                     />
                     {row.model && !isValidModel(row.model, row.itemType) && (
                       <div style={{ fontSize: "0.72rem", color: "#ef4444", marginTop: "2px", fontWeight: 600 }}>
-                        Invalid model for {row.itemType || "FG"} (select from dropdown)
+                        Model not in catalog (select from dropdown or create new)
                       </div>
                     )}
                     {activeDropdown?.rowId === row.id && activeDropdown?.field === "model" && (() => {
-                      const modelQuery = (row.model || "").trim().toLowerCase();
-                      const catQuery = (row.category || "").trim().toLowerCase();
-                      const rowItemType = (row.itemType || "FG").toUpperCase();
-
-                      // 1. Filter items by row's selected Item Type (FG or RM)
-                      let candidateItems = combinedItems.filter(i =>
-                        !i.itemType || i.itemType.toUpperCase() === rowItemType
-                      );
-                      if (candidateItems.length === 0) {
-                        candidateItems = combinedItems;
-                      }
-
-                      // 2. Filter items by Category (if specified)
-                      if (catQuery) {
-                        const inCat = candidateItems.filter(i => 
-                          i.category && (
-                            i.category.toLowerCase().includes(catQuery) ||
-                            catQuery.includes(i.category.toLowerCase())
-                          )
-                        );
-                        if (inCat.length > 0) {
-                          candidateItems = inCat;
-                        }
-                      }
-
-                      // 3. Filter items by model name query
-                      const filteredModels = candidateItems.filter(i =>
-                        !modelQuery || i.name.toLowerCase().includes(modelQuery)
-                      );
+                      const filteredModels = getFilteredModels(row);
+                      const modelQuery = (row.model || "").trim();
 
                       return (
                         <div 
@@ -1571,7 +1658,7 @@ export default function RequesterForm({
                             ))
                           ) : (
                             <div style={{ padding: "10px 12px", fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic" }}>
-                              {modelQuery ? `"${row.model}" is not in catalog for ${row.itemType || "FG"}.` : `No ${row.itemType || "FG"} items available`}
+                              {modelQuery ? `"${row.model}" is not in catalog.` : `No items available`}
                             </div>
                           )}
 

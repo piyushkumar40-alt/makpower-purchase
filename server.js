@@ -1188,6 +1188,9 @@ async function setupPgDatabase() {
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "purchaseUpdatedAt" TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "purchaseUpdatedBy" TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "purchaseUpdatedById" TEXT;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "packingOrderedAt" TEXT;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "packingOrderedBy" TEXT;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "packingOrderedById" TEXT;
       UPDATE requests SET "timestamp" = "orderDate" WHERE ("timestamp" IS NULL OR "timestamp" = '') AND "orderDate" IS NOT NULL;
       UPDATE requests SET "vendorEdd" = '20' || SUBSTRING("vendorEdd", 3) WHERE "vendorEdd" LIKE '00%-%' OR "vendorEdd" LIKE '00%/%';
       UPDATE requests SET "orderDate" = '20' || SUBSTRING("orderDate", 3) WHERE "orderDate" LIKE '00%-%' OR "orderDate" LIKE '00%/%';
@@ -1440,8 +1443,9 @@ async function setupPgDatabase() {
             "cargoId", "isMaterialRec", "actualReceivedDate", "notes", "itemNature", "category",
             "requiredByDate", "entryBy", "packingOrderedByNitin", "purchaseUpdated", "status",
             "cancellationReason", "cancelledAt", "cargoAssignedAt",
-            "purchaseUpdatedAt", "purchaseUpdatedBy", "purchaseUpdatedById"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)`,
+            "purchaseUpdatedAt", "purchaseUpdatedBy", "purchaseUpdatedById",
+            "packingOrderedAt", "packingOrderedBy", "packingOrderedById"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)`,
           [
             r.id, r.purchaserId, r.vendorId, r.orderDate, r.type, r.model, r.orderQuantity,
             r.priceRmb || null, r.totalRmb || null, r.advancePayment || null, r.balancePayment || null,
@@ -1449,7 +1453,8 @@ async function setupPgDatabase() {
             r.actualReceivedDate || "", r.notes || "", r.itemNature || "Non Consumables", r.category || "",
             r.requiredByDate || "", r.entryBy || "", r.packingOrderedByNitin || "No", r.purchaseUpdated || "No",
             r.status || "Active", r.cancellationReason || "", r.cancelledAt || "", r.cargoAssignedAt || "",
-            r.purchaseUpdatedAt || "", r.purchaseUpdatedBy || "", r.purchaseUpdatedById || ""
+            r.purchaseUpdatedAt || "", r.purchaseUpdatedBy || "", r.purchaseUpdatedById || "",
+            r.packingOrderedAt || "", r.packingOrderedBy || "", r.packingOrderedById || ""
           ]
         );
       }
@@ -4037,8 +4042,9 @@ function buildRequestUpsert(r) {
       "cancellationReason", "cancelledAt", "cargoAssignedAt",
       "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency", "timestamp", "vendorEddHistory",
       "itemsPerCarton", "totalCartons", "cancelledBy", "cancelledByName",
-      "purchaseUpdatedAt", "purchaseUpdatedBy", "purchaseUpdatedById"
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43)
+      "purchaseUpdatedAt", "purchaseUpdatedBy", "purchaseUpdatedById",
+      "packingOrderedAt", "packingOrderedBy", "packingOrderedById"
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46)
     ON CONFLICT ("id") DO UPDATE SET
       "purchaserId" = EXCLUDED."purchaserId",
       "vendorId" = EXCLUDED."vendorId",
@@ -4085,7 +4091,10 @@ function buildRequestUpsert(r) {
       "cancelledByName" = COALESCE(EXCLUDED."cancelledByName", requests."cancelledByName"),
       "purchaseUpdatedAt" = EXCLUDED."purchaseUpdatedAt",
       "purchaseUpdatedBy" = EXCLUDED."purchaseUpdatedBy",
-      "purchaseUpdatedById" = EXCLUDED."purchaseUpdatedById"
+      "purchaseUpdatedById" = EXCLUDED."purchaseUpdatedById",
+      "packingOrderedAt" = EXCLUDED."packingOrderedAt",
+      "packingOrderedBy" = EXCLUDED."packingOrderedBy",
+      "packingOrderedById" = EXCLUDED."packingOrderedById"
   `;
 
   const parsedItemsPerCarton = safeInt(r.itemsPerCarton);
@@ -4123,7 +4132,10 @@ function buildRequestUpsert(r) {
     r.cancelledByName || "",
     r.purchaseUpdatedAt || "",
     r.purchaseUpdatedBy || "",
-    r.purchaseUpdatedById || ""
+    r.purchaseUpdatedById || "",
+    r.packingOrderedAt || "",
+    r.packingOrderedBy || "",
+    r.packingOrderedById || ""
   ];
 
   return { query, values };

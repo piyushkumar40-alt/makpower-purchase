@@ -69,16 +69,21 @@ export default function RahulDashboard({
   loading = false,
   initialLoadComplete = true,
   isMasterDataSilentlyLoading = false,
-  initialTargetCargoId = null
+  initialTargetCargoId = null,
+  dashboardMode = "rahul"
 }) {
+  const isNitin = dashboardMode === "nitin" || currentUser?.role === "nitin" || currentUser?.id === "u-nitin" || String(currentUser?.name || "").toLowerCase().includes("nitin");
+  const storagePrefix = isNitin ? "makpower_nitin_" : "makpower_rahul_";
+  const navEventName = isNitin ? "makpower_nitin_navigate" : "makpower_rahul_navigate";
+
   const getPurchaserName = (r) => getPurchaserDisplayName(r, purchasers);
 
   const [workflowStep, setWorkflowStep] = useState(() => {
-    return localStorage.getItem("makpower_rahul_step") || "step1";
+    return localStorage.getItem(`${storagePrefix}step`) || "step1";
   });
 
   const [activeTab, setActiveTab] = useState(() => {
-    return localStorage.getItem("makpower_rahul_tab") || "pending";
+    return localStorage.getItem(`${storagePrefix}tab`) || "pending";
   });
 
   const [transitStatusFilter, setTransitStatusFilter] = useState("all");
@@ -102,16 +107,16 @@ export default function RahulDashboard({
   const [step2Search, setStep2Search] = useState("");
 
   useEffect(() => {
-    localStorage.setItem("makpower_rahul_step", workflowStep);
-  }, [workflowStep]);
+    localStorage.setItem(`${storagePrefix}step`, workflowStep);
+  }, [workflowStep, storagePrefix]);
 
   useEffect(() => {
-    localStorage.setItem("makpower_rahul_tab", activeTab);
-  }, [activeTab]);
+    localStorage.setItem(`${storagePrefix}tab`, activeTab);
+  }, [activeTab, storagePrefix]);
 
   // Handle direct navigation events from notifications (e.g. Cancelled orders)
   useEffect(() => {
-    try { localStorage.removeItem("makpower_rahul_stage_filter"); } catch(e) {}
+    try { localStorage.removeItem(`${storagePrefix}stage_filter`); } catch(e) {}
     const handleNav = (e) => {
       if (e.detail?.stage) setFilterStage(e.detail.stage);
       if (e.detail?.quickStatus) setQuickStatus(e.detail.quickStatus);
@@ -127,9 +132,13 @@ export default function RahulDashboard({
         setToDate("");
       }
     };
-    window.addEventListener("makpower_rahul_navigate", handleNav);
-    return () => window.removeEventListener("makpower_rahul_navigate", handleNav);
-  }, []);
+    window.addEventListener(navEventName, handleNav);
+    if (!isNitin) window.addEventListener("makpower_rahul_navigate", handleNav);
+    return () => {
+      window.removeEventListener(navEventName, handleNav);
+      if (!isNitin) window.removeEventListener("makpower_rahul_navigate", handleNav);
+    };
+  }, [navEventName, isNitin, storagePrefix]);
 
   // Inspection modal state
   const [inspectedOrder, setInspectedOrder] = useState(null);
@@ -138,11 +147,11 @@ export default function RahulDashboard({
 
   // Grouped Orders vs Flat Items View Mode (Default is "grouped" for clean readability)
   const [workboardViewMode, setWorkboardViewMode] = useState(() => {
-    return localStorage.getItem("makpower_rahul_view_mode") || "grouped";
+    return localStorage.getItem(`${storagePrefix}view_mode`) || "grouped";
   });
   useEffect(() => {
-    localStorage.setItem("makpower_rahul_view_mode", workboardViewMode);
-  }, [workboardViewMode]);
+    localStorage.setItem(`${storagePrefix}view_mode`, workboardViewMode);
+  }, [workboardViewMode, storagePrefix]);
 
   // Collapsed by default - tracks which group rows are expanded inline
   const [expandedGroupKeys, setExpandedGroupKeys] = useState({});
@@ -184,7 +193,7 @@ export default function RahulDashboard({
   // Multi-Level Filtration States
   const [quickStatus, setQuickStatus] = useState("all"); // "all" | "coming" | "pipeline" | "delivered" | "pending_mark" | "marked" | "cancelled"
   const [filterStage, setFilterStage] = useState(() => {
-    return localStorage.getItem("makpower_rahul_stage_filter") || "all";
+    return localStorage.getItem(`${storagePrefix}stage_filter`) || "all";
   });
   const [filterVendor, setFilterVendor] = useState("");
   const [filterPurchaser, setFilterPurchaser] = useState("");
@@ -266,16 +275,18 @@ export default function RahulDashboard({
       }
     });
 
-    // Eligible for purchase update: priced and assigned vendor
-    const eligiblePriced = activeRequests.filter(r => r.priceRmb && r.vendorId);
-    const pendingPriced = eligiblePriced.filter(r => r.purchaseUpdated !== "Yes");
-    const pendingMarkCount = pendingPriced.length;
-    const markedCount = eligiblePriced.filter(r => r.purchaseUpdated === "Yes").length;
+    // Eligible for marking: priced and assigned vendor for Rahul, or all active non-cancelled for Nitin
+    const eligibleForMarking = isNitin 
+      ? activeRequests 
+      : activeRequests.filter(r => r.priceRmb && r.vendorId);
+    const pendingForMarking = eligibleForMarking.filter(r => isNitin ? (r.packingOrderedByNitin !== "Yes") : (r.purchaseUpdated !== "Yes"));
+    const pendingMarkCount = pendingForMarking.length;
+    const markedCount = eligibleForMarking.filter(r => isNitin ? (r.packingOrderedByNitin === "Yes") : (r.purchaseUpdated === "Yes")).length;
 
     // Calculate total cargo freight committed for pending mark purchases
     const pendingCargoSeen = new Set();
     let pendingCargoPriceTotal = 0;
-    pendingPriced.forEach(r => {
+    pendingForMarking.forEach(r => {
       const c = cargos.find(x => x.id === r.cargoId || (r.cargoId && x.cargoDetail === r.cargoId));
       if (c && !pendingCargoSeen.has(c.id)) {
         pendingCargoSeen.add(c.id);
@@ -307,7 +318,7 @@ export default function RahulDashboard({
       pendingCargoPriceTotal,
       upcomingShipmentsCount
     };
-  }, [activeRequests, cargos, requests]);
+  }, [activeRequests, cargos, requests, isNitin]);
 
   // In-transit cargos strictly (excluding delivered/received cargos and empty ghost cargos with 0 items)
   const inTransitCargos = useMemo(() => {
@@ -422,14 +433,16 @@ export default function RahulDashboard({
     });
   }, [requests, isLookingForCancelled]);
 
-  // Partitioned requests for Mark Purchases
-  const pendingRequests = useMemo(() => eligibleRequests.filter(r => r.purchaseUpdated !== "Yes"), [eligibleRequests]);
-  const submittedRequests = useMemo(() => eligibleRequests.filter(r => r.purchaseUpdated === "Yes"), [eligibleRequests]);
+  const isItemMarked = (r) => isNitin ? (r.packingOrderedByNitin === "Yes") : (r.purchaseUpdated === "Yes");
+
+  // Partitioned requests for Mark Purchases / Packing Purchased
+  const pendingRequests = useMemo(() => eligibleRequests.filter(r => !isItemMarked(r)), [eligibleRequests, isNitin]);
+  const submittedRequests = useMemo(() => eligibleRequests.filter(r => isItemMarked(r)), [eligibleRequests, isNitin]);
 
   // Active requests for the current tab:
   // When looking for cancelled orders, look across eligible requests.
-  // When on "pending" tab (Pending Mark Purchases), base is pendingRequests (items awaiting punch into ledger).
-  // When on "submitted" tab (Marked in Ledger Archive), base is submittedRequests (items already punched into ledger).
+  // When on "pending" tab, base is pendingRequests.
+  // When on "submitted" tab, base is submittedRequests.
   const currentTabRequests = useMemo(() => {
     if (isLookingForCancelled) return eligibleRequests;
     if (quickStatus === "pending_mark") return pendingRequests;
@@ -453,9 +466,9 @@ export default function RahulDashboard({
       } else if (quickStatus === "delivered") {
         if (r.isMaterialRec !== "Yes") return false;
       } else if (quickStatus === "pending_mark") {
-        if (r.purchaseUpdated === "Yes") return false;
+        if (isItemMarked(r)) return false;
       } else if (quickStatus === "marked") {
-        if (r.purchaseUpdated !== "Yes") return false;
+        if (!isItemMarked(r)) return false;
       } else if (quickStatus === "cancelled") {
         if (!isRequestCancelled(r)) return false;
       }
@@ -554,7 +567,7 @@ export default function RahulDashboard({
 
       return true;
     });
-  }, [currentTabRequests, quickStatus, filterStage, filterVendor, filterPurchaser, filterCargo, filterTransport, filterCategory, filterType, dateField, fromDate, toDate, searchQuery, cargos, vendors, purchasers]);
+  }, [currentTabRequests, quickStatus, filterStage, filterVendor, filterPurchaser, filterCargo, filterTransport, filterCategory, filterType, dateField, fromDate, toDate, searchQuery, cargos, vendors, purchasers, isNitin]);
 
   const { items: sortedDisplayRequests, RenderSortHeader } = useSortableData(filteredRequests);
 
@@ -648,7 +661,7 @@ export default function RahulDashboard({
       today.setHours(0, 0, 0, 0);
 
       return Array.from(map.values()).map(grp => {
-        const markedCount = grp.items.filter(r => r.purchaseUpdated === "Yes").length;
+        const markedCount = grp.items.filter(isItemMarked).length;
         const pendingCount = grp.items.length - markedCount;
         const isAllMarked = grp.items.length > 0 && markedCount === grp.items.length;
         const isPartiallyMarked = markedCount > 0 && markedCount < grp.items.length;
@@ -675,7 +688,7 @@ export default function RahulDashboard({
           !isRequestCancelled(req)
         );
         const totalCargoAllPcs = allActiveCargoItems.reduce((sum, it) => sum + (parseInt(it.vendorOrderQuantity || it.orderQuantity, 10) || 0), 0);
-        const allCargoMarkedCount = allActiveCargoItems.filter(r => r.purchaseUpdated === "Yes").length;
+        const allCargoMarkedCount = allActiveCargoItems.filter(isItemMarked).length;
         const allCargoPendingCount = allActiveCargoItems.length - allCargoMarkedCount;
 
         const cargoPricePerPc = totalCargoAllPcs > 0 && cargoFreightPrice > 0
@@ -852,7 +865,7 @@ export default function RahulDashboard({
     });
 
     return Array.from(map.values()).map(grp => {
-      const markedCount = grp.items.filter(r => r.purchaseUpdated === "Yes").length;
+      const markedCount = grp.items.filter(isItemMarked).length;
       const pendingCount = grp.items.length - markedCount;
       const isAllMarked = grp.items.length > 0 && markedCount === grp.items.length;
       const isPartiallyMarked = markedCount > 0 && markedCount < grp.items.length;
@@ -864,7 +877,7 @@ export default function RahulDashboard({
         !isRequestCancelled(req) &&
         (grp.purchaserId ? (req.purchaserId === grp.purchaserId || req.entryBy === grp.purchaserName) : true)
       );
-      const allCargoMarkedCount = allActiveLotItems.filter(r => r.purchaseUpdated === "Yes").length;
+      const allCargoMarkedCount = allActiveLotItems.filter(isItemMarked).length;
       const allCargoPendingCount = allActiveLotItems.length - allCargoMarkedCount;
 
       const eddArr = Array.from(grp.vendorEdds).filter(Boolean).sort();
@@ -1019,31 +1032,68 @@ export default function RahulDashboard({
   const handleSubmitUpdate = () => {
     if (checkedIds.length === 0) return;
     const now = new Date().toISOString();
-    const punchByName = currentUser?.name || "Mr. Rahul Mann";
-    const punchById = currentUser?.id || "u-rahul";
+    const punchByName = currentUser?.name || (isNitin ? "Mr. Nitin (Packing)" : "Mr. Rahul Mann");
+    const punchById = currentUser?.id || (isNitin ? "u-nitin" : "u-rahul");
     const targetPool = (requests && requests.length > 0) ? requests : pendingRequests;
-    const updated = targetPool.filter(r => checkedIds.includes(r.id)).map(r => ({
-      ...r,
-      purchaseUpdated: "Yes",
-      purchaseUpdatedAt: now,
-      purchaseUpdatedBy: punchByName,
-      purchaseUpdatedById: punchById
-    }));
-    onBatchUpdateRequests(updated);
+
+    if (isNitin) {
+      const updated = targetPool.filter(r => checkedIds.includes(r.id)).map(r => ({
+        ...r,
+        packingOrderedByNitin: "Yes",
+        packingOrderedAt: now,
+        packingOrderedBy: punchByName,
+        packingOrderedById: punchById
+      }));
+      const modelsList = updated.map(r => r.model).filter(Boolean).join(", ");
+      onBatchUpdateRequests(
+        updated,
+        "PACKING_ORDERED",
+        `Nitin confirmed outer packing order for ${updated.length} item(s)${modelsList ? `: ${modelsList}` : ""}`
+      );
+    } else {
+      const updated = targetPool.filter(r => checkedIds.includes(r.id)).map(r => ({
+        ...r,
+        purchaseUpdated: "Yes",
+        purchaseUpdatedAt: now,
+        purchaseUpdatedBy: punchByName,
+        purchaseUpdatedById: punchById
+      }));
+      onBatchUpdateRequests(updated);
+    }
     setCheckedIds([]);
   };
 
   const handleUnsubmitUpdate = () => {
     if (checkedIds.length === 0) return;
+    const now = new Date().toISOString();
+    const punchByName = currentUser?.name || (isNitin ? "Mr. Nitin (Packing)" : "Mr. Rahul Mann");
+    const punchById = currentUser?.id || (isNitin ? "u-nitin" : "u-rahul");
     const targetPool = (requests && requests.length > 0) ? requests : submittedRequests;
-    const updated = targetPool.filter(r => checkedIds.includes(r.id)).map(r => ({
-      ...r,
-      purchaseUpdated: "No",
-      purchaseUpdatedAt: "",
-      purchaseUpdatedBy: "",
-      purchaseUpdatedById: ""
-    }));
-    onBatchUpdateRequests(updated);
+
+    if (isNitin) {
+      const updated = targetPool.filter(r => checkedIds.includes(r.id)).map(r => ({
+        ...r,
+        packingOrderedByNitin: "No",
+        packingOrderedAt: "",
+        packingOrderedBy: "",
+        packingOrderedById: ""
+      }));
+      const modelsList = updated.map(r => r.model).filter(Boolean).join(", ");
+      onBatchUpdateRequests(
+        updated,
+        "PACKING_UNORDERED",
+        `Nitin reverted packing order for ${updated.length} item(s)${modelsList ? `: ${modelsList}` : ""}`
+      );
+    } else {
+      const updated = targetPool.filter(r => checkedIds.includes(r.id)).map(r => ({
+        ...r,
+        purchaseUpdated: "No",
+        purchaseUpdatedAt: "",
+        purchaseUpdatedBy: "",
+        purchaseUpdatedById: ""
+      }));
+      onBatchUpdateRequests(updated);
+    }
     setCheckedIds([]);
   };
 
@@ -1052,18 +1102,37 @@ export default function RahulDashboard({
     const list = Array.isArray(groupOrItems) ? groupOrItems : (groupOrItems.items || []);
     if (list.length === 0) return;
     const now = new Date().toISOString();
-    const punchByName = currentUser?.name || "Mr. Rahul Mann";
-    const punchById = currentUser?.id || "u-rahul";
-    const targets = isMarked ? list.filter(r => r.purchaseUpdated !== "Yes") : list.filter(r => r.purchaseUpdated === "Yes");
-    if (targets.length === 0) return;
-    const updated = targets.map(r => ({
-      ...r,
-      purchaseUpdated: isMarked ? "Yes" : "No",
-      purchaseUpdatedAt: isMarked ? now : "",
-      purchaseUpdatedBy: isMarked ? punchByName : "",
-      purchaseUpdatedById: isMarked ? punchById : ""
-    }));
-    onBatchUpdateRequests(updated);
+    const punchByName = currentUser?.name || (isNitin ? "Mr. Nitin (Packing)" : "Mr. Rahul Mann");
+    const punchById = currentUser?.id || (isNitin ? "u-nitin" : "u-rahul");
+
+    if (isNitin) {
+      const targets = isMarked ? list.filter(r => !isItemMarked(r)) : list.filter(isItemMarked);
+      if (targets.length === 0) return;
+      const updated = targets.map(r => ({
+        ...r,
+        packingOrderedByNitin: isMarked ? "Yes" : "No",
+        packingOrderedAt: isMarked ? now : "",
+        packingOrderedBy: isMarked ? punchByName : "",
+        packingOrderedById: isMarked ? punchById : ""
+      }));
+      const modelsList = updated.map(r => r.model).filter(Boolean).join(", ");
+      onBatchUpdateRequests(
+        updated,
+        isMarked ? "PACKING_ORDERED" : "PACKING_UNORDERED",
+        `Nitin ${isMarked ? "confirmed" : "reverted"} outer packing order for ${updated.length} item(s)${modelsList ? `: ${modelsList}` : ""}`
+      );
+    } else {
+      const targets = isMarked ? list.filter(r => !isItemMarked(r)) : list.filter(isItemMarked);
+      if (targets.length === 0) return;
+      const updated = targets.map(r => ({
+        ...r,
+        purchaseUpdated: isMarked ? "Yes" : "No",
+        purchaseUpdatedAt: isMarked ? now : "",
+        purchaseUpdatedBy: isMarked ? punchByName : "",
+        purchaseUpdatedById: isMarked ? punchById : ""
+      }));
+      onBatchUpdateRequests(updated);
+    }
   };
 
   // Toggle selection for an entire group
@@ -1103,7 +1172,7 @@ export default function RahulDashboard({
 
   const hasActiveFilters = quickStatus !== "all" || filterStage !== "all" || filterVendor || filterPurchaser || filterCategory || filterCargo || filterTransport || filterType !== "all" || searchQuery || fromDate || toDate;
 
-  // When data is not pulled yet, show the full-page, dedicated Rahul Accounts loading screen
+  // When data is not pulled yet, show the full-page, dedicated loading screen
   const isDataNotPulledYet = loading && !initialLoadComplete && (!requests || requests.length === 0);
   if (isDataNotPulledYet) {
     return (
@@ -1111,6 +1180,8 @@ export default function RahulDashboard({
         currentUser={currentUser}
         onDirectPull={onDirectPull}
         onLogout={onLogout}
+        panelTitle={isNitin ? "Nitin's Packing & Operations Panel" : "Accounts & Purchase Marking Panel"}
+        userName={currentUser?.name || (isNitin ? "Mr. Nitin (Packing)" : "Mr. Rahul Mann")}
       />
     );
   }
@@ -1123,14 +1194,26 @@ export default function RahulDashboard({
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
             <h2 style={{ fontSize: "1.65rem", color: "var(--primary)", textShadow: "0 0 10px var(--primary-glow)", margin: 0 }}>
-              Accounts & Purchase Marking Panel
+              {isNitin ? "Nitin's Packing & Operations Panel" : "Accounts & Purchase Marking Panel"}
             </h2>
-            <span className="user-badge" style={{ padding: "5px 12px", background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)", color: "var(--success)", fontWeight: 700, fontSize: "0.82rem" }}>
-              Mr. Rahul Mann (Accts)
+            <span 
+              className="user-badge" 
+              style={{ 
+                padding: "5px 12px", 
+                background: isNitin ? "rgba(236,72,153,0.12)" : "rgba(16,185,129,0.12)", 
+                border: isNitin ? "1px solid rgba(236,72,153,0.3)" : "1px solid rgba(16,185,129,0.3)", 
+                color: isNitin ? "#ec4899" : "var(--success)", 
+                fontWeight: 700, 
+                fontSize: "0.82rem" 
+              }}
+            >
+              {isNitin ? (currentUser?.name ? `${currentUser.name} (Packing)` : "Mr. Nitin (Packing)") : (currentUser?.name ? `${currentUser.name} (Accts)` : "Mr. Rahul Mann (Accts)")}
             </span>
           </div>
           <p style={{ color: "var(--text-muted)", fontSize: "0.86rem", marginTop: "4px", marginBottom: 0 }}>
-            360° Order Visibility, Bundled Upcoming Shipments, Financial Audit & Ledger Marking Confirmation
+            {isNitin 
+              ? "360° Order Visibility, Bundled Upcoming Shipments, Cargo Tracking & Packing Purchase Confirmation"
+              : "360° Order Visibility, Bundled Upcoming Shipments, Financial Audit & Ledger Marking Confirmation"}
           </p>
         </div>
 
@@ -1269,7 +1352,9 @@ export default function RahulDashboard({
           style={{ padding: "16px 18px", cursor: "pointer", border: quickStatus === "pending_mark" ? "1px solid #ec4899" : "1px solid var(--border-glass)", transition: "all 0.2s" }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>📝 Step 1: Mark Purchases</span>
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>
+              {isNitin ? "📦 Step 1: Mark Packing Purchased" : "📝 Step 1: Mark Purchases"}
+            </span>
             <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "rgba(236, 72, 153, 0.15)", color: "#ec4899", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Clock size={16} />
             </div>
@@ -1855,7 +1940,7 @@ export default function RahulDashboard({
               className={`tab-btn ${activeTab === "pending" ? "active" : ""}`}
               style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
             >
-              <Clock size={15} /> Pending Mark Purchases ({pendingRequests.length})
+              <Clock size={15} /> {isNitin ? "Pending Packing Orders" : "Pending Mark Purchases"} ({pendingRequests.length})
             </button>
 
             <button 
@@ -1867,7 +1952,7 @@ export default function RahulDashboard({
               className={`tab-btn ${activeTab === "submitted" ? "active" : ""}`}
               style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
             >
-              <CheckCircle size={15} /> Marked in Ledger Archive ({submittedRequests.length})
+              <CheckCircle size={15} /> {isNitin ? "Packing Purchased Archive" : "Marked in Ledger Archive"} ({submittedRequests.length})
             </button>
           </div>
         <>
@@ -1877,7 +1962,7 @@ export default function RahulDashboard({
             {/* Header with Quick Presets */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
               <div style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "0.95rem", fontWeight: 700, color: "var(--primary)" }}>
-                <Filter size={18} /> Accounts Multi-Level Filtration System
+                <Filter size={18} /> {isNitin ? "Packing Operations Multi-Level Filtration System" : "Accounts Multi-Level Filtration System"}
               </div>
 
               {hasActiveFilters && (
@@ -1920,7 +2005,7 @@ export default function RahulDashboard({
               <button 
                 onClick={() => { setQuickStatus("delivered"); setGroupingTypeOverride(null); }}
                 className={`btn btn-sm ${quickStatus === "delivered" ? "btn-primary" : "btn-secondary"}`}
-                style={{ fontSize: "0.78rem", padding: "5px 12px", color: quickStatus === "delivered" ? "#fff" : "#10b981", borderColor: "rgba(16, 185, 129, 0.4)" }}
+                style={{ fontSize: "0.78rem", padding: "5px 12px", color: quickStatus === "delivered" ? "#fff" : "#10b981", borderColor: "rgba(16px, 185, 129, 0.4)" }}
               >
                 ✅ Delivered (Warehouse Received)
               </button>
@@ -1930,7 +2015,7 @@ export default function RahulDashboard({
                 className={`btn btn-sm ${quickStatus === "pending_mark" ? "btn-primary" : "btn-secondary"}`}
                 style={{ fontSize: "0.78rem", padding: "5px 12px", color: quickStatus === "pending_mark" ? "#fff" : "#ec4899", borderColor: "rgba(236, 72, 153, 0.4)" }}
               >
-                ⏳ Pending Mark in Ledger
+                {isNitin ? "⏳ Pending Packing Purchase" : "⏳ Pending Mark in Ledger"}
               </button>
 
               <button 
@@ -1938,7 +2023,7 @@ export default function RahulDashboard({
                 className={`btn btn-sm ${quickStatus === "marked" ? "btn-primary" : "btn-secondary"}`}
                 style={{ fontSize: "0.78rem", padding: "5px 12px", color: quickStatus === "marked" ? "#fff" : "#a855f7", borderColor: "rgba(168, 85, 247, 0.4)" }}
               >
-                ✓ Marked in Ledger
+                {isNitin ? "✓ Packing Purchased" : "✓ Marked in Ledger"}
               </button>
 
               <button 
@@ -2225,7 +2310,7 @@ export default function RahulDashboard({
                   className="btn btn-primary"
                   style={{ padding: "8px 18px", display: "inline-flex", alignItems: "center", gap: "8px", fontWeight: 700 }}
                 >
-                  <CheckCircle size={16} /> Confirm & Mark {checkedIds.length || ""} Purchases as Updated
+                  <CheckCircle size={16} /> {isNitin ? `Confirm & Mark ${checkedIds.length || ""} Selected Packing Orders` : `Confirm & Mark ${checkedIds.length || ""} Purchases as Updated`}
                 </button>
               </div>
             )}
@@ -2250,7 +2335,7 @@ export default function RahulDashboard({
                     gap: "8px"
                   }}
                 >
-                  <RotateCcw size={15} /> Mark {checkedIds.length || ""} Selected as Unsubmitted (Bulk Undo)
+                  <RotateCcw size={15} /> {isNitin ? `Mark ${checkedIds.length || ""} Selected as Pending Packing (Bulk Undo)` : `Mark ${checkedIds.length || ""} Selected as Unsubmitted (Bulk Undo)`}
                 </button>
               </div>
             )}
@@ -2620,7 +2705,7 @@ export default function RahulDashboard({
                                 </span>
                               </td>
 
-                              {/* Ledger Status */}
+                              {/* Ledger / Packing Status */}
                               <td>
                                 {activeTab === "pending" ? (
                                   group.allCargoMarkedCount > 0 ? (
@@ -2639,7 +2724,7 @@ export default function RahulDashboard({
                                         gap: "4px"
                                       }}
                                     >
-                                      ⚡ {group.allCargoMarkedCount}/{group.allCargoTotalItems || group.items.length} Marked ({group.items.length} Pending)
+                                      ⚡ {group.allCargoMarkedCount}/{group.allCargoTotalItems || group.items.length} {isNitin ? "Packing Purchased" : "Marked"} ({group.items.length} Pending)
                                     </span>
                                   ) : (
                                     <span 
@@ -2657,7 +2742,7 @@ export default function RahulDashboard({
                                         gap: "4px"
                                       }}
                                     >
-                                      ⏳ Pending Mark ({group.items.length})
+                                      ⏳ Pending {isNitin ? "Packing" : "Mark"} ({group.items.length})
                                     </span>
                                   )
                                 ) : (
@@ -2677,7 +2762,7 @@ export default function RahulDashboard({
                                         gap: "4px"
                                       }}
                                     >
-                                      ✓ Marked in Ledger ({group.items.length})
+                                      ✓ {isNitin ? "Packing Purchased" : "Marked in Ledger"} ({group.items.length})
                                     </span>
                                   ) : (
                                     <span 
@@ -2695,7 +2780,7 @@ export default function RahulDashboard({
                                         gap: "4px"
                                       }}
                                     >
-                                      ⚡ {group.allCargoMarkedCount}/{group.allCargoTotalItems || group.items.length} Marked ({group.allCargoPendingCount} Pending)
+                                      ⚡ {group.allCargoMarkedCount}/{group.allCargoTotalItems || group.items.length} {isNitin ? "Packing Purchased" : "Marked"} ({group.allCargoPendingCount} Pending)
                                     </span>
                                   )
                                 )}
@@ -2709,10 +2794,10 @@ export default function RahulDashboard({
                                       type="button"
                                       onClick={() => handleMarkGroup(group.items, true)}
                                       className="btn btn-primary btn-sm"
-                                      style={{ padding: "4px 8px", fontSize: "0.72rem", fontWeight: 700, background: "#10b981", borderColor: "#10b981" }}
-                                      title={`Mark all ${group.items.length} pending items in this cargo shipment as purchased`}
+                                      style={{ padding: "4px 8px", fontSize: "0.72rem", fontWeight: 700, background: isNitin ? "#ec4899" : "#10b981", borderColor: isNitin ? "#ec4899" : "#10b981" }}
+                                      title={isNitin ? `Mark all ${group.items.length} pending items in this cargo shipment as packing purchased` : `Mark all ${group.items.length} pending items in this cargo shipment as purchased`}
                                     >
-                                      ✓ Mark Cargo
+                                      ✓ {isNitin ? "Mark Cargo Packing" : "Mark Cargo"}
                                     </button>
                                   ) : (
                                     <button
@@ -2720,7 +2805,7 @@ export default function RahulDashboard({
                                       onClick={() => handleMarkGroup(group.items, false)}
                                       className="btn btn-secondary btn-sm"
                                       style={{ padding: "3px 7px", fontSize: "0.7rem", color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.4)", background: "rgba(239, 68, 68, 0.08)" }}
-                                      title="Revert all items in this cargo shipment to unsubmitted / pending"
+                                      title={isNitin ? "Revert all items in this cargo shipment to pending packing" : "Revert all items in this cargo shipment to unsubmitted / pending"}
                                     >
                                       <RotateCcw size={11} style={{ marginRight: "3px" }} /> Undo
                                     </button>
@@ -2785,7 +2870,7 @@ export default function RahulDashboard({
                                         const itCargoPerPc = group.cargoPricePerPc || 0;
                                         const itCargoRmb = itQty * itCargoPerPc;
                                         const itGrandTotal = itGoodsRmb + itCargoRmb;
-                                        const itMarked = it.purchaseUpdated === "Yes";
+                                        const itMarked = isItemMarked(it);
                                         const itCargo = cargos.find(c => c.id === it.cargoId);
                                         const itStage = getOrderStage(it, itCargo);
                                         const vName = vendors.find(v => v.id === it.vendorId)?.name || it.vendorName || "—";
@@ -2819,9 +2904,9 @@ export default function RahulDashboard({
                                             </td>
                                             <td>
                                               {itMarked ? (
-                                                <span style={{ color: "#10b981", fontWeight: 700 }}>✓ Marked</span>
+                                                <span style={{ color: "#10b981", fontWeight: 700 }}>✓ {isNitin ? "Packing Purchased" : "Marked"}</span>
                                               ) : (
-                                                <span style={{ color: "#f59e0b", fontWeight: 700 }}>⏳ Pending</span>
+                                                <span style={{ color: "#f59e0b", fontWeight: 700 }}>⏳ Pending {isNitin ? "Packing" : ""}</span>
                                               )}
                                             </td>
                                             <td style={{ textAlign: "center" }}>
@@ -2831,7 +2916,7 @@ export default function RahulDashboard({
                                                   onClick={() => handleMarkGroup([it], false)}
                                                   className="btn btn-secondary btn-sm"
                                                   style={{ padding: "2px 7px", fontSize: "0.7rem", color: "#ef4444" }}
-                                                  title="Undo marked purchase status"
+                                                  title={isNitin ? "Undo packing purchased status" : "Undo marked purchase status"}
                                                 >
                                                   Undo
                                                 </button>
@@ -2840,10 +2925,10 @@ export default function RahulDashboard({
                                                   type="button"
                                                   onClick={() => handleMarkGroup([it], true)}
                                                   className="btn btn-primary btn-sm"
-                                                  style={{ padding: "2px 9px", fontSize: "0.7rem", fontWeight: 700, background: "#10b981", borderColor: "#10b981" }}
-                                                  title="Mark this individual item as purchased"
+                                                  style={{ padding: "2px 9px", fontSize: "0.7rem", fontWeight: 700, background: isNitin ? "#ec4899" : "#10b981", borderColor: isNitin ? "#ec4899" : "#10b981" }}
+                                                  title={isNitin ? "Mark this individual item as packing purchased" : "Mark this individual item as purchased"}
                                                 >
-                                                  Mark
+                                                  {isNitin ? "Mark Packing" : "Mark"}
                                                 </button>
                                               )}
                                             </td>
@@ -2998,7 +3083,7 @@ export default function RahulDashboard({
                                       gap: "4px"
                                     }}
                                   >
-                                    ⚡ {group.allCargoMarkedCount}/{group.allCargoTotalItems || group.items.length} Marked ({group.items.length} Pending)
+                                    ⚡ {group.allCargoMarkedCount}/{group.allCargoTotalItems || group.items.length} {isNitin ? "Packing Purchased" : "Marked"} ({group.items.length} Pending)
                                   </span>
                                 ) : (
                                   <span 
@@ -3016,7 +3101,7 @@ export default function RahulDashboard({
                                       gap: "4px"
                                     }}
                                   >
-                                    ⏳ Pending Mark ({group.items.length})
+                                    ⏳ Pending {isNitin ? "Packing" : "Mark"} ({group.items.length})
                                   </span>
                                 )
                               ) : (
@@ -3036,7 +3121,7 @@ export default function RahulDashboard({
                                       gap: "4px"
                                     }}
                                   >
-                                    ✓ Marked in Ledger ({group.items.length})
+                                    ✓ {isNitin ? "Packing Purchased" : "Marked in Ledger"} ({group.items.length})
                                   </span>
                                 ) : (
                                   <span 
@@ -3054,7 +3139,7 @@ export default function RahulDashboard({
                                       gap: "4px"
                                     }}
                                   >
-                                    ⚡ {group.allCargoMarkedCount}/{group.allCargoTotalItems || group.items.length} Marked ({group.allCargoPendingCount} Pending)
+                                    ⚡ {group.allCargoMarkedCount}/{group.allCargoTotalItems || group.items.length} {isNitin ? "Packing Purchased" : "Marked"} ({group.allCargoPendingCount} Pending)
                                   </span>
                                 )
                               )}
@@ -3067,10 +3152,10 @@ export default function RahulDashboard({
                                   type="button"
                                   onClick={() => handleMarkGroup(group.items, true)}
                                   className="btn btn-primary btn-sm"
-                                  style={{ padding: "4px 10px", fontSize: "0.74rem", fontWeight: 700, background: "#10b981", borderColor: "#10b981" }}
-                                  title={`Mark all ${group.items.length} pending items in this order as purchased`}
+                                  style={{ padding: "4px 10px", fontSize: "0.74rem", fontWeight: 700, background: isNitin ? "#ec4899" : "#10b981", borderColor: isNitin ? "#ec4899" : "#10b981" }}
+                                  title={isNitin ? `Mark all ${group.items.length} pending items in this order as packing purchased` : `Mark all ${group.items.length} pending items in this order as purchased`}
                                 >
-                                  ✓ Mark Order
+                                  ✓ {isNitin ? "Mark Order Packing" : "Mark Order"}
                                 </button>
                               ) : (
                                 <button
@@ -3078,7 +3163,7 @@ export default function RahulDashboard({
                                   onClick={() => handleMarkGroup(group.items, false)}
                                   className="btn btn-secondary btn-sm"
                                   style={{ padding: "3px 8px", fontSize: "0.72rem", color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.4)", background: "rgba(239, 68, 68, 0.08)" }}
-                                  title="Revert all items in this order to unsubmitted / pending"
+                                  title={isNitin ? "Revert all items in this order to pending packing" : "Revert all items in this order to unsubmitted / pending"}
                                 >
                                   <RotateCcw size={12} style={{ marginRight: "3px" }} /> Undo Order
                                 </button>
@@ -3124,7 +3209,7 @@ export default function RahulDashboard({
                                       const itQty = parseInt(it.vendorOrderQuantity || it.orderQuantity, 10) || 0;
                                       const itPrice = parseFloat(it.priceRmb) || 0;
                                       const itTotalRmb = itQty * itPrice;
-                                      const itMarked = it.purchaseUpdated === "Yes";
+                                      const itMarked = isItemMarked(it);
                                       const itCargo = cargos.find(c => c.id === it.cargoId);
                                       const itStage = getOrderStage(it, itCargo);
 
@@ -3154,9 +3239,9 @@ export default function RahulDashboard({
                                           <td>{it.vendorEdd || "—"}</td>
                                           <td>
                                             {itMarked ? (
-                                              <span style={{ color: "#10b981", fontWeight: 700 }}>✓ Marked</span>
+                                              <span style={{ color: "#10b981", fontWeight: 700 }}>✓ {isNitin ? "Packing Purchased" : "Marked"}</span>
                                             ) : (
-                                              <span style={{ color: "#f59e0b", fontWeight: 700 }}>⏳ Pending</span>
+                                              <span style={{ color: "#f59e0b", fontWeight: 700 }}>⏳ Pending {isNitin ? "Packing" : ""}</span>
                                             )}
                                           </td>
                                           <td style={{ textAlign: "center" }}>
@@ -3166,7 +3251,7 @@ export default function RahulDashboard({
                                                 onClick={() => handleMarkGroup([it], false)}
                                                 className="btn btn-secondary btn-sm"
                                                 style={{ padding: "2px 7px", fontSize: "0.7rem", color: "#ef4444" }}
-                                                title="Undo marked purchase status"
+                                                title={isNitin ? "Undo packing purchased status" : "Undo marked purchase status"}
                                               >
                                                 Undo
                                               </button>
@@ -3175,10 +3260,10 @@ export default function RahulDashboard({
                                                 type="button"
                                                 onClick={() => handleMarkGroup([it], true)}
                                                 className="btn btn-primary btn-sm"
-                                                style={{ padding: "2px 9px", fontSize: "0.7rem", fontWeight: 700, background: "#10b981", borderColor: "#10b981" }}
-                                                title="Mark this individual item as purchased"
+                                                style={{ padding: "2px 9px", fontSize: "0.7rem", fontWeight: 700, background: isNitin ? "#ec4899" : "#10b981", borderColor: isNitin ? "#ec4899" : "#10b981" }}
+                                                title={isNitin ? "Mark this individual item as packing purchased" : "Mark this individual item as purchased"}
                                               >
-                                                Mark
+                                                {isNitin ? "Mark Packing" : "Mark"}
                                               </button>
                                             )}
                                           </td>
@@ -3238,11 +3323,12 @@ export default function RahulDashboard({
                         }} 
                       />
                       <RenderSortHeader colKey="isMaterialRec" title="Material Rec" />
+                      <RenderSortHeader colKey="packingOrderedByNitin" title={isNitin ? "Packing Purchased?" : "Packing Ordered?"} />
                       <th>Cargo Documents</th>
                       {activeTab === "submitted" && (
                         <>
-                          <RenderSortHeader colKey="purchaseUpdatedAt" title="Punched Timestamp" getValue={r => r.purchaseUpdatedAt || ""} />
-                          <RenderSortHeader colKey="purchaseUpdatedBy" title="Punch By" getValue={r => r.purchaseUpdatedBy || "Mr. Rahul Mann"} />
+                          <RenderSortHeader colKey={isNitin ? "packingOrderedAt" : "purchaseUpdatedAt"} title={isNitin ? "Confirmed At" : "Punched Timestamp"} getValue={r => (isNitin ? (r.packingOrderedAt || "") : (r.purchaseUpdatedAt || ""))} />
+                          <RenderSortHeader colKey={isNitin ? "packingOrderedBy" : "purchaseUpdatedBy"} title={isNitin ? "Confirmed By" : "Punch By"} getValue={r => (isNitin ? (r.packingOrderedBy || "Mr. Nitin (Packing)") : (r.purchaseUpdatedBy || "Mr. Rahul Mann"))} />
                         </>
                       )}
                     </tr>
@@ -3457,6 +3543,41 @@ export default function RahulDashboard({
                             </span>
                           </td>
 
+                          {/* Packing Purchased Status */}
+                          <td>
+                            {r.packingOrderedByNitin === "Yes" ? (
+                              <span style={{ 
+                                display: "inline-flex", 
+                                alignItems: "center", 
+                                gap: "3px", 
+                                padding: "2px 7px", 
+                                borderRadius: "6px", 
+                                fontSize: "0.74rem", 
+                                fontWeight: 700, 
+                                background: "rgba(236, 72, 153, 0.12)", 
+                                color: "#ec4899", 
+                                border: "1px solid rgba(236, 72, 153, 0.3)" 
+                              }}>
+                                📦 {isNitin ? "Purchased" : "Yes"}
+                              </span>
+                            ) : (
+                              <span style={{ 
+                                display: "inline-flex", 
+                                alignItems: "center", 
+                                gap: "3px", 
+                                padding: "2px 7px", 
+                                borderRadius: "6px", 
+                                fontSize: "0.74rem", 
+                                fontWeight: 600, 
+                                background: "rgba(245, 158, 11, 0.1)", 
+                                color: "#f59e0b", 
+                                border: "1px solid rgba(245, 158, 11, 0.25)" 
+                              }}>
+                                ⏳ Pending
+                              </span>
+                            )}
+                          </td>
+
                           {/* Cargo Documents */}
                           <td>
                             {cargo && ((cargo.packingListFile && cargo.packingListData) || (cargo.invoiceFile && cargo.invoiceData) || (cargo.cargoReceiptFile && cargo.cargoReceiptData)) ? (
@@ -3515,10 +3636,14 @@ export default function RahulDashboard({
                           {activeTab === "submitted" && (
                             <>
                               <td style={{ fontSize: "0.78rem", whiteSpace: "nowrap", color: "var(--text-main)" }}>
-                                {r.purchaseUpdatedAt ? formatPunchDateTime(r.purchaseUpdatedAt) : "—"}
+                                {isNitin 
+                                  ? (r.packingOrderedAt ? formatPunchDateTime(r.packingOrderedAt) : "—")
+                                  : (r.purchaseUpdatedAt ? formatPunchDateTime(r.purchaseUpdatedAt) : "—")}
                               </td>
-                              <td style={{ fontSize: "0.82rem", fontWeight: 700, color: "#10b981", whiteSpace: "nowrap" }}>
-                                👤 {r.purchaseUpdatedBy || (r.purchaseUpdatedAt ? "Mr. Rahul Mann" : "Rahul Accounts")}
+                              <td style={{ fontSize: "0.82rem", fontWeight: 700, color: isNitin ? "#ec4899" : "#10b981", whiteSpace: "nowrap" }}>
+                                👤 {isNitin 
+                                  ? (r.packingOrderedBy || (r.packingOrderedAt ? "Mr. Nitin (Packing)" : "Nitin (Packing)"))
+                                  : (r.purchaseUpdatedBy || (r.purchaseUpdatedAt ? "Mr. Rahul Mann" : "Rahul Accounts"))}
                               </td>
                             </>
                           )}
@@ -3573,6 +3698,7 @@ export default function RahulDashboard({
           onInspectSingleOrder={(singleOrder) => setInspectedOrder(singleOrder)}
           onOpenDocument={handleOpenDocument}
           onEditCargo={(cargoToEdit) => setEditingCargo(cargoToEdit)}
+          markingMode={isNitin ? "packing" : "accounts"}
         />
       )}
 

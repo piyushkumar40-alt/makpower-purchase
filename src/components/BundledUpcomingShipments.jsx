@@ -1583,6 +1583,18 @@ export function OrderInspectionModal({ order: initialOrder, cargos = [], vendors
               </div>
             </div>
 
+            <div>
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Packing Purchased?</div>
+              <div style={{ fontSize: "0.95rem", fontWeight: 700, marginTop: "2px" }}>
+                <span 
+                  className={`badge ${order.packingOrderedByNitin === "Yes" ? "badge-received" : "badge-pending"}`}
+                  style={order.packingOrderedByNitin === "Yes" ? { background: "rgba(236, 72, 153, 0.15)", color: "#ec4899", border: "1px solid rgba(236, 72, 153, 0.3)" } : {}}
+                >
+                  {order.packingOrderedByNitin === "Yes" ? "Yes (Purchased)" : "No (Pending)"}
+                </span>
+              </div>
+            </div>
+
             {order.purchaseUpdated === "Yes" && (
               <>
                 <div>
@@ -1595,6 +1607,23 @@ export function OrderInspectionModal({ order: initialOrder, cargos = [], vendors
                   <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Punch Timestamp</div>
                   <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-main)", marginTop: "2px" }}>
                     ⏰ {order.purchaseUpdatedAt ? formatPunchDateTime(order.purchaseUpdatedAt) : "—"}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {order.packingOrderedByNitin === "Yes" && (
+              <>
+                <div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Packing Punch By</div>
+                  <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#ec4899", marginTop: "2px" }}>
+                    👤 {order.packingOrderedBy || "Mr. Nitin (Packing)"}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Packing Timestamp</div>
+                  <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-main)", marginTop: "2px" }}>
+                    ⏰ {order.packingOrderedAt ? formatPunchDateTime(order.packingOrderedAt) : "—"}
                   </div>
                 </div>
               </>

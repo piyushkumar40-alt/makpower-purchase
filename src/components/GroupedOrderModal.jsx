@@ -37,10 +37,12 @@ export default function GroupedOrderModal({
   onBatchUpdateRequests,
   onInspectSingleOrder = null,
   onOpenDocument = null,
-  onEditCargo = null
+  onEditCargo = null,
+  markingMode = "accounts"
 }) {
   useModalEscape(onClose);
 
+  const isPackingMode = markingMode === "packing";
   const [modalSearch, setModalSearch] = useState("");
   const [modalStatusFilter, setModalStatusFilter] = useState("all"); // "all" | "pending" | "marked"
   const [modalCheckedIds, setModalCheckedIds] = useState([]);
@@ -110,8 +112,9 @@ export default function GroupedOrderModal({
     return modalCargoFreightPrice / totalPcs;
   }, [isCargoGroup, totalPcs, modalCargoFreightPrice]);
 
-  const markedItems = useMemo(() => liveItems.filter(r => r.purchaseUpdated === "Yes"), [liveItems]);
-  const pendingItems = useMemo(() => liveItems.filter(r => r.purchaseUpdated !== "Yes"), [liveItems]);
+  const isItemMarked = (r) => isPackingMode ? r.packingOrderedByNitin === "Yes" : r.purchaseUpdated === "Yes";
+  const markedItems = useMemo(() => liveItems.filter(isItemMarked), [liveItems, isPackingMode]);
+  const pendingItems = useMemo(() => liveItems.filter(r => !isItemMarked(r)), [liveItems, isPackingMode]);
   const markedCount = markedItems.length;
   const pendingCount = pendingItems.length;
   const isAllMarked = liveItems.length > 0 && markedCount === liveItems.length;
@@ -125,8 +128,8 @@ export default function GroupedOrderModal({
   // Filtered items inside modal
   const filteredModalItems = useMemo(() => {
     return liveItems.filter(r => {
-      if (modalStatusFilter === "pending" && r.purchaseUpdated === "Yes") return false;
-      if (modalStatusFilter === "marked" && r.purchaseUpdated !== "Yes") return false;
+      if (modalStatusFilter === "pending" && isItemMarked(r)) return false;
+      if (modalStatusFilter === "marked" && !isItemMarked(r)) return false;
 
       if (modalSearch.trim()) {
         const q = modalSearch.toLowerCase().trim();
@@ -140,7 +143,7 @@ export default function GroupedOrderModal({
       }
       return true;
     });
-  }, [liveItems, modalStatusFilter, modalSearch]);
+  }, [liveItems, modalStatusFilter, modalSearch, isPackingMode]);
 
   // Selection handlers
   const handleToggleSelectAll = (e) => {
@@ -156,20 +159,37 @@ export default function GroupedOrderModal({
   };
 
   // Marking Actions
-  const punchByName = currentUser?.name || "Mr. Rahul Mann";
-  const punchById = currentUser?.id || "u-rahul";
+  const punchByName = currentUser?.name || (isPackingMode ? "Mr. Nitin (Packing)" : "Mr. Rahul Mann");
+  const punchById = currentUser?.id || (isPackingMode ? "u-nitin" : "u-rahul");
 
   const handleMarkList = (itemsToUpdate, isMarked = true) => {
     if (!onBatchUpdateRequests || itemsToUpdate.length === 0) return;
     const now = new Date().toISOString();
-    const updated = itemsToUpdate.map(r => ({
-      ...r,
-      purchaseUpdated: isMarked ? "Yes" : "No",
-      purchaseUpdatedAt: isMarked ? now : "",
-      purchaseUpdatedBy: isMarked ? punchByName : "",
-      purchaseUpdatedById: isMarked ? punchById : ""
-    }));
-    onBatchUpdateRequests(updated);
+    let updated = [];
+    if (isPackingMode) {
+      updated = itemsToUpdate.map(r => ({
+        ...r,
+        packingOrderedByNitin: isMarked ? "Yes" : "No",
+        packingOrderedAt: isMarked ? now : "",
+        packingOrderedBy: isMarked ? punchByName : "",
+        packingOrderedById: isMarked ? punchById : ""
+      }));
+      const modelsList = updated.map(r => r.model).filter(Boolean).join(", ");
+      onBatchUpdateRequests(
+        updated,
+        isMarked ? "PACKING_ORDERED" : "PACKING_UNORDERED",
+        `Nitin ${isMarked ? "confirmed" : "reverted"} outer packing order for ${updated.length} item(s)${modelsList ? `: ${modelsList}` : ""}`
+      );
+    } else {
+      updated = itemsToUpdate.map(r => ({
+        ...r,
+        purchaseUpdated: isMarked ? "Yes" : "No",
+        purchaseUpdatedAt: isMarked ? now : "",
+        purchaseUpdatedBy: isMarked ? punchByName : "",
+        purchaseUpdatedById: isMarked ? punchById : ""
+      }));
+      onBatchUpdateRequests(updated);
+    }
     // Remove updated from checked IDs if needed
     setModalCheckedIds(prev => prev.filter(id => !itemsToUpdate.some(x => x.id === id)));
   };
@@ -436,17 +456,17 @@ export default function GroupedOrderModal({
           {/* Purchase Update Progress */}
           <div style={{ background: "var(--bg-card, #ffffff)", padding: "10px 14px", borderRadius: "10px", border: "1px solid var(--border-glass, #cbd5e1)", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
             <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>
-              Ledger Punch Progress
+              {isPackingMode ? "Packing Purchase Progress" : "Ledger Punch Progress"}
             </div>
             <div style={{ fontSize: "1.15rem", fontWeight: 800, color: isAllMarked ? "#10b981" : "#38bdf8", marginTop: "2px" }}>
-              {markedCount} / {liveItems.length} <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>Marked</span>
+              {markedCount} / {liveItems.length} <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>{isPackingMode ? "Confirmed" : "Marked"}</span>
             </div>
             <div style={{ width: "100%", height: "4px", background: "var(--border-glass, rgba(148, 163, 184, 0.3))", borderRadius: "4px", marginTop: "6px", overflow: "hidden" }}>
               <div 
                 style={{ 
                   height: "100%", 
                   width: `${(markedCount / (liveItems.length || 1)) * 100}%`, 
-                  background: isAllMarked ? "#10b981" : "linear-gradient(90deg, #38bdf8, #818cf8)",
+                  background: isAllMarked ? "#10b981" : (isPackingMode ? "linear-gradient(90deg, #ec4899, #8b5cf6)" : "linear-gradient(90deg, #38bdf8, #818cf8)"),
                   borderRadius: "4px",
                   transition: "width 0.3s ease"
                 }} 
@@ -497,15 +517,15 @@ export default function GroupedOrderModal({
                 className={`btn btn-sm ${modalStatusFilter === "pending" ? "btn-primary" : "btn-secondary"}`}
                 style={{ fontSize: "0.75rem", padding: "5px 10px", borderRadius: 0, height: "34px", color: modalStatusFilter === "pending" ? "#fff" : "#f59e0b" }}
               >
-                ⏳ Pending ({pendingCount})
+                ⏳ {isPackingMode ? "Pending Packing" : "Pending"} ({pendingCount})
               </button>
               <button 
                 type="button"
                 onClick={() => setModalStatusFilter("marked")}
                 className={`btn btn-sm ${modalStatusFilter === "marked" ? "btn-primary" : "btn-secondary"}`}
-                style={{ fontSize: "0.75rem", padding: "5px 10px", borderRadius: 0, height: "34px", color: modalStatusFilter === "marked" ? "#fff" : "#10b981" }}
+                style={{ fontSize: "0.75rem", padding: "5px 10px", borderRadius: 0, height: "34px", color: modalStatusFilter === "marked" ? "#fff" : (isPackingMode ? "#ec4899" : "#10b981") }}
               >
-                ✓ Marked ({markedCount})
+                ✓ {isPackingMode ? "Packing Purchased" : "Marked"} ({markedCount})
               </button>
             </div>
 
@@ -527,7 +547,7 @@ export default function GroupedOrderModal({
                   className="btn btn-primary btn-sm"
                   style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.78rem", padding: "6px 14px", fontWeight: 700 }}
                 >
-                  <CheckCircle size={15} /> Mark Selected ({modalCheckedIds.length}) as Purchased
+                  <CheckCircle size={15} /> {isPackingMode ? `Mark Selected (${modalCheckedIds.length}) Packing Purchased` : `Mark Selected (${modalCheckedIds.length}) as Purchased`}
                 </button>
                 <button
                   type="button"
@@ -535,7 +555,7 @@ export default function GroupedOrderModal({
                   className="btn btn-secondary btn-sm"
                   style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.78rem", padding: "6px 12px", color: "#ef4444" }}
                 >
-                  <RotateCcw size={14} /> Revert Selected
+                  <RotateCcw size={14} /> {isPackingMode ? "Revert Selected Packing" : "Revert Selected"}
                 </button>
               </>
             )}
@@ -553,11 +573,11 @@ export default function GroupedOrderModal({
                   fontSize: "0.8rem", 
                   padding: "7px 16px", 
                   fontWeight: 700,
-                  background: "linear-gradient(135deg, #10b981, #059669)",
-                  boxShadow: "0 2px 8px rgba(16, 185, 129, 0.3)"
+                  background: isPackingMode ? "linear-gradient(135deg, #ec4899, #be185d)" : "linear-gradient(135deg, #10b981, #059669)",
+                  boxShadow: isPackingMode ? "0 2px 8px rgba(236, 72, 153, 0.3)" : "0 2px 8px rgba(16, 185, 129, 0.3)"
                 }}
               >
-                <CheckCircle size={15} /> ✓ Mark Entire Order ({pendingCount}) as Purchased
+                <CheckCircle size={15} /> {isPackingMode ? `✓ Mark Order Packing Purchased (${pendingCount})` : `✓ Mark Entire Order (${pendingCount}) as Purchased`}
               </button>
             )}
 
@@ -576,9 +596,9 @@ export default function GroupedOrderModal({
                   borderColor: "rgba(239, 68, 68, 0.4)",
                   background: "rgba(239, 68, 68, 0.1)"
                 }}
-                title="Undo marked purchase status for all items in this order"
+                title={isPackingMode ? "Undo packing purchased status for all items in this order" : "Undo marked purchase status for all items in this order"}
               >
-                <RotateCcw size={14} /> Revert Entire Order
+                <RotateCcw size={14} /> {isPackingMode ? "Revert Order Packing" : "Revert Entire Order"}
               </button>
             )}
           </div>
@@ -610,14 +630,14 @@ export default function GroupedOrderModal({
                 <th>Where Item Is Now</th>
                 {!isCargoGroup && <th>Vendor EDD</th>}
                 {!isCargoGroup && <th>Cargo / Transport</th>}
-                <th>Purchase Status</th>
+                <th>{isPackingMode ? "Packing Status" : "Purchase Status"}</th>
                 <th style={{ textAlign: "center", width: "130px" }}>Action</th>
               </tr>
             </thead>
             <tbody>
               {filteredModalItems.map(r => {
                 const isChecked = modalCheckedIds.includes(r.id);
-                const isMarked = r.purchaseUpdated === "Yes";
+                const isMarked = isItemMarked(r);
                 const cargo = cargos.find(c => c.id === r.cargoId || String(c.id) === String(r.cargoId));
                 const stage = getOrderStage(r, cargo);
                 const qty = parseInt(r.vendorOrderQuantity || r.orderQuantity, 10) || 0;
@@ -800,11 +820,11 @@ export default function GroupedOrderModal({
                               border: "1px solid rgba(16, 185, 129, 0.3)" 
                             }}
                           >
-                            ✓ Marked
+                            ✓ {isPackingMode ? "Packing Purchased" : "Marked"}
                           </span>
-                          {r.purchaseUpdatedAt && (
+                          {(isPackingMode ? r.packingOrderedAt : r.purchaseUpdatedAt) && (
                             <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                              {formatPunchDateTime(r.purchaseUpdatedAt)}
+                              {formatPunchDateTime(isPackingMode ? r.packingOrderedAt : r.purchaseUpdatedAt)}
                             </div>
                           )}
                         </div>
@@ -820,7 +840,7 @@ export default function GroupedOrderModal({
                             border: "1px solid rgba(245, 158, 11, 0.3)" 
                           }}
                         >
-                          ⏳ Pending
+                          ⏳ Pending {isPackingMode ? "Packing" : ""}
                         </span>
                       )}
                     </td>
@@ -836,10 +856,10 @@ export default function GroupedOrderModal({
                             padding: "3px 8px", 
                             fontSize: "0.72rem", 
                             color: "#ef4444", 
-                            borderColor: "rgba(239, 68, 68, 0.3)",
-                            background: "rgba(239, 68, 68, 0.08)"
+                            borderColor: "rgba(239, 68, 68, 0.3)", 
+                            background: "rgba(239, 68, 68, 0.08)" 
                           }}
-                          title="Undo marked purchase status"
+                          title={isPackingMode ? "Undo packing purchased status" : "Undo marked purchase status"}
                         >
                           <RotateCcw size={12} style={{ marginRight: "3px" }} /> Undo
                         </button>
@@ -851,13 +871,13 @@ export default function GroupedOrderModal({
                           style={{ 
                             padding: "4px 10px", 
                             fontSize: "0.74rem", 
-                            fontWeight: 700,
-                            background: "#10b981",
-                            borderColor: "#10b981"
+                            fontWeight: 700, 
+                            background: isPackingMode ? "#ec4899" : "#10b981", 
+                            borderColor: isPackingMode ? "#ec4899" : "#10b981" 
                           }}
-                          title="Mark this individual item as purchased"
+                          title={isPackingMode ? "Mark this item packing purchased" : "Mark this individual item as purchased"}
                         >
-                          <CheckCircle size={12} style={{ marginRight: "3px" }} /> Mark
+                          <CheckCircle size={12} style={{ marginRight: "3px" }} /> {isPackingMode ? "Mark Packing" : "Mark"}
                         </button>
                       )}
                     </td>
