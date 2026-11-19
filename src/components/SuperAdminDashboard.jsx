@@ -4,9 +4,10 @@ import {
   Upload, Eye, EyeOff, Truck, ChevronRight, Sliders, Package, ShieldCheck, Clock, 
   UserX, LogOut, Folder, HardDrive, Trash2, Copy, ExternalLink, Key, Check, 
   CheckCircle, CheckCircle2, Layers, AlertTriangle, ShieldAlert, X, Search, Edit2, Tag, DollarSign,
-  Award, Gift, Lock, Phone
+  Award, Gift, Lock, Phone, ArrowRightLeft
 } from "lucide-react";
 import TransferModal from "./TransferModal";
+import VendorTransferModal from "./VendorTransferModal";
 import { getCurrencySymbol, CargoCompaniesPanel, VendorDetailModal, CargoCompanyDetailModal } from "./PurchaserDashboard";
 import ItemMasterView from "./ItemMasterView";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
@@ -31,6 +32,7 @@ export default function SuperAdminDashboard({
   onAddVendor,
   onUpdateVendor,
   onRemoveVendor,
+  onTransferVendor,
   onAddCargoCompany,
   onUpdateCargoCompany,
   onRemoveCargoCompany,
@@ -1007,6 +1009,7 @@ export default function SuperAdminDashboard({
   const [backupFileSuccess, setBackupFileSuccess] = useState("");
 
   const [selectedVendorForDetail, setSelectedVendorForDetail] = useState(null);
+  const [transferTargetVendor, setTransferTargetVendor] = useState(null);
   const [selectedCargoCompanyForDetail, setSelectedCargoCompanyForDetail] = useState(null);
   const [showInactiveVendors, setShowInactiveVendors] = useState(false);
   const [showInactiveCarriers, setShowInactiveCarriers] = useState(false);
@@ -2232,6 +2235,14 @@ export default function SuperAdminDashboard({
                                 )}
                               </div>
                               <div style={{ display: "flex", gap: "6px" }}>
+                                <button 
+                                  onClick={() => setTransferTargetVendor(vendor)} 
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ padding: "4px 8px", display: "inline-flex", alignItems: "center", gap: "4px", color: "var(--primary)" }}
+                                  title="Transfer or Merge Vendor across Purchasers"
+                                >
+                                  <ArrowRightLeft size={12} /> Transfer
+                                </button>
                                 <button 
                                   onClick={() => setEditingVendor(vendor)} 
                                   className="btn btn-secondary btn-sm"
@@ -4227,7 +4238,22 @@ export default function SuperAdminDashboard({
           currentUser={{ role: "superadmin" }}
           onUpdateVendor={onUpdateVendor}
           onRemoveVendor={onRemoveVendor}
+          onOpenTransfer={(v) => setTransferTargetVendor(v)}
           onClose={() => setSelectedVendorForDetail(null)}
+        />
+      )}
+
+      {/* ==================== VENDOR TRANSFER / MERGE MODAL ==================== */}
+      {transferTargetVendor && (
+        <VendorTransferModal 
+          isOpen={true}
+          vendor={transferTargetVendor}
+          vendors={vendors}
+          requests={requests}
+          purchasers={getOfficialPurchasersList(users)}
+          currentUser={{ role: "superadmin" }}
+          onTransfer={onTransferVendor}
+          onClose={() => setTransferTargetVendor(null)}
         />
       )}
 

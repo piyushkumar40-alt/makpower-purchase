@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download, FileSpreadsheet, UploadCloud, CheckSquare, Calendar, Trash2, Search, ArrowUpDown, Filter, Building2, Package, Lock, X, ExternalLink, ShieldAlert, ShieldCheck, RefreshCw, User } from "lucide-react";
+import { AlertTriangle, Clock, Plus, HelpCircle, Upload, Eye, FileText, CheckCircle2, ChevronRight, ChevronDown, Check, Edit3, ArrowRight, Truck, XCircle, Ban, RotateCcw, Layers, Folder, Sparkles, Copy, Clipboard, Download, FileSpreadsheet, UploadCloud, CheckSquare, Calendar, Trash2, Search, ArrowUpDown, Filter, Building2, Package, Lock, X, ExternalLink, ShieldAlert, ShieldCheck, RefreshCw, User, ArrowRightLeft } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import { uploadToCloudinary } from "../utils/upload";
 import ItemMasterView from "./ItemMasterView";
@@ -13,6 +13,7 @@ import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCre
 import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons, calculateDefaultCargoEta, formatCancelDate, formatCancelTime, parsePastedPriceLine, isModelMatch, isCargoMatch, reconcileCargosWithRequests, getOfficialPurchasersList } from "../utils/formatters";
 import { useModalEscape, pushBackHandler } from "../utils/useModalEscape";
 import MasterOrderTracker from "./MasterOrderTracker";
+import VendorTransferModal from "./VendorTransferModal";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
 import AddEddModal from "./AddEddModal";
 import CargoDocumentModal from "./CargoDocumentModal";
@@ -469,6 +470,7 @@ export default function PurchaserDashboard({
   onAddVendor,
   onUpdateVendor,
   onRemoveVendor,
+  onTransferVendor,
   onAddCargoCompany,
   onUpdateCargoCompany,
   onRemoveCargoCompany,
@@ -596,6 +598,7 @@ export default function PurchaserDashboard({
   const [creatingCargo, setCreatingCargo] = useState(false);
   const [editingCargo, setEditingCargo] = useState(null);
   const [selectedVendorForDetail, setSelectedVendorForDetail] = useState(null);
+  const [transferTargetVendor, setTransferTargetVendor] = useState(null);
   const [selectedCargoCompanyForDetail, setSelectedCargoCompanyForDetail] = useState(null);
   const [cancellingRequest, setCancellingRequest] = useState(null);
   const [receivingCargo, setReceivingCargo] = useState(null); // cargo awaiting receive date
@@ -2811,6 +2814,8 @@ export default function PurchaserDashboard({
             onUndoCargoAssignment={onUndoCargoAssignment}
             onBatchUndoCargo={onBatchUndoCargo}
             onBatchUndoVendorReady={onBatchUndoVendorReady}
+            onTransferVendor={onTransferVendor}
+            onOpenVendorTransfer={(v, pId) => setTransferTargetVendor({ vendor: v, sourcePurchaserId: pId })}
             loading={loading}
             initialLoadComplete={initialLoadComplete}
             isMasterDataSilentlyLoading={isMasterDataSilentlyLoading}
@@ -7388,7 +7393,23 @@ export default function PurchaserDashboard({
           currentUser={currentUser}
           onUpdateVendor={onUpdateVendor}
           onRemoveVendor={onRemoveVendor}
+          onOpenTransfer={(v) => setTransferTargetVendor(v)}
           onClose={() => setSelectedVendorForDetail(null)}
+        />
+      )}
+
+      {/* ==================== VENDOR TRANSFER / MERGE MODAL ==================== */}
+      {transferTargetVendor && (
+        <VendorTransferModal
+          isOpen={true}
+          vendor={transferTargetVendor.vendor || transferTargetVendor}
+          initialSourcePurchaserId={transferTargetVendor.sourcePurchaserId || null}
+          vendors={vendors}
+          requests={requests}
+          purchasers={purchasers}
+          currentUser={currentUser}
+          onTransfer={onTransferVendor}
+          onClose={() => setTransferTargetVendor(null)}
         />
       )}
 
@@ -11695,6 +11716,7 @@ export function VendorDetailModal({
   currentUser = {}, 
   onUpdateVendor, 
   onRemoveVendor, 
+  onOpenTransfer,
   onClose 
 }) {
   useModalEscape(onClose, !!vendor);
@@ -11975,9 +11997,27 @@ export function VendorDetailModal({
             </div>
           )}
 
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-            <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
-            <button type="submit" className="btn btn-primary">Save Changes</button>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginTop: "14px", flexWrap: "wrap" }}>
+            <div>
+              {Boolean(onOpenTransfer && (isAdmin || currentUser?.role === "superadmin")) && (
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    onOpenTransfer(vendor);
+                    onClose();
+                  }} 
+                  className="btn btn-secondary"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--primary)" }}
+                  title="Transfer or merge this vendor across purchasers"
+                >
+                  <ArrowRightLeft size={14} /> Transfer / Merge Vendor
+                </button>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
+              <button type="submit" className="btn btn-primary">Save Changes</button>
+            </div>
           </div>
         </form>
 

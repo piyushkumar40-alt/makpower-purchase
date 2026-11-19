@@ -3759,6 +3759,59 @@ const cancelRequests = async (requestIds, reason = "") => {
     return { success: true };
   };
 
+  const handleTransferVendor = async (payload) => {
+    try {
+      const res = await postData("/api/vendors/transfer", payload);
+      if (res && res.success) {
+        const { sourceVendorId, sourcePurchaserId, targetPurchaserId, action, targetVendorId } = payload;
+        
+        // Optimistically update local requests
+        setRequests(prev => prev.map(r => {
+          const matchVendor = r.vendorId === sourceVendorId;
+          const matchPurchaser = !sourcePurchaserId || sourcePurchaserId === "all" || r.purchaserId === sourcePurchaserId;
+          if (matchVendor && matchPurchaser) {
+            return {
+              ...r,
+              purchaserId: targetPurchaserId,
+              vendorId: (action === "merge" && targetVendorId) ? targetVendorId : r.vendorId
+            };
+          }
+          return r;
+        }));
+
+        // Update local vendors
+        if (Array.isArray(res.vendors) && res.vendors.length > 0) {
+          setVendors(res.vendors);
+        } else {
+          try {
+            const vRes = await fetch(`/api/vendors?_t=${Date.now()}`).then(r => r.ok ? r.json() : null);
+            if (Array.isArray(vRes)) setVendors(vRes);
+          } catch (e) {}
+        }
+
+        // Refetch fresh requests to guarantee full database sync
+        try {
+          const rRes = await fetch(`/api/requests?_t=${Date.now()}`).then(r => r.ok ? r.json() : null);
+          if (Array.isArray(rRes)) {
+            setRequests(rRes.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
+          }
+        } catch (e) {}
+
+        logSystemActivity(
+          "TRANSFER_VENDOR",
+          res.message || `Transferred vendor across purchasers`,
+          "Vendor",
+          sourceVendorId
+        );
+        return res;
+      }
+      return res || { success: false, error: "Failed to transfer vendor" };
+    } catch (err) {
+      console.error("handleTransferVendor error:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
   const addCargoCompany = async (name, location = "", phone = "", history = "") => {
     const trimmedName = name.trim();
     const existing = cargoCompanies.find(cc => cc.name.trim().toLowerCase() === trimmedName.toLowerCase());
@@ -4943,6 +4996,7 @@ const cancelRequests = async (requestIds, reason = "") => {
             onAddVendor={addVendor}
             onUpdateVendor={updateVendor}
             onRemoveVendor={removeVendor}
+            onTransferVendor={handleTransferVendor}
             onAddCargoCompany={addCargoCompany}
             onUpdateCargoCompany={updateCargoCompany}
             onRemoveCargoCompany={removeCargoCompany}
@@ -5104,6 +5158,7 @@ const cancelRequests = async (requestIds, reason = "") => {
             onAddVendor={addVendor}
             onUpdateVendor={updateVendor}
             onRemoveVendor={removeVendor}
+            onTransferVendor={handleTransferVendor}
             onAddCargoCompany={addCargoCompany}
             onUpdateCargoCompany={updateCargoCompany}
             onRemoveCargoCompany={removeCargoCompany}

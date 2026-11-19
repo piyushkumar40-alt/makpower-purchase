@@ -4829,6 +4829,238 @@ app.post("/api/vendors", async (req, res) => {
   }
 });
 
+// 5.1 POST /api/vendors/transfer - Transfer or Merge a specific vendor across purchasers with all orders & history
+app.post("/api/vendors/transfer", async (req, res) => {
+  const {
+    sourceVendorId,
+    sourcePurchaserId,
+    targetPurchaserId,
+    action = "transfer",
+    targetVendorId,
+    mergeNotes = true
+  } = req.body || {};
+
+  if (!sourceVendorId || !targetPurchaserId) {
+    return res.status(400).json({ success: false, error: "sourceVendorId and targetPurchaserId are required." });
+  }
+
+  if (action === "merge" && !targetVendorId) {
+    return res.status(400).json({ success: false, error: "targetVendorId is required when merging." });
+  }
+
+  isOrderDataDirty = true;
+  invalidateStateCache();
+
+  if (isPg) {
+    let client;
+    try {
+      client = await pool.connect();
+      await client.query("BEGIN");
+
+      // 1. Fetch source vendor and target vendor (if merging)
+      const sRes = await client.query('SELECT * FROM vendors WHERE "id" = $1', [sourceVendorId]);
+      const sourceVendor = sRes.rows[0];
+      if (!sourceVendor) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ success: false, error: "Source vendor not found." });
+      }
+
+      let targetVendor = null;
+      if (targetVendorId) {
+        const tRes = await client.query('SELECT * FROM vendors WHERE "id" = $1', [targetVendorId]);
+        targetVendor = tRes.rows[0];
+      }
+
+      // 2. Remap requests
+      let reqUpdateQuery = '';
+      let reqUpdateParams = [];
+      if (action === "merge" && targetVendorId) {
+        // Remap both vendorId and purchaserId to target
+        if (sourcePurchaserId && sourcePurchaserId !== "all") {
+          reqUpdateQuery = `
+            UPDATE requests 
+            SET "purchaserId" = $1, "vendorId" = $2
+            WHERE "vendorId" = $3 AND "purchaserId" = $4
+            RETURNING "id"
+          `;
+          reqUpdateParams = [targetPurchaserId, targetVendorId, sourceVendorId, sourcePurchaserId];
+        } else {
+          reqUpdateQuery = `
+            UPDATE requests 
+            SET "purchaserId" = $1, "vendorId" = $2
+            WHERE "vendorId" = $3
+            RETURNING "id"
+          `;
+          reqUpdateParams = [targetPurchaserId, targetVendorId, sourceVendorId];
+        }
+      } else {
+        // Just remap purchaserId (keep vendorId)
+        if (sourcePurchaserId && sourcePurchaserId !== "all") {
+          reqUpdateQuery = `
+            UPDATE requests 
+            SET "purchaserId" = $1
+            WHERE "vendorId" = $2 AND "purchaserId" = $3
+            RETURNING "id"
+          `;
+          reqUpdateParams = [targetPurchaserId, sourceVendorId, sourcePurchaserId];
+        } else {
+          reqUpdateQuery = `
+            UPDATE requests 
+            SET "purchaserId" = $1
+            WHERE "vendorId" = $2
+            RETURNING "id"
+          `;
+          reqUpdateParams = [targetPurchaserId, sourceVendorId];
+        }
+      }
+
+      const reqUpdateRes = await client.query(reqUpdateQuery, reqUpdateParams);
+      const affectedCount = reqUpdateRes.rowCount || 0;
+
+      // 3. Update Vendor records
+      if (action === "merge" && targetVendor && sourceVendorId !== targetVendorId) {
+        let mergedHistory = targetVendor.history || "";
+        if (mergeNotes && sourceVendor.history && sourceVendor.history.trim()) {
+          const sHist = sourceVendor.history.trim();
+          if (!mergedHistory.includes(sHist)) {
+            mergedHistory = mergedHistory ? `${mergedHistory}\n\n[Merged History]:\n${sHist}` : sHist;
+          }
+        }
+
+        const mergedLocation = (targetVendor.location && targetVendor.location.trim()) ? targetVendor.location : (sourceVendor.location || "");
+        const mergedPhone = (targetVendor.phone && targetVendor.phone.trim()) ? targetVendor.phone : (sourceVendor.phone || "");
+
+        let targetPids = safeJsonParse(targetVendor.purchaserIds, []);
+        if (!targetPids.includes(targetPurchaserId)) {
+          targetPids.push(targetPurchaserId);
+        }
+
+        await client.query(
+          'UPDATE vendors SET "history" = $1, "location" = $2, "phone" = $3, "purchaserIds" = $4 WHERE "id" = $5',
+          [mergedHistory, mergedLocation, mergedPhone, JSON.stringify(targetPids), targetVendorId]
+        );
+
+        // Check if sourceVendor has any remaining orders under other purchasers
+        const remainingReqs = await client.query('SELECT 1 FROM requests WHERE "vendorId" = $1 LIMIT 1', [sourceVendorId]);
+        if (remainingReqs.rowCount === 0) {
+          await client.query('DELETE FROM vendors WHERE "id" = $1', [sourceVendorId]);
+        } else {
+          let sPids = safeJsonParse(sourceVendor.purchaserIds, []);
+          if (sourcePurchaserId && sourcePurchaserId !== "all") {
+            sPids = sPids.filter(p => p !== sourcePurchaserId);
+          }
+          await client.query('UPDATE vendors SET "purchaserIds" = $1 WHERE "id" = $2', [JSON.stringify(sPids), sourceVendorId]);
+        }
+      } else {
+        // Pure transfer or merge within same vendor: update purchaserIds
+        let sPids = safeJsonParse(sourceVendor.purchaserIds, []);
+        if (sourcePurchaserId && sourcePurchaserId !== "all") {
+          sPids = sPids.filter(p => p !== sourcePurchaserId);
+        }
+        if (!sPids.includes(targetPurchaserId)) {
+          sPids.push(targetPurchaserId);
+        }
+        await client.query('UPDATE vendors SET "purchaserIds" = $1 WHERE "id" = $2', [JSON.stringify(sPids), sourceVendorId]);
+      }
+
+      await client.query("COMMIT");
+      markAppActivity();
+      invalidateStateCache();
+
+      const allVendorsRes = await pool.query('SELECT * FROM vendors ORDER BY "name" ASC');
+      const refreshedVendors = (allVendorsRes.rows || []).map(v => ({
+        ...v,
+        purchaserIds: safeJsonParse(v.purchaserIds, [])
+      }));
+
+      return res.json({
+        success: true,
+        affectedOrdersCount: affectedCount,
+        action,
+        vendors: refreshedVendors,
+        message: action === "merge" 
+          ? `Successfully merged ${affectedCount} order(s) into target vendor.` 
+          : `Successfully transferred ${affectedCount} order(s) to target purchaser.`
+      });
+    } catch (err) {
+      if (client) await client.query("ROLLBACK");
+      console.error("POST /api/vendors/transfer PG error:", err.message);
+      return res.status(500).json({ success: false, error: err.message });
+    } finally {
+      if (client) client.release();
+    }
+  } else {
+    // Local JSON fallback
+    const data = readLocalJson();
+    let sourceVendor = data.vendors.find(v => v.id === sourceVendorId);
+    if (!sourceVendor) {
+      return res.status(404).json({ success: false, error: "Source vendor not found." });
+    }
+    let targetVendor = targetVendorId ? data.vendors.find(v => v.id === targetVendorId) : null;
+
+    let affectedCount = 0;
+    data.requests = (data.requests || []).map(r => {
+      const matchVendor = r.vendorId === sourceVendorId;
+      const matchPurchaser = !sourcePurchaserId || sourcePurchaserId === "all" || r.purchaserId === sourcePurchaserId;
+      if (matchVendor && matchPurchaser) {
+        affectedCount++;
+        return {
+          ...r,
+          purchaserId: targetPurchaserId,
+          vendorId: (action === "merge" && targetVendorId) ? targetVendorId : r.vendorId
+        };
+      }
+      return r;
+    });
+
+    if (action === "merge" && targetVendor && sourceVendorId !== targetVendorId) {
+      let mergedHistory = targetVendor.history || "";
+      if (mergeNotes && sourceVendor.history && sourceVendor.history.trim()) {
+        const sHist = sourceVendor.history.trim();
+        if (!mergedHistory.includes(sHist)) {
+          mergedHistory = mergedHistory ? `${mergedHistory}\n\n[Merged History]:\n${sHist}` : sHist;
+        }
+      }
+      targetVendor.history = mergedHistory;
+      if (!targetVendor.location && sourceVendor.location) targetVendor.location = sourceVendor.location;
+      if (!targetVendor.phone && sourceVendor.phone) targetVendor.phone = sourceVendor.phone;
+      let targetPids = Array.isArray(targetVendor.purchaserIds) ? targetVendor.purchaserIds : [];
+      if (!targetPids.includes(targetPurchaserId)) targetPids.push(targetPurchaserId);
+      targetVendor.purchaserIds = targetPids;
+
+      const remainingReqs = data.requests.some(r => r.vendorId === sourceVendorId);
+      if (!remainingReqs) {
+        data.vendors = data.vendors.filter(v => v.id !== sourceVendorId);
+      } else {
+        let sPids = Array.isArray(sourceVendor.purchaserIds) ? sourceVendor.purchaserIds : [];
+        if (sourcePurchaserId && sourcePurchaserId !== "all") {
+          sPids = sPids.filter(p => p !== sourcePurchaserId);
+        }
+        sourceVendor.purchaserIds = sPids;
+      }
+    } else {
+      let sPids = Array.isArray(sourceVendor.purchaserIds) ? sourceVendor.purchaserIds : [];
+      if (sourcePurchaserId && sourcePurchaserId !== "all") {
+        sPids = sPids.filter(p => p !== sourcePurchaserId);
+      }
+      if (!sPids.includes(targetPurchaserId)) sPids.push(targetPurchaserId);
+      sourceVendor.purchaserIds = sPids;
+    }
+
+    writeLocalJson(data);
+    invalidateStateCache();
+    return res.json({
+      success: true,
+      affectedOrdersCount: affectedCount,
+      action,
+      vendors: data.vendors,
+      message: action === "merge" 
+        ? `Successfully merged ${affectedCount} order(s) into target vendor.` 
+        : `Successfully transferred ${affectedCount} order(s) to target purchaser.`
+    });
+  }
+});
+
 // 6. POST /api/cargo-companies - Upserts cargo carriers
 app.post("/api/cargo-companies", async (req, res) => {
   const cc = req.body;

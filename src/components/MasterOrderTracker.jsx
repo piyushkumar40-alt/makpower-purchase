@@ -22,8 +22,10 @@ import {
   Trash2,
   CheckSquare,
   XCircle,
-  RotateCcw
+  RotateCcw,
+  ArrowRightLeft
 } from "lucide-react";
+import VendorTransferModal from "./VendorTransferModal";
 import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
 import { OrderInspectionModal } from "./BundledUpcomingShipments";
 import CustomSelect from "./CustomSelect";
@@ -136,6 +138,8 @@ export default function MasterOrderTracker({
   onUndoCargoAssignment,
   onBatchUndoCargo,
   onBatchUndoVendorReady,
+  onTransferVendor,
+  onOpenVendorTransfer,
   loading = false,
   initialLoadComplete = true,
   isMasterDataSilentlyLoading = false
@@ -167,6 +171,7 @@ export default function MasterOrderTracker({
   
   const [sortField, setSortField] = useState("orderDate");
   const [sortDirection, setSortDirection] = useState("desc");
+  const [vendorTransferTarget, setVendorTransferTarget] = useState(null);
 
   // Selection & Admin Cancel state
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
@@ -1482,8 +1487,38 @@ const handleTriggerBatchCancel = () => {
                       </td>
 
                       <td>
-                        <div style={{ fontWeight: 500, color: r.vendorId ? "var(--text-main)" : "#94a3b8" }}>
-                          {vName}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px" }}>
+                          <span style={{ fontWeight: 500, color: r.vendorId ? "var(--text-main)" : "#94a3b8" }}>
+                            {vName}
+                          </span>
+                          {isAdmin && r.vendorId && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const vObj = vendors.find(v => v.id === r.vendorId) || { id: r.vendorId, name: vName };
+                                if (onOpenVendorTransfer) {
+                                  onOpenVendorTransfer(vObj, r.purchaserId);
+                                } else {
+                                  setVendorTransferTarget({ vendor: vObj, sourcePurchaserId: r.purchaserId });
+                                }
+                              }}
+                              className="btn btn-secondary btn-sm"
+                              style={{ 
+                                padding: "2px 6px", 
+                                fontSize: "0.68rem", 
+                                display: "inline-flex", 
+                                alignItems: "center", 
+                                gap: "3px", 
+                                color: "var(--primary)",
+                                borderRadius: "4px",
+                                flexShrink: 0
+                              }}
+                              title={`Transfer or merge vendor "${vName}" from ${getPurchaserDisplayName(r.purchaserId, purchasers)}`}
+                            >
+                              <ArrowRightLeft size={10} /> Transfer
+                            </button>
+                          )}
                         </div>
                       </td>
 
@@ -1736,6 +1771,20 @@ const handleTriggerBatchCancel = () => {
           requests={requests}
           onUpdateCargo={onUpdateCargo}
           onClose={() => setInspectedOrder(null)}
+        />
+      )}
+
+      {vendorTransferTarget && (
+        <VendorTransferModal
+          isOpen={true}
+          vendor={vendorTransferTarget.vendor}
+          initialSourcePurchaserId={vendorTransferTarget.sourcePurchaserId}
+          vendors={vendors}
+          requests={requests}
+          purchasers={purchasers}
+          currentUser={currentUser}
+          onTransfer={onTransferVendor}
+          onClose={() => setVendorTransferTarget(null)}
         />
       )}
     </div>
