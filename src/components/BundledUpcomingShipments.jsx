@@ -1241,17 +1241,22 @@ export default function BundledUpcomingShipments({
                               </div>
 
                               {/* Stage Badge: Received or In Transit */}
-                              <span style={{ 
-                                padding: "2px 8px", 
-                                borderRadius: "4px", 
-                                fontSize: "0.72rem", 
-                                fontWeight: 700, 
-                                background: "rgba(99, 102, 241, 0.15)",
-                                color: "#818cf8",
-                                border: "1px solid rgba(99, 102, 241, 0.3)"
-                              }}>
-                                In Freight Transit
-                              </span>
+                              {(() => {
+                                const isItemRec = item.isMaterialRec === "Yes" || cargo?.isMaterialRec === "Yes" || Boolean(cargo?.receivedDate);
+                                return (
+                                  <span style={{ 
+                                    padding: "2px 8px", 
+                                    borderRadius: "4px", 
+                                    fontSize: "0.72rem", 
+                                    fontWeight: 700, 
+                                    background: isItemRec ? "rgba(16, 185, 129, 0.15)" : "rgba(99, 102, 241, 0.15)",
+                                    color: isItemRec ? "#10b981" : "#818cf8",
+                                    border: `1px solid ${isItemRec ? "rgba(16, 185, 129, 0.3)" : "rgba(99, 102, 241, 0.3)"}`
+                                  }}>
+                                    {isItemRec ? "Received in Warehouse" : "In Freight Transit"}
+                                  </span>
+                                );
+                              })()}
 
                               {/* Item-wise Mark Purchase */}
                               {isPurchaseMarked ? (
@@ -1787,8 +1792,8 @@ export function OrderInspectionModal({ order: initialOrder, cargos = [], vendors
             </div>
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Material Received?</div>
-              <div style={{ fontSize: "0.9rem", fontWeight: 700, color: order.isMaterialRec === "Yes" ? "var(--success)" : "var(--danger)", marginTop: "2px" }}>
-                {order.isMaterialRec === "Yes" ? `Yes (${order.receivedDate || cargo?.receivedDate || "Received"})` : "No (In Freight Transit)"}
+              <div style={{ fontSize: "0.9rem", fontWeight: 700, color: (order.isMaterialRec === "Yes" || cargo?.isMaterialRec === "Yes" || Boolean(cargo?.receivedDate)) ? "var(--success)" : "var(--danger)", marginTop: "2px" }}>
+                {(order.isMaterialRec === "Yes" || cargo?.isMaterialRec === "Yes" || Boolean(cargo?.receivedDate)) ? `Yes (${order.actualReceivedDate || order.receivedDate || cargo?.receivedDate || "Received"})` : "No (In Freight Transit)"}
               </div>
             </div>
           </div>

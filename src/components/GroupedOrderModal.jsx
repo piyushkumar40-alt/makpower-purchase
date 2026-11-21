@@ -22,7 +22,7 @@ import {
   Edit3
 } from "lucide-react";
 import { useModalEscape } from "../utils/useModalEscape";
-import { getPurchaserDisplayName, formatPunchDateTime, calculateTotalCargoPrice } from "../utils/formatters";
+import { getPurchaserDisplayName, formatPunchDateTime, calculateTotalCargoPrice, isCargoMatch } from "../utils/formatters";
 import { getOrderStage } from "./MasterOrderTracker";
 import CargoRatesBreakdown from "./CargoRatesBreakdown";
 
@@ -55,13 +55,10 @@ export default function GroupedOrderModal({
   // Resolve live items from current requests state
   const liveItems = useMemo(() => {
     if (isCargoGroup && (orderGroup.cargoId || orderGroup.cargoObj)) {
-      const cId = orderGroup.cargoId || orderGroup.cargoObj?.id;
-      const cDetail = orderGroup.cargoDetail || orderGroup.cargoObj?.cargoDetail;
+      const cargoTarget = orderGroup.cargoObj || orderGroup.cargoId;
       const allCargoItems = (requests || []).filter(r => {
         if (r.status === "Cancelled") return false;
-        if (cId && (r.cargoId === cId || String(r.cargoId) === String(cId))) return true;
-        if (cDetail && r.cargoId === cDetail) return true;
-        return false;
+        return isCargoMatch(r.cargoId, cargoTarget);
       });
       if (allCargoItems.length > 0) return allCargoItems;
     }
@@ -646,7 +643,7 @@ export default function GroupedOrderModal({
               {filteredModalItems.map(r => {
                 const isChecked = modalCheckedIds.includes(r.id);
                 const isMarked = isItemMarked(r);
-                const cargo = cargos.find(c => c.id === r.cargoId || String(c.id) === String(r.cargoId));
+                const cargo = cargos.find(c => isCargoMatch(r.cargoId, c));
                 const stage = getOrderStage(r, cargo);
                 const qty = parseInt(r.vendorOrderQuantity || r.orderQuantity, 10) || 0;
                 const price = parseFloat(r.priceRmb) || 0;

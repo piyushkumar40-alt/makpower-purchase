@@ -4,7 +4,7 @@ import { uploadToCloudinary } from "../utils/upload";
 import DateRangeFilter, { isDateInBetween } from "./DateRangeFilter";
 import Pagination from "./Pagination";
 import CustomSelect from "./CustomSelect";
-import { cleanCategoryName, getPurchaserDisplayName } from "../utils/formatters";
+import { cleanCategoryName, getPurchaserDisplayName, isCargoMatch } from "../utils/formatters";
 
 export default function ItemMasterView({ requests = [], vendors = [], cargos = [], cargoCompanies = [], purchasers = [], settings = {}, onUpdateSettings, onBatchUpdateRequests }) {
   const [selectedModel, setSelectedModel] = useState(null);
@@ -148,7 +148,10 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
 
     // Determine current location stage for each item model
     return Object.values(map).map(item => {
-      const activeReqs = item.requests.filter(r => r.isMaterialRec !== "Yes");
+      const activeReqs = item.requests.filter(r => {
+        const cargo = cargos.find(c => isCargoMatch(r.cargoId, c));
+        return r.isMaterialRec !== "Yes" && !(cargo && (cargo.isMaterialRec === "Yes" || Boolean(cargo.receivedDate)));
+      });
 
       let latestStage = "Delivered Stock";
       let latestStageCode = 5;
@@ -160,8 +163,12 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
           let stageName = "Order Placed / Commercial Specs";
 
           if (r.cargoId) {
-            const cargo = cargos.find(c => c.id === r.cargoId);
-            if (cargo && cargo.cargoShippingDate) {
+            const cargo = cargos.find(c => isCargoMatch(r.cargoId, c));
+            const isRec = cargo && (cargo.isMaterialRec === "Yes" || Boolean(cargo.receivedDate));
+            if (isRec) {
+              stageCode = 5;
+              stageName = "Delivered Stock";
+            } else if (cargo && cargo.cargoShippingDate) {
               stageCode = 4;
               stageName = "In Freight Transit";
             } else {
@@ -422,10 +429,10 @@ export default function ItemMasterView({ requests = [], vendors = [], cargos = [
                 {item.requests.map(r => {
                   const purchaser = getPurchaserDisplayName(r, purchasers);
                   const vendor = vendors.find(v => v.id === r.vendorId)?.name || "Pending Vendor Selection";
-                  const cargo = cargos.find(c => c.id === r.cargoId || String(c.id) === String(r.cargoId) || (r.cargoId && c.cargoDetail === r.cargoId));
+                  const cargo = cargos.find(c => isCargoMatch(r.cargoId, c));
 
                   let itemStage = "Order Placed (Step 1)";
-                  if (r.isMaterialRec === "Yes") {
+                  if (r.isMaterialRec === "Yes" || cargo?.isMaterialRec === "Yes" || Boolean(cargo?.receivedDate)) {
                     itemStage = "Delivered Warehouse (Step 5)";
                   } else if (cargo && cargo.cargoShippingDate) {
                     itemStage = `In Freight Transit (Step 4: ${cargo.modeOfTransport || "Transit"})`;

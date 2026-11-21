@@ -25,7 +25,7 @@ import {
   TRACKABLE_MODULES 
 } from "./utils/userIntentionTracker";
 import { isDateInBetween } from "./components/DateRangeFilter";
-import { cleanCategoryName, isRequestForUser, getOfficialPurchasersList } from "./utils/formatters";
+import { cleanCategoryName, isRequestForUser, getOfficialPurchasersList, reconcileRequestsWithCargos, isCargoMatch } from "./utils/formatters";
 import { useLoading } from "./context/LoadingContext";
 import { useSaveStatus } from "./context/SaveStatusContext";
 import { closeTopModal, executeTopBackHandler } from "./utils/useModalEscape";
@@ -188,6 +188,7 @@ export default function App() {
   const [settings, setSettings] = useState({ isHidden: false, redirectUrl: "https://www.google.com" });
 
   const officialPurchasers = React.useMemo(() => getOfficialPurchasersList(users), [users]);
+  const effectiveRequests = React.useMemo(() => reconcileRequestsWithCargos(requests, cargos), [requests, cargos]);
 
   const [loading, setLoading] = useState(!hasPreloadedCache);
   const [initialLoadComplete, setInitialLoadComplete] = useState(hasPreloadedCache);
@@ -2736,7 +2737,7 @@ const cancelRequests = async (requestIds, reason = "") => {
     const updatedItems = [];
     const newShortageItems = [];
 
-    requests.filter(r => r.cargoId === cargoWithDate.id).forEach(r => {
+    requests.filter(r => isCargoMatch(r.cargoId, cargoWithDate)).forEach(r => {
       const expectedQty = parseInt(r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity || 0);
       const recInfo = itemReceiptMap[r.id];
       const receivedQty = (recInfo && recInfo.receivedQty != null) ? parseInt(recInfo.receivedQty) : (isNowReceived ? expectedQty : (r.receivedQuantity || expectedQty));
@@ -4850,7 +4851,7 @@ const cancelRequests = async (requestIds, reason = "") => {
             <HomePage 
               currentUser={currentUser}
               users={users}
-              requests={requests}
+              requests={effectiveRequests}
               vendors={vendors}
               cargos={cargos}
               cargoCompanies={cargoCompanies}
@@ -4894,7 +4895,7 @@ const cancelRequests = async (requestIds, reason = "") => {
         {activeView === "nitin" && currentUser && (
           <NitinDashboard 
             currentUser={currentUser}
-            requests={requests}
+            requests={effectiveRequests}
             vendors={vendors}
             cargos={cargos}
             cargoCompanies={cargoCompanies}
@@ -4921,7 +4922,7 @@ const cancelRequests = async (requestIds, reason = "") => {
         {activeView === "rahul" && currentUser && (
           <RahulDashboard 
             currentUser={currentUser}
-            requests={requests}
+            requests={effectiveRequests}
             vendors={vendors}
             cargos={cargos}
             cargoCompanies={cargoCompanies}
@@ -4948,7 +4949,7 @@ const cancelRequests = async (requestIds, reason = "") => {
         {activeView === "coordinator" && currentUser && (
           <CoordinatorDashboard 
             currentUser={currentUser}
-            requests={requests}
+            requests={effectiveRequests}
             vendors={vendors}
             cargos={cargos}
             users={users}
@@ -4960,7 +4961,7 @@ const cancelRequests = async (requestIds, reason = "") => {
           <div style={{ flex: 1, padding: "24px", maxWidth: "1400px", margin: "0 auto", width: "100%" }}>
             <OwnerDashboard 
               currentUser={currentUser}
-              requests={requests}
+              requests={effectiveRequests}
               cargos={cargos}
               vendors={vendors}
               users={users}
@@ -4991,7 +4992,7 @@ const cancelRequests = async (requestIds, reason = "") => {
           <SuperAdminDashboard 
             users={users}
             vendors={vendors}
-            requests={requests}
+            requests={effectiveRequests}
             cargos={cargos}
             cargoCompanies={cargoCompanies}
             onAddPurchaser={addPurchaser}
@@ -5137,7 +5138,7 @@ const cancelRequests = async (requestIds, reason = "") => {
             onRefreshData={handleRefreshAllData}
             isRefreshingData={isRefreshingData}
             currentUser={currentUser}
-            requests={requests}
+            requests={effectiveRequests}
             vendors={vendors}
             cargos={cargos}
             cargoCompanies={cargoCompanies}
@@ -5190,7 +5191,7 @@ const cancelRequests = async (requestIds, reason = "") => {
               onUpdateItem={updateItem}
               onMergeItems={mergeItems}
               currentUser={currentUser}
-              requests={requests}
+              requests={effectiveRequests}
               cargos={cargos}
               vendors={vendors}
               users={users}
@@ -5211,7 +5212,7 @@ const cancelRequests = async (requestIds, reason = "") => {
               onClose={handleBackFromItemDetail}
               onBack={handleBackFromItemDetail}
               isFullPage={true}
-              requests={requests}
+              requests={effectiveRequests}
               cargos={cargos}
               vendors={vendors}
               users={users}

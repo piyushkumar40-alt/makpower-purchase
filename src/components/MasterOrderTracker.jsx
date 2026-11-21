@@ -44,7 +44,8 @@ export function getOrderStage(r, cargo) {
       desc: "Order has been cancelled"
     };
   }
-  if (r.isMaterialRec === "Yes") {
+  const isReceived = r?.isMaterialRec === "Yes" || Boolean(cargo && (cargo.isMaterialRec === "Yes" || cargo.receivedDate || cargo.actualReceivedDate || cargo.status === "Received" || cargo.status === "Delivered"));
+  if (isReceived) {
     return {
       key: "received",
       step: 5,
@@ -53,7 +54,7 @@ export function getOrderStage(r, cargo) {
       bgColor: "rgba(16, 185, 129, 0.12)",
       borderColor: "rgba(16, 185, 129, 0.3)",
       stepTarget: "all",
-      desc: r.receivedDate || cargo?.receivedDate ? `Received on ${r.receivedDate || cargo?.receivedDate}` : "Material Received"
+      desc: r?.actualReceivedDate || r?.receivedDate || cargo?.receivedDate || cargo?.actualReceivedDate ? `Received on ${r?.actualReceivedDate || r?.receivedDate || cargo?.receivedDate || cargo?.actualReceivedDate}` : "Material Received"
     };
   }
   if (r.cargoPickupDate || (cargo && cargo.cargoShippingDate)) {

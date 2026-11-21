@@ -1227,3 +1227,27 @@ export const reconcileCargosWithRequests = (cargos = [], requests = []) => {
   return missingMap.size > 0 ? [...base, ...missingMap.values()] : base;
 };
 
+/**
+ * Reconciles requests with cargo shipments:
+ * If a request's cargo has been received in warehouse (cargo.isMaterialRec === 'Yes' or cargo.receivedDate),
+ * guarantees that the request's isMaterialRec is 'Yes' and actualReceivedDate is populated.
+ */
+export const reconcileRequestsWithCargos = (requests = [], cargos = []) => {
+  if (!Array.isArray(requests) || requests.length === 0) return [];
+  if (!Array.isArray(cargos) || cargos.length === 0) return requests;
+
+  return requests.map(r => {
+    if (r.isMaterialRec === "Yes" || r.status === "Cancelled") return r;
+    const cargo = cargos.find(c => isCargoMatch(r.cargoId, c));
+    if (cargo && (cargo.isMaterialRec === "Yes" || Boolean(cargo.receivedDate) || Boolean(cargo.actualReceivedDate) || cargo.status === "Received" || cargo.status === "Delivered")) {
+      return {
+        ...r,
+        isMaterialRec: "Yes",
+        actualReceivedDate: r.actualReceivedDate || cargo.receivedDate || cargo.actualReceivedDate || ""
+      };
+    }
+    return r;
+  });
+};
+
+

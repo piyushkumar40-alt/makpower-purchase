@@ -2973,6 +2973,31 @@ async function syncPartyCategoryMonthlySales() {
   }
 }
 
+// Auto-reconcile requests with cargos that have already been marked received
+function reconcileRequestsWithReceivedCargos(requests, cargos) {
+  if (!Array.isArray(requests) || !Array.isArray(cargos)) return [];
+  const receivedCargoMap = new Map();
+  cargos.forEach(c => {
+    if (c.isMaterialRec === 'Yes' || Boolean(c.receivedDate)) {
+      if (c.id) receivedCargoMap.set(String(c.id).trim().toLowerCase(), c);
+      const raw = String(c.id).replace(/^cargo-/, '').trim().toLowerCase();
+      if (raw) receivedCargoMap.set(raw, c);
+      if (c.cargoDetail) receivedCargoMap.set(String(c.cargoDetail).trim().toLowerCase(), c);
+    }
+  });
+  const unreceivedReqIdsToUpdate = [];
+  requests.forEach(r => {
+    const cid = String(r.cargoId || '').trim().toLowerCase();
+    if (cid && receivedCargoMap.has(cid) && r.isMaterialRec !== 'Yes') {
+      const cg = receivedCargoMap.get(cid);
+      r.isMaterialRec = 'Yes';
+      r.actualReceivedDate = r.actualReceivedDate || cg.receivedDate || '';
+      unreceivedReqIdsToUpdate.push(r.id);
+    }
+  });
+  return unreceivedReqIdsToUpdate;
+}
+
 // 1. GET /api/state - Fetches full system state with concurrent DB queries & memory cache
 app.get("/api/state", async (req, res) => {
   const { userId, userRole, userName } = req.query;
@@ -3145,6 +3170,14 @@ app.get("/api/state", async (req, res) => {
             });
             if (orphanCargosMap.size > 0) {
               cargos.push(...orphanCargosMap.values());
+            }
+
+            const unreceivedReqIdsToSync = reconcileRequestsWithReceivedCargos(requests, cargos);
+            if (isPg && unreceivedReqIdsToSync.length > 0) {
+              pool.query(
+                `UPDATE requests SET "isMaterialRec" = 'Yes' WHERE "id" = ANY($1::text[])`,
+                [unreceivedReqIdsToSync]
+              ).catch(syncErr => console.warn("Background requests isMaterialRec sync notice:", syncErr.message));
             }
 
             const settings = {};
@@ -3378,6 +3411,14 @@ app.get("/api/state", async (req, res) => {
       const requests = (requestsRes.rows || []).map(formatRequestForResponse);
 
       const cargos = (cargosRes.rows || []).map(formatCargoForResponse);
+
+      const unreceivedGenReqIdsToSync = reconcileRequestsWithReceivedCargos(requests, cargos);
+      if (isPg && unreceivedGenReqIdsToSync.length > 0) {
+        pool.query(
+          `UPDATE requests SET "isMaterialRec" = 'Yes' WHERE "id" = ANY($1::text[])`,
+          [unreceivedGenReqIdsToSync]
+        ).catch(syncErr => console.warn("Background general requests isMaterialRec sync notice:", syncErr.message));
+      }
 
       const settings = {};
       (settingsRes.rows || []).forEach(row => {
@@ -4582,9 +4623,26 @@ app.post("/api/cargos", async (req, res) => {
             reqSyncUpdates.push(`"actualReceivedDate" = $${syncIdx++}`);
             reqSyncVals.push(c.receivedDate);
           }
-          reqSyncVals.push(c.id);
+          const cIdStr = String(c.id).trim();
+          const rawId = cIdStr.replace(/^cargo-/, '');
+          const withPrefix = `cargo-${rawId}`;
+          const detail = c.cargoDetail ? String(c.cargoDetail).trim() : '';
+
+          reqSyncVals.push(cIdStr);
+          const p1 = syncIdx++;
+          reqSyncVals.push(rawId);
+          const p2 = syncIdx++;
+          reqSyncVals.push(withPrefix);
+          const p3 = syncIdx++;
+          reqSyncVals.push(detail);
+          const p4 = syncIdx++;
+
           await client.query(
-            `UPDATE requests SET ${reqSyncUpdates.join(', ')} WHERE "cargoId" = $${syncIdx}`,
+            `UPDATE requests SET ${reqSyncUpdates.join(', ')} 
+             WHERE LOWER(TRIM("cargoId")) = LOWER(TRIM($${p1})) 
+                OR LOWER(TRIM("cargoId")) = LOWER(TRIM($${p2})) 
+                OR LOWER(TRIM("cargoId")) = LOWER(TRIM($${p3})) 
+                OR ($${p4} <> '' AND LOWER(TRIM("cargoId")) = LOWER(TRIM($${p4})))`,
             reqSyncVals
           );
         }
@@ -4626,6 +4684,19 @@ app.post("/api/cargos", async (req, res) => {
     }
     if (bundledRequests && bundledRequests.length > 0) {
       upsertRequestsLocalJson(data, bundledRequests);
+    }
+    if (c.id && c.isMaterialRec === 'Yes') {
+      const cIdStr = String(c.id).trim().toLowerCase();
+      const rawId = cIdStr.replace(/^cargo-/, '');
+      const withPrefix = `cargo-${rawId}`;
+      const detail = (c.cargoDetail || '').trim().toLowerCase();
+      (data.requests || []).forEach(r => {
+        const rc = String(r.cargoId || '').trim().toLowerCase();
+        if (rc === cIdStr || rc === rawId || rc === withPrefix || (detail && rc === detail)) {
+          r.isMaterialRec = 'Yes';
+          if (c.receivedDate) r.actualReceivedDate = c.receivedDate;
+        }
+      });
     }
     writeLocalJson(data);
     invalidateStateCache();

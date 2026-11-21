@@ -46,7 +46,7 @@ import { EditCargoModal } from "./PurchaserDashboard";
 import CargoRatesBreakdown from "./CargoRatesBreakdown";
 import RahulDashboardLoading from "./RahulDashboardLoading";
 import { useSortableData } from "../utils/useSortableData";
-import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, formatPunchDateTime } from "../utils/formatters";
+import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, formatPunchDateTime, isCargoMatch } from "../utils/formatters";
 
 export default function RahulDashboard({ 
   currentUser = {}, 
@@ -260,8 +260,8 @@ export default function RahulDashboard({
       totalPcs += qty;
       if (price > 0) totalRmbValue += val;
 
-      const cargo = cargos.find(c => c.id === r.cargoId);
-      const isDelivered = r.isMaterialRec === "Yes";
+      const cargo = cargos.find(c => isCargoMatch(r.cargoId, c));
+      const isDelivered = r.isMaterialRec === "Yes" || cargo?.isMaterialRec === "Yes" || Boolean(cargo?.receivedDate) || cargo?.status === "Received" || cargo?.status === "Delivered";
       const isInTransit = !isDelivered && Boolean(r.cargoPickupDate || cargo?.cargoShippingDate || r.cargoId);
       const isReadyVendor = !isDelivered && !isInTransit && Boolean(r.vendorEdd);
 
@@ -454,18 +454,19 @@ export default function RahulDashboard({
   // Multi-Level Filtered Requests
   const filteredRequests = useMemo(() => {
     return currentTabRequests.filter(r => {
-      const cargo = cargos.find(c => c.id === r.cargoId);
+      const cargo = cargos.find(c => isCargoMatch(r.cargoId, c));
       const stage = getOrderStage(r, cargo);
+      const isDelivered = stage.key === "received" || r.isMaterialRec === "Yes" || cargo?.isMaterialRec === "Yes" || Boolean(cargo?.receivedDate);
 
       // 1. Quick Status Chip Filter
       if (quickStatus === "coming") {
         const isComing = stage.key === "pickedup" || stage.key === "cargo" || stage.key === "consolidated" || stage.key === "vendorready";
         if (!isComing) return false;
       } else if (quickStatus === "pipeline") {
-        const inPipeline = r.isMaterialRec !== "Yes" && !isRequestCancelled(r);
+        const inPipeline = !isDelivered && !isRequestCancelled(r);
         if (!inPipeline) return false;
       } else if (quickStatus === "delivered") {
-        if (r.isMaterialRec !== "Yes") return false;
+        if (!isDelivered) return false;
       } else if (quickStatus === "pending_mark") {
         if (isItemMarked(r)) return false;
       } else if (quickStatus === "marked") {
@@ -501,7 +502,7 @@ export default function RahulDashboard({
 
       // 5. Cargo Filter
       if (filterCargo) {
-        const cObj = cargos.find(c => c.id === r.cargoId);
+        const cObj = cargos.find(c => isCargoMatch(r.cargoId, c));
         const rCargoDetail = (cObj?.cargoDetail || "").toLowerCase().trim();
         const rCarrier = (cObj?.carrierName || "").toLowerCase().trim();
         const filterLower = filterCargo.toLowerCase().trim();
@@ -583,7 +584,7 @@ export default function RahulDashboard({
 
         if (!map.has(groupKey)) {
           const isUnassigned = cId === "unassigned_cargo";
-          const cargoObj = isUnassigned ? null : cargos.find(c => c.id === cId || (cId && c.cargoDetail === cId));
+          const cargoObj = isUnassigned ? null : (cargos.find(c => isCargoMatch(cId, c)) || cargos.find(c => c.id === cId || (cId && c.cargoDetail === cId)));
           const companyObj = cargoCompanies.find(cc => cc.id === cargoObj?.cargoCompanyId);
           let cargoDetail = isUnassigned ? "Pending Cargo Consolidation (Unassigned)" : "";
           if (!isUnassigned) {
@@ -653,7 +654,7 @@ export default function RahulDashboard({
         if (r.category) grp.categories.add(r.category);
         if (r.model && !grp.models.includes(r.model)) grp.models.push(r.model);
 
-        const cargo = grp.cargoObj || cargos.find(c => c.id === r.cargoId);
+        const cargo = grp.cargoObj || cargos.find(c => isCargoMatch(r.cargoId, c));
         const stage = getOrderStage(r, cargo);
         grp.stageCounts[stage.label] = (grp.stageCounts[stage.label] || 0) + 1;
       });
@@ -705,7 +706,7 @@ export default function RahulDashboard({
           diffDays: null
         };
 
-        const isDelivered = Boolean(grp.cargoObj?.actualReceivedDate || grp.items.every(it => it.isMaterialRec === "Yes"));
+        const isDelivered = Boolean(grp.cargoObj?.actualReceivedDate || grp.cargoObj?.receivedDate || grp.cargoObj?.isMaterialRec === "Yes" || grp.items.every(it => it.isMaterialRec === "Yes" || grp.cargoObj?.isMaterialRec === "Yes" || Boolean(grp.cargoObj?.receivedDate)));
         if (isDelivered) {
           arrivalStatus = {
             label: "✅ Delivered",
@@ -860,7 +861,7 @@ export default function RahulDashboard({
       if (r.category) grp.categories.add(r.category);
       if (r.model && !grp.models.includes(r.model)) grp.models.push(r.model);
 
-      const cargo = cargos.find(c => c.id === r.cargoId);
+      const cargo = cargos.find(c => isCargoMatch(r.cargoId, c));
       const stage = getOrderStage(r, cargo);
       grp.stageCounts[stage.label] = (grp.stageCounts[stage.label] || 0) + 1;
     });
@@ -966,7 +967,7 @@ export default function RahulDashboard({
     const nameMap = new Map();
 
     uniqueCargos.forEach(cid => {
-      const cObj = cargos.find(c => c.id === cid || c.cargoDetail === cid);
+      const cObj = cargos.find(c => isCargoMatch(cid, c)) || cargos.find(c => c.id === cid || c.cargoDetail === cid);
       let name = "";
       if (cObj?.cargoDetail && !cObj.cargoDetail.startsWith("cargo-")) {
         name = cObj.cargoDetail.trim();
@@ -2878,7 +2879,7 @@ export default function RahulDashboard({
                                         const itCargoRmb = itQty * itCargoPerPc;
                                         const itGrandTotal = itGoodsRmb + itCargoRmb;
                                         const itMarked = isItemMarked(it);
-                                        const itCargo = cargos.find(c => c.id === it.cargoId);
+                                        const itCargo = cargos.find(c => isCargoMatch(it.cargoId, c));
                                         const itStage = getOrderStage(it, itCargo);
                                         const vName = vendors.find(v => v.id === it.vendorId)?.name || it.vendorName || "—";
 
@@ -3217,7 +3218,7 @@ export default function RahulDashboard({
                                       const itPrice = parseFloat(it.priceRmb) || 0;
                                       const itTotalRmb = itQty * itPrice;
                                       const itMarked = isItemMarked(it);
-                                      const itCargo = cargos.find(c => c.id === it.cargoId);
+                                      const itCargo = cargos.find(c => isCargoMatch(it.cargoId, c));
                                       const itStage = getOrderStage(it, itCargo);
 
                                       return (
@@ -3305,7 +3306,7 @@ export default function RahulDashboard({
                         />
                       </th>
                       <th style={{ width: "65px", textAlign: "center" }}>Inspect</th>
-                      <RenderSortHeader colKey="stage" title="Where Item Is Now" getValue={r => getOrderStage(r, cargos.find(c => c.id === r.cargoId)).label} />
+                      <RenderSortHeader colKey="stage" title="Where Item Is Now" getValue={r => getOrderStage(r, cargos.find(c => isCargoMatch(r.cargoId, c))).label} />
                       <RenderSortHeader colKey="purchaser" title="Purchaser" getValue={r => getPurchaserName(r)} />
                       <RenderSortHeader colKey="entryBy" title="Required By" getValue={r => r.entryBy || r.requestedBy || "Requester"} />
                       <RenderSortHeader colKey="vendor" title="Vendor" getValue={r => vendors.find(v => v.id === r.vendorId)?.name || ""} />
@@ -3316,20 +3317,23 @@ export default function RahulDashboard({
                       <RenderSortHeader colKey="priceRmb" title="Price (¥)" getValue={r => parseFloat(r.priceRmb) || 0} />
                       <RenderSortHeader colKey="totalRmb" title="Total RMB (¥)" getValue={r => (parseInt(r.orderQuantity, 10) || 0) * (parseFloat(r.priceRmb) || 0)} />
                       <RenderSortHeader colKey="vendorEdd" title="EDD" />
-                      <RenderSortHeader colKey="cargoDate" title="Cargo Date" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoOrderDate || ""} />
-                      <RenderSortHeader colKey="cargoDetail" title="Cargo Name / Code" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoDetail || r.cargoId || ""} />
-                      <RenderSortHeader colKey="modeOfTransport" title="Transport" getValue={r => cargos.find(c => c.id === r.cargoId)?.modeOfTransport || ""} />
-                      <RenderSortHeader colKey="cargoShippingDate" title="Ship Date" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoShippingDate || ""} />
-                      <RenderSortHeader colKey="cargoEta" title="ETA" getValue={r => cargos.find(c => c.id === r.cargoId)?.cargoEta || ""} />
+                      <RenderSortHeader colKey="cargoDate" title="Cargo Date" getValue={r => cargos.find(c => isCargoMatch(r.cargoId, c))?.cargoOrderDate || ""} />
+                      <RenderSortHeader colKey="cargoDetail" title="Cargo Name / Code" getValue={r => cargos.find(c => isCargoMatch(r.cargoId, c))?.cargoDetail || r.cargoId || ""} />
+                      <RenderSortHeader colKey="modeOfTransport" title="Transport" getValue={r => cargos.find(c => isCargoMatch(r.cargoId, c))?.modeOfTransport || ""} />
+                      <RenderSortHeader colKey="cargoShippingDate" title="Ship Date" getValue={r => cargos.find(c => isCargoMatch(r.cargoId, c))?.cargoShippingDate || ""} />
+                      <RenderSortHeader colKey="cargoEta" title="ETA" getValue={r => cargos.find(c => isCargoMatch(r.cargoId, c))?.cargoEta || ""} />
                       <RenderSortHeader 
                         colKey="cargoFreightPrice" 
                         title="Cargo Price" 
                         getValue={r => { 
-                          const c = cargos.find(x => x.id === r.cargoId || (r.cargoId && x.cargoDetail === r.cargoId)); 
+                          const c = cargos.find(x => isCargoMatch(r.cargoId, x)); 
                           return calculateTotalCargoPrice(c, r); 
                         }} 
                       />
-                      <RenderSortHeader colKey="isMaterialRec" title="Material Rec" />
+                      <RenderSortHeader colKey="isMaterialRec" title="Material Rec" getValue={r => {
+                        const c = cargos.find(x => isCargoMatch(r.cargoId, x));
+                        return (r.isMaterialRec === "Yes" || c?.isMaterialRec === "Yes" || Boolean(c?.receivedDate)) ? "Yes" : (r.isMaterialRec || "No");
+                      }} />
                       <RenderSortHeader colKey="packingOrderedByNitin" title={isNitin ? "Packing Purchased?" : "Packing Ordered?"} />
                       <th>Cargo Documents</th>
                       {activeTab === "submitted" && (
@@ -3343,7 +3347,7 @@ export default function RahulDashboard({
                   <tbody>
                     {sortedDisplayRequests.map(r => {
                       const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
-                      const cargo = cargos.find(c => c.id === r.cargoId);
+                      const cargo = cargos.find(c => isCargoMatch(r.cargoId, c));
                       const isChecked = checkedIds.includes(r.id);
                       const stage = getOrderStage(r, cargo);
                       const qty = parseInt(r.orderQuantity, 10) || 0;
@@ -3546,9 +3550,14 @@ export default function RahulDashboard({
 
                           {/* Material Rec */}
                           <td>
-                            <span style={{ fontWeight: 700, fontSize: "0.78rem", color: r.isMaterialRec === "Yes" ? "var(--success)" : "var(--danger)" }}>
-                              {r.isMaterialRec}
-                            </span>
+                            {(() => {
+                              const isRec = r.isMaterialRec === "Yes" || cargo?.isMaterialRec === "Yes" || Boolean(cargo?.receivedDate);
+                              return (
+                                <span style={{ fontWeight: 700, fontSize: "0.78rem", color: isRec ? "var(--success)" : "var(--danger)" }}>
+                                  {isRec ? "Yes" : (r.isMaterialRec || "No")}
+                                </span>
+                              );
+                            })()}
                           </td>
 
                           {/* Packing Purchased Status */}
