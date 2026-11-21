@@ -370,10 +370,40 @@ export default function BundledUpcomingShipments({
     await onUpdateCargo(updatedCargo);
   };
 
+  const allVendorsWithCounts = useMemo(() => {
+    const vMap = new Map();
+    (vendors || []).forEach(v => {
+      if (v && v.id) vMap.set(v.id, { id: v.id, name: v.name || v.id });
+    });
+    (cargos || []).forEach(c => {
+      if (c.vendorId && !vMap.has(c.vendorId)) {
+        vMap.set(c.vendorId, { id: c.vendorId, name: c.vendorName || c.vendorId });
+      }
+    });
+    const hasLivi = Array.from(vMap.values()).some(v => v.name && v.name.trim().toLowerCase() === "livi");
+    if (!hasLivi) {
+      vMap.set("vend-livi", { id: "vend-livi", name: "Livi" });
+    }
+    const list = Array.from(vMap.values()).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    return list.map(v => {
+      const vNameLower = (v.name || "").trim().toLowerCase();
+      const count = (cargos || []).filter(c => {
+        const vResolved = resolveCargoVendorName(c, vendors, requests);
+        return c.vendorId === v.id || vResolved.toLowerCase().trim() === vNameLower;
+      }).length;
+      return {
+        value: v.id,
+        label: `${v.name} (${count})`,
+        count,
+        sublabel: `${count} shipment${count === 1 ? "" : "s"}`
+      };
+    });
+  }, [vendors, cargos, requests]);
+
   const vendorOptions = useMemo(() => [
     { value: "", label: "All Vendors" },
-    ...vendors.map(v => ({ value: v.id, label: v.name }))
-  ], [vendors]);
+    ...allVendorsWithCounts
+  ], [allVendorsWithCounts]);
 
   const carrierOptions = useMemo(() => [
     { value: "", label: "All Carriers" },

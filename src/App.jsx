@@ -165,9 +165,31 @@ export default function App() {
     }
     return initialUsers.map(normalizeUserData);
   });
-  const [vendors, setVendors] = useState(() => initialCacheSnapshot?.vendors || []);
-  const [requests, setRequests] = useState(() => initialCacheSnapshot?.requests || []);
-  const [cargos, setCargos] = useState(() => initialCacheSnapshot?.cargos || []);
+  const [vendors, setVendors] = useState(() => {
+    let list = initialCacheSnapshot?.vendors || [];
+    if (!list.some(v => v.name && v.name.toLowerCase().trim() === "livi")) {
+      list = [...list, { id: "vend-livi", name: "Livi", location: "China", purchaserIds: ["u-rahul"] }];
+    }
+    return list;
+  });
+  const [requests, setRequests] = useState(() => {
+    let list = initialCacheSnapshot?.requests || [];
+    return list.map(r => {
+      if (String(r.cargoId || "").includes("1792575495632")) {
+        return { ...r, vendorId: r.vendorId || "vend-livi", vendorName: "Livi" };
+      }
+      return r;
+    });
+  });
+  const [cargos, setCargos] = useState(() => {
+    let list = initialCacheSnapshot?.cargos || [];
+    return list.map(c => {
+      if (String(c.id || "").includes("1792575495632")) {
+        return { ...c, vendorId: c.vendorId || "vend-livi", vendorName: "Livi" };
+      }
+      return c;
+    });
+  });
   const [cargoCompanies, setCargoCompanies] = useState(() => initialCacheSnapshot?.cargoCompanies || []);
   const [items, setItems] = useState(() => initialCacheSnapshot?.items || []);
   const [designations, setDesignations] = useState(() => initialCacheSnapshot?.designations || []);
@@ -1520,28 +1542,29 @@ export default function App() {
 
         if (effectiveUsers && effectiveUsers.length > 0) setUsers(effectiveUsers);
         setVendors(prev => {
-          if (effectiveVendors.length > 0) return effectiveVendors;
-          if (prev.length > 0 && effectiveVendors.length === 0) {
-            console.warn("[Data Guard] Preserved in-memory vendors to prevent zero flash");
-            return prev;
+          let list = effectiveVendors.length > 0 ? effectiveVendors : (prev.length > 0 ? prev : []);
+          if (!list.some(v => v.name && v.name.toLowerCase().trim() === "livi")) {
+            list = [...list, { id: "vend-livi", name: "Livi", location: "China", purchaserIds: ["u-rahul"] }];
           }
-          return effectiveVendors;
+          return list;
         });
         setRequests(prev => {
-          if (effectiveRequests.length > 0) return effectiveRequests;
-          if (prev.length > 0 && effectiveRequests.length === 0) {
-            console.warn("[Data Guard] Preserved in-memory requests to prevent zero flash");
-            return prev;
-          }
-          return effectiveRequests;
+          let list = effectiveRequests.length > 0 ? effectiveRequests : (prev.length > 0 ? prev : []);
+          return list.map(r => {
+            if (String(r.cargoId || "").includes("1792575495632")) {
+              return { ...r, vendorId: r.vendorId || "vend-livi", vendorName: "Livi" };
+            }
+            return r;
+          });
         });
         setCargos(prev => {
-          if (effectiveCargos.length > 0) return effectiveCargos;
-          if (prev.length > 0 && effectiveCargos.length === 0) {
-            console.warn("[Data Guard] Preserved in-memory cargos to prevent zero flash");
-            return prev;
-          }
-          return effectiveCargos;
+          let list = effectiveCargos.length > 0 ? effectiveCargos : (prev.length > 0 ? prev : []);
+          return list.map(c => {
+            if (String(c.id || "").includes("1792575495632") || String(c.cargoDetail || "").includes("1792575495632")) {
+              return { ...c, vendorId: c.vendorId || "vend-livi", vendorName: "Livi" };
+            }
+            return c;
+          });
         });
         setCargoCompanies(prev => {
           if (effectiveCargoCompanies.length > 0) return effectiveCargoCompanies;

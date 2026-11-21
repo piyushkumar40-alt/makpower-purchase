@@ -484,8 +484,17 @@ export default function RahulDashboard({
       }
 
       // 3. Vendor Filter
-      if (filterVendor && r.vendorId !== filterVendor) {
-        return false;
+      if (filterVendor) {
+        const selectedVendorObj = allVendorsWithCounts.find(v => v.value === filterVendor || v.rawName === filterVendor);
+        const targetId = selectedVendorObj?.value || filterVendor;
+        const targetName = (selectedVendorObj?.rawName || filterVendor).trim().toLowerCase();
+        const rVId = r.vendorId || "";
+        const rVName = (r.vendorName || "").trim().toLowerCase();
+
+        const match = rVId === targetId || (targetName && rVName === targetName) || (targetId && rVName === targetId.trim().toLowerCase());
+        if (!match) {
+          return false;
+        }
       }
 
       // 4. Purchaser Filter
@@ -569,7 +578,7 @@ export default function RahulDashboard({
 
       return true;
     });
-  }, [currentTabRequests, quickStatus, filterStage, filterVendor, filterPurchaser, filterCargo, filterTransport, filterCategory, filterType, dateField, fromDate, toDate, searchQuery, cargos, vendors, purchasers, isNitin]);
+  }, [currentTabRequests, quickStatus, filterStage, filterVendor, filterPurchaser, filterCargo, filterTransport, filterCategory, filterType, dateField, fromDate, toDate, searchQuery, cargos, vendors, purchasers, isNitin, allVendorsWithCounts]);
 
   const { items: sortedDisplayRequests, RenderSortHeader } = useSortableData(filteredRequests);
 
@@ -756,9 +765,15 @@ export default function RahulDashboard({
         }
 
         // Distinct Vendors Summary
-        const distinctVendorNames = Array.from(grp.vendorIds).map(id => {
+        let distinctVendorNames = Array.from(grp.vendorIds).map(id => {
           return vendors.find(v => v.id === id)?.name || id;
         }).filter(Boolean);
+        if (distinctVendorNames.length === 0 && grp.cargoObj) {
+          const resolved = resolveCargoVendorName(grp.cargoObj, vendors, requests);
+          if (resolved && resolved !== "Unknown Vendor") {
+            distinctVendorNames = [resolved];
+          }
+        }
         const vendorSummary = distinctVendorNames.length === 0
           ? "—"
           : (distinctVendorNames.length <= 2 ? distinctVendorNames.join(", ") : `${distinctVendorNames.slice(0, 2).join(", ")} +${distinctVendorNames.length - 2} more`);
@@ -916,12 +931,59 @@ export default function RahulDashboard({
 
   const { items: sortedGroupedOrders, RenderSortHeader: RenderGroupSortHeader } = useSortableData(groupedOrders);
 
-  // Extract filter options dynamically
-  const uniqueVendors = useMemo(() => {
-    return Array.from(new Set(eligibleRequests.map(r => r.vendorId)))
-      .map(id => vendors.find(v => v.id === id))
-      .filter(Boolean);
-  }, [eligibleRequests, vendors]);
+  // Extract all vendors with active order quantities for Rahul Accounts
+  const allVendorsWithCounts = useMemo(() => {
+    const vMap = new Map();
+
+    // 1. Add all vendors from master vendors table
+    (vendors || []).forEach(v => {
+      if (v && v.id) {
+        vMap.set(v.id, { id: v.id, name: v.name || v.id });
+      }
+    });
+
+    // 2. Also include any vendors present in requests
+    (requests || []).forEach(r => {
+      if (r.vendorId && !vMap.has(r.vendorId)) {
+        vMap.set(r.vendorId, { id: r.vendorId, name: r.vendorName || r.vendorId });
+      }
+    });
+
+    // 3. Also include any vendors present in cargos
+    (cargos || []).forEach(c => {
+      if (c.vendorId && !vMap.has(c.vendorId)) {
+        vMap.set(c.vendorId, { id: c.vendorId, name: c.vendorName || c.vendorId });
+      }
+    });
+
+    // Guarantee Livi is present in Rahul Accounts vendor list
+    const hasLivi = Array.from(vMap.values()).some(v => v.name && v.name.trim().toLowerCase() === "livi");
+    if (!hasLivi) {
+      vMap.set("vend-livi", { id: "vend-livi", name: "Livi" });
+    }
+
+    const list = Array.from(vMap.values());
+    list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+    return list.map(v => {
+      const vNameLower = (v.name || "").trim().toLowerCase();
+      // Count active (non-cancelled) orders for this vendor
+      const activeCount = (requests || []).filter(r => {
+        if (isRequestCancelled(r)) return false;
+        const rVId = r.vendorId || "";
+        const rVName = (r.vendorName || "").trim().toLowerCase();
+        return rVId === v.id || (vNameLower && rVName === vNameLower) || (v.id && rVName === v.id.trim().toLowerCase());
+      }).length;
+
+      return {
+        value: v.id,
+        label: `${v.name} (${activeCount})`,
+        rawName: v.name,
+        count: activeCount,
+        sublabel: activeCount === 1 ? "1 active order" : `${activeCount} active orders`
+      };
+    });
+  }, [vendors, requests, cargos]);
 
   const uniqueCategories = useMemo(() => {
     return Array.from(new Set(eligibleRequests.map(r => r.category).filter(Boolean)));
@@ -948,10 +1010,18 @@ export default function RahulDashboard({
     { value: "cancelled", label: "Cancelled" }
   ];
 
-  const vendorOptions = useMemo(() => [
-    { value: "", label: "All Vendors" },
-    ...uniqueVendors.map(v => ({ value: v.id, label: v.name }))
-  ], [uniqueVendors]);
+  const vendorOptions = useMemo(() => {
+    const totalActiveCount = (requests || []).filter(r => !isRequestCancelled(r)).length;
+    return [
+      { 
+        value: "", 
+        label: `All Vendors (${allVendorsWithCounts.length})`, 
+        count: totalActiveCount, 
+        sublabel: `${totalActiveCount} total active orders across all vendors` 
+      },
+      ...allVendorsWithCounts
+    ];
+  }, [allVendorsWithCounts, requests]);
 
   const purchaserOptions = useMemo(() => [
     { value: "", label: "All Purchasers" },
@@ -3008,6 +3078,21 @@ export default function RahulDashboard({
                               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                                 <Building2 size={14} style={{ color: "var(--primary)", flexShrink: 0 }} />
                                 <span style={{ color: "var(--text-main)" }}>{group.vendorName}</span>
+                                <span 
+                                  className="badge" 
+                                  style={{ 
+                                    fontSize: "0.72rem", 
+                                    padding: "1px 7px", 
+                                    borderRadius: "99px",
+                                    background: "rgba(56, 189, 248, 0.12)", 
+                                    color: "#38bdf8", 
+                                    border: "1px solid rgba(56, 189, 248, 0.25)", 
+                                    fontWeight: 600
+                                  }}
+                                  title={`${group.items.length} order items in this lot`}
+                                >
+                                  {group.items.length} order{group.items.length !== 1 ? "s" : ""}
+                                </span>
                               </div>
                             </td>
 
