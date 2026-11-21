@@ -262,7 +262,7 @@ export default function RahulDashboard({
 
       const cargo = cargos.find(c => c.id === r.cargoId);
       const isDelivered = r.isMaterialRec === "Yes";
-      const isInTransit = !isDelivered && Boolean(r.cargoPickupDate || cargo?.cargoShippingDate);
+      const isInTransit = !isDelivered && Boolean(r.cargoPickupDate || cargo?.cargoShippingDate || r.cargoId);
       const isReadyVendor = !isDelivered && !isInTransit && Boolean(r.vendorEdd);
 
       if (isDelivered) {
@@ -459,7 +459,7 @@ export default function RahulDashboard({
 
       // 1. Quick Status Chip Filter
       if (quickStatus === "coming") {
-        const isComing = stage.key === "pickedup" || stage.key === "vendorready";
+        const isComing = stage.key === "pickedup" || stage.key === "cargo" || stage.key === "consolidated" || stage.key === "vendorready";
         if (!isComing) return false;
       } else if (quickStatus === "pipeline") {
         const inPipeline = r.isMaterialRec !== "Yes" && !isRequestCancelled(r);
