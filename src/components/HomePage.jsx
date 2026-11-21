@@ -6,7 +6,7 @@ import {
   Truck, Building2, Eye, Check
 } from "lucide-react";
 import ItemMasterView from "./ItemMasterView";
-import { isRequestForUser, calculateCargoTotalCartons, getOfficialPurchasersList } from "../utils/formatters";
+import { isRequestForUser, calculateCargoTotalCartons, getOfficialPurchasersList, resolveCargoVendorName } from "../utils/formatters";
 import { EditCargoModal } from "./PurchaserDashboard";
 
 export default function HomePage({
@@ -101,7 +101,7 @@ export default function HomePage({
 
   // Upcoming in-transit cargo consignments
   const upcomingCargoLots = inTransitCargos.map(cargo => {
-    const vName = (vendors || []).find(v => v.id === cargo.vendorId)?.name || cargo.vendorName || "Unknown Vendor";
+    const vName = resolveCargoVendorName(cargo, vendors, requests);
     const cargoName = (cargoCompanies || []).find(cc => cc.id === cargo.cargoCompanyId)?.name || cargo.cargoDetail || cargo.cargoCompanyName || "—";
     const cargoItems = (requests || []).filter(r => r.cargoId === cargo.id && r.status !== "Cancelled");
     const totalPcs = cargoItems.reduce((acc, r) => acc + (Number(r.vendorOrderQuantity || r.orderQuantity) || 0), 0);
@@ -1082,6 +1082,7 @@ export default function HomePage({
           requests={requests}
           cargoCompanies={cargoCompanies}
           purchasers={users}
+          vendors={vendors}
           onClose={() => setEditingCargo(null)}
           onSave={async (updated) => {
             if (onUpdateCargo) await onUpdateCargo(updated);

@@ -10,7 +10,7 @@ import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
-import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons, calculateDefaultCargoEta, formatCancelDate, formatCancelTime, parsePastedPriceLine, isModelMatch, isCargoMatch, reconcileCargosWithRequests, getOfficialPurchasersList, getCargoRates } from "../utils/formatters";
+import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons, calculateDefaultCargoEta, formatCancelDate, formatCancelTime, parsePastedPriceLine, isModelMatch, isCargoMatch, reconcileCargosWithRequests, getOfficialPurchasersList, getCargoRates, resolveCargoVendorName } from "../utils/formatters";
 import { useModalEscape, pushBackHandler } from "../utils/useModalEscape";
 import MasterOrderTracker from "./MasterOrderTracker";
 import VendorTransferModal from "./VendorTransferModal";
@@ -20,7 +20,7 @@ import CargoDocumentModal from "./CargoDocumentModal";
 import CustomSelect from "./CustomSelect";
 import CargoRatesBreakdown from "./CargoRatesBreakdown";
 
-export { isRequestForUser, isVendorForUser, getPurchaserDisplayName, isCargoMatch, reconcileCargosWithRequests };
+export { isRequestForUser, isVendorForUser, getPurchaserDisplayName, isCargoMatch, reconcileCargosWithRequests, resolveCargoVendorName };
 
 // ==================== TOP-LEVEL UTILITIES & METRIC CALCULATION HELPERS ====================
 export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange, placeholder, accentColor = "var(--primary)", style }) {
@@ -1143,15 +1143,15 @@ export default function PurchaserDashboard({
     });
     const vendorMap = new Map();
     baseCargos.forEach(cargo => {
-      if (cargo.vendorId) {
-        const v = (vendors || []).find(vend => vend.id === cargo.vendorId);
-        const name = v ? v.name : cargo.vendorName || "Unknown Vendor";
-        const currentCount = vendorMap.get(cargo.vendorId)?.count || 0;
-        vendorMap.set(cargo.vendorId, { id: cargo.vendorId, name, count: currentCount + 1 });
+      const name = resolveCargoVendorName(cargo, vendors, requests);
+      const vKey = cargo.vendorId || name;
+      if (vKey) {
+        const currentCount = vendorMap.get(vKey)?.count || 0;
+        vendorMap.set(vKey, { id: vKey, name, count: currentCount + 1 });
       }
     });
     return Array.from(vendorMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [myCargos, shipmentStatusFilter, vendors]);
+  }, [myCargos, shipmentStatusFilter, vendors, requests]);
 
   // Step 5 filtered cargos
   const filteredStep5Cargos = useMemo(() => {
@@ -1161,7 +1161,10 @@ export default function PurchaserDashboard({
       if (shipmentStatusFilter === "received" && cargo.isMaterialRec !== "Yes") return false;
 
       // 2. Vendor Filter
-      if (shipmentVendorFilter !== "all" && cargo.vendorId !== shipmentVendorFilter) return false;
+      if (shipmentVendorFilter !== "all") {
+        const resolvedName = resolveCargoVendorName(cargo, vendors, requests);
+        if (cargo.vendorId !== shipmentVendorFilter && resolvedName !== shipmentVendorFilter) return false;
+      }
 
       // 3. Cargo Name / Code / Detail / Item search
       if (shipmentCargoSearch && shipmentCargoSearch.trim()) {
@@ -1169,7 +1172,7 @@ export default function PurchaserDashboard({
         const cargoCode = (cargo.id || "").toLowerCase();
         const cargoDetail = (cargo.cargoDetail || "").toLowerCase();
         const ccName = ((cargoCompanies || []).find(cc => cc.id === cargo.cargoCompanyId)?.name || cargo.cargoCompanyName || "").toLowerCase();
-        const vName = ((vendors || []).find(v => v.id === cargo.vendorId)?.name || "").toLowerCase();
+        const vName = resolveCargoVendorName(cargo, vendors, requests).toLowerCase();
 
         const matchesCargo = cargoCode.includes(q) || cargoDetail.includes(q) || ccName.includes(q) || vName.includes(q);
         if (!matchesCargo) {
@@ -1683,7 +1686,7 @@ export default function PurchaserDashboard({
     const inTransit = (myCargos || []).filter(c => c.isMaterialRec !== "Yes");
 
     const cargosList = inTransit.map(cargo => {
-      const vName = (vendors || []).find(v => v.id === cargo.vendorId)?.name || cargo.vendorName || "Unknown Vendor";
+      const vName = resolveCargoVendorName(cargo, vendors, requests);
       const cargoName = (cargoCompanies || []).find(cc => cc.id === cargo.cargoCompanyId)?.name || (cargo.cargoDetail && !cargo.cargoDetail.startsWith("cargo-") ? cargo.cargoDetail : null) || (cargo.carrierName && cargo.carrierName !== "—" ? cargo.carrierName : null) || cargo.cargoCompanyName || (cargo.vendorName ? `${cargo.vendorName} Cargo` : (cargo.id ? `Cargo #${cargo.id.slice(-6)}` : "—"));
       
       const cargoItems = hasFullPurchaseAccess
@@ -2213,7 +2216,7 @@ export default function PurchaserDashboard({
 
                     {/* Cargo ETA alerts */}
                     {overdueCargos.map(({ cargo, alert }) => {
-                      const vName = vendors.find(v => v.id === cargo.vendorId)?.name || "Unknown Vendor";
+                      const vName = resolveCargoVendorName(cargo, vendors, requests);
                       const cargoItems = requests.filter(r => r.cargoId === cargo.id);
                       return (
                         <div 
@@ -6305,7 +6308,7 @@ export default function PurchaserDashboard({
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
                 {filteredStep5Cargos.map(cargo => {
-                  const vName = vendors.find(v => v.id === cargo.vendorId)?.name || cargo.vendorName || "Unknown Vendor";
+                  const vName = resolveCargoVendorName(cargo, vendors, requests);
                   // Isolate items: only show items belonging to this purchaser if not admin
                   const cargoItems = hasFullPurchaseAccess
                     ? requests.filter(r => isCargoMatch(r.cargoId, cargo) && r.status !== "Cancelled")
@@ -7383,6 +7386,7 @@ export default function PurchaserDashboard({
           requests={requests}
           cargoCompanies={cargoCompanies}
           purchasers={purchasers}
+          vendors={vendors}
           onAddCargoCompany={onAddCargoCompany}
           onClose={() => setEditingCargo(null)}
           onSave={(updated) => {
@@ -10062,6 +10066,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
 
     onSave({
       vendorId,
+      vendorName: vendorName || "",
       cargoOrderDate: new Date().toISOString().split("T")[0],
       cargoDetail: companyName, // Cargo company is enough!
       cargoRates: finalRates,
@@ -10639,7 +10644,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
 }
 
 // 4. EDIT CARGO MODAL
-export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = [], purchasers = [], onAddCargoCompany, onClose, onSave }) {
+export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = [], purchasers = [], vendors = [], onAddCargoCompany, onClose, onSave }) {
   useModalEscape(onClose);
   const [currency, setCurrency] = useState(cargo.currency || "RMB");
   const [cargoRates, setCargoRates] = useState(() => {
@@ -10647,6 +10652,11 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
   });
   const [mode, setMode] = useState(cargo.modeOfTransport || "Sea");
   const [cargoCompanyId, setCargoCompanyId] = useState(cargo.cargoCompanyId || "");
+  const [cargoVendorId, setCargoVendorId] = useState(() => {
+    if (cargo.vendorId) return cargo.vendorId;
+    const itemVendor = (requests || []).find(r => isCargoMatch(r.cargoId, cargo) && r.status !== "Cancelled" && (r.vendorId || r.vendorName));
+    return itemVendor?.vendorId || "";
+  });
   const [shipDate, setShipDate] = useState(cargo.cargoShippingDate || "");
   const [eta, setEta] = useState(cargo.cargoEta || "");
   const [editTotalCartons, setEditTotalCartons] = useState(cargo.totalCartons != null ? String(cargo.totalCartons) : "");
@@ -10784,6 +10794,8 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
     }
     const selectedCompany = cargoCompanies.find(cc => cc.id === cargoCompanyId);
     const companyName = selectedCompany?.name || cargo.cargoDetail || "Cargo Shipment";
+    const selectedVendor = (vendors || []).find(v => v.id === cargoVendorId || v.name?.toLowerCase() === String(cargoVendorId).toLowerCase());
+    const finalVendorName = selectedVendor?.name || cargo.vendorName || (cargoVendorId && !cargoVendorId.startsWith("v-") ? cargoVendorId : "");
 
     const finalRates = cargoRates.map((r, idx) => ({
       ...r,
@@ -10801,6 +10813,8 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
 
     onSave({
       ...cargo,
+      vendorId: cargoVendorId || cargo.vendorId || "",
+      vendorName: finalVendorName,
       cargoDetail: companyName, // Cargo company is enough!
       cargoRates: finalRates,
       currency,
@@ -10900,6 +10914,32 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           
+          {/* Vendor Assignment */}
+          <div className="form-group">
+            <label className="form-label" style={{ fontWeight: 700, display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+              <span>🏢 Vendor</span>
+              {!cargoVendorId && <span style={{ color: "var(--warning, #f59e0b)", fontSize: "0.78rem" }}>⚠️ Vendor not assigned</span>}
+            </label>
+            <select
+              className="form-control"
+              value={cargoVendorId}
+              onChange={(e) => setCargoVendorId(e.target.value)}
+              style={{ fontWeight: 600, borderColor: !cargoVendorId ? "var(--warning, #f59e0b)" : undefined }}
+            >
+              <option value="">-- Select Vendor ({vendors.length} available) --</option>
+              {vendors.map(v => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+              {cargo.vendorName && !vendors.some(v => v.name?.toLowerCase() === cargo.vendorName?.toLowerCase()) && (
+                <option value={cargo.vendorId || cargo.vendorName}>
+                  {cargo.vendorName} (Original Vendor)
+                </option>
+              )}
+            </select>
+          </div>
+
           {/* Shipping logistics: Cargo Company, Transport Mode, Dates */}
           <div className="form-row">
             <div className="form-group">

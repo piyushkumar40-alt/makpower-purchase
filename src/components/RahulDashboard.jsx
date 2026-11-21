@@ -46,7 +46,7 @@ import { EditCargoModal } from "./PurchaserDashboard";
 import CargoRatesBreakdown from "./CargoRatesBreakdown";
 import RahulDashboardLoading from "./RahulDashboardLoading";
 import { useSortableData } from "../utils/useSortableData";
-import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, formatPunchDateTime, isCargoMatch } from "../utils/formatters";
+import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, formatPunchDateTime, isCargoMatch, resolveCargoVendorName } from "../utils/formatters";
 
 export default function RahulDashboard({ 
   currentUser = {}, 
@@ -1602,7 +1602,7 @@ export default function RahulDashboard({
                             Carrier: <strong style={{ color: "var(--text-main)" }}>{carrierDisplay}</strong>
                           </span>
                           <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-                            Vendor: <strong style={{ color: "var(--text-main)" }}>{vendor?.name || cargo.vendorId || "—"}</strong>
+                            Vendor: <strong style={{ color: "var(--text-main)" }}>{resolveCargoVendorName(cargo, vendors, requests)}</strong>
                           </span>
                         </div>
                         <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginTop: "6px", fontSize: "0.82rem", color: "var(--text-muted)" }}>
@@ -3727,6 +3727,7 @@ export default function RahulDashboard({
           requests={requests}
           cargoCompanies={cargoCompanies}
           purchasers={purchasers}
+          vendors={vendors}
           onClose={() => setEditingCargo(null)}
           onSave={(updatedCargo) => {
             if (onUpdateCargo) onUpdateCargo(updatedCargo);

@@ -2728,7 +2728,10 @@ const cancelRequests = async (requestIds, reason = "") => {
     const oldCargo = cargos.find(c => c.id === updatedCargo.id);
     const isNowReceived = updatedCargo.isMaterialRec === "Yes";
     const cargoWithDate = {
+      ...oldCargo,
       ...updatedCargo,
+      vendorId: updatedCargo.vendorId !== undefined ? updatedCargo.vendorId : (oldCargo?.vendorId || ""),
+      vendorName: updatedCargo.vendorName !== undefined ? updatedCargo.vendorName : (oldCargo?.vendorName || ""),
       receivedDate: isNowReceived ? (updatedCargo.receivedDate || new Date().toISOString().split("T")[0]) : (updatedCargo.receivedDate || ""),
       receivedBy: isNowReceived ? (updatedCargo.receivedBy || currentUser?.id || "") : (updatedCargo.receivedBy || ""),
       receivedByName: isNowReceived ? (updatedCargo.receivedByName || currentUser?.name || "") : (updatedCargo.receivedByName || "")
@@ -2753,7 +2756,9 @@ const cancelRequests = async (requestIds, reason = "") => {
         cargoReceivedBy: isNowReceived ? (r.cargoReceivedBy || currentUser?.id || "") : (r.cargoReceivedBy || ""),
         cargoReceivedByName: isNowReceived ? (r.cargoReceivedByName || currentUser?.name || "") : (r.cargoReceivedByName || ""),
         receivedQuantity: receivedQty,
-        shortageQty: shortageQty
+        shortageQty: shortageQty,
+        vendorId: updatedCargo.vendorId || r.vendorId || "",
+        vendorName: updatedCargo.vendorName || r.vendorName || ""
       };
       updatedItems.push(updatedReq);
 
@@ -3750,7 +3755,12 @@ const cancelRequests = async (requestIds, reason = "") => {
       }));
     }
 
-    const updatedCargos = cargos.filter(c => c.vendorId === vendorId).map(c => ({ ...c, vendorId: "" }));
+    const targetName = target?.name || "";
+    const updatedCargos = cargos.filter(c => c.vendorId === vendorId).map(c => ({
+      ...c,
+      vendorId: "",
+      vendorName: c.vendorName || targetName || ""
+    }));
     for (const c of updatedCargos) {
       await postData("/api/cargos", c);
     }
@@ -3783,6 +3793,21 @@ const cancelRequests = async (requestIds, reason = "") => {
           return r;
         }));
 
+        // Optimistically update local cargos on merge
+        if (action === "merge" && targetVendorId) {
+          const targetVendor = vendors.find(v => v.id === targetVendorId);
+          setCargos(prev => prev.map(c => {
+            if (c.vendorId === sourceVendorId) {
+              return {
+                ...c,
+                vendorId: targetVendorId,
+                vendorName: c.vendorName || targetVendor?.name || ""
+              };
+            }
+            return c;
+          }));
+        }
+
         // Update local vendors
         if (Array.isArray(res.vendors) && res.vendors.length > 0) {
           setVendors(res.vendors);
@@ -3798,6 +3823,14 @@ const cancelRequests = async (requestIds, reason = "") => {
           const rRes = await fetch(`/api/requests?_t=${Date.now()}`).then(r => r.ok ? r.json() : null);
           if (Array.isArray(rRes)) {
             setRequests(rRes.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
+          }
+        } catch (e) {}
+
+        // Refetch fresh cargos to guarantee full database sync
+        try {
+          const cRes = await fetch(`/api/cargos?_t=${Date.now()}`).then(r => r.ok ? r.json() : null);
+          if (Array.isArray(cRes)) {
+            setCargos(cRes);
           }
         } catch (e) {}
 

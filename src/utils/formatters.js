@@ -1250,4 +1250,58 @@ export const reconcileRequestsWithCargos = (requests = [], cargos = []) => {
   });
 };
 
+/**
+ * Resolves the display vendor name for a cargo shipment using multiple resilient fallbacks:
+ * 1. Direct vendor ID match against vendors.id
+ * 2. Case-insensitive vendor name match against vendors.name (in case name was saved as vendorId)
+ * 3. Checking cargo.vendorName
+ * 4. Resolving from bundled requests/items belonging to this cargo (checking their vendorId or vendorName)
+ * 5. Checking if cargo.vendorId itself is a human-readable name string
+ */
+export const resolveCargoVendorName = (cargo, vendors = [], requests = []) => {
+  if (!cargo) return "Unknown Vendor";
+
+  // 1. Direct ID match in vendors list
+  if (cargo.vendorId) {
+    const vById = (vendors || []).find(v => v && v.id === cargo.vendorId);
+    if (vById && vById.name) return vById.name;
+
+    // 1b. Check if cargo.vendorId was saved as vendor name or case-insensitive match
+    const vByName = (vendors || []).find(v => v && v.name && v.name.trim().toLowerCase() === String(cargo.vendorId).trim().toLowerCase());
+    if (vByName && vByName.name) return vByName.name;
+  }
+
+  // 2. Check explicitly stored cargo.vendorName
+  if (cargo.vendorName && String(cargo.vendorName).trim() && cargo.vendorName !== "Unknown Vendor") {
+    const vByName = (vendors || []).find(v => v && v.name && v.name.trim().toLowerCase() === String(cargo.vendorName).trim().toLowerCase());
+    if (vByName && vByName.name) return vByName.name;
+    return String(cargo.vendorName).trim();
+  }
+
+  // 3. Fallback: Check bundled requests / cargo items
+  if (Array.isArray(requests) && requests.length > 0) {
+    const cargoItems = requests.filter(r => isCargoMatch(r.cargoId, cargo) && r.status !== "Cancelled");
+    for (const item of cargoItems) {
+      if (item.vendorId) {
+        const vById = (vendors || []).find(v => v && (v.id === item.vendorId || (v.name && v.name.trim().toLowerCase() === String(item.vendorId).trim().toLowerCase())));
+        if (vById && vById.name) return vById.name;
+      }
+      if (item.vendorName && String(item.vendorName).trim() && item.vendorName !== "Unknown Vendor") {
+        return String(item.vendorName).trim();
+      }
+    }
+  }
+
+  // 4. If cargo.vendorId is a human name string (not an opaque ID like "v-123" or UUID or pure number)
+  if (cargo.vendorId && typeof cargo.vendorId === "string") {
+    const cleanVid = cargo.vendorId.trim();
+    if (cleanVid && !cleanVid.startsWith("v-") && !cleanVid.startsWith("vend-") && !cleanVid.match(/^[0-9a-f]{8}-[0-9a-f]{4}/i) && !cleanVid.match(/^\d+$/)) {
+      return cleanVid;
+    }
+  }
+
+  return "Unknown Vendor";
+};
+
+
 

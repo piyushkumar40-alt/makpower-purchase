@@ -27,7 +27,7 @@ import {
   CheckSquare,
   RotateCcw
 } from "lucide-react";
-import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, isCargoMatch, reconcileCargosWithRequests, formatCancelDate, formatCancelTime, formatPunchDateTime } from "../utils/formatters";
+import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, isCargoMatch, reconcileCargosWithRequests, formatCancelDate, formatCancelTime, formatPunchDateTime, resolveCargoVendorName } from "../utils/formatters";
 import { uploadToCloudinary } from "../utils/upload";
 import CustomSelect from "./CustomSelect";
 import CargoDocumentModal from "./CargoDocumentModal";
@@ -177,7 +177,7 @@ export default function BundledUpcomingShipments({
           return sum + (Number(it.totalRmb) || (qty * price));
         }, 0);
         const totalCartons = calculateCargoTotalCartons(cargo, requests);
-        const vendorName = vendorMap[cargo.vendorId]?.name || "Multiple / Unspecified Vendors";
+        const vendorName = vendorMap[cargo.vendorId]?.name || resolveCargoVendorName(cargo, vendors, requests) || "Multiple / Unspecified Vendors";
         const carrierName = carrierMap[cargo.cargoCompanyId]?.name || "Direct Logistics Carrier";
 
         return {
@@ -1356,6 +1356,7 @@ export default function BundledUpcomingShipments({
           requests={requests}
           cargoCompanies={cargoCompanies}
           purchasers={purchasers}
+          vendors={vendors}
           onDeleteCargo={onDeleteCargo}
           onPurgeEmptyCargos={onPurgeEmptyCargos}
           currentUser={currentUser}
@@ -1875,6 +1876,7 @@ export function OrderInspectionModal({ order: initialOrder, cargos = [], vendors
             requests={requests}
             cargoCompanies={cargoCompanies}
             purchasers={purchasers}
+            vendors={vendors}
             onDeleteCargo={onDeleteCargo}
             onPurgeEmptyCargos={onPurgeEmptyCargos}
             currentUser={currentUser}

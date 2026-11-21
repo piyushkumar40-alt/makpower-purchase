@@ -294,7 +294,7 @@ function sanitizeCargoDocuments(c) {
 // High-efficiency SQL projection: projects lightweight tokens instead of streaming 52MB of base64 documents over PostgreSQL connection
 const CARGOS_LIGHT_QUERY = `
   SELECT 
-    "id", "vendorId", "cargoOrderDate", "cargoDetail", "cargoPrice", "cargoPriceUom", 
+    "id", "vendorId", "vendorName", "cargoOrderDate", "cargoDetail", "cargoPrice", "cargoPriceUom", 
     "cbmPackingList", "totalCargoPrice", "modeOfTransport", "cargoShippingDate", "cargoEta", 
     "packingListFile", "invoiceFile", "cargoReceiptFile",
     CASE 
@@ -1131,6 +1131,7 @@ async function setupPgDatabase() {
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "totalCartons" INTEGER;
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoCompanyId" TEXT;
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoRates" TEXT;
+      ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "vendorName" TEXT;
     `);
 
     // Clean up legacy cargos with phantom document filenames but empty/null data payloads
@@ -4548,10 +4549,11 @@ app.post("/api/cargos", async (req, res) => {
           "cbmPackingList", "totalCargoPrice", "modeOfTransport", "cargoShippingDate", "cargoEta",
           "packingListFile", "packingListData", "invoiceFile", "invoiceData", "cargoReceiptFile", "cargoReceiptData", "isMaterialRec", "receivedDate", "currency", "cargoEtaHistory",
           "billUploadedAt", "billUploadedBy", "billStatus", "billVerifiedAt", "billVerifiedBy", "billVerificationNotes",
-          "totalCartons", "cargoCompanyId", "cargoRates"
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)
+          "totalCartons", "cargoCompanyId", "cargoRates", "vendorName"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
         ON CONFLICT ("id") DO UPDATE SET
           "vendorId" = EXCLUDED."vendorId",
+          "vendorName" = COALESCE(NULLIF(EXCLUDED."vendorName", ''), cargos."vendorName"),
           "cargoOrderDate" = EXCLUDED."cargoOrderDate",
           "cargoDetail" = EXCLUDED."cargoDetail",
           "cargoPrice" = EXCLUDED."cargoPrice",
@@ -4600,7 +4602,8 @@ app.post("/api/cargos", async (req, res) => {
         c.billUploadedAt || "", c.billUploadedBy || "", c.billStatus || "", c.billVerifiedAt || "", c.billVerifiedBy || "", c.billVerificationNotes || "",
         safeInt(c.totalCartons),
         c.cargoCompanyId || "",
-        Array.isArray(c.cargoRates) ? JSON.stringify(c.cargoRates) : (c.cargoRates || "[]")
+        Array.isArray(c.cargoRates) ? JSON.stringify(c.cargoRates) : (c.cargoRates || "[]"),
+        c.vendorName || ""
       ];
       await client.query(query, values);
 
@@ -5031,6 +5034,12 @@ app.post("/api/vendors/transfer", async (req, res) => {
           [mergedHistory, mergedLocation, mergedPhone, JSON.stringify(targetPids), targetVendorId]
         );
 
+        // Remap any cargos associated with source vendor to target vendor, preserving or establishing vendorName
+        await client.query(
+          'UPDATE cargos SET "vendorId" = $1, "vendorName" = COALESCE(NULLIF("vendorName", \'\'), $2) WHERE "vendorId" = $3',
+          [targetVendorId, targetVendor.name || '', sourceVendorId]
+        );
+
         // Check if sourceVendor has any remaining orders under other purchasers
         const remainingReqs = await client.query('SELECT 1 FROM requests WHERE "vendorId" = $1 LIMIT 1', [sourceVendorId]);
         if (remainingReqs.rowCount === 0) {
@@ -5118,6 +5127,19 @@ app.post("/api/vendors/transfer", async (req, res) => {
       let targetPids = Array.isArray(targetVendor.purchaserIds) ? targetVendor.purchaserIds : [];
       if (!targetPids.includes(targetPurchaserId)) targetPids.push(targetPurchaserId);
       targetVendor.purchaserIds = targetPids;
+
+      if (Array.isArray(data.cargos)) {
+        data.cargos = data.cargos.map(c => {
+          if (c.vendorId === sourceVendorId) {
+            return {
+              ...c,
+              vendorId: targetVendorId,
+              vendorName: c.vendorName || targetVendor.name || ""
+            };
+          }
+          return c;
+        });
+      }
 
       const remainingReqs = data.requests.some(r => r.vendorId === sourceVendorId);
       if (!remainingReqs) {
@@ -8978,6 +9000,12 @@ app.delete("/api/vendors/:id", async (req, res) => {
   const { id } = req.params;
   if (isPg) {
     try {
+      // First resolve the vendor name to preserve it on any associated cargos so they never show 'Unknown Vendor'
+      const vRes = await pool.query('SELECT "name" FROM vendors WHERE "id" = $1', [id]);
+      const vName = vRes.rows?.[0]?.name || "";
+      if (vName) {
+        await pool.query('UPDATE cargos SET "vendorName" = COALESCE(NULLIF("vendorName", \'\'), $1) WHERE "vendorId" = $2', [vName, id]);
+      }
       await pool.query('DELETE FROM vendors WHERE "id" = $1', [id]);
       res.json({ success: true });
     } catch (err) {
@@ -8986,6 +9014,10 @@ app.delete("/api/vendors/:id", async (req, res) => {
     }
   } else {
     const data = readLocalJson();
+    const targetVendor = data.vendors.find(x => x.id === id);
+    if (targetVendor?.name && Array.isArray(data.cargos)) {
+      data.cargos = data.cargos.map(c => c.vendorId === id ? { ...c, vendorName: c.vendorName || targetVendor.name } : c);
+    }
     data.vendors = data.vendors.filter(x => x.id !== id);
     writeLocalJson(data);
     res.json({ success: true });
