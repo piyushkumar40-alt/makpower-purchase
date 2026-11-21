@@ -9822,6 +9822,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
   const [uploadingInvoice, setUploadingInvoice] = useState(false);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const isAnyDocUploading = uploadingPacking || uploadingInvoice || uploadingReceipt;
+  const [formError, setFormError] = useState("");
 
   const [itemPickedQtyMap, setItemPickedQtyMap] = useState(() => {
     const map = {};
@@ -9967,6 +9968,14 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!shipDate || !String(shipDate).trim()) {
+      setCartonError("Shipping Date is compulsory. Please select the Shipping Date before submitting.");
+      return;
+    }
+    if (!eta || !String(eta).trim()) {
+      setCartonError("Expected Cargo ETA is compulsory. Please select the Expected Cargo ETA before submitting.");
+      return;
+    }
     const finalCartons = totalCartonsInput !== "" ? parseInt(totalCartonsInput, 10) : (ratesTotalCartons > 0 ? ratesTotalCartons : calculatedCargoCartons);
     if (!finalCartons || isNaN(finalCartons) || finalCartons <= 0) {
       setCartonError("Please enter the Total Cartons for this cargo shipment.");
@@ -10193,11 +10202,14 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
           {/* Shipping logistics: Dates */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label" style={{ fontWeight: 600 }}>Shipping Date</label>
+              <label className="form-label" style={{ fontWeight: 600 }}>
+                Shipping Date <span style={{ color: "#ef4444" }}>*</span>
+              </label>
               <input 
                 type="date" 
                 className="form-control" 
                 value={shipDate}
+                required
                 onChange={e => {
                   const val = e.target.value;
                   setShipDate(val);
@@ -10210,7 +10222,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
             
             <div className="form-group">
               <label className="form-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 600 }}>
-                <span>Expected Cargo ETA</span>
+                <span>Expected Cargo ETA <span style={{ color: "#ef4444" }}>*</span></span>
                 {shipDate && eta && eta === calculateDefaultCargoEta(shipDate, 45) && (
                   <span style={{ fontSize: "0.72rem", color: "var(--primary)", fontWeight: 500 }}>
                     Auto (+45 days)
@@ -10221,6 +10233,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
                 type="date" 
                 className="form-control" 
                 value={eta}
+                required
                 onChange={e => setEta(e.target.value)}
               />
             </div>
@@ -10592,6 +10605,7 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
   const [uploadingInvoice, setUploadingInvoice] = useState(false);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const isAnyDocUploading = uploadingPacking || uploadingInvoice || uploadingReceipt;
+  const [formError, setFormError] = useState("");
 
   const readFile = async (file) => {
     const url = await uploadToCloudinary(file, "makpower_docs");
@@ -10698,6 +10712,14 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!shipDate || !String(shipDate).trim()) {
+      setFormError("Shipping Date is compulsory. Please select the Shipping Date before saving.");
+      return;
+    }
+    if (!eta || !String(eta).trim()) {
+      setFormError("Expected Cargo ETA is compulsory. Please select the Expected Cargo ETA before saving.");
+      return;
+    }
     const selectedCompany = cargoCompanies.find(cc => cc.id === cargoCompanyId);
     const companyName = selectedCompany?.name || cargo.cargoDetail || "Cargo Shipment";
 
@@ -10808,6 +10830,12 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
           </div>
         )}
 
+        {formError && (
+          <div style={{ background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.4)", borderRadius: "8px", padding: "10px 14px", marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px", color: "#f87171", fontSize: "0.85rem", fontWeight: 600 }}>
+            <AlertTriangle size={16} /> {formError}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           
           {/* Shipping logistics: Cargo Company, Transport Mode, Dates */}
@@ -10868,11 +10896,14 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
 
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label" style={{ fontWeight: 600 }}>Shipping Date</label>
+              <label className="form-label" style={{ fontWeight: 600 }}>
+                Shipping Date <span style={{ color: "#ef4444" }}>*</span>
+              </label>
               <input 
                 type="date" 
                 className="form-control" 
                 value={shipDate}
+                required
                 onChange={e => {
                   const val = e.target.value;
                   setShipDate(val);
@@ -10885,7 +10916,7 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
             
             <div className="form-group">
               <label className="form-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 600 }}>
-                <span>Expected Cargo ETA</span>
+                <span>Expected Cargo ETA <span style={{ color: "#ef4444" }}>*</span></span>
                 {shipDate && eta && eta === calculateDefaultCargoEta(shipDate, 45) && (
                   <span style={{ fontSize: "0.72rem", color: "var(--primary)", fontWeight: 500 }}>
                     Auto (+45 days)
@@ -10896,6 +10927,7 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
                 type="date" 
                 className="form-control" 
                 value={eta}
+                required
                 onChange={e => setEta(e.target.value)}
               />
             </div>
