@@ -43,6 +43,7 @@ import CustomSelect from "./CustomSelect";
 import CargoDocumentModal from "./CargoDocumentModal";
 import GroupedOrderModal from "./GroupedOrderModal";
 import { EditCargoModal } from "./PurchaserDashboard";
+import CargoRatesBreakdown from "./CargoRatesBreakdown";
 import RahulDashboardLoading from "./RahulDashboardLoading";
 import { useSortableData } from "../utils/useSortableData";
 import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, formatPunchDateTime } from "../utils/formatters";
@@ -2375,7 +2376,7 @@ export default function RahulDashboard({
                         </th>
                         <th style={{ width: "42px", textAlign: "center" }}>Expand</th>
                         <th style={{ width: "65px", textAlign: "center" }}>Inspect</th>
-                        <RenderGroupSortHeader colKey="cargoDetail" title="Cargo Company / Detail" />
+                        <RenderGroupSortHeader colKey="cargoDetail" title="Cargo Company" />
                         <RenderGroupSortHeader colKey="vendorSummary" title="Vendor Name" />
                         <RenderGroupSortHeader colKey="cargoShippingDate" title="Dispatched Date" />
                         <RenderGroupSortHeader colKey="cargoEta" title="Upcoming Cargo ETA" />
@@ -2599,6 +2600,9 @@ export default function RahulDashboard({
                                     <div style={{ fontSize: "0.85rem", color: "#10b981", fontWeight: 700 }}>
                                       ¥{Math.round(group.cargoFreightPrice).toLocaleString()}
                                     </div>
+                                    {group.cargoObj && (
+                                      <CargoRatesBreakdown cargo={group.cargoObj} compact={true} />
+                                    )}
                                     {group.cargoPricePerPc > 0 && (
                                       <div style={{ fontSize: "0.72rem", color: "#059669", fontWeight: 600 }}>
                                         (¥{group.cargoPricePerPc.toFixed(2)}/pc)
@@ -2843,6 +2847,9 @@ export default function RahulDashboard({
                                       <Maximize2 size={12} /> Open in Dedicated Window
                                     </button>
                                   </div>
+                                  {group.cargoObj && (
+                                    <CargoRatesBreakdown cargo={group.cargoObj} collapsible={true} defaultExpanded={false} />
+                                  )}
                                   <table className="custom-table" style={{ fontSize: "0.79rem", margin: 0, background: "var(--bg-card, #ffffff)" }}>
                                     <thead>
                                       <tr>
@@ -3519,6 +3526,7 @@ export default function RahulDashboard({
                                         ? `${getCurrencySymbol(cur)}${Number(total).toLocaleString()}` 
                                         : `${getCurrencySymbol(cur)}${rate}`}
                                     </div>
+                                    {c && <CargoRatesBreakdown cargo={c} compact={true} />}
                                     {perPcRate > 0 && (
                                       <div style={{ fontSize: "0.72rem", color: "#059669", fontWeight: 600 }}>
                                         {getCurrencySymbol(cur)}{perPcRate.toFixed(2)}/pc

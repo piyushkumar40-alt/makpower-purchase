@@ -10,7 +10,7 @@ import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
-import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons, calculateDefaultCargoEta, formatCancelDate, formatCancelTime, parsePastedPriceLine, isModelMatch, isCargoMatch, reconcileCargosWithRequests, getOfficialPurchasersList } from "../utils/formatters";
+import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons, calculateDefaultCargoEta, formatCancelDate, formatCancelTime, parsePastedPriceLine, isModelMatch, isCargoMatch, reconcileCargosWithRequests, getOfficialPurchasersList, getCargoRates } from "../utils/formatters";
 import { useModalEscape, pushBackHandler } from "../utils/useModalEscape";
 import MasterOrderTracker from "./MasterOrderTracker";
 import VendorTransferModal from "./VendorTransferModal";
@@ -18,6 +18,7 @@ import { AdminDeleteConfirmModal } from "./AdminDeleteConfirmModal";
 import AddEddModal from "./AddEddModal";
 import CargoDocumentModal from "./CargoDocumentModal";
 import CustomSelect from "./CustomSelect";
+import CargoRatesBreakdown from "./CargoRatesBreakdown";
 
 export { isRequestForUser, isVendorForUser, getPurchaserDisplayName, isCargoMatch, reconcileCargosWithRequests };
 
@@ -6417,7 +6418,7 @@ export default function PurchaserDashboard({
                       {/* Cargo Detail grids */}
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px", marginBottom: "16px", fontSize: "0.85rem" }}>
                         <div>
-                          <div style={{ color: "var(--text-muted)" }}>Cargo Name / Detail:</div>
+                          <div style={{ color: "var(--text-muted)" }}>Cargo Company:</div>
                           <div 
                             onClick={() => setEditingCargo(cargo)} 
                             style={{ fontWeight: 600, color: "var(--primary, #38bdf8)", cursor: "pointer", textDecoration: "underline" }}
@@ -6425,9 +6426,6 @@ export default function PurchaserDashboard({
                           >
                             {cargoName}
                           </div>
-                          {cargo.cargoDetail && cargo.cargoDetail !== cargoName && (
-                            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "2px" }}>{cargo.cargoDetail}</div>
-                          )}
                         </div>
                         <div>
                           <div style={{ color: "var(--text-muted)" }}>Total Order Qty:</div>
@@ -6483,6 +6481,9 @@ export default function PurchaserDashboard({
                           </div>
                         </div>
                       </div>
+
+                      {/* Cargo Types & Rates Breakdown */}
+                      <CargoRatesBreakdown cargo={cargo} />
 
                       {/* Associated Files */}
                       <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", fontSize: "0.85rem", background: "rgba(0,0,0,0.1)", padding: "10px 16px", borderRadius: "8px", border: "1px solid var(--border-glass)", alignItems: "center" }}>
@@ -9795,11 +9796,18 @@ function SetCartonModal({ config, onClose, onApply, readyRequests = [], checkedR
 // 3. CREATE CARGO BUNDLE MODAL
 function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos = [], cargoCompanies = [], onAddCargoCompany, onClose, onSave, initialPickedQtyMap = {}, initialPickedCartonMap = {} }) {
   useModalEscape(onClose);
-  const [detail, setDetail] = useState("");
   const [currency, setCurrency] = useState("RMB");
-  const [price, setPrice] = useState("");
-  const [uom, setUom] = useState("per CBM");
-  const [cbm, setCbm] = useState("");
+  const [cargoRates, setCargoRates] = useState([
+    {
+      id: `rate-${Date.now()}-1`,
+      typeName: "Cargo Type 1",
+      cartons: "",
+      uom: "per CBM",
+      price: "",
+      rateBasis: "",
+      totalCost: 0
+    }
+  ]);
   const [mode, setMode] = useState("Sea");
   const [cargoCompanyId, setCargoCompanyId] = useState("");
   const [shipDate, setShipDate] = useState("");
@@ -9883,7 +9891,53 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
   const totalItemSpendInRmb = combinedRequests.reduce((sum, r) => sum + convertToRmb(r.totalRmb, r.currency), 0);
   const totalPickedQty = Object.values(itemPickedQtyMap).reduce((sum, q) => sum + (parseFloat(q) || 0), 0);
 
-  // Total Cargo cartons calculation
+  // Helper to calculate cost for a single rate line
+  const calcRateCost = (rate) => {
+    const p = parseFloat(rate.price || 0);
+    const b = parseFloat(rate.rateBasis || 0);
+    if (rate.uom === "Flat Rate") return p;
+    if ((rate.uom === "per CBM" || rate.uom === "per KG" || rate.uom === "per Pc") && p > 0 && b > 0) {
+      return p * b;
+    }
+    return 0;
+  };
+
+  const ratesTotalCartons = cargoRates.reduce((sum, r) => sum + (parseInt(r.cartons, 10) || 0), 0);
+  const totalCargoPrice = cargoRates.reduce((sum, r) => sum + calcRateCost(r), 0);
+
+  const handleAddRate = () => {
+    const nextNum = cargoRates.length + 1;
+    setCargoRates(prev => [
+      ...prev,
+      {
+        id: `rate-${Date.now()}-${nextNum}`,
+        typeName: `Cargo Type ${nextNum}`,
+        cartons: "",
+        uom: "per CBM",
+        price: "",
+        rateBasis: "",
+        totalCost: 0
+      }
+    ]);
+  };
+
+  const handleRemoveRate = (id) => {
+    if (cargoRates.length <= 1) return;
+    setCargoRates(prev => prev.filter(r => r.id !== id));
+  };
+
+  const handleUpdateRate = (id, field, value) => {
+    setCargoRates(prev => prev.map(r => {
+      if (r.id !== id) return r;
+      const updated = { ...r, [field]: value };
+      if (field === "uom" && value === "per Pc" && !updated.rateBasis && totalPickedQty > 0) {
+        updated.rateBasis = totalPickedQty;
+      }
+      updated.totalCost = calcRateCost(updated);
+      return updated;
+    }));
+  };
+
   // Total Cargo cartons calculation from item-level carton settings
   const calculatedCargoCartons = combinedRequests.reduce((sum, r) => {
     const pickedQ = parseFloat(itemPickedQtyMap[r.id]) || (r.vendorOrderQuantity || r.orderQuantity || 1);
@@ -9900,38 +9954,50 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
   });
 
   useEffect(() => {
-    if (calculatedCargoCartons > 0 && !totalCartonsInput) {
+    if (ratesTotalCartons > 0) {
+      setTotalCartonsInput(String(ratesTotalCartons));
+    } else if (calculatedCargoCartons > 0 && !totalCartonsInput) {
       setTotalCartonsInput(String(calculatedCargoCartons));
     }
-  }, [calculatedCargoCartons]);
+  }, [ratesTotalCartons, calculatedCargoCartons]);
 
   const effectiveTotalCartons = totalCartonsInput !== "" 
     ? (parseInt(totalCartonsInput, 10) || 0) 
-    : calculatedCargoCartons;
-
-  // Total Cargo price calculation
-  const totalCargoPrice = (uom === "per CBM" || uom === "per KG") 
-    ? (parseFloat(price || 0) * parseFloat(cbm || 0)) 
-    : uom === "per Pc"
-    ? (parseFloat(price || 0) * (parseFloat(cbm) || totalPickedQty || 1))
-    : parseFloat(price || 0);
+    : (ratesTotalCartons > 0 ? ratesTotalCartons : calculatedCargoCartons);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const finalCartons = totalCartonsInput !== "" ? parseInt(totalCartonsInput, 10) : calculatedCargoCartons;
+    const finalCartons = totalCartonsInput !== "" ? parseInt(totalCartonsInput, 10) : (ratesTotalCartons > 0 ? ratesTotalCartons : calculatedCargoCartons);
     if (!finalCartons || isNaN(finalCartons) || finalCartons <= 0) {
       setCartonError("Please enter the Total Cartons for this cargo shipment.");
       return;
     }
 
+    const selectedCompany = cargoCompanies.find(cc => cc.id === cargoCompanyId);
+    const companyName = selectedCompany?.name || "Cargo Shipment";
+
+    const finalRates = cargoRates.map((r, idx) => ({
+      ...r,
+      typeName: r.typeName?.trim() || `Cargo Type ${idx + 1}`,
+      cartons: parseInt(r.cartons, 10) || 0,
+      price: parseFloat(r.price || 0),
+      rateBasis: parseFloat(r.rateBasis || 0),
+      totalCost: calcRateCost(r)
+    }));
+
+    const uomSummary = Array.from(new Set(finalRates.map(r => r.uom).filter(Boolean))).join(", ") || "per CBM";
+    const primaryRate = finalRates[0] || {};
+    const totalCbm = finalRates.filter(r => r.uom === "per CBM").reduce((s, r) => s + (parseFloat(r.rateBasis) || 0), 0);
+
     onSave({
       vendorId,
       cargoOrderDate: new Date().toISOString().split("T")[0],
-      cargoDetail: detail,
+      cargoDetail: companyName, // Cargo company is enough!
+      cargoRates: finalRates,
       currency,
-      cargoPrice: parseFloat(price || 0),
-      cargoPriceUom: uom,
-      cbmPackingList: parseFloat(cbm || 0),
+      cargoPrice: primaryRate.price || 0,
+      cargoPriceUom: uomSummary,
+      cbmPackingList: totalCbm || primaryRate.rateBasis || 0,
       totalCargoPrice: totalCargoPrice,
       totalCartons: finalCartons,
       modeOfTransport: mode,
@@ -9964,51 +10030,61 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           
-          <div className="form-group">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-              <label className="form-label" style={{ margin: 0 }}>Cargo Description / Detail</label>
-              <button 
-                type="button" 
-                onClick={() => {
-                  const val = prompt("Enter new custom cargo detail / description template:");
-                  if (val && val.trim()) setDetail(val.trim());
-                }} 
-                style={{ 
-                  color: "#38bdf8", 
-                  cursor: "pointer", 
-                  fontSize: "0.8rem", 
-                  background: "none", 
-                  border: "none", 
-                  display: "inline-flex", 
-                  alignItems: "center", 
-                  gap: "4px",
-                  fontWeight: 600
-                }}
+          {/* Shipping logistics: Cargo Company & Transport Mode at Top */}
+          <div className="form-row">
+            <div className="form-group">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                <label className="form-label" style={{ margin: 0, fontWeight: 700 }}>Cargo Company / Shipper *</label>
+                {onAddCargoCompany && (
+                  <button 
+                    type="button" 
+                    onClick={() => setShowQuickCargoCompanyModal(true)} 
+                    style={{ 
+                      color: "#38bdf8", 
+                      cursor: "pointer", 
+                      fontSize: "0.8rem", 
+                      background: "none", 
+                      border: "none", 
+                      display: "inline-flex", 
+                      alignItems: "center", 
+                      gap: "4px",
+                      fontWeight: 600
+                    }}
+                  >
+                    <Plus size={13} /> Create New Transport Company
+                  </button>
+                )}
+              </div>
+              <select 
+                className="form-control" 
+                value={cargoCompanyId} 
+                onChange={e => setCargoCompanyId(e.target.value)}
+                required
               >
-                <Plus size={13} /> Create New Cargo Detail
-              </button>
+                <option value="">Select Cargo Company...</option>
+                {cargoCompanies.filter(cc => cc.status !== "Inactive").map(cc => {
+                  const metrics = calculateCargoCompanyMetrics(cc, cargos, requests);
+                  const scoreText = metrics.scorePending
+                    ? `Rating: Pending [${metrics.completedCount}/5]`
+                    : `Rating: ${metrics.score}/100`;
+                  return (
+                    <option key={cc.id} value={cc.id}>
+                      {cc.name} ({scoreText})
+                    </option>
+                  );
+                })}
+              </select>
             </div>
-            <input 
-              type="text" 
-              list="cargo-details-list"
-              className="form-control" 
-              placeholder="Type or Select Cargo Detail (e.g. CNC Spindle shipment via Land)" 
-              value={detail}
-              onChange={e => setDetail(e.target.value)}
-              required
-            />
-            <datalist id="cargo-details-list">
-              {Array.from(new Set([
-                "CNC Spindle shipment via Land",
-                "Battery & Bottom Consignment via Sea",
-                "Precision Electrical Parts Air Freight",
-                "Heavy Machinery Components",
-                "Hardware Fittings & Accessories",
-                ...cargos.map(c => c.cargoDetail).filter(Boolean)
-              ])).map((desc, idx) => (
-                <option key={idx} value={desc} />
-              ))}
-            </datalist>
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 700 }}>Transport Mode</label>
+              <select className="form-control" value={mode} onChange={e => setMode(e.target.value)}>
+                <option value="Sea">Sea Cargo</option>
+                <option value="Air">Air Freight</option>
+                <option value="Road">Road / Land Transport</option>
+                <option value="Train">Train Cargo</option>
+              </select>
+            </div>
           </div>
 
           {/* Item Breakdown, Pickup Quantity & Cartons */}
@@ -10114,157 +10190,10 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
             </div>
           </div>
 
-          {/* Pricing parameters */}
+          {/* Shipping logistics: Dates */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Cargo Price</label>
-              <div style={{ display: "flex", gap: "6px" }}>
-                <select className="form-control" style={{ width: "95px", flexShrink: 0, fontWeight: 600 }} value={currency} onChange={e => setCurrency(e.target.value)}>
-                  <option value="RMB">RMB (¥)</option>
-                  <option value="USD">USD ($)</option>
-                  <option value="INR">INR (₹)</option>
-                </select>
-                <input 
-                  type="number" 
-                  className="form-control" 
-                  placeholder="Shipping rate" 
-                  value={price}
-                  onChange={e => setPrice(e.target.value)}
-                  min="0"
-                  step="any"
-                />
-              </div>
-            </div>
-            
-            <div className="form-group">
-              <label className="form-label">Price Unit (UOM)</label>
-              <select className="form-control" value={uom} onChange={e => {
-                const newUom = e.target.value;
-                setUom(newUom);
-                if (newUom === "per Pc" && !cbm) {
-                  setCbm(totalPickedQty);
-                }
-              }}>
-                <option value="per CBM">per CBM</option>
-                <option value="per Pc">per Pc</option>
-                <option value="Flat Rate">Flat Rate</option>
-                <option value="per KG">per KG</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">
-                {uom === "per CBM" ? "CBM Volume (Packing List)" : uom === "per Pc" ? "Total Pieces (Packing List)" : uom === "per KG" ? "Total Weight (KG)" : "Rate Basis"}
-              </label>
-              <input 
-                type="number" 
-                className="form-control" 
-                placeholder={uom === "per CBM" ? "Volume in m³" : uom === "per Pc" ? `Default: ${totalPickedQty} Pcs` : uom === "per KG" ? "Weight in KG" : "Basis"} 
-                value={cbm}
-                onChange={e => setCbm(e.target.value)}
-                min="0"
-                step="any"
-              />
-            </div>
-            
-            <div className="form-group">
-              <label className="form-label">Calculated Cargo Cost</label>
-              <input 
-                type="text" 
-                className="form-control" 
-                value={`${getCurrencySymbol(currency)}${totalCargoPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
-                disabled
-              />
-            </div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label" style={{ fontWeight: 600 }}>Total Cartons (Consignment) *</label>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <input 
-                  type="number" 
-                  min="1"
-                  className="form-control" 
-                  placeholder={calculatedCargoCartons > 0 ? String(calculatedCargoCartons) : "e.g. 50 Cartons"}
-                  value={totalCartonsInput}
-                  onChange={e => {
-                    setTotalCartonsInput(e.target.value);
-                    if (cartonError) setCartonError("");
-                  }}
-                  required
-                />
-                <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--warning, #f59e0b)", whiteSpace: "nowrap" }}>
-                  📦 Cartons
-                </span>
-              </div>
-              <small style={{ color: "var(--text-muted)", fontSize: "0.74rem", marginTop: "2px", display: "block" }}>
-                {calculatedCargoCartons > 0 
-                  ? `Pre-filled from item carton sizes (${calculatedCargoCartons} Ctns). You can override this if needed.` 
-                  : "Enter the total number of cartons for this cargo shipment here if items don't have individual carton sizes."}
-              </small>
-            </div>
-          </div>
-
-          {/* Shipping logistics */}
-          <div className="form-row">
-            <div className="form-group">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                <label className="form-label" style={{ margin: 0 }}>Cargo Company / Shipper</label>
-                {onAddCargoCompany && (
-                  <button 
-                    type="button" 
-                    onClick={() => setShowQuickCargoCompanyModal(true)} 
-                    style={{ 
-                      color: "#38bdf8", 
-                      cursor: "pointer", 
-                      fontSize: "0.8rem", 
-                      background: "none", 
-                      border: "none", 
-                      display: "inline-flex", 
-                      alignItems: "center", 
-                      gap: "4px",
-                      fontWeight: 600
-                    }}
-                  >
-                    <Plus size={13} /> Create New Transport Company
-                  </button>
-                )}
-              </div>
-              <select 
-                className="form-control" 
-                value={cargoCompanyId} 
-                onChange={e => setCargoCompanyId(e.target.value)}
-              >
-                <option value="">Select Cargo Company...</option>
-                {cargoCompanies.filter(cc => cc.status !== "Inactive").map(cc => {
-                  const metrics = calculateCargoCompanyMetrics(cc, cargos, requests);
-                  const scoreText = metrics.scorePending
-                    ? `Rating: Pending — Insufficient History [${metrics.completedCount}/5 completed]`
-                    : `Rating: ${metrics.score}/100`;
-                  return (
-                    <option key={cc.id} value={cc.id}>
-                      {cc.name} ({scoreText})
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Transport Mode</label>
-              <select className="form-control" value={mode} onChange={e => setMode(e.target.value)}>
-                <option value="Sea">Sea Cargo</option>
-                <option value="Air">Air Freight</option>
-                <option value="Land">Land Delivery</option>
-                <option value="Express">Express / Courier</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Shipping Date</label>
+              <label className="form-label" style={{ fontWeight: 600 }}>Shipping Date</label>
               <input 
                 type="date" 
                 className="form-control" 
@@ -10280,7 +10209,7 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
             </div>
             
             <div className="form-group">
-              <label className="form-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <label className="form-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 600 }}>
                 <span>Expected Cargo ETA</span>
                 {shipDate && eta && eta === calculateDefaultCargoEta(shipDate, 45) && (
                   <span style={{ fontSize: "0.72rem", color: "var(--primary)", fontWeight: 500 }}>
@@ -10294,6 +10223,284 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
                 value={eta}
                 onChange={e => setEta(e.target.value)}
               />
+            </div>
+          </div>
+
+          {/* Multi-Type Cargo Rates & Package Types (Dynamic with + Sign) */}
+          <div style={{ background: "var(--bg-card, #f8fafc)", padding: "16px", borderRadius: "10px", border: "1px solid var(--border-glass, rgba(226, 232, 240, 0.8))" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+              <div>
+                <div style={{ fontSize: "0.92rem", fontWeight: 700, color: "var(--primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>📦 Cargo Rates &amp; Package Types</span>
+                  {cargoRates.length > 1 && (
+                    <span style={{ fontSize: "0.72rem", background: "rgba(168, 85, 247, 0.15)", color: "#c084fc", border: "1px solid rgba(168, 85, 247, 0.3)", padding: "2px 8px", borderRadius: "10px", fontWeight: 700 }}>
+                      {cargoRates.length} Types
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                  Add multiple cargo rate types in this shipment (e.g. 10 cartons per CBM + 10 cartons per pc).
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600 }}>Currency:</span>
+                  <select 
+                    className="form-control" 
+                    style={{ width: "95px", height: "30px", fontSize: "0.8rem", fontWeight: 700, padding: "2px 8px" }} 
+                    value={currency} 
+                    onChange={e => setCurrency(e.target.value)}
+                  >
+                    <option value="RMB">RMB (¥)</option>
+                    <option value="USD">USD ($)</option>
+                    <option value="INR">INR (₹)</option>
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddRate}
+                  className="btn btn-sm btn-secondary"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    color: "#38bdf8",
+                    borderColor: "rgba(56, 189, 248, 0.4)",
+                    fontWeight: 700,
+                    fontSize: "0.8rem",
+                    padding: "4px 10px",
+                    height: "30px"
+                  }}
+                  title="Add another cargo rate / package type"
+                >
+                  <Plus size={14} /> Add Cargo Type
+                </button>
+              </div>
+            </div>
+
+            {/* List of Cargo Rate Lines */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {cargoRates.map((rate, idx) => {
+                const lineCost = calcRateCost(rate);
+                return (
+                  <div 
+                    key={rate.id || idx}
+                    style={{
+                      background: "var(--bg-main, rgba(255, 255, 255, 0.05))",
+                      border: "1px solid var(--border-glass, rgba(148, 163, 184, 0.2))",
+                      borderRadius: "8px",
+                      padding: "10px 12px"
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                          Type #{idx + 1}
+                        </span>
+                        <input
+                          type="text"
+                          value={rate.typeName}
+                          onChange={e => handleUpdateRate(rate.id, "typeName", e.target.value)}
+                          placeholder={`Cargo Type ${idx + 1}`}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            borderBottom: "1px dashed var(--border-glass, #cbd5e1)",
+                            fontSize: "0.82rem",
+                            fontWeight: 600,
+                            color: "var(--text-main)",
+                            padding: "1px 4px",
+                            width: "160px"
+                          }}
+                        />
+                      </div>
+                      {cargoRates.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveRate(rate.id)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#ef4444",
+                            cursor: "pointer",
+                            padding: "2px 6px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "3px",
+                            fontSize: "0.75rem"
+                          }}
+                          title="Remove this cargo type"
+                        >
+                          <Trash2 size={13} /> Remove
+                        </button>
+                      )}
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr 1.1fr 1.2fr 1.2fr", gap: "8px", alignItems: "flex-end" }}>
+                      {/* Cartons */}
+                      <div>
+                        <label style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600, display: "block", marginBottom: "3px" }}>
+                          Cartons *
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          className="form-control"
+                          style={{ fontSize: "0.82rem", padding: "5px 8px", fontWeight: 700, color: "var(--warning, #f59e0b)" }}
+                          placeholder="Ctns"
+                          value={rate.cartons}
+                          onChange={e => handleUpdateRate(rate.id, "cartons", e.target.value)}
+                        />
+                      </div>
+
+                      {/* Price Unit (UOM) */}
+                      <div>
+                        <label style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600, display: "block", marginBottom: "3px" }}>
+                          Price Unit (UOM)
+                        </label>
+                        <select
+                          className="form-control"
+                          style={{ fontSize: "0.82rem", padding: "5px 8px" }}
+                          value={rate.uom}
+                          onChange={e => handleUpdateRate(rate.id, "uom", e.target.value)}
+                        >
+                          <option value="per CBM">per CBM</option>
+                          <option value="per Pc">per Pc</option>
+                          <option value="Flat Rate">Flat Rate</option>
+                          <option value="per KG">per KG</option>
+                        </select>
+                      </div>
+
+                      {/* Shipping Rate */}
+                      <div>
+                        <label style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600, display: "block", marginBottom: "3px" }}>
+                          Rate ({getCurrencySymbol(currency)})
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          className="form-control"
+                          style={{ fontSize: "0.82rem", padding: "5px 8px" }}
+                          placeholder="Rate"
+                          value={rate.price}
+                          onChange={e => handleUpdateRate(rate.id, "price", e.target.value)}
+                        />
+                      </div>
+
+                      {/* Measurement / Basis */}
+                      <div>
+                        <label style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600, display: "block", marginBottom: "3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {rate.uom === "per CBM" ? "CBM (m³)" : rate.uom === "per Pc" ? "Pcs" : rate.uom === "per KG" ? "Weight (KG)" : "Basis (1)"}
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          className="form-control"
+                          style={{ fontSize: "0.82rem", padding: "5px 8px" }}
+                          placeholder={rate.uom === "per CBM" ? "Vol m³" : rate.uom === "per Pc" ? "Pcs" : rate.uom === "per KG" ? "KG" : "Flat"}
+                          disabled={rate.uom === "Flat Rate"}
+                          value={rate.uom === "Flat Rate" ? "" : rate.rateBasis}
+                          onChange={e => handleUpdateRate(rate.id, "rateBasis", e.target.value)}
+                        />
+                      </div>
+
+                      {/* Calculated Cost */}
+                      <div>
+                        <label style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600, display: "block", marginBottom: "3px" }}>
+                          Cost
+                        </label>
+                        <div 
+                          style={{
+                            height: "33px",
+                            display: "flex",
+                            alignItems: "center",
+                            padding: "0 8px",
+                            borderRadius: "6px",
+                            background: "rgba(16, 185, 129, 0.1)",
+                            border: "1px solid rgba(16, 185, 129, 0.3)",
+                            color: "#10b981",
+                            fontWeight: 700,
+                            fontSize: "0.84rem"
+                          }}
+                        >
+                          {getCurrencySymbol(currency)}{lineCost.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Bottom summary and add button */}
+            <div style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginTop: "12px",
+              paddingTop: "10px",
+              borderTop: "1px solid var(--border-glass, #cbd5e1)",
+              flexWrap: "wrap",
+              gap: "10px"
+            }}>
+              <button
+                type="button"
+                onClick={handleAddRate}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#38bdf8",
+                  cursor: "pointer",
+                  fontSize: "0.8rem",
+                  fontWeight: 700,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  padding: 0
+                }}
+              >
+                <Plus size={14} /> + Add Another Cargo Type
+              </button>
+              
+              <div style={{ display: "flex", alignItems: "center", gap: "16px", fontSize: "0.85rem" }}>
+                <div>
+                  Cartons: <strong style={{ color: "var(--warning, #f59e0b)", fontSize: "0.95rem" }}>📦 {ratesTotalCartons > 0 ? ratesTotalCartons : (effectiveTotalCartons || "—")} Ctns</strong>
+                </div>
+                <div>
+                  Calculated Total: <strong style={{ color: "#10b981", fontSize: "1.05rem" }}>{getCurrencySymbol(currency)}{totalCargoPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Total Cartons Confirmation */}
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600 }}>Total Cartons (Consignment) *</label>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <input 
+                  type="number" 
+                  min="1"
+                  className="form-control" 
+                  placeholder={ratesTotalCartons > 0 ? String(ratesTotalCartons) : (calculatedCargoCartons > 0 ? String(calculatedCargoCartons) : "e.g. 50 Cartons")}
+                  value={totalCartonsInput}
+                  onChange={e => {
+                    setTotalCartonsInput(e.target.value);
+                    if (cartonError) setCartonError("");
+                  }}
+                  required
+                />
+                <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--warning, #f59e0b)", whiteSpace: "nowrap" }}>
+                  📦 Cartons
+                </span>
+              </div>
+              <small style={{ color: "var(--text-muted)", fontSize: "0.74rem", marginTop: "2px", display: "block" }}>
+                {ratesTotalCartons > 0 
+                  ? `Pre-filled from cargo rate package types (${ratesTotalCartons} Ctns). You can adjust if needed.` 
+                  : (calculatedCargoCartons > 0 ? `Pre-filled from item carton sizes (${calculatedCargoCartons} Ctns).` : "Enter the total number of cartons for this cargo shipment.")}
+              </small>
             </div>
           </div>
 
@@ -10359,11 +10566,10 @@ function CreateCargoModal({ vendorId, vendorName, selectedIds, requests, cargos 
 // 4. EDIT CARGO MODAL
 export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompanies = [], purchasers = [], onAddCargoCompany, onClose, onSave }) {
   useModalEscape(onClose);
-  const [detail, setDetail] = useState(cargo.cargoDetail || "");
   const [currency, setCurrency] = useState(cargo.currency || "RMB");
-  const [price, setPrice] = useState(cargo.cargoPrice || "");
-  const [uom, setUom] = useState(cargo.cargoPriceUom || "per CBM");
-  const [cbm, setCbm] = useState(cargo.cbmPackingList || "");
+  const [cargoRates, setCargoRates] = useState(() => {
+    return getCargoRates(cargo);
+  });
   const [mode, setMode] = useState(cargo.modeOfTransport || "Sea");
   const [cargoCompanyId, setCargoCompanyId] = useState(cargo.cargoCompanyId || "");
   const [shipDate, setShipDate] = useState(cargo.cargoShippingDate || "");
@@ -10438,23 +10644,87 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
   const totalItemPieces = cargoItems.reduce((sum, r) => sum + (parseFloat(r.vendorOrderQuantity || r.orderQuantity || 0)), 0);
   const totalCartons = calculateCargoTotalCartons(cargo, requests);
 
-  const totalCargoPrice = (uom === "per CBM" || uom === "per KG") 
-    ? (parseFloat(price || 0) * parseFloat(cbm || 0)) 
-    : uom === "per Pc"
-    ? (parseFloat(price || 0) * (parseFloat(cbm) || totalItemPieces || 1))
-    : parseFloat(price || 0);
+  const calcRateCost = (rate) => {
+    const p = parseFloat(rate.price || 0);
+    const b = parseFloat(rate.rateBasis || 0);
+    if (rate.uom === "Flat Rate") return p;
+    if ((rate.uom === "per CBM" || rate.uom === "per KG" || rate.uom === "per Pc") && p > 0 && b > 0) {
+      return p * b;
+    }
+    return 0;
+  };
+
+  const ratesTotalCartons = cargoRates.reduce((sum, r) => sum + (parseInt(r.cartons, 10) || 0), 0);
+  const totalCargoPrice = cargoRates.reduce((sum, r) => sum + calcRateCost(r), 0);
+
+  const handleAddRate = () => {
+    const nextNum = cargoRates.length + 1;
+    setCargoRates(prev => [
+      ...prev,
+      {
+        id: `rate-${Date.now()}-${nextNum}`,
+        typeName: `Cargo Type ${nextNum}`,
+        cartons: "",
+        uom: "per CBM",
+        price: "",
+        rateBasis: "",
+        totalCost: 0
+      }
+    ]);
+  };
+
+  const handleRemoveRate = (id) => {
+    if (cargoRates.length <= 1) return;
+    setCargoRates(prev => prev.filter(r => r.id !== id));
+  };
+
+  const handleUpdateRate = (id, field, value) => {
+    setCargoRates(prev => prev.map(r => {
+      if (r.id !== id) return r;
+      const updated = { ...r, [field]: value };
+      if (field === "uom" && value === "per Pc" && !updated.rateBasis && totalItemPieces > 0) {
+        updated.rateBasis = totalItemPieces;
+      }
+      updated.totalCost = calcRateCost(updated);
+      return updated;
+    }));
+  };
+
+  useEffect(() => {
+    if (ratesTotalCartons > 0 && !editTotalCartons) {
+      setEditTotalCartons(String(ratesTotalCartons));
+    }
+  }, [ratesTotalCartons]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const selectedCompany = cargoCompanies.find(cc => cc.id === cargoCompanyId);
+    const companyName = selectedCompany?.name || cargo.cargoDetail || "Cargo Shipment";
+
+    const finalRates = cargoRates.map((r, idx) => ({
+      ...r,
+      typeName: r.typeName?.trim() || `Cargo Type ${idx + 1}`,
+      cartons: parseInt(r.cartons, 10) || 0,
+      price: parseFloat(r.price || 0),
+      rateBasis: parseFloat(r.rateBasis || 0),
+      totalCost: calcRateCost(r)
+    }));
+
+    const uomSummary = Array.from(new Set(finalRates.map(r => r.uom).filter(Boolean))).join(", ") || "per CBM";
+    const primaryRate = finalRates[0] || {};
+    const totalCbm = finalRates.filter(r => r.uom === "per CBM").reduce((s, r) => s + (parseFloat(r.rateBasis) || 0), 0);
+    const finalCartons = editTotalCartons !== "" ? (parseInt(editTotalCartons, 10) || null) : (ratesTotalCartons > 0 ? ratesTotalCartons : (totalCartons || cargo.totalCartons));
+
     onSave({
       ...cargo,
-      cargoDetail: detail,
+      cargoDetail: companyName, // Cargo company is enough!
+      cargoRates: finalRates,
       currency,
-      cargoPrice: parseFloat(price || 0),
-      cargoPriceUom: uom,
-      cbmPackingList: parseFloat(cbm || 0),
+      cargoPrice: primaryRate.price || 0,
+      cargoPriceUom: uomSummary,
+      cbmPackingList: totalCbm || primaryRate.rateBasis || 0,
       totalCargoPrice: totalCargoPrice,
-      totalCartons: editTotalCartons !== "" ? (parseInt(editTotalCartons, 10) || null) : (totalCartons || cargo.totalCartons),
+      totalCartons: finalCartons,
       modeOfTransport: mode,
       cargoCompanyId: cargoCompanyId,
       cargoShippingDate: shipDate,
@@ -10540,140 +10810,11 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           
-          <div className="form-group">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-              <label className="form-label" style={{ margin: 0 }}>Cargo Description / Detail</label>
-              <button 
-                type="button" 
-                onClick={() => {
-                  const val = prompt("Enter new custom cargo detail / description template:");
-                  if (val && val.trim()) setDetail(val.trim());
-                }} 
-                style={{ 
-                  color: "#38bdf8", 
-                  cursor: "pointer", 
-                  fontSize: "0.8rem", 
-                  background: "none", 
-                  border: "none", 
-                  display: "inline-flex", 
-                  alignItems: "center", 
-                  gap: "4px",
-                  fontWeight: 600
-                }}
-              >
-                <Plus size={13} /> Create New Cargo Detail
-              </button>
-            </div>
-            <input 
-              type="text" 
-              list="cargo-details-edit-list"
-              className="form-control" 
-              placeholder="Type or Select Cargo Detail..."
-              value={detail}
-              onChange={e => setDetail(e.target.value)}
-              required
-            />
-            <datalist id="cargo-details-edit-list">
-              {Array.from(new Set([
-                "CNC Spindle shipment via Land",
-                "Battery & Bottom Consignment via Sea",
-                "Precision Electrical Parts Air Freight",
-                "Heavy Machinery Components",
-                "Hardware Fittings & Accessories",
-                ...cargos.map(c => c.cargoDetail).filter(Boolean)
-              ])).map((desc, idx) => (
-                <option key={idx} value={desc} />
-              ))}
-            </datalist>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Cargo Price</label>
-              <div style={{ display: "flex", gap: "6px" }}>
-                <select className="form-control" style={{ width: "95px", flexShrink: 0, fontWeight: 600 }} value={currency} onChange={e => setCurrency(e.target.value)}>
-                  <option value="RMB">RMB (¥)</option>
-                  <option value="USD">USD ($)</option>
-                  <option value="INR">INR (₹)</option>
-                </select>
-                <input 
-                  type="number" 
-                  className="form-control" 
-                  value={price}
-                  onChange={e => setPrice(e.target.value)}
-                  min="0"
-                  step="any"
-                />
-              </div>
-            </div>
-            
-            <div className="form-group">
-              <label className="form-label">Price Unit (UOM)</label>
-              <select className="form-control" value={uom} onChange={e => {
-                const newUom = e.target.value;
-                setUom(newUom);
-                if (newUom === "per Pc" && !cbm) {
-                  setCbm(totalItemPieces);
-                }
-              }}>
-                <option value="per CBM">per CBM</option>
-                <option value="per Pc">per Pc</option>
-                <option value="Flat Rate">Flat Rate</option>
-                <option value="per KG">per KG</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">
-                {uom === "per CBM" ? "CBM Volume (Packing List)" : uom === "per Pc" ? "Total Pieces (Packing List)" : uom === "per KG" ? "Total Weight (KG)" : "Rate Basis"}
-              </label>
-              <input 
-                type="number" 
-                className="form-control" 
-                placeholder={uom === "per CBM" ? "Volume in m³" : uom === "per Pc" ? `Default: ${totalItemPieces} Pcs` : uom === "per KG" ? "Weight in KG" : "Basis"}
-                value={cbm}
-                onChange={e => setCbm(e.target.value)}
-                min="0"
-                step="any"
-              />
-            </div>
-            
-            <div className="form-group">
-              <label className="form-label">Calculated Cargo Cost</label>
-              <input 
-                type="text" 
-                className="form-control" 
-                value={`${getCurrencySymbol(currency)}${totalCargoPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
-                disabled
-              />
-            </div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label" style={{ fontWeight: 600 }}>Total Cartons</label>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <input 
-                  type="number" 
-                  min="1"
-                  className="form-control" 
-                  placeholder={totalCartons ? String(totalCartons) : "e.g. 50 Cartons"}
-                  value={editTotalCartons}
-                  onChange={e => setEditTotalCartons(e.target.value)}
-                />
-                <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--warning, #f59e0b)", whiteSpace: "nowrap" }}>
-                  📦 Cartons
-                </span>
-              </div>
-            </div>
-          </div>
-
+          {/* Shipping logistics: Cargo Company, Transport Mode, Dates */}
           <div className="form-row">
             <div className="form-group">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                <label className="form-label" style={{ margin: 0 }}>Cargo Company</label>
+                <label className="form-label" style={{ margin: 0, fontWeight: 700 }}>Cargo Company *</label>
                 {onAddCargoCompany && (
                   <button 
                     type="button" 
@@ -10703,7 +10844,7 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
                 {cargoCompanies.filter(cc => cc.status !== "Inactive").map(cc => {
                   const metrics = calculateCargoCompanyMetrics(cc, cargos, requests);
                   const scoreText = metrics.scorePending
-                    ? `Rating: Pending — Insufficient History [${metrics.completedCount}/5 completed]`
+                    ? `Rating: Pending [${metrics.completedCount}/5]`
                     : `Rating: ${metrics.score}/100`;
                   return (
                     <option key={cc.id} value={cc.id}>
@@ -10715,7 +10856,7 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
             </div>
 
             <div className="form-group">
-              <label className="form-label">Transport Mode</label>
+              <label className="form-label" style={{ fontWeight: 700 }}>Transport Mode</label>
               <select className="form-control" value={mode} onChange={e => setMode(e.target.value)}>
                 <option value="Sea">Sea Cargo</option>
                 <option value="Air">Air Freight</option>
@@ -10723,9 +10864,11 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
                 <option value="Express">Express / Courier</option>
               </select>
             </div>
+          </div>
 
+          <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Shipping Date</label>
+              <label className="form-label" style={{ fontWeight: 600 }}>Shipping Date</label>
               <input 
                 type="date" 
                 className="form-control" 
@@ -10741,7 +10884,7 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
             </div>
             
             <div className="form-group">
-              <label className="form-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <label className="form-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 600 }}>
                 <span>Expected Cargo ETA</span>
                 {shipDate && eta && eta === calculateDefaultCargoEta(shipDate, 45) && (
                   <span style={{ fontSize: "0.72rem", color: "var(--primary)", fontWeight: 500 }}>
@@ -10755,6 +10898,280 @@ export function EditCargoModal({ cargo, cargos = [], requests = [], cargoCompani
                 value={eta}
                 onChange={e => setEta(e.target.value)}
               />
+            </div>
+          </div>
+
+          {/* Multi-Type Cargo Rates & Package Types (Dynamic with + Sign) */}
+          <div style={{ background: "var(--bg-card, #f8fafc)", padding: "16px", borderRadius: "10px", border: "1px solid var(--border-glass, rgba(226, 232, 240, 0.8))" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+              <div>
+                <div style={{ fontSize: "0.92rem", fontWeight: 700, color: "var(--primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>📦 Cargo Rates &amp; Package Types</span>
+                  {cargoRates.length > 1 && (
+                    <span style={{ fontSize: "0.72rem", background: "rgba(168, 85, 247, 0.15)", color: "#c084fc", border: "1px solid rgba(168, 85, 247, 0.3)", padding: "2px 8px", borderRadius: "10px", fontWeight: 700 }}>
+                      {cargoRates.length} Types
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                  Multiple cargo rate types in this shipment (e.g. 10 cartons per CBM + 10 cartons per pc).
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600 }}>Currency:</span>
+                  <select 
+                    className="form-control" 
+                    style={{ width: "95px", height: "30px", fontSize: "0.8rem", fontWeight: 700, padding: "2px 8px" }} 
+                    value={currency} 
+                    onChange={e => setCurrency(e.target.value)}
+                  >
+                    <option value="RMB">RMB (¥)</option>
+                    <option value="USD">USD ($)</option>
+                    <option value="INR">INR (₹)</option>
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddRate}
+                  className="btn btn-sm btn-secondary"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    color: "#38bdf8",
+                    borderColor: "rgba(56, 189, 248, 0.4)",
+                    fontWeight: 700,
+                    fontSize: "0.8rem",
+                    padding: "4px 10px",
+                    height: "30px"
+                  }}
+                  title="Add another cargo rate / package type"
+                >
+                  <Plus size={14} /> Add Cargo Type
+                </button>
+              </div>
+            </div>
+
+            {/* List of Cargo Rate Lines */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {cargoRates.map((rate, idx) => {
+                const lineCost = calcRateCost(rate);
+                return (
+                  <div 
+                    key={rate.id || idx}
+                    style={{
+                      background: "var(--bg-main, rgba(255, 255, 255, 0.05))",
+                      border: "1px solid var(--border-glass, rgba(148, 163, 184, 0.2))",
+                      borderRadius: "8px",
+                      padding: "10px 12px"
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                          Type #{idx + 1}
+                        </span>
+                        <input
+                          type="text"
+                          value={rate.typeName}
+                          onChange={e => handleUpdateRate(rate.id, "typeName", e.target.value)}
+                          placeholder={`Cargo Type ${idx + 1}`}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            borderBottom: "1px dashed var(--border-glass, #cbd5e1)",
+                            fontSize: "0.82rem",
+                            fontWeight: 600,
+                            color: "var(--text-main)",
+                            padding: "1px 4px",
+                            width: "160px"
+                          }}
+                        />
+                      </div>
+                      {cargoRates.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveRate(rate.id)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#ef4444",
+                            cursor: "pointer",
+                            padding: "2px 6px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "3px",
+                            fontSize: "0.75rem"
+                          }}
+                          title="Remove this cargo type"
+                        >
+                          <Trash2 size={13} /> Remove
+                        </button>
+                      )}
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr 1.1fr 1.2fr 1.2fr", gap: "8px", alignItems: "flex-end" }}>
+                      {/* Cartons */}
+                      <div>
+                        <label style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600, display: "block", marginBottom: "3px" }}>
+                          Cartons *
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          className="form-control"
+                          style={{ fontSize: "0.82rem", padding: "5px 8px", fontWeight: 700, color: "var(--warning, #f59e0b)" }}
+                          placeholder="Ctns"
+                          value={rate.cartons}
+                          onChange={e => handleUpdateRate(rate.id, "cartons", e.target.value)}
+                        />
+                      </div>
+
+                      {/* Price Unit (UOM) */}
+                      <div>
+                        <label style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600, display: "block", marginBottom: "3px" }}>
+                          Price Unit (UOM)
+                        </label>
+                        <select
+                          className="form-control"
+                          style={{ fontSize: "0.82rem", padding: "5px 8px" }}
+                          value={rate.uom}
+                          onChange={e => handleUpdateRate(rate.id, "uom", e.target.value)}
+                        >
+                          <option value="per CBM">per CBM</option>
+                          <option value="per Pc">per Pc</option>
+                          <option value="Flat Rate">Flat Rate</option>
+                          <option value="per KG">per KG</option>
+                        </select>
+                      </div>
+
+                      {/* Shipping Rate */}
+                      <div>
+                        <label style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600, display: "block", marginBottom: "3px" }}>
+                          Rate ({getCurrencySymbol(currency)})
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          className="form-control"
+                          style={{ fontSize: "0.82rem", padding: "5px 8px" }}
+                          placeholder="Rate"
+                          value={rate.price}
+                          onChange={e => handleUpdateRate(rate.id, "price", e.target.value)}
+                        />
+                      </div>
+
+                      {/* Measurement / Basis */}
+                      <div>
+                        <label style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600, display: "block", marginBottom: "3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {rate.uom === "per CBM" ? "CBM (m³)" : rate.uom === "per Pc" ? "Pcs" : rate.uom === "per KG" ? "Weight (KG)" : "Basis (1)"}
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          className="form-control"
+                          style={{ fontSize: "0.82rem", padding: "5px 8px" }}
+                          placeholder={rate.uom === "per CBM" ? "Vol m³" : rate.uom === "per Pc" ? "Pcs" : rate.uom === "per KG" ? "KG" : "Flat"}
+                          disabled={rate.uom === "Flat Rate"}
+                          value={rate.uom === "Flat Rate" ? "" : rate.rateBasis}
+                          onChange={e => handleUpdateRate(rate.id, "rateBasis", e.target.value)}
+                        />
+                      </div>
+
+                      {/* Calculated Cost */}
+                      <div>
+                        <label style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600, display: "block", marginBottom: "3px" }}>
+                          Cost
+                        </label>
+                        <div 
+                          style={{
+                            height: "33px",
+                            display: "flex",
+                            alignItems: "center",
+                            padding: "0 8px",
+                            borderRadius: "6px",
+                            background: "rgba(16, 185, 129, 0.1)",
+                            border: "1px solid rgba(16, 185, 129, 0.3)",
+                            color: "#10b981",
+                            fontWeight: 700,
+                            fontSize: "0.84rem"
+                          }}
+                        >
+                          {getCurrencySymbol(currency)}{lineCost.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Bottom summary and add button */}
+            <div style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginTop: "12px",
+              paddingTop: "10px",
+              borderTop: "1px solid var(--border-glass, #cbd5e1)",
+              flexWrap: "wrap",
+              gap: "10px"
+            }}>
+              <button
+                type="button"
+                onClick={handleAddRate}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#38bdf8",
+                  cursor: "pointer",
+                  fontSize: "0.8rem",
+                  fontWeight: 700,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  padding: 0
+                }}
+              >
+                <Plus size={14} /> + Add Another Cargo Type
+              </button>
+              
+              <div style={{ display: "flex", alignItems: "center", gap: "16px", fontSize: "0.85rem" }}>
+                <div>
+                  Cartons: <strong style={{ color: "var(--warning, #f59e0b)", fontSize: "0.95rem" }}>📦 {ratesTotalCartons > 0 ? ratesTotalCartons : (editTotalCartons || totalCartons || "—")} Ctns</strong>
+                </div>
+                <div>
+                  Calculated Total: <strong style={{ color: "#10b981", fontSize: "1.05rem" }}>{getCurrencySymbol(currency)}{totalCargoPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Total Cartons Confirmation */}
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600 }}>Total Cartons</label>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <input 
+                  type="number" 
+                  min="1"
+                  className="form-control" 
+                  placeholder={ratesTotalCartons > 0 ? String(ratesTotalCartons) : (totalCartons ? String(totalCartons) : "e.g. 50 Cartons")}
+                  value={editTotalCartons}
+                  onChange={e => setEditTotalCartons(e.target.value)}
+                />
+                <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--warning, #f59e0b)", whiteSpace: "nowrap" }}>
+                  📦 Cartons
+                </span>
+              </div>
+              {ratesTotalCartons > 0 && (
+                <small style={{ color: "var(--text-muted)", fontSize: "0.74rem", marginTop: "2px", display: "block" }}>
+                  Pre-filled from cargo rate package types ({ratesTotalCartons} Ctns). You can adjust if needed.
+                </small>
+              )}
             </div>
           </div>
 

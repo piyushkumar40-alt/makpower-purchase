@@ -237,6 +237,22 @@ function sanitizeDateStr(str) {
 
 function getEffectiveTotalCargoPrice(c) {
   if (!c) return "";
+  if (c.cargoRates) {
+    let parsedRates = [];
+    try {
+      parsedRates = Array.isArray(c.cargoRates) ? c.cargoRates : JSON.parse(c.cargoRates);
+    } catch (e) {}
+    if (Array.isArray(parsedRates) && parsedRates.length > 0) {
+      const sum = parsedRates.reduce((acc, r) => {
+        const cost = parseFloat(r.totalCost);
+        if (!isNaN(cost) && cost > 0) return acc + cost;
+        const p = parseFloat(r.price || 0);
+        const b = parseFloat(r.rateBasis != null ? r.rateBasis : (r.cbm || 0));
+        return acc + (r.uom === "Flat Rate" ? p : (p * b));
+      }, 0);
+      if (sum > 0) return sum;
+    }
+  }
   const price = c.cargoPrice != null && c.cargoPrice !== "" ? parseFloat(c.cargoPrice) : 0;
   const cbm = c.cbmPackingList != null && c.cbmPackingList !== "" ? parseFloat(c.cbmPackingList) : 0;
   let total = c.totalCargoPrice != null && c.totalCargoPrice !== "" ? parseFloat(c.totalCargoPrice) : 0;
@@ -298,7 +314,7 @@ const CARGOS_LIGHT_QUERY = `
     END as "cargoReceiptData",
     "isMaterialRec", "receivedDate", "currency", "cargoEtaHistory", "billUploadedAt", 
     "billUploadedBy", "billStatus", "billVerifiedAt", "billVerifiedBy", "billVerificationNotes", 
-    "totalCartons", "cargoCompanyId"
+    "totalCartons", "cargoCompanyId", "cargoRates"
   FROM cargos
 `;
 
@@ -328,6 +344,7 @@ function formatCargoForResponse(c) {
       cbmPackingList: c.cbmPackingList ? parseFloat(c.cbmPackingList) : "",
       totalCargoPrice: getEffectiveTotalCargoPrice(c),
       cargoEtaHistory: safeJsonParse(c.cargoEtaHistory, []),
+      cargoRates: safeJsonParse(c.cargoRates, Array.isArray(c.cargoRates) ? c.cargoRates : []),
       packingListFile: hasPacking ? (c.packingListFile || "") : "",
       packingListData: getDocToken(c.packingListData),
       invoiceFile: hasInvoice ? (c.invoiceFile || "") : "",
@@ -1113,6 +1130,7 @@ async function setupPgDatabase() {
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billVerificationNotes" TEXT;
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "totalCartons" INTEGER;
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoCompanyId" TEXT;
+      ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoRates" TEXT;
     `);
 
     // Clean up legacy cargos with phantom document filenames but empty/null data payloads
@@ -4489,8 +4507,8 @@ app.post("/api/cargos", async (req, res) => {
           "cbmPackingList", "totalCargoPrice", "modeOfTransport", "cargoShippingDate", "cargoEta",
           "packingListFile", "packingListData", "invoiceFile", "invoiceData", "cargoReceiptFile", "cargoReceiptData", "isMaterialRec", "receivedDate", "currency", "cargoEtaHistory",
           "billUploadedAt", "billUploadedBy", "billStatus", "billVerifiedAt", "billVerifiedBy", "billVerificationNotes",
-          "totalCartons", "cargoCompanyId"
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
+          "totalCartons", "cargoCompanyId", "cargoRates"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)
         ON CONFLICT ("id") DO UPDATE SET
           "vendorId" = EXCLUDED."vendorId",
           "cargoOrderDate" = EXCLUDED."cargoOrderDate",
@@ -4526,7 +4544,8 @@ app.post("/api/cargos", async (req, res) => {
           "billVerifiedBy" = EXCLUDED."billVerifiedBy",
           "billVerificationNotes" = EXCLUDED."billVerificationNotes",
           "totalCartons" = COALESCE(EXCLUDED."totalCartons", cargos."totalCartons"),
-          "cargoCompanyId" = EXCLUDED."cargoCompanyId"
+          "cargoCompanyId" = EXCLUDED."cargoCompanyId",
+          "cargoRates" = COALESCE(NULLIF(EXCLUDED."cargoRates", ''), cargos."cargoRates")
       `;
       const effectiveTotal = getEffectiveTotalCargoPrice(c);
       const values = [
@@ -4539,7 +4558,8 @@ app.post("/api/cargos", async (req, res) => {
         Array.isArray(c.cargoEtaHistory) ? JSON.stringify(c.cargoEtaHistory) : (c.cargoEtaHistory || "[]"),
         c.billUploadedAt || "", c.billUploadedBy || "", c.billStatus || "", c.billVerifiedAt || "", c.billVerifiedBy || "", c.billVerificationNotes || "",
         safeInt(c.totalCartons),
-        c.cargoCompanyId || ""
+        c.cargoCompanyId || "",
+        Array.isArray(c.cargoRates) ? JSON.stringify(c.cargoRates) : (c.cargoRates || "[]")
       ];
       await client.query(query, values);
 

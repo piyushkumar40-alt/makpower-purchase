@@ -24,6 +24,7 @@ import {
 import { useModalEscape } from "../utils/useModalEscape";
 import { getPurchaserDisplayName, formatPunchDateTime, calculateTotalCargoPrice } from "../utils/formatters";
 import { getOrderStage } from "./MasterOrderTracker";
+import CargoRatesBreakdown from "./CargoRatesBreakdown";
 
 export default function GroupedOrderModal({
   orderGroup,
@@ -474,6 +475,13 @@ export default function GroupedOrderModal({
             </div>
           </div>
         </div>
+
+        {/* ==================== CARGO RATES BREAKDOWN ==================== */}
+        {isCargoGroup && orderGroup.cargoObj && (
+          <div style={{ padding: "8px 24px 0", background: "var(--bg-main, #f8fafc)" }}>
+            <CargoRatesBreakdown cargo={orderGroup.cargoObj} collapsible={true} defaultExpanded={true} />
+          </div>
+        )}
 
         {/* ==================== ACTION TOOLBAR ==================== */}
         <div 

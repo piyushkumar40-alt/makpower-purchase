@@ -32,6 +32,7 @@ import { uploadToCloudinary } from "../utils/upload";
 import CustomSelect from "./CustomSelect";
 import CargoDocumentModal from "./CargoDocumentModal";
 import { EditCargoModal } from "./PurchaserDashboard";
+import CargoRatesBreakdown from "./CargoRatesBreakdown";
 
 export default function BundledUpcomingShipments({
   cargos = [],
@@ -722,9 +723,7 @@ export default function BundledUpcomingShipments({
                           }}
                           title="Click to view and edit cargo details"
                         >
-                          {cargo.cargoDetail && cargo.cargoDetail !== cargo.id && !cargo.cargoDetail.startsWith("cargo-")
-                            ? cargo.cargoDetail
-                            : (cargo.carrierName && cargo.carrierName !== "—" ? cargo.carrierName : (cargo.vendorName ? `${cargo.vendorName} Cargo` : cargo.id))}
+                          {cargo.carrierName && cargo.carrierName !== "—" ? cargo.carrierName : (cargo.vendorName ? `${cargo.vendorName} Cargo` : cargo.id)}
                         </button>
                         <span style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontFamily: "monospace", fontWeight: 500 }}>
                           (#{cargo.id})
@@ -821,8 +820,8 @@ export default function BundledUpcomingShipments({
                 {/* Cargo Detail grids */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px", marginBottom: "16px", fontSize: "0.85rem" }}>
                   <div>
-                    <div style={{ color: "var(--text-muted)" }}>Cargo Detail:</div>
-                    <div style={{ fontWeight: 500 }}>{cargo.cargoDetail || "—"}</div>
+                    <div style={{ color: "var(--text-muted)" }}>Cargo Company:</div>
+                    <div style={{ fontWeight: 600, color: "var(--primary)" }}>{carrierObj ? `${carrierObj.name} ${carrierObj.phone ? `(${carrierObj.phone})` : ""}` : (cargo.carrierName || "—")}</div>
                   </div>
                   <div>
                     <div style={{ color: "var(--text-muted)" }}>Shipping / ETA Dates:</div>
@@ -875,6 +874,9 @@ export default function BundledUpcomingShipments({
                     </div>
                   </div>
                 </div>
+
+                {/* Cargo Types & Rates Breakdown */}
+                <CargoRatesBreakdown cargo={cargo} />
 
                 {/* Associated Files / Documents */}
                 <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", fontSize: "0.85rem", background: "rgba(0,0,0,0.1)", padding: "10px 16px", borderRadius: "8px", border: "1px solid var(--border-glass)", alignItems: "center", marginBottom: "12px" }}>
@@ -1712,7 +1714,7 @@ export function OrderInspectionModal({ order: initialOrder, cargos = [], vendors
               )}
             </div>
             <div>
-              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Cargo Detail (Cargo Name)</div>
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Cargo Company</div>
               {cargo ? (
                 <button
                   type="button"
@@ -1731,10 +1733,10 @@ export function OrderInspectionModal({ order: initialOrder, cargos = [], vendors
                   }}
                   title="Click to view and edit cargo details"
                 >
-                  {cargoDetail || "—"}
+                  {carrierDisplay || cargoDetail || "—"}
                 </button>
               ) : (
-                <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--primary)", marginTop: "2px" }}>{cargoDetail || "—"}</div>
+                <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--primary)", marginTop: "2px" }}>{carrierDisplay || cargoDetail || "—"}</div>
               )}
             </div>
             <div>
@@ -1790,6 +1792,9 @@ export function OrderInspectionModal({ order: initialOrder, cargos = [], vendors
               </div>
             </div>
           </div>
+
+          {/* Cargo Rates & Package Types Breakdown */}
+          {cargo && <CargoRatesBreakdown cargo={cargo} />}
 
           {/* Cargo Associated Documents if available */}
           {cargo && ((cargo.packingListFile && cargo.packingListData) || (cargo.invoiceFile && cargo.invoiceData) || (cargo.cargoReceiptFile && cargo.cargoReceiptData)) && (

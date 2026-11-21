@@ -2603,9 +2603,12 @@ const cancelRequests = async (requestIds, reason = "") => {
     const newCargo = {
       id: newCargoId,
       ...cargoDetails,
+      cargoRates: cargoDetails.cargoRates || [],
       totalCartons: cargoDetails.totalCartons != null && cargoDetails.totalCartons !== ""
         ? parseInt(cargoDetails.totalCartons, 10)
-        : (computedCargoCartons > 0 ? computedCargoCartons : null),
+        : ((Array.isArray(cargoDetails.cargoRates) && cargoDetails.cargoRates.reduce((s, r) => s + (parseInt(r.cartons, 10) || 0), 0) > 0)
+            ? cargoDetails.cargoRates.reduce((s, r) => s + (parseInt(r.cartons, 10) || 0), 0)
+            : (computedCargoCartons > 0 ? computedCargoCartons : null)),
       createdBy: currentUser?.id || "",
       createdByName: currentUser?.name || "",
       isMaterialRec: cargoDetails.isMaterialRec || "No",

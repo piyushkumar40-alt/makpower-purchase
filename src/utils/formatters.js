@@ -699,6 +699,24 @@ export const getCurrencySymbol = (cur) => {
 export const calculateTotalCargoPrice = (cargo, order) => {
   const c = cargo || order;
   if (!c) return 0;
+
+  // Multi-rate cargo support: calculate sum of all cargo rates if available
+  if (c.cargoRates) {
+    try {
+      const rates = Array.isArray(c.cargoRates) ? c.cargoRates : JSON.parse(c.cargoRates);
+      if (Array.isArray(rates) && rates.length > 0) {
+        const sum = rates.reduce((acc, r) => {
+          const cost = parseFloat(r.totalCost);
+          if (!isNaN(cost) && cost > 0) return acc + cost;
+          const p = parseFloat(r.price || 0);
+          const b = parseFloat(r.rateBasis != null ? r.rateBasis : (r.cbm || 0));
+          return acc + (r.uom === "Flat Rate" ? p : (p * b));
+        }, 0);
+        if (sum > 0) return sum;
+      }
+    } catch (e) {}
+  }
+
   const rate = parseFloat(c.cargoPrice || 0);
   const uom = c.cargoPriceUom || "";
   const basis = parseFloat(c.cbmPackingList || 0);
@@ -723,6 +741,45 @@ export const calculateTotalCargoPrice = (cargo, order) => {
   if (!isNaN(stored) && stored > 0) return stored;
   if (!isNaN(rate) && rate > 0) return rate;
   return 0;
+};
+
+/**
+ * Returns normalized array of cargo rates/types for a shipment.
+ * Works seamlessly with both multi-rate and legacy single-rate cargos.
+ */
+export const getCargoRates = (cargo) => {
+  if (!cargo) return [];
+  if (cargo.cargoRates) {
+    try {
+      const parsed = Array.isArray(cargo.cargoRates) ? cargo.cargoRates : JSON.parse(cargo.cargoRates);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((r, idx) => ({
+          id: r.id || `rate-${idx + 1}`,
+          typeName: r.typeName || `Cargo Type ${idx + 1}`,
+          cartons: r.cartons != null && r.cartons !== "" ? (parseInt(r.cartons, 10) || 0) : "",
+          uom: r.uom || "per CBM",
+          price: r.price != null && r.price !== "" ? parseFloat(r.price) : "",
+          rateBasis: r.rateBasis != null && r.rateBasis !== "" ? parseFloat(r.rateBasis) : (r.cbm != null ? parseFloat(r.cbm) : ""),
+          totalCost: parseFloat(r.totalCost) || 0
+        }));
+      }
+    } catch (e) {}
+  }
+
+  // Fallback for legacy single-rate cargos
+  if (cargo.cargoPrice || cargo.totalCargoPrice || cargo.cargoPriceUom || cargo.cbmPackingList) {
+    return [{
+      id: "rate-1",
+      typeName: "Cargo Type 1",
+      cartons: cargo.totalCartons != null ? cargo.totalCartons : "",
+      uom: cargo.cargoPriceUom || "per CBM",
+      price: cargo.cargoPrice != null ? cargo.cargoPrice : "",
+      rateBasis: cargo.cbmPackingList != null ? cargo.cbmPackingList : "",
+      totalCost: calculateTotalCargoPrice(cargo)
+    }];
+  }
+
+  return [];
 };
 
 /**
@@ -898,6 +955,11 @@ export const calculateCargoTotalCartons = (cargo, requests = []) => {
   if (cargo.totalCartons != null && cargo.totalCartons !== "" && !isNaN(parseInt(cargo.totalCartons, 10))) {
     const directVal = parseInt(cargo.totalCartons, 10);
     if (directVal > 0) return directVal;
+  }
+  if (cargo.cargoRates) {
+    const rates = getCargoRates(cargo);
+    const sumRates = rates.reduce((s, r) => s + (parseInt(r.cartons, 10) || 0), 0);
+    if (sumRates > 0) return sumRates;
   }
   if (!Array.isArray(requests) || requests.length === 0) return 0;
   const cargoItems = requests.filter(r => r.cargoId === cargo.id || (cargo.cargoDetail && r.cargoId === cargo.cargoDetail));
