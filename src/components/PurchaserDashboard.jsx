@@ -759,34 +759,7 @@ export default function PurchaserDashboard({
   const handleDownloadShippingSampleFile = (availableItems = [], targetDate = "") => {
     const headers = ["Item Name", "Qty", "Price"];
     let pool = availableItems;
-    if (targetDate) {
-      const filtered = availableItems.filter(r => r.orderDate === targetDate);
-      if (filtered.length > 0) pool = filtered;
-    }
-    let rows = [];
-    if (pool && pool.length > 0) {
-      rows = pool.slice(0, 8).map(r => [
-        r.model || "Item Model",
-        r.vendorOrderQuantity || r.orderQuantity || 50,
-        r.priceRmb || 10
-      ]);
-    } else {
-      rows = [
-        ["M11", 50, 15.5],
-        ["39LX", 100, 22.0],
-        ["BLP837", 30, 8.5],
-        ["BN51", 352, 12.0],
-        ["BN5M", 50, 14.2]
-      ];
-    }
-    const filename = targetDate ? `Sample_Shipping_${targetDate}` : "Sample_Shipping_Update";
-    downloadExcelOrCsv(headers, rows, filename);
-  };
-
-  const handleDownloadVrSampleFile = (availableItems = [], targetDate = "") => {
-    const headers = ["Item Name", "Qty", "Price"];
-    let pool = availableItems;
-    if (targetDate) {
+    if (targetDate && targetDate !== "all") {
       const filtered = availableItems.filter(r => {
         const rDateClean = parseFlexibleDate(r.orderDate);
         const selDateClean = parseFlexibleDate(targetDate);
@@ -796,7 +769,7 @@ export default function PurchaserDashboard({
     }
     let rows = [];
     if (pool && pool.length > 0) {
-      rows = pool.slice(0, 10).map(r => [
+      rows = pool.slice(0, 15).map(r => [
         r.model || "Item Model",
         r.vendorOrderQuantity || r.orderQuantity || 50,
         r.priceRmb || 10
@@ -810,7 +783,38 @@ export default function PurchaserDashboard({
         ["BN5M", 50, 14.2]
       ];
     }
-    const filename = targetDate ? `Sample_Vendor_Ready_${targetDate}` : "Sample_Vendor_Ready_Update";
+    const filename = (targetDate && targetDate !== "all") ? `Sample_Shipping_${targetDate}` : "Sample_Shipping_All_Dates";
+    downloadExcelOrCsv(headers, rows, filename);
+  };
+
+  const handleDownloadVrSampleFile = (availableItems = [], targetDate = "") => {
+    const headers = ["Item Name", "Qty", "Price"];
+    let pool = availableItems;
+    if (targetDate && targetDate !== "all") {
+      const filtered = availableItems.filter(r => {
+        const rDateClean = parseFlexibleDate(r.orderDate);
+        const selDateClean = parseFlexibleDate(targetDate);
+        return r.orderDate === targetDate || (rDateClean && selDateClean && rDateClean === selDateClean);
+      });
+      if (filtered.length > 0) pool = filtered;
+    }
+    let rows = [];
+    if (pool && pool.length > 0) {
+      rows = pool.slice(0, 15).map(r => [
+        r.model || "Item Model",
+        r.vendorOrderQuantity || r.orderQuantity || 50,
+        r.priceRmb || 10
+      ]);
+    } else {
+      rows = [
+        ["M11", 50, 15.5],
+        ["39LX", 100, 22.0],
+        ["BLP837", 30, 8.5],
+        ["BN51", 352, 12.0],
+        ["BN5M", 50, 14.2]
+      ];
+    }
+    const filename = (targetDate && targetDate !== "all") ? `Sample_Vendor_Ready_${targetDate}` : "Sample_Vendor_Ready_All_Dates";
     downloadExcelOrCsv(headers, rows, filename);
   };
 
@@ -4290,7 +4294,7 @@ export default function PurchaserDashboard({
                     <div style={{ fontSize: "0.86rem", color: "var(--text-main)" }}>
                       <strong style={{ color: "var(--success, #16a34a)" }}>✓ {excelNotification.matchedCount} item(s) matched & selected</strong>
                       {excelNotification.targetOrderDate && (
-                        <span> for order date <strong>{excelNotification.targetOrderDate}</strong></span>
+                        <span> for {excelNotification.targetOrderDate === "all" ? <strong>all order dates (FIFO)</strong> : <>order date <strong>{excelNotification.targetOrderDate}</strong></>}</span>
                       )} with updated details
                       {excelNotification.dateAdjustedCount > 0 && (
                         <span style={{ marginLeft: "6px", fontSize: "0.8rem", color: "var(--primary, #0284c7)" }}>
@@ -5309,7 +5313,7 @@ export default function PurchaserDashboard({
                 <div style={{ fontSize: "0.86rem", color: "var(--text-main)" }}>
                   <strong style={{ color: "var(--success, #16a34a)" }}>✓ {vrExcelNotification.matchedCount} item(s) matched & selected</strong>
                   {vrExcelNotification.targetOrderDate && (
-                    <span> for order date <strong>{vrExcelNotification.targetOrderDate}</strong></span>
+                    <span> for {vrExcelNotification.targetOrderDate === "all" ? <strong>all order dates (FIFO)</strong> : <>order date <strong>{vrExcelNotification.targetOrderDate}</strong></>}</span>
                   )} with updated details
                   {vrExcelNotification.dateAdjustedCount > 0 && (
                     <span style={{ marginLeft: "6px", fontSize: "0.8rem", color: "var(--primary, #0284c7)" }}>
@@ -7233,7 +7237,9 @@ export default function PurchaserDashboard({
           onApplyMatches={(analysis) => {
             const { matchedReqIds, newQtyMap, newPriceMap, newDateMap, matched, unmatched, syncOrderDates, selectedUploadOrderDate } = analysis;
 
-            if (selectedUploadOrderDate) {
+            if (selectedUploadOrderDate === "all") {
+              setStep3SelectedOrderDate(""); // Show all dates so all matched items across all dates are displayed and visible
+            } else if (selectedUploadOrderDate) {
               setStep3SelectedOrderDate(selectedUploadOrderDate);
             }
             setCheckedRequestIds(prev => Array.from(new Set([...prev, ...matchedReqIds])));
@@ -7299,7 +7305,9 @@ export default function PurchaserDashboard({
           onApplyMatches={(analysis) => {
             const { matchedReqIds, newQtyMap, newPriceMap, newDateMap, newReadyDateMap, matched, unmatched, syncOrderDates, selectedUploadOrderDate } = analysis;
 
-            if (selectedUploadOrderDate) {
+            if (selectedUploadOrderDate === "all") {
+              setVrSelectedOrderDate(""); // Show all dates so all matched items across all dates are displayed and visible
+            } else if (selectedUploadOrderDate) {
               setVrSelectedOrderDate(selectedUploadOrderDate);
             }
             setVrChecked(prev => Array.from(new Set([...prev, ...matchedReqIds])));
@@ -8807,6 +8815,8 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = [], tar
     });
   });
 
+  const isMultiDate = !targetOrderDate || targetOrderDate === "all";
+
   dataRows.forEach((row) => {
     if (!Array.isArray(row) || row.every(c => c === "" || c == null)) return;
 
@@ -8824,7 +8834,7 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = [], tar
       }
     }
 
-    const cleanDate = rawDate ? parseFlexibleDate(rawDate) : (targetOrderDate || "");
+    const cleanDate = rawDate ? parseFlexibleDate(rawDate) : (isMultiDate ? "" : (targetOrderDate || ""));
     const cleanReadyDate = rawReadyDate ? parseFlexibleDate(rawReadyDate) : null;
     const itemStr = String(rawItem || "").trim();
     const qtyNum = parseInt(String(rawQty || "").replace(/[^0-9]/g, ""), 10);
@@ -8833,7 +8843,7 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = [], tar
 
     if (!itemStr) {
       unmatched.push({
-        orderDate: cleanDate || targetOrderDate || "—",
+        orderDate: cleanDate || (isMultiDate ? "All Dates" : targetOrderDate) || "—",
         itemName: "—",
         qty: !isNaN(qtyNum) ? qtyNum : String(rawQty || "—"),
         price: priceNum !== null ? priceNum : String(rawPrice || "—"),
@@ -8844,7 +8854,7 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = [], tar
 
     if (isNaN(qtyNum) || qtyNum <= 0) {
       unmatched.push({
-        orderDate: cleanDate || targetOrderDate || "—",
+        orderDate: cleanDate || (isMultiDate ? "All Dates" : targetOrderDate) || "—",
         itemName: itemStr,
         qty: String(rawQty || "—"),
         price: priceNum !== null ? priceNum : String(rawPrice || "—"),
@@ -8861,8 +8871,8 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = [], tar
       return rModelClean === cleanInputModel || (r.model && r.model.toLowerCase().trim() === itemStr.toLowerCase());
     });
 
-    // Check date filters
-    if (targetOrderDate) {
+    // Check date filters & order candidates
+    if (!isMultiDate) {
       if (dateColIdx !== -1 && rawDate && cleanDate && cleanDate !== targetOrderDate) {
         unmatched.push({
           orderDate: cleanDate,
@@ -8873,32 +8883,43 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = [], tar
         });
         return;
       }
-      // availableItems is already filtered to targetOrderDate
-    } else if (cleanDate) {
-      const dateVariants = getDateVariants(cleanDate || rawDate);
-      const dateMatched = candidates.filter(r => {
-        const rDateClean = parseFlexibleDate(r.orderDate);
-        const rDateRaw = String(r.orderDate || "").trim();
-        return (
-          (cleanDate && rDateClean === cleanDate) ||
-          (rDateClean && dateVariants.includes(rDateClean)) ||
-          (rDateRaw && dateVariants.includes(rDateRaw))
-        );
+      // availableItems is already filtered to targetOrderDate in single-date mode
+      // Keep consistent order for deterministic allocation
+      candidates.sort((a, b) => {
+        const idA = String(a.id || "");
+        const idB = String(b.id || "");
+        return idA.localeCompare(idB);
       });
-      if (dateMatched.length > 0) {
-        candidates = dateMatched;
-      }
+    } else {
+      // Multi-Date Waterfall Mode (FIFO: earliest order date first)
+      candidates.sort((a, b) => {
+        const dateA = parseFlexibleDate(a.orderDate) || a.orderDate || "";
+        const dateB = parseFlexibleDate(b.orderDate) || b.orderDate || "";
+
+        // If the file row explicitly provided a date, prioritize orders from that date first
+        if (cleanDate) {
+          const matchA = (dateA === cleanDate);
+          const matchB = (dateB === cleanDate);
+          if (matchA && !matchB) return -1;
+          if (!matchA && matchB) return 1;
+        }
+
+        if (dateA !== dateB) return dateA.localeCompare(dateB);
+        const idA = String(a.id || "");
+        const idB = String(b.id || "");
+        return idA.localeCompare(idB);
+      });
     }
 
     if (candidates.length === 0) {
       unmatched.push({
-        orderDate: cleanDate || targetOrderDate || "—",
+        orderDate: cleanDate || (isMultiDate ? "All Dates" : targetOrderDate) || "—",
         itemName: itemStr,
         qty: qtyNum,
         price: priceNum !== null ? priceNum : String(rawPrice || "—"),
-        reason: targetOrderDate 
-          ? `Item "${itemStr}" not found in orders for date ${targetOrderDate}` 
-          : "Item Name not found for this vendor"
+        reason: isMultiDate 
+          ? `Item "${itemStr}" not found across available orders for this vendor`
+          : `Item "${itemStr}" not found in orders for date ${targetOrderDate}`
       });
       return;
     }
@@ -8926,7 +8947,7 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = [], tar
         newQtyMap[r.id] = alloc.allocatedQty;
         if (priceNum !== null) newPriceMap[r.id] = priceNum;
         if (cleanReadyDate) newReadyDateMap[r.id] = cleanReadyDate;
-        if (cleanDate && alloc.req.orderDate && cleanDate !== alloc.req.orderDate) {
+        if (cleanDate && cleanDate !== "all" && alloc.req.orderDate && cleanDate !== alloc.req.orderDate) {
           newDateMap[r.id] = cleanDate;
         }
       }
@@ -8967,7 +8988,7 @@ export const parseExcelShippingRowsAndMatch = (rawRows, availableItems = [], tar
         reqId: r.id,
         model: r.model,
         orderDate: r.orderDate,
-        excelDate: newDateMap[r.id] || targetOrderDate || r.orderDate,
+        excelDate: newDateMap[r.id] || (isMultiDate ? r.orderDate : targetOrderDate) || r.orderDate,
         isDateCorrected,
         originalQty: alloc.origQty,
         newQty: alloc.allocatedQty,
@@ -9016,16 +9037,20 @@ function ExcelShippingUpdateModal({
     return Object.values(dMap).sort((a, b) => (b.date > a.date ? 1 : -1));
   }, [availableItems]);
 
+  const totalAvailablePcs = useMemo(() => {
+    return (availableItems || []).reduce((sum, r) => sum + parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10), 0);
+  }, [availableItems]);
+
   const [selectedUploadOrderDate, setSelectedUploadOrderDate] = useState(() => {
     if (defaultOrderDate) return defaultOrderDate;
-    return modalAvailableDates.length > 0 ? modalAvailableDates[0].date : "";
+    return modalAvailableDates.length > 1 ? "all" : (modalAvailableDates[0]?.date || "all");
   });
 
   useEffect(() => {
     if (defaultOrderDate) {
       setSelectedUploadOrderDate(defaultOrderDate);
-    } else if (!selectedUploadOrderDate && modalAvailableDates.length > 0) {
-      setSelectedUploadOrderDate(modalAvailableDates[0].date);
+    } else if (!selectedUploadOrderDate) {
+      setSelectedUploadOrderDate(modalAvailableDates.length > 1 ? "all" : (modalAvailableDates[0]?.date || "all"));
     }
   }, [defaultOrderDate, modalAvailableDates]);
 
@@ -9039,14 +9064,24 @@ function ExcelShippingUpdateModal({
         throw new Error("No data found in uploaded content.");
       }
 
-      // Filter availableItems strictly to the selected targetDate
-      const targetItemsForDate = availableItems.filter(r => {
-        const rDateClean = parseFlexibleDate(r.orderDate);
-        const selDateClean = parseFlexibleDate(targetDate);
-        return r.orderDate === targetDate || (rDateClean && selDateClean && rDateClean === selDateClean);
-      });
+      // If targetDate is "all", use all availableItems across all dates!
+      // If targetDate is a specific date, filter strictly to that targetDate
+      const isAllDates = targetDate === "all";
+      const targetItems = isAllDates
+        ? availableItems
+        : availableItems.filter(r => {
+            const rDateClean = parseFlexibleDate(r.orderDate);
+            const selDateClean = parseFlexibleDate(targetDate);
+            return r.orderDate === targetDate || (rDateClean && selDateClean && rDateClean === selDateClean);
+          });
 
-      const result = parseExcelShippingRowsAndMatch(rows, targetItemsForDate, targetDate);
+      if (!targetItems || targetItems.length === 0) {
+        throw new Error(isAllDates 
+          ? "No pending items available for this vendor." 
+          : `No items available for date ${targetDate}.`);
+      }
+
+      const result = parseExcelShippingRowsAndMatch(rows, targetItems, targetDate);
       setAnalysis(result);
       if (sourceName) setFileName(sourceName);
     } catch (err) {
@@ -9188,15 +9223,17 @@ function ExcelShippingUpdateModal({
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "8px" }}>
             <label style={{ fontSize: "0.9rem", fontWeight: 700, color: selectedUploadOrderDate ? "var(--primary, #0284c7)" : "var(--danger, #dc2626)", display: "flex", alignItems: "center", gap: "6px", margin: 0 }}>
-              <Calendar size={16} /> 1. Select Target Order Date (Required)
+              <Calendar size={16} /> 1. Select Target Order Date
             </label>
             <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-              Data will be uploaded and applied to this date ONLY
+              {selectedUploadOrderDate === "all" 
+                ? "Allocates FIFO across ALL dates (fills earliest order first, overflows to next)" 
+                : "Data will be uploaded and applied to this date ONLY"}
             </span>
           </div>
 
           <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ flex: "1 1 240px", minWidth: "220px" }}>
+            <div style={{ flex: "1 1 260px", minWidth: "220px" }}>
               <select
                 className="form-control"
                 value={selectedUploadOrderDate}
@@ -9207,10 +9244,17 @@ function ExcelShippingUpdateModal({
                   borderColor: !selectedUploadOrderDate ? "var(--danger, #dc2626)" : "var(--primary, #0284c7)"
                 }}
               >
-                <option value="">-- Select Order Date ({modalAvailableDates.length} available) --</option>
+                {modalAvailableDates.length > 0 && (
+                  <option value="all" style={{ fontWeight: 700, color: "var(--primary, #0284c7)" }}>
+                    📦 All Order Dates (FIFO Multi-Date Allocation) — {availableItems.length} items ({totalAvailablePcs.toLocaleString()} Pcs)
+                  </option>
+                )}
+                {modalAvailableDates.length > 1 && (
+                  <option value="" disabled>── Or select a single order date ──</option>
+                )}
                 {modalAvailableDates.map(d => (
                   <option key={d.date} value={d.date}>
-                    {d.date} — {d.count} item{d.count !== 1 ? "s" : ""} ({d.pcs.toLocaleString()} Pcs)
+                    📅 {d.date} — {d.count} item{d.count !== 1 ? "s" : ""} ({d.pcs.toLocaleString()} Pcs)
                   </option>
                 ))}
               </select>
@@ -9221,7 +9265,7 @@ function ExcelShippingUpdateModal({
               <input
                 type="date"
                 className="form-control"
-                value={selectedUploadOrderDate}
+                value={selectedUploadOrderDate === "all" ? "" : selectedUploadOrderDate}
                 onChange={(e) => handleDateChange(e.target.value)}
                 style={{ fontSize: "0.85rem", padding: "6px 10px", width: "150px" }}
               />
@@ -9232,19 +9276,25 @@ function ExcelShippingUpdateModal({
               onClick={() => onDownloadSample && onDownloadSample(selectedUploadOrderDate)}
               className="btn btn-secondary btn-sm"
               style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", whiteSpace: "nowrap", marginLeft: "auto" }}
-              title={selectedUploadOrderDate ? `Download template pre-filled with items from ${selectedUploadOrderDate}` : "Download sample template"}
+              title={selectedUploadOrderDate && selectedUploadOrderDate !== "all" 
+                ? `Download template pre-filled with items from ${selectedUploadOrderDate}` 
+                : "Download sample template with all available items"}
             >
-              <Download size={14} /> Download Sample {selectedUploadOrderDate ? `(${selectedUploadOrderDate})` : "File"}
+              <Download size={14} /> Download Sample {selectedUploadOrderDate === "all" ? "(All Dates)" : (selectedUploadOrderDate ? `(${selectedUploadOrderDate})` : "File")}
             </button>
           </div>
 
-          {selectedUploadOrderDate ? (
+          {selectedUploadOrderDate === "all" ? (
+            <div style={{ marginTop: "10px", padding: "8px 12px", borderRadius: "6px", background: "rgba(2, 132, 199, 0.08)", border: "1px solid rgba(2, 132, 199, 0.2)", fontSize: "0.8rem", color: "var(--primary, #0284c7)" }}>
+              🌊 <strong>Multi-Date Waterfall (FIFO) Active:</strong> All <strong>{availableItems.length} items</strong> ({totalAvailablePcs.toLocaleString()} Pcs) across <strong>{modalAvailableDates.length} date(s)</strong> are eligible. If an item exists in multiple dates, quantity fills the earliest order date to 100% first, then flows to subsequent dates!
+            </div>
+          ) : selectedUploadOrderDate ? (
             <div style={{ marginTop: "8px", fontSize: "0.78rem", color: "var(--text-muted)" }}>
-              Target Orders: <strong>{availableItems.filter(r => r.orderDate === selectedUploadOrderDate).length} items</strong> available for date <strong>{selectedUploadOrderDate}</strong>.
+              Target Orders: <strong>{availableItems.filter(r => r.orderDate === selectedUploadOrderDate).length} items</strong> available for date <strong>{selectedUploadOrderDate}</strong>. Only this single date will be updated.
             </div>
           ) : (
             <div style={{ marginTop: "8px", fontSize: "0.78rem", color: "var(--danger, #dc2626)", fontWeight: 600 }}>
-              ⚠️ Please choose an Order Date before uploading or pasting rows.
+              ⚠️ Please choose an Order Date or "All Order Dates" before uploading or pasting rows.
             </div>
           )}
         </div>
@@ -9255,7 +9305,11 @@ function ExcelShippingUpdateModal({
             File Format: <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Item Name</code>, <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Qty</code>, <code style={{ padding: "2px 6px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)", color: "var(--primary, #0284c7)" }}>Price (Optional)</code>
           </div>
           <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-            Matches items in selected date <strong>{selectedUploadOrderDate || "(choose above)"}</strong>. Matched items are auto-selected with New Qty and New Price filled. Any items not found for this date will be exported to <code style={{ padding: "1px 5px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)" }}>{notFoundFileName}.xlsx</code>.
+            {selectedUploadOrderDate === "all" ? (
+              <span>Matches items across <strong>all order dates</strong> for this vendor with FIFO waterfall distribution. Any items not found across any date will be exported to <code style={{ padding: "1px 5px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)" }}>{notFoundFileName}.xlsx</code>.</span>
+            ) : (
+              <span>Matches items in selected date <strong>{selectedUploadOrderDate || "(choose above)"}</strong>. Matched items are auto-selected with New Qty and New Price filled. Any items not found for this date will be exported to <code style={{ padding: "1px 5px", borderRadius: "4px", background: "var(--bg-card, #ffffff)", border: "1px solid var(--border-glass, #cbd5e1)" }}>{notFoundFileName}.xlsx</code>.</span>
+            )}
           </div>
         </div>
 
@@ -9391,10 +9445,14 @@ function ExcelShippingUpdateModal({
           <div style={{ marginTop: "12px", marginBottom: "20px" }}>
             <div style={{ display: "flex", gap: "12px", marginBottom: "12px", flexWrap: "wrap" }}>
               <div style={{ flex: 1, padding: "12px 14px", borderRadius: "8px", background: "rgba(34, 197, 94, 0.1)", border: "1px solid rgba(34, 197, 94, 0.3)" }}>
-                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Matched Items ({selectedUploadOrderDate})</div>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>
+                  Matched Items ({selectedUploadOrderDate === "all" ? "All Dates (FIFO)" : selectedUploadOrderDate})
+                </div>
                 <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--success, #16a34a)" }}>{analysis.matched.length}</div>
                 <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>
-                  Will be selected & updated in table for {selectedUploadOrderDate}
+                  {selectedUploadOrderDate === "all" 
+                    ? "Will be selected & updated across multiple order dates" 
+                    : `Will be selected & updated in table for ${selectedUploadOrderDate}`}
                 </div>
               </div>
               <div style={{ flex: 1, padding: "12px 14px", borderRadius: "8px", background: analysis.unmatched.length > 0 ? "rgba(245, 158, 11, 0.1)" : "var(--bg-card-hover, rgba(0,0,0,0.03))", border: analysis.unmatched.length > 0 ? "1px solid rgba(245, 158, 11, 0.3)" : "1px solid var(--border-glass, #cbd5e1)" }}>
@@ -9447,6 +9505,10 @@ function ExcelShippingUpdateModal({
                             {m.isDateCorrected ? (
                               <span style={{ fontSize: "0.7rem", padding: "2px 7px", borderRadius: "4px", background: "rgba(56, 189, 248, 0.12)", color: "var(--primary, #0284c7)", fontWeight: 600, border: "1px solid rgba(56, 189, 248, 0.25)" }}>
                                 Smart Matched
+                              </span>
+                            ) : selectedUploadOrderDate === "all" ? (
+                              <span style={{ fontSize: "0.7rem", padding: "2px 7px", borderRadius: "4px", background: m.newQty >= m.originalQty ? "rgba(34, 197, 94, 0.1)" : "rgba(245, 158, 11, 0.1)", color: m.newQty >= m.originalQty ? "var(--success, #16a34a)" : "var(--warning, #d97706)", fontWeight: 600, border: `1px solid ${m.newQty >= m.originalQty ? "rgba(34, 197, 94, 0.25)" : "rgba(245, 158, 11, 0.25)"}` }}>
+                                {m.newQty >= m.originalQty ? "FIFO Full" : "FIFO Partial"}
                               </span>
                             ) : (
                               <span style={{ fontSize: "0.7rem", padding: "2px 7px", borderRadius: "4px", background: "rgba(34, 197, 94, 0.1)", color: "var(--success, #16a34a)", fontWeight: 600, border: "1px solid rgba(34, 197, 94, 0.25)" }}>
