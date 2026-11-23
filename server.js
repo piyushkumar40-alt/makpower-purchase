@@ -479,9 +479,11 @@ async function initDatabase() {
     try {
       pool = new pg.Pool({
         connectionString,
-        max: 10,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 20000,
+        max: 15,
+        idleTimeoutMillis: 10000,
+        connectionTimeoutMillis: 15000,
+        keepAlive: true,
+        keepAliveInitialDelayMillis: 10000,
         ssl: connectionString.includes("localhost") ? false : { rejectUnauthorized: false }
       });
       // Handle idle client errors without crashing Node.js process
@@ -505,6 +507,61 @@ async function initDatabase() {
   } else {
     console.log("No DATABASE_URL found. Using local JSON database (db.json) for development.");
   }
+}
+
+/**
+ * Resilient PostgreSQL transaction helper:
+ * Automatically detects transient socket drops, timeouts, or "Connection terminated unexpectedly",
+ * cleanly purges/destroys the dead socket from the pool (via client.release(true)),
+ * and retries the transaction with a fresh connection.
+ */
+async function withPgTransaction(callback, maxRetries = 2) {
+  if (!isPg || !pool) {
+    throw new Error("PostgreSQL pool not available");
+  }
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    let client = null;
+    let isTerminated = false;
+    try {
+      client = await pool.connect();
+      await client.query("BEGIN");
+      const result = await callback(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (err) {
+      lastError = err;
+      const isConnError = /connection terminated|closed|timeout|socket hang up|ECONNRESET|EPIPE/i.test(err.message || "");
+      if (isConnError) {
+        isTerminated = true;
+      }
+      if (client) {
+        try {
+          await client.query("ROLLBACK");
+        } catch (rbErr) {
+          isTerminated = true;
+        }
+      }
+      if (client) {
+        try {
+          client.release(isTerminated ? true : undefined);
+        } catch (relErr) {}
+        client = null;
+      }
+      console.warn(`[withPgTransaction] Attempt ${attempt}/${maxRetries} notice: ${err.message}`);
+      if (!isConnError || attempt >= maxRetries) {
+        throw err;
+      }
+      await new Promise(r => setTimeout(r, 150 * attempt));
+    } finally {
+      if (client) {
+        try {
+          client.release(isTerminated ? true : undefined);
+        } catch (relErr) {}
+      }
+    }
+  }
+  throw lastError;
 }
 
 // Local File Database Helper (Fallback)
@@ -1151,6 +1208,10 @@ async function setupPgDatabase() {
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoCompanyId" TEXT;
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoRates" TEXT;
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "vendorName" TEXT;
+      ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "createdBy" TEXT;
+      ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "createdByName" TEXT;
+      ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "receivedBy" TEXT;
+      ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "receivedByName" TEXT;
     `);
 
     // Clean up legacy cargos with phantom document filenames but empty/null data payloads
@@ -4472,29 +4533,20 @@ app.post("/api/requests/batch", async (req, res) => {
 
   isOrderDataDirty = true;
   if (isPg) {
-    let client;
     try {
-      client = await pool.connect();
-      await client.query("BEGIN");
-      for (const r of reqs) {
-        if (!r || !r.id) continue;
-        const { query, values } = buildRequestUpsert(r);
-        await client.query(query, values);
-      }
-      await client.query("COMMIT");
+      await withPgTransaction(async (client) => {
+        for (const r of reqs) {
+          if (!r || !r.id) continue;
+          const { query, values } = buildRequestUpsert(r);
+          await client.query(query, values);
+        }
+      });
       invalidateStateCache();
       markAppActivity();
       res.json({ success: true });
     } catch (err) {
-      if (client) {
-        try {
-          await client.query("ROLLBACK");
-        } catch (rbErr) {}
-      }
       console.error("POST /api/requests/batch error:", err.message);
       res.status(500).json({ success: false, error: "Failed to batch upsert requests: " + err.message });
-    } finally {
-      if (client) client.release();
     }
   } else {
     const data = readLocalJson();
@@ -4596,134 +4648,131 @@ app.post("/api/cargos", async (req, res) => {
   const bundledRequests = Array.isArray(req.body.bundledRequests) ? req.body.bundledRequests : (Array.isArray(c.bundledRequests) ? c.bundledRequests : null);
   isOrderDataDirty = true;
   if (isPg) {
-    let client;
     try {
-      client = await pool.connect();
-      await client.query("BEGIN");
-      const query = `
-        INSERT INTO cargos (
-          "id", "vendorId", "cargoOrderDate", "cargoDetail", "cargoPrice", "cargoPriceUom",
-          "cbmPackingList", "totalCargoPrice", "modeOfTransport", "cargoShippingDate", "cargoEta",
-          "packingListFile", "packingListData", "invoiceFile", "invoiceData", "cargoReceiptFile", "cargoReceiptData", "isMaterialRec", "receivedDate", "currency", "cargoEtaHistory",
-          "billUploadedAt", "billUploadedBy", "billStatus", "billVerifiedAt", "billVerifiedBy", "billVerificationNotes",
-          "totalCartons", "cargoCompanyId", "cargoRates", "vendorName"
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
-        ON CONFLICT ("id") DO UPDATE SET
-          "vendorId" = EXCLUDED."vendorId",
-          "vendorName" = COALESCE(NULLIF(EXCLUDED."vendorName", ''), cargos."vendorName"),
-          "cargoOrderDate" = EXCLUDED."cargoOrderDate",
-          "cargoDetail" = EXCLUDED."cargoDetail",
-          "cargoPrice" = EXCLUDED."cargoPrice",
-          "cargoPriceUom" = EXCLUDED."cargoPriceUom",
-          "cbmPackingList" = EXCLUDED."cbmPackingList",
-          "totalCargoPrice" = EXCLUDED."totalCargoPrice",
-          "modeOfTransport" = EXCLUDED."modeOfTransport",
-          "cargoShippingDate" = EXCLUDED."cargoShippingDate",
-          "cargoEta" = EXCLUDED."cargoEta",
-          "packingListFile" = EXCLUDED."packingListFile",
-          "packingListData" = CASE WHEN EXCLUDED."packingListData" = 'AVAILABLE' THEN cargos."packingListData" ELSE EXCLUDED."packingListData" END,
-          "invoiceFile" = EXCLUDED."invoiceFile",
-          "invoiceData" = CASE WHEN EXCLUDED."invoiceData" = 'AVAILABLE' THEN cargos."invoiceData" ELSE EXCLUDED."invoiceData" END,
-          "cargoReceiptFile" = EXCLUDED."cargoReceiptFile",
-          "cargoReceiptData" = CASE WHEN EXCLUDED."cargoReceiptData" = 'AVAILABLE' THEN cargos."cargoReceiptData" ELSE EXCLUDED."cargoReceiptData" END,
-          "isMaterialRec" = CASE 
-            WHEN EXCLUDED."isMaterialRec" = 'Yes' THEN 'Yes'
-            WHEN EXCLUDED."isMaterialRec" = 'No' AND cargos."isMaterialRec" = 'Yes' THEN 'Yes'
-            ELSE COALESCE(NULLIF(EXCLUDED."isMaterialRec", ''), cargos."isMaterialRec")
-          END,
-          "receivedDate" = CASE 
-            WHEN EXCLUDED."receivedDate" IS NOT NULL AND EXCLUDED."receivedDate" <> '' THEN EXCLUDED."receivedDate"
-            ELSE cargos."receivedDate"
-          END,
-          "currency" = EXCLUDED."currency",
-          "cargoEtaHistory" = COALESCE(NULLIF(EXCLUDED."cargoEtaHistory", ''), cargos."cargoEtaHistory"),
-          "billUploadedAt" = EXCLUDED."billUploadedAt",
-          "billUploadedBy" = EXCLUDED."billUploadedBy",
-          "billStatus" = EXCLUDED."billStatus",
-          "billVerifiedAt" = EXCLUDED."billVerifiedAt",
-          "billVerifiedBy" = EXCLUDED."billVerifiedBy",
-          "billVerificationNotes" = EXCLUDED."billVerificationNotes",
-          "totalCartons" = COALESCE(EXCLUDED."totalCartons", cargos."totalCartons"),
-          "cargoCompanyId" = EXCLUDED."cargoCompanyId",
-          "cargoRates" = COALESCE(NULLIF(EXCLUDED."cargoRates", ''), cargos."cargoRates")
-      `;
-      const effectiveTotal = getEffectiveTotalCargoPrice(c);
-      const values = [
-        c.id, c.vendorId, c.cargoOrderDate, c.cargoDetail,
-        safeNum(c.cargoPrice), c.cargoPriceUom || "",
-        safeNum(c.cbmPackingList),
-        safeNum(effectiveTotal),
-        c.modeOfTransport || "", c.cargoShippingDate || "", c.cargoEta || "",
-        c.packingListFile || "", c.packingListData || "", c.invoiceFile || "", c.invoiceData || "", c.cargoReceiptFile || "", c.cargoReceiptData || "", c.isMaterialRec || "No", c.receivedDate || "", c.currency || "RMB",
-        Array.isArray(c.cargoEtaHistory) ? JSON.stringify(c.cargoEtaHistory) : (c.cargoEtaHistory || "[]"),
-        c.billUploadedAt || "", c.billUploadedBy || "", c.billStatus || "", c.billVerifiedAt || "", c.billVerifiedBy || "", c.billVerificationNotes || "",
-        safeInt(c.totalCartons),
-        c.cargoCompanyId || "",
-        Array.isArray(c.cargoRates) ? JSON.stringify(c.cargoRates) : (c.cargoRates || "[]"),
-        c.vendorName || ""
-      ];
-      await client.query(query, values);
+      await withPgTransaction(async (client) => {
+        const query = `
+          INSERT INTO cargos (
+            "id", "vendorId", "cargoOrderDate", "cargoDetail", "cargoPrice", "cargoPriceUom",
+            "cbmPackingList", "totalCargoPrice", "modeOfTransport", "cargoShippingDate", "cargoEta",
+            "packingListFile", "packingListData", "invoiceFile", "invoiceData", "cargoReceiptFile", "cargoReceiptData", "isMaterialRec", "receivedDate", "currency", "cargoEtaHistory",
+            "billUploadedAt", "billUploadedBy", "billStatus", "billVerifiedAt", "billVerifiedBy", "billVerificationNotes",
+            "totalCartons", "cargoCompanyId", "cargoRates", "vendorName",
+            "createdBy", "createdByName", "receivedBy", "receivedByName"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
+          ON CONFLICT ("id") DO UPDATE SET
+            "vendorId" = EXCLUDED."vendorId",
+            "vendorName" = COALESCE(NULLIF(EXCLUDED."vendorName", ''), cargos."vendorName"),
+            "cargoOrderDate" = EXCLUDED."cargoOrderDate",
+            "cargoDetail" = EXCLUDED."cargoDetail",
+            "cargoPrice" = EXCLUDED."cargoPrice",
+            "cargoPriceUom" = EXCLUDED."cargoPriceUom",
+            "cbmPackingList" = EXCLUDED."cbmPackingList",
+            "totalCargoPrice" = EXCLUDED."totalCargoPrice",
+            "modeOfTransport" = EXCLUDED."modeOfTransport",
+            "cargoShippingDate" = EXCLUDED."cargoShippingDate",
+            "cargoEta" = EXCLUDED."cargoEta",
+            "packingListFile" = EXCLUDED."packingListFile",
+            "packingListData" = CASE WHEN EXCLUDED."packingListData" = 'AVAILABLE' THEN cargos."packingListData" ELSE EXCLUDED."packingListData" END,
+            "invoiceFile" = EXCLUDED."invoiceFile",
+            "invoiceData" = CASE WHEN EXCLUDED."invoiceData" = 'AVAILABLE' THEN cargos."invoiceData" ELSE EXCLUDED."invoiceData" END,
+            "cargoReceiptFile" = EXCLUDED."cargoReceiptFile",
+            "cargoReceiptData" = CASE WHEN EXCLUDED."cargoReceiptData" = 'AVAILABLE' THEN cargos."cargoReceiptData" ELSE EXCLUDED."cargoReceiptData" END,
+            "isMaterialRec" = CASE 
+              WHEN EXCLUDED."isMaterialRec" = 'Yes' THEN 'Yes'
+              WHEN EXCLUDED."isMaterialRec" = 'No' AND cargos."isMaterialRec" = 'Yes' THEN 'Yes'
+              ELSE COALESCE(NULLIF(EXCLUDED."isMaterialRec", ''), cargos."isMaterialRec")
+            END,
+            "receivedDate" = CASE 
+              WHEN EXCLUDED."receivedDate" IS NOT NULL AND EXCLUDED."receivedDate" <> '' THEN EXCLUDED."receivedDate"
+              ELSE cargos."receivedDate"
+            END,
+            "currency" = EXCLUDED."currency",
+            "cargoEtaHistory" = COALESCE(NULLIF(EXCLUDED."cargoEtaHistory", ''), cargos."cargoEtaHistory"),
+            "billUploadedAt" = EXCLUDED."billUploadedAt",
+            "billUploadedBy" = EXCLUDED."billUploadedBy",
+            "billStatus" = EXCLUDED."billStatus",
+            "billVerifiedAt" = EXCLUDED."billVerifiedAt",
+            "billVerifiedBy" = EXCLUDED."billVerifiedBy",
+            "billVerificationNotes" = EXCLUDED."billVerificationNotes",
+            "totalCartons" = COALESCE(EXCLUDED."totalCartons", cargos."totalCartons"),
+            "cargoCompanyId" = EXCLUDED."cargoCompanyId",
+            "cargoRates" = COALESCE(NULLIF(EXCLUDED."cargoRates", ''), cargos."cargoRates"),
+            "createdBy" = COALESCE(NULLIF(EXCLUDED."createdBy", ''), cargos."createdBy"),
+            "createdByName" = COALESCE(NULLIF(EXCLUDED."createdByName", ''), cargos."createdByName"),
+            "receivedBy" = COALESCE(NULLIF(EXCLUDED."receivedBy", ''), cargos."receivedBy"),
+            "receivedByName" = COALESCE(NULLIF(EXCLUDED."receivedByName", ''), cargos."receivedByName")
+        `;
+        const effectiveTotal = getEffectiveTotalCargoPrice(c);
+        const values = [
+          c.id, c.vendorId, c.cargoOrderDate, c.cargoDetail,
+          safeNum(c.cargoPrice), c.cargoPriceUom || "",
+          safeNum(c.cbmPackingList),
+          safeNum(effectiveTotal),
+          c.modeOfTransport || "", c.cargoShippingDate || "", c.cargoEta || "",
+          c.packingListFile || "", c.packingListData || "", c.invoiceFile || "", c.invoiceData || "", c.cargoReceiptFile || "", c.cargoReceiptData || "", c.isMaterialRec || "No", c.receivedDate || "", c.currency || "RMB",
+          Array.isArray(c.cargoEtaHistory) ? JSON.stringify(c.cargoEtaHistory) : (c.cargoEtaHistory || "[]"),
+          c.billUploadedAt || "", c.billUploadedBy || "", c.billStatus || "", c.billVerifiedAt || "", c.billVerifiedBy || "", c.billVerificationNotes || "",
+          safeInt(c.totalCartons),
+          c.cargoCompanyId || "",
+          Array.isArray(c.cargoRates) ? JSON.stringify(c.cargoRates) : (c.cargoRates || "[]"),
+          c.vendorName || "",
+          c.createdBy || "", c.createdByName || "", c.receivedBy || "", c.receivedByName || ""
+        ];
+        await client.query(query, values);
 
-      // Atomic Bundled Requests Upsert: guarantees orders and cargo shipment advance simultaneously
-      if (bundledRequests && bundledRequests.length > 0) {
-        for (const reqItem of bundledRequests) {
-          if (!reqItem || !reqItem.id) continue;
-          const { query: rQuery, values: rValues } = buildRequestUpsert(reqItem);
-          await client.query(rQuery, rValues);
-        }
-      }
-
-      // Synchronize cargo received status to all bundled requests in DB
-      try {
-        if (c.id && c.isMaterialRec === 'Yes') {
-          const reqSyncUpdates = [`"isMaterialRec" = 'Yes'`];
-          const reqSyncVals = [];
-          let syncIdx = 1;
-          if (c.receivedDate) {
-            reqSyncUpdates.push(`"actualReceivedDate" = $${syncIdx++}`);
-            reqSyncVals.push(c.receivedDate);
+        // Atomic Bundled Requests Upsert: guarantees orders and cargo shipment advance simultaneously
+        if (bundledRequests && bundledRequests.length > 0) {
+          for (const reqItem of bundledRequests) {
+            if (!reqItem || !reqItem.id) continue;
+            const { query: rQuery, values: rValues } = buildRequestUpsert(reqItem);
+            await client.query(rQuery, rValues);
           }
-          const cIdStr = String(c.id).trim();
-          const rawId = cIdStr.replace(/^cargo-/, '');
-          const withPrefix = `cargo-${rawId}`;
-          const detail = c.cargoDetail ? String(c.cargoDetail).trim() : '';
-
-          reqSyncVals.push(cIdStr);
-          const p1 = syncIdx++;
-          reqSyncVals.push(rawId);
-          const p2 = syncIdx++;
-          reqSyncVals.push(withPrefix);
-          const p3 = syncIdx++;
-          reqSyncVals.push(detail);
-          const p4 = syncIdx++;
-
-          await client.query(
-            `UPDATE requests SET ${reqSyncUpdates.join(', ')} 
-             WHERE LOWER(TRIM("cargoId")) = LOWER(TRIM($${p1})) 
-                OR LOWER(TRIM("cargoId")) = LOWER(TRIM($${p2})) 
-                OR LOWER(TRIM("cargoId")) = LOWER(TRIM($${p3})) 
-                OR ($${p4} <> '' AND LOWER(TRIM("cargoId")) = LOWER(TRIM($${p4})))`,
-            reqSyncVals
-          );
         }
-      } catch (syncErr) {
-        console.warn("Notice: cargo request sync check in POST /api/cargos:", syncErr.message);
-      }
 
-      await client.query("COMMIT");
+        // Synchronize cargo received status to all bundled requests in DB
+        try {
+          if (c.id && c.isMaterialRec === 'Yes') {
+            const reqSyncUpdates = [`"isMaterialRec" = 'Yes'`];
+            const reqSyncVals = [];
+            let syncIdx = 1;
+            if (c.receivedDate) {
+              reqSyncUpdates.push(`"actualReceivedDate" = $${syncIdx++}`);
+              reqSyncVals.push(c.receivedDate);
+            }
+            const cIdStr = String(c.id).trim();
+            const rawId = cIdStr.replace(/^cargo-/, '');
+            const withPrefix = `cargo-${rawId}`;
+            const detail = c.cargoDetail ? String(c.cargoDetail).trim() : '';
+
+            reqSyncVals.push(cIdStr);
+            const p1 = syncIdx++;
+            reqSyncVals.push(rawId);
+            const p2 = syncIdx++;
+            reqSyncVals.push(withPrefix);
+            const p3 = syncIdx++;
+            reqSyncVals.push(detail);
+            const p4 = syncIdx++;
+
+            await client.query(
+              `UPDATE requests SET ${reqSyncUpdates.join(', ')} 
+               WHERE LOWER(TRIM("cargoId")) = LOWER(TRIM($${p1})) 
+                  OR LOWER(TRIM("cargoId")) = LOWER(TRIM($${p2})) 
+                  OR LOWER(TRIM("cargoId")) = LOWER(TRIM($${p3})) 
+                  OR ($${p4} <> '' AND LOWER(TRIM("cargoId")) = LOWER(TRIM($${p4})))`,
+              reqSyncVals
+            );
+          }
+        } catch (syncErr) {
+          console.warn("Notice: cargo request sync check in POST /api/cargos:", syncErr.message);
+        }
+      });
+
       invalidateStateCache();
       markAppActivity();
       res.json({ success: true });
     } catch (err) {
-      if (client) {
-        try {
-          await client.query("ROLLBACK");
-        } catch (rbErr) {}
-      }
       console.error("POST /api/cargos error:", err.message);
       res.status(500).json({ success: false, error: "Failed to upsert cargo: " + err.message });
-    } finally {
-      if (client) client.release();
     }
   } else {
     const data = readLocalJson();

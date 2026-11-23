@@ -2013,7 +2013,9 @@ export default function App() {
 
   const handleRefreshAllData = React.useCallback(async () => {
     if (isSaving || window.__isSaving?.()) {
-      setShowSavingAlert(true);
+      if (window.__showWarningToast) {
+        window.__showWarningToast("A database save is currently active in the background. Refreshing immediately once completed.", "Sync In Progress");
+      }
       return;
     }
     if (isRefreshingData) return;
@@ -2816,12 +2818,7 @@ const cancelRequests = async (requestIds, reason = "") => {
         if (res && res.success !== false) {
           return { success: true };
         }
-        console.warn("Notice: Atomic /api/cargos with bundled requests returned non-success, attempting fallback batch upsert:", res?.error);
-        const batchRes = await postData("/api/requests/batch", allBatch);
-        if (batchRes && batchRes.success !== false) {
-          return { success: true };
-        }
-        throw new Error(res?.error || batchRes?.error || "Failed to save cargo to server");
+        throw new Error(res?.error || "Failed to save cargo to server");
       }
     });
 
@@ -2917,10 +2914,6 @@ const cancelRequests = async (requestIds, reason = "") => {
         const res = await postData("/api/cargos", { ...cargoWithDate, bundledRequests: allBatch });
         if (res && res.success !== false) {
           return { success: true };
-        }
-        if (allBatch.length > 0) {
-          const batchRes = await postData("/api/requests/batch", allBatch);
-          if (batchRes && batchRes.success !== false) return { success: true };
         }
         throw new Error(res?.error || "Failed to update cargo on server");
       }

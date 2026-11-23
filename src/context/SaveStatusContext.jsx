@@ -319,8 +319,8 @@ export function SaveStatusProvider({ children }) {
             padding: "20px"
           }}
           onClick={() => {
-            // Only allow closing if save has finished
-            if (!isSaving) setShowSavingAlert(false);
+            // Allow dismissing/closing modal at any time
+            setShowSavingAlert(false);
           }}
         >
           <div
@@ -347,25 +347,24 @@ export function SaveStatusProvider({ children }) {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Close Button (visible only when not saving) */}
-            {!isSaving && (
-              <button
-                onClick={() => setShowSavingAlert(false)}
-                style={{
-                  position: "absolute",
-                  top: "16px",
-                  right: "16px",
-                  background: "transparent",
-                  border: "none",
-                  color: "var(--text-muted, #94a3b8)",
-                  cursor: "pointer",
-                  padding: "4px"
-                }}
-                aria-label="Close"
-              >
-                <X size={18} />
-              </button>
-            )}
+            {/* Close Button (always accessible so user can dismiss anytime) */}
+            <button
+              type="button"
+              onClick={() => setShowSavingAlert(false)}
+              style={{
+                position: "absolute",
+                top: "16px",
+                right: "16px",
+                background: "transparent",
+                border: "none",
+                color: "var(--text-muted, #94a3b8)",
+                cursor: "pointer",
+                padding: "4px"
+              }}
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
 
             {/* Glowing Icon Orb */}
             <div
