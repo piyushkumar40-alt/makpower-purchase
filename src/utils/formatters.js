@@ -1394,26 +1394,33 @@ export const resolveItemVendor = (r, vendors = [], requests = [], cargos = []) =
     return { id: liviVendor?.id || "vend-livi", name: liviVendor?.name || "Livi" };
   }
 
-  // 1. Direct ID match in active vendors
-  if (r.vendorId) {
-    const v = (vendors || []).find(x => x && x.id === r.vendorId);
-    if (v && v.name) {
-      // Disallow accidental Lily stamp on unassigned requisitions with NO cargo
-      const isAccidentalLily = (v.name.trim().toLowerCase() === "lily") && (!cargoIdStr || cargoIdStr === "NO_CARGO") && !String(r.notes || "").toLowerCase().includes("lily") && !String(r.model || "").toLowerCase().includes("lily");
-      if (!isAccidentalLily) {
-        return v;
-      }
-    }
+  // 1. Specific Category and Model mappings for known product lines
+  if (r.category === "TEMPERED SOLDIER" || String(r.model || "").toLowerCase().includes("soldier")) {
+    const lilyVendor = (vendors || []).find(v => v && v.name && v.name.trim().toLowerCase() === "lily");
+    return { id: lilyVendor?.id || "v-178945075460", name: lilyVendor?.name || "Lily" };
   }
 
-  // 2. Direct Name match in active vendors
+  if (r.category === "MOBILE HOLDER") {
+    const mhVendor = (vendors || []).find(v => v && (v.id === "v-1791866978138" || (v.name && v.name.trim().toLowerCase() === "mobile holder")));
+    return { id: mhVendor?.id || "v-1791866978138", name: mhVendor?.name || "Mobile Holder" };
+  }
+
+  if (r.category === "UV TEMPERED") {
+    const uvVendor = (vendors || []).find(v => v && (v.id === "v-1794463150828" || (v.name && v.name.trim().toLowerCase() === "g-tell uv glass")));
+    return { id: uvVendor?.id || "v-1794463150828", name: uvVendor?.name || "G-TELL UV GLASS" };
+  }
+
+  // 2. Direct ID match in active vendors
+  if (r.vendorId) {
+    const v = (vendors || []).find(x => x && x.id === r.vendorId);
+    if (v && v.name) return v;
+  }
+
+  // 3. Direct Name match in active vendors
   if (r.vendorName && r.vendorName !== "Unknown Vendor" && r.vendorName !== "—" && r.vendorName !== "Unassigned Vendor") {
-    const isAccidentalLily = (String(r.vendorName).trim().toLowerCase() === "lily") && (!cargoIdStr || cargoIdStr === "NO_CARGO") && !String(r.notes || "").toLowerCase().includes("lily") && !String(r.model || "").toLowerCase().includes("lily");
-    if (!isAccidentalLily) {
-      const v = (vendors || []).find(x => x && x.name && x.name.trim().toLowerCase() === String(r.vendorName).trim().toLowerCase());
-      if (v && v.name) return v;
-      return { id: r.vendorId || "", name: String(r.vendorName).trim() };
-    }
+    const v = (vendors || []).find(x => x && x.name && x.name.trim().toLowerCase() === String(r.vendorName).trim().toLowerCase());
+    if (v && v.name) return v;
+    return { id: r.vendorId || "", name: String(r.vendorName).trim() };
   }
 
   // 3. Cargo fallback if cargo has a known vendor

@@ -410,16 +410,15 @@ function formatRequestForResponse(r) {
     } else if (cargoIdStr.includes("1792575495632")) {
       vendorName = "Livi";
       if (!vendorId) vendorId = "vend-livi";
-    } else if (!cargoIdStr || cargoIdStr === "NO_CARGO") {
-      // Revert accidental Lily stamp on unassigned requisitions
-      if (vendorName === "Lily" || vendorId === "v-178945075460" || vendorId === "v-lily") {
-        const notesLower = String(r.notes || "").toLowerCase();
-        const modelLower = String(r.model || "").toLowerCase();
-        if (!notesLower.includes("lily") && !modelLower.includes("lily")) {
-          vendorName = "";
-          vendorId = "";
-        }
-      }
+    } else if (r.category === "TEMPERED SOLDIER" || String(r.model || "").toLowerCase().includes("soldier")) {
+      vendorName = "Lily";
+      if (!vendorId) vendorId = "v-178945075460";
+    } else if (r.category === "MOBILE HOLDER") {
+      vendorName = "Mobile Holder";
+      if (!vendorId) vendorId = "v-1791866978138";
+    } else if (r.category === "UV TEMPERED") {
+      vendorName = "G-TELL UV GLASS";
+      if (!vendorId) vendorId = "v-1794463150828";
     }
 
     return {
@@ -676,16 +675,61 @@ async function ensureCoreDatabaseSchema() {
 async function restoreAccidentalVendorChanges() {
   if (!isPg || !pool) return;
   try {
-    // 1. Restore the 146 unassigned requests for Rahul Kumar back to empty vendorId / vendorName
+    // 1. Restore Lot 2026-08-10 (15 items of UV Tempered) to G-TELL UV GLASS
     await pool.query(`
       UPDATE requests
-      SET "vendorId" = '', "vendorName" = ''
-      WHERE ("purchaserId" ILIKE '%rahul%' OR "entryBy" ILIKE '%rahul%' OR "cargoAssignedBy" ILIKE '%rahul%')
-        AND ("cargoId" IS NULL OR "cargoId" = '')
-        AND ("vendorId" = 'v-178945075460' OR "vendorId" = 'v-lily' OR "vendorName" = 'Lily');
+      SET "vendorId" = 'v-1794463150828', "vendorName" = 'G-TELL UV GLASS'
+      WHERE "orderDate" = '2026-08-10'
+        AND "category" = 'UV TEMPERED';
     `);
 
-    // 2. Restore cargo-1793880915701 and its bundled requests to OTG & Connector
+    // 2. Restore Lot 2026-10-12 (4 items of Mobile Holder) to Mobile Holder vendor
+    await pool.query(`
+      UPDATE requests
+      SET "vendorId" = 'v-1791866978138', "vendorName" = 'Mobile Holder'
+      WHERE "orderDate" = '2026-10-12'
+        AND "category" = 'MOBILE HOLDER';
+    `);
+
+    // 3. Restore Lot 2026-10-15 (59 items of Tempered Soldier) to Lily
+    await pool.query(`
+      UPDATE requests
+      SET "vendorId" = 'v-178945075460', "vendorName" = 'Lily'
+      WHERE "orderDate" = '2026-10-15'
+        AND "category" = 'TEMPERED SOLDIER';
+    `);
+
+    // 4. Restore Lot 2026-11-05:
+    // 4a. 46 items of Tempered Soldier to Lily
+    await pool.query(`
+      UPDATE requests
+      SET "vendorId" = 'v-178945075460', "vendorName" = 'Lily'
+      WHERE "orderDate" = '2026-11-05'
+        AND "category" = 'TEMPERED SOLDIER';
+    `);
+
+    // 4b. 11 items of OTG, Connector, Audio, Card Reader to OTG & Connector
+    await pool.query(`
+      UPDATE requests
+      SET "vendorId" = 'v-1791866800439', "vendorName" = 'OTG & Connector'
+      WHERE "id" LIKE 'req-179395395033%';
+    `);
+
+    // 4c. 2 items of AUX Cable to AUX Cable vendor
+    await pool.query(`
+      UPDATE requests
+      SET "vendorId" = 'v-1793955552409', "vendorName" = 'AUX Cable'
+      WHERE "id" LIKE 'req-1793955252435%';
+    `);
+
+    // 4d. 1 item of Car Bluetooth to Rola
+    await pool.query(`
+      UPDATE requests
+      SET "vendorId" = 'v-1789194517608', "vendorName" = 'Rola'
+      WHERE "id" = 'req-1793954303875-0';
+    `);
+
+    // 5. Restore cargo-1793880915701 and its bundled requests to OTG & Connector
     await pool.query(`
       UPDATE cargos
       SET "vendorId" = 'v-1791866800439', "vendorName" = 'OTG & Connector'
@@ -696,7 +740,7 @@ async function restoreAccidentalVendorChanges() {
       WHERE "cargoId" = 'cargo-1793880915701';
     `);
 
-    // 3. Restore cargo-1791810296257 and its bundled requests to Alxea
+    // 6. Restore cargo-1791810296257 and its bundled requests to Alxea
     await pool.query(`
       UPDATE cargos
       SET "vendorId" = 'v-1787052052941', "vendorName" = 'Alxea'
@@ -707,7 +751,7 @@ async function restoreAccidentalVendorChanges() {
       WHERE "cargoId" = 'cargo-1791810296257';
     `);
 
-    // 4. Restore cargo-1787222321873 and cargo-1787222154201 to ABC Co
+    // 7. Restore cargo-1787222321873 and cargo-1787222154201 to ABC Co
     await pool.query(`
       UPDATE cargos
       SET "vendorId" = 'v-1787221745606', "vendorName" = 'ABC Co'
@@ -718,7 +762,7 @@ async function restoreAccidentalVendorChanges() {
       WHERE "cargoId" IN ('cargo-1787222321873', 'cargo-1787222154201');
     `);
 
-    // 5. Set cargo-1790072195521 and cargo-1790056792788 and their items to Lily
+    // 8. Set cargo-1790072195521 and cargo-1790056792788 and their items to Lily
     await pool.query(`
       UPDATE cargos
       SET "vendorId" = 'v-178945075460', "vendorName" = 'Lily'
@@ -729,7 +773,7 @@ async function restoreAccidentalVendorChanges() {
       WHERE "cargoId" IN ('cargo-1790072195521', 'cargo-1790056792788');
     `);
 
-    // 6. Ensure all requests with a valid vendorId have their matching vendorName populated
+    // 9. Ensure all requests with a valid vendorId have their matching vendorName populated
     await pool.query(`
       UPDATE requests r
       SET "vendorName" = v.name

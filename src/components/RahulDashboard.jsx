@@ -434,13 +434,9 @@ export default function RahulDashboard({
       // Count active (non-cancelled) orders for this vendor with direct vendor priority
       const activeCount = (requests || []).filter(r => {
         if (isRequestCancelled(r)) return false;
-        const cargoIdStr = String(r.cargoId || "").trim();
         const directVendor = (vendors || []).find(vObj => vObj && (vObj.id === r.vendorId || (vObj.name && vObj.name.trim().toLowerCase() === String(r.vendorName || '').trim().toLowerCase())));
-        const isAccidentalLily = directVendor && directVendor.name.trim().toLowerCase() === "lily" && (!cargoIdStr || cargoIdStr === "NO_CARGO") && !String(r.notes || "").toLowerCase().includes("lily") && !String(r.model || "").toLowerCase().includes("lily");
-        const effectiveDirectVendor = isAccidentalLily ? null : directVendor;
-
-        if (effectiveDirectVendor) {
-          return effectiveDirectVendor.id === v.id || (vNameLower && effectiveDirectVendor.name && effectiveDirectVendor.name.trim().toLowerCase() === vNameLower);
+        if (directVendor) {
+          return directVendor.id === v.id || (vNameLower && directVendor.name && directVendor.name.trim().toLowerCase() === vNameLower);
         }
         const resV = resolveItemVendor(r, vendors, requests, cargos);
         return resV.id === v.id || (vNameLower && resV.name && resV.name.trim().toLowerCase() === vNameLower);
@@ -568,14 +564,10 @@ export default function RahulDashboard({
         const selectedVendorObj = allVendorsWithCounts.find(v => v.value === filterVendor || v.rawName === filterVendor);
         const targetId = selectedVendorObj?.value || filterVendor;
         const targetName = (selectedVendorObj?.rawName || filterVendor).trim().toLowerCase();
-        const cargoIdStr = String(r.cargoId || "").trim();
         const directVendor = (vendors || []).find(v => v && (v.id === r.vendorId || (v.name && v.name.trim().toLowerCase() === String(r.vendorName || '').trim().toLowerCase())));
-        const isAccidentalLily = directVendor && directVendor.name.trim().toLowerCase() === "lily" && (!cargoIdStr || cargoIdStr === "NO_CARGO") && !String(r.notes || "").toLowerCase().includes("lily") && !String(r.model || "").toLowerCase().includes("lily");
-        const effectiveDirectVendor = isAccidentalLily ? null : directVendor;
-
-        const resV = effectiveDirectVendor || resolveItemVendor(r, vendors, requests, cargos);
-        const rVId = resV?.id || (isAccidentalLily ? "" : r.vendorId) || "";
-        const rVName = (resV?.name || (isAccidentalLily ? "Unassigned Vendor" : r.vendorName) || "").trim().toLowerCase();
+        const resV = directVendor || resolveItemVendor(r, vendors, requests, cargos);
+        const rVId = resV?.id || r.vendorId || "";
+        const rVName = (resV?.name || r.vendorName || "").trim().toLowerCase();
 
         const match = rVId === targetId || (targetName && rVName === targetName) || (targetId && rVName === targetId.trim().toLowerCase());
         if (!match) {
@@ -921,14 +913,11 @@ export default function RahulDashboard({
       // 1. Direct vendor match from vendors list:
       const cargoIdStr = String(r.cargoId || "").trim();
       const directVendor = (vendors || []).find(v => v && (v.id === r.vendorId || (v.name && v.name.trim().toLowerCase() === String(r.vendorName || '').trim().toLowerCase())));
-      const isAccidentalLily = directVendor && directVendor.name.trim().toLowerCase() === "lily" && (!cargoIdStr || cargoIdStr === "NO_CARGO") && !String(r.notes || "").toLowerCase().includes("lily") && !String(r.model || "").toLowerCase().includes("lily");
-      const effectiveDirectVendor = isAccidentalLily ? null : directVendor;
-
-      let vId = effectiveDirectVendor ? effectiveDirectVendor.id : (isAccidentalLily ? "unassigned" : (r.vendorId || "unassigned"));
-      let vendorName = effectiveDirectVendor ? effectiveDirectVendor.name : (isAccidentalLily ? "Unassigned Vendor" : (r.vendorName || ""));
+      let vId = directVendor ? directVendor.id : (r.vendorId || "unassigned");
+      let vendorName = directVendor ? directVendor.name : (r.vendorName || "");
       
       // If vendor is genuinely unknown, resolve true vendor:
-      if (!effectiveDirectVendor || !vendorName || vendorName === "Unknown Vendor" || vendorName === "—" || vendorName === "Unassigned Vendor") {
+      if (!directVendor || !vendorName || vendorName === "Unknown Vendor" || vendorName === "—" || vendorName === "Unassigned Vendor") {
         const resV = resolveItemVendor(r, vendors, requests, cargos);
         if (resV && resV.name && resV.name !== "Unknown Vendor") {
           vId = resV.id || vId;
