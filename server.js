@@ -1889,6 +1889,64 @@ app.get("/api/admin/restore-vendors", async (req, res) => {
   }
 });
 
+app.get("/api/admin/inspect-lot-history", async (req, res) => {
+  if (!isPg || !pool) return res.json({ error: "No PG pool" });
+  try {
+    const totalLogs = await pool.query('SELECT COUNT(*) FROM audit_logs');
+    
+    // Search for 2026-10-12 (req-1791811831310 / req-1791811831311)
+    const logs1012 = await pool.query(`
+      SELECT "id", "action", "entityId", "oldData", "newData", "isoTime", "details"
+      FROM audit_logs
+      WHERE "entityId" ILIKE '%179181183131%'
+         OR "oldData" ILIKE '%179181183131%'
+         OR "newData" ILIKE '%179181183131%'
+         OR "details" ILIKE '%179181183131%'
+      ORDER BY "isoTime" ASC
+    `);
+
+    // Search for 2026-10-15 (req-1792645452866 / req-1792645452867)
+    const logs1015 = await pool.query(`
+      SELECT "id", "action", "entityId", "oldData", "newData", "isoTime", "details"
+      FROM audit_logs
+      WHERE "entityId" ILIKE '%179264545286%'
+         OR "oldData" ILIKE '%179264545286%'
+         OR "newData" ILIKE '%179264545286%'
+         OR "details" ILIKE '%179264545286%'
+      ORDER BY "isoTime" ASC
+    `);
+
+    // Search for any PRICE_REQUEST_BATCH mentioning MH01 or Mobile Holder or Soldier
+    const mhLogs = await pool.query(`
+      SELECT "id", "action", "entityId", "oldData", "newData", "isoTime", "details"
+      FROM audit_logs
+      WHERE "action" ILIKE '%price%'
+        AND ("oldData" ILIKE '%MH01%' OR "newData" ILIKE '%MH01%' OR "details" ILIKE '%MH01%')
+      ORDER BY "isoTime" ASC
+    `);
+
+    const soldierLogs = await pool.query(`
+      SELECT "id", "action", "entityId", "oldData", "newData", "isoTime", "details"
+      FROM audit_logs
+      WHERE "action" ILIKE '%price%'
+        AND ("oldData" ILIKE '%Iph 15 Soldier%' OR "newData" ILIKE '%Iph 15 Soldier%')
+      ORDER BY "isoTime" ASC
+    `);
+
+    res.json({
+      totalLogsCount: totalLogs.rows[0].count,
+      logs1012Count: logs1012.rows.length,
+      logs1012: logs1012.rows,
+      logs1015Count: logs1015.rows.length,
+      logs1015: logs1015.rows,
+      mhLogs: mhLogs.rows,
+      soldierLogs: soldierLogs.rows
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Middleware: Ensure database is initialized before handling API requests (with 2s safety timeout)
 app.use("/api", async (req, res, next) => {
   if (req.path === "/health") return next();
