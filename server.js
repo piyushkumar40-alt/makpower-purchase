@@ -1153,26 +1153,6 @@ async function setupPgDatabase() {
       ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "vendorName" TEXT;
     `);
 
-    // Guarantee vendor 'Livi' exists and restore association for cargo-1792575495632
-    try {
-      await pool.query(`
-        INSERT INTO vendors ("id", "name", "location", "phone", "history", "purchaserIds")
-        VALUES ('vend-livi', 'Livi', 'China', '', '', '["u-rahul"]')
-        ON CONFLICT ("id") DO UPDATE SET "name" = 'Livi';
-
-        UPDATE cargos
-        SET "vendorId" = 'vend-livi', "vendorName" = 'Livi'
-        WHERE "id" LIKE '%1792575495632%';
-
-        UPDATE requests
-        SET "vendorId" = 'vend-livi', "vendorName" = 'Livi'
-        WHERE "cargoId" LIKE '%1792575495632%';
-      `);
-      console.log("Self-healed vendor Livi and cargo-1792575495632 in PostgreSQL database.");
-    } catch (liviErr) {
-      console.warn("Notice: Livi vendor recovery:", liviErr.message);
-    }
-
     // Clean up legacy cargos with phantom document filenames but empty/null data payloads
     try {
       await pool.query(`
@@ -1249,6 +1229,9 @@ async function setupPgDatabase() {
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "packingOrderedAt" TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "packingOrderedBy" TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS "packingOrderedById" TEXT;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "vendorName" TEXT;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "cargoAssignedBy" TEXT;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS "cargoAssignedByName" TEXT;
       UPDATE requests SET "timestamp" = "orderDate" WHERE ("timestamp" IS NULL OR "timestamp" = '') AND "orderDate" IS NOT NULL;
       UPDATE requests SET "vendorEdd" = '20' || SUBSTRING("vendorEdd", 3) WHERE "vendorEdd" LIKE '00%-%' OR "vendorEdd" LIKE '00%/%';
       UPDATE requests SET "orderDate" = '20' || SUBSTRING("orderDate", 3) WHERE "orderDate" LIKE '00%-%' OR "orderDate" LIKE '00%/%';
@@ -1269,6 +1252,26 @@ async function setupPgDatabase() {
       CREATE INDEX IF NOT EXISTS idx_cargos_order_date ON cargos("cargoOrderDate" DESC);
       CREATE INDEX IF NOT EXISTS idx_cargos_eta ON cargos("cargoEta" DESC);
     `);
+
+    // Guarantee vendor 'Livi' exists and restore association for cargo-1792575495632
+    try {
+      await pool.query(`
+        INSERT INTO vendors ("id", "name", "location", "phone", "history", "purchaserIds")
+        VALUES ('vend-livi', 'Livi', 'China', '', '', '["u-rahul"]')
+        ON CONFLICT ("id") DO UPDATE SET "name" = 'Livi';
+
+        UPDATE cargos
+        SET "vendorId" = 'vend-livi', "vendorName" = 'Livi'
+        WHERE "id" LIKE '%1792575495632%';
+
+        UPDATE requests
+        SET "vendorId" = 'vend-livi', "vendorName" = 'Livi'
+        WHERE "cargoId" LIKE '%1792575495632%';
+      `);
+      console.log("Self-healed vendor Livi and cargo-1792575495632 in PostgreSQL database.");
+    } catch (liviErr) {
+      console.warn("Notice: Livi vendor recovery:", liviErr.message);
+    }
 
     // Auto-populate vendorReadyDate for orders assigned to cargo if vendorReadyDate is missing
     try {
@@ -4137,8 +4140,8 @@ app.get("/api/crm/dispatches", async (req, res) => {
 
 // Centralized Request Upsert Builder ensuring 100% parameter type safety across single, batch & cargo transactions
 function buildRequestUpsert(r) {
-  if (r.cargoId && (!r.vendorReadyDate || !r.vendorReadyDate.trim())) {
-    r.vendorReadyDate = r.cargoShippingDate || (r.cargoAssignedAt ? r.cargoAssignedAt.split("T")[0] : new Date().toISOString().split("T")[0]);
+  if (r.cargoId && (!r.vendorReadyDate || !String(r.vendorReadyDate).trim())) {
+    r.vendorReadyDate = r.cargoShippingDate || (typeof r.cargoAssignedAt === "string" ? r.cargoAssignedAt.split("T")[0] : new Date().toISOString().split("T")[0]);
   }
   const query = `
     INSERT INTO requests (
@@ -4150,8 +4153,9 @@ function buildRequestUpsert(r) {
       "vendorOrderQuantity", "cargoPickedQty", "receivedQuantity", "shortageQty", "parentRequestId", "vendorReadyDate", "currency", "timestamp", "vendorEddHistory",
       "itemsPerCarton", "totalCartons", "cancelledBy", "cancelledByName",
       "purchaseUpdatedAt", "purchaseUpdatedBy", "purchaseUpdatedById",
-      "packingOrderedAt", "packingOrderedBy", "packingOrderedById"
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46)
+      "packingOrderedAt", "packingOrderedBy", "packingOrderedById",
+      "vendorName", "cargoAssignedBy", "cargoAssignedByName"
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49)
     ON CONFLICT ("id") DO UPDATE SET
       "purchaserId" = EXCLUDED."purchaserId",
       "vendorId" = EXCLUDED."vendorId",
@@ -4201,7 +4205,10 @@ function buildRequestUpsert(r) {
       "purchaseUpdatedById" = EXCLUDED."purchaseUpdatedById",
       "packingOrderedAt" = EXCLUDED."packingOrderedAt",
       "packingOrderedBy" = EXCLUDED."packingOrderedBy",
-      "packingOrderedById" = EXCLUDED."packingOrderedById"
+      "packingOrderedById" = EXCLUDED."packingOrderedById",
+      "vendorName" = COALESCE(NULLIF(EXCLUDED."vendorName", ''), requests."vendorName"),
+      "cargoAssignedBy" = COALESCE(NULLIF(EXCLUDED."cargoAssignedBy", ''), requests."cargoAssignedBy"),
+      "cargoAssignedByName" = COALESCE(NULLIF(EXCLUDED."cargoAssignedByName", ''), requests."cargoAssignedByName")
   `;
 
   const parsedItemsPerCarton = safeInt(r.itemsPerCarton);
@@ -4242,7 +4249,10 @@ function buildRequestUpsert(r) {
     r.purchaseUpdatedById || "",
     r.packingOrderedAt || "",
     r.packingOrderedBy || "",
-    r.packingOrderedById || ""
+    r.packingOrderedById || "",
+    r.vendorName || "",
+    r.cargoAssignedBy || "",
+    r.cargoAssignedByName || ""
   ];
 
   return { query, values };

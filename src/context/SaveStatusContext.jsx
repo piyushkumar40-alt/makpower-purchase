@@ -112,19 +112,35 @@ export function SaveStatusProvider({ children }) {
   const beginSave = useCallback((taskName = "Saving to database") => {
     const id = "save_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6);
 
-    // Failsafe watchdog timer: If request takes > 25 seconds (e.g. stalled connection), release the lock
+    // Failsafe watchdog timer: If request takes > 60 seconds (e.g. stalled connection), release the lock
     const timeoutId = setTimeout(() => {
       if (activeSavesRef.current.has(id)) {
-        console.warn(`[SaveStatus] Save operation "${taskName}" (#${id}) timed out after 25s.`);
+        console.warn(`[SaveStatus] Save operation "${taskName}" (#${id}) timed out after 60s.`);
         activeSavesRef.current.delete(id);
         updateStateFromMap(false, "Save operation timed out.");
       }
-    }, 25000);
+    }, 60000);
 
     activeSavesRef.current.set(id, { taskName, timeoutId });
     updateStateFromMap(true);
     return id;
   }, [updateStateFromMap]);
+
+  const notifySaveSuccess = useCallback((customMsg) => {
+    const timeStr = formatCurrentTime();
+    lastSavedTimeRef.current = timeStr;
+    setSaveStatus("saved");
+    setLastSavedTime(timeStr);
+    setLastSavedTimestamp(Date.now());
+    setSaveError(null);
+    setIsSaving(false);
+    isSavingRef.current = false;
+  }, []);
+
+  const notifySaveError = useCallback((errorMsg) => {
+    setSaveStatus("error");
+    setSaveError(errorMsg || "An error occurred while saving to database.");
+  }, []);
 
   const endSave = useCallback((id, wasSuccess = true, errorMsg = null) => {
     if (!id) {
@@ -160,23 +176,28 @@ export function SaveStatusProvider({ children }) {
   useEffect(() => {
     window.__beginSave = beginSave;
     window.__endSave = endSave;
+    window.__notifySaveSuccess = notifySaveSuccess;
+    window.__notifySaveError = notifySaveError;
     window.__isSaving = () => isSavingRef.current;
     window.__showSavingAlert = () => setShowSavingAlert(true);
     window.__resetSaveStatus = resetSaveStatus;
     return () => {
       delete window.__beginSave;
       delete window.__endSave;
+      delete window.__notifySaveSuccess;
+      delete window.__notifySaveError;
       delete window.__isSaving;
       delete window.__showSavingAlert;
       delete window.__resetSaveStatus;
     };
-  }, [beginSave, endSave, resetSaveStatus]);
+  }, [beginSave, endSave, resetSaveStatus, notifySaveSuccess, notifySaveError]);
 
   // ==================== BROWSER UNLOAD & REFRESH INTERCEPTOR ====================
   useEffect(() => {
     // 1. Browser Native Tab Close / Reload Guard
     const handleBeforeUnload = (e) => {
-      if (isSavingRef.current || activeSavesRef.current.size > 0) {
+      const hasPendingSync = typeof window !== "undefined" && window.__hasPendingSync && window.__hasPendingSync();
+      if (isSavingRef.current || activeSavesRef.current.size > 0 || hasPendingSync) {
         e.preventDefault();
         // Standard spec message
         const warningMsg = "Saving in progress, please wait! Your changes are currently being stored in the database.";
@@ -270,6 +291,8 @@ export function SaveStatusProvider({ children }) {
         setShowSavingAlert,
         beginSave,
         endSave,
+        notifySaveSuccess,
+        notifySaveError,
         trackSave,
         resetSaveStatus,
         saveError

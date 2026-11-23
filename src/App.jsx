@@ -1888,6 +1888,80 @@ export default function App() {
     }
   };
 
+  // Persistent background sync queue for operations that must never be lost or rolled back
+  const pendingSyncTasksRef = useRef([]);
+  const isSyncLoopRunningRef = useRef(false);
+
+  useEffect(() => {
+    window.__hasPendingSync = () => pendingSyncTasksRef.current.length > 0;
+    return () => {
+      delete window.__hasPendingSync;
+    };
+  }, []);
+
+  const triggerSyncLoop = useCallback(async () => {
+    if (isSyncLoopRunningRef.current) return;
+    isSyncLoopRunningRef.current = true;
+
+    while (pendingSyncTasksRef.current.length > 0) {
+      const task = pendingSyncTasksRef.current[0];
+      const attempt = (task.attempt || 0) + 1;
+      task.attempt = attempt;
+
+      try {
+        const result = await task.saveFn();
+        if (result && result.success !== false) {
+          // Success! Remove from queue
+          pendingSyncTasksRef.current.shift();
+          if (task.onSuccess) task.onSuccess(result);
+          if (window.__notifySaveSuccess) {
+            window.__notifySaveSuccess();
+          } else if (window.__endSave && task.saveId) {
+            window.__endSave(task.saveId, true);
+          }
+          if (window.__showSuccessToast) {
+            window.__showSuccessToast(task.successMessage || "✅ Saved! All changes confirmed in database.", "Saved Successfully");
+          }
+          continue;
+        }
+        throw new Error(result?.error || "Server rejected save operation");
+      } catch (err) {
+        console.warn(`[SyncQueue] Save task "${task.taskName}" failed (attempt ${attempt}):`, err.message);
+        
+        // Show error and continuous retry notification to the user
+        const retryMsg = `Data not saved yet: ${err.message}. Retrying automatically (attempt ${attempt})...`;
+        if (window.__notifySaveError) {
+          window.__notifySaveError(retryMsg);
+        } else if (window.__endSave && task.saveId) {
+          window.__endSave(task.saveId, false, retryMsg);
+        }
+
+        if (window.__showErrorToast && (attempt === 1 || attempt % 5 === 0)) {
+          window.__showErrorToast(`⚠️ Save issue: ${err.message}. Trying again and again until saved... Please keep this page open. (Attempt ${attempt})`, "Sync Retrying");
+        }
+
+        // Wait before next retry: 2s, 3s, 5s, 8s, 12s, max 15s
+        const delay = Math.min(15000, 2000 * Math.pow(1.4, Math.min(attempt - 1, 6)));
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+
+    isSyncLoopRunningRef.current = false;
+  }, []);
+
+  const queueResilientSave = useCallback((taskConfig) => {
+    // taskConfig: { taskName, saveFn, onSuccess, successMessage }
+    const saveId = window.__beginSave ? window.__beginSave(taskConfig.taskName) : null;
+    const task = {
+      ...taskConfig,
+      saveId,
+      attempt: 0,
+      createdAt: Date.now()
+    };
+    pendingSyncTasksRef.current.push(task);
+    triggerSyncLoop();
+  }, [triggerSyncLoop]);
+
   const handleUpdateSystemSettings = async (newSettings) => {
     setSettings(newSettings);
     const res = await postData("/api/settings", newSettings);
@@ -2293,23 +2367,26 @@ export default function App() {
     };
     // ⚡ Optimistic local state update:
     setRequests(prev => prev.map(r => r.id === newReq.id ? newReq : r));
-    try {
-      await postData("/api/requests", newReq);
-      currentDataVersionRef.current = Date.now();
-      saveDashboardCache(currentUser || "rahul", {
-        requests: requests.map(r => r.id === newReq.id ? newReq : r),
-        vendors,
-        cargos,
-        cargoCompanies,
-        items,
-        users
-      });
-    } catch (err) {
-      if (oldReq) {
-        setRequests(prev => prev.map(r => r.id === oldReq.id ? oldReq : r));
+    currentDataVersionRef.current = Date.now();
+    saveDashboardCache(currentUser || "rahul", {
+      requests: requests.map(r => r.id === newReq.id ? newReq : r),
+      vendors,
+      cargos,
+      cargoCompanies,
+      items,
+      users
+    });
+
+    // ⚡ RESILIENT SAVE: Never roll back order stage; persistent auto-retry until saved
+    queueResilientSave({
+      taskName: `Update Order ${newReq.model} (#${newReq.id})`,
+      successMessage: `✅ Order "${newReq.model}" (#${newReq.id}) saved to database!`,
+      saveFn: async () => {
+        const res = await postData("/api/requests", newReq);
+        if (res && res.success !== false) return { success: true };
+        throw new Error(res?.error || "Failed to save order to database");
       }
-      throw err;
-    }
+    });
 
     const vName = vendors.find(v => v.id === newReq.vendorId)?.name || "N/A";
     let actionLabel = "UPDATE_REQUEST";
@@ -2343,27 +2420,33 @@ export default function App() {
       const match = mapped.find(x => x.id === r.id);
       return match ? match : r;
     }));
-    try {
-      await postData("/api/requests/batch", mapped);
-      currentDataVersionRef.current = Date.now();
-      saveDashboardCache(currentUser || "rahul", {
-        requests: requests.map(r => {
-          const match = mapped.find(x => x.id === r.id);
-          return match ? match : r;
-        }),
-        vendors,
-        cargos,
-        cargoCompanies,
-        items,
-        users
-      });
-    } catch (err) {
-      if (loadDataRef.current) loadDataRef.current(false);
-      throw err;
-    }
+    currentDataVersionRef.current = Date.now();
+    saveDashboardCache(currentUser || "rahul", {
+      requests: requests.map(r => {
+        const match = mapped.find(x => x.id === r.id);
+        return match ? match : r;
+      }),
+      vendors,
+      cargos,
+      cargoCompanies,
+      items,
+      users
+    });
+
     const modelsList = mapped.map(r => r.model).filter(Boolean).join(", ");
     const detailText = customDetails || `Bulk updated ${mapped.length} requisition(s)${modelsList ? `: ${modelsList}` : ""}`;
     logSystemActivity(customAction, detailText, "Requisition", mapped[0]?.id, null, mapped);
+
+    // ⚡ RESILIENT SAVE: Never roll back order stage; persistent auto-retry until saved
+    queueResilientSave({
+      taskName: `Batch Update ${mapped.length} Orders`,
+      successMessage: `✅ Bulk updated ${mapped.length} orders saved to database!`,
+      saveFn: async () => {
+        const res = await postData("/api/requests/batch", mapped);
+        if (res && res.success !== false) return { success: true };
+        throw new Error(res?.error || "Failed to batch update orders in database");
+      }
+    });
   };
 
   const cancelRequest = async (requestId, reason = "") => {
@@ -2699,8 +2782,6 @@ const cancelRequests = async (requestIds, reason = "") => {
     });
 
     const allBatch = [...updatedItems, ...newRemainingItems];
-    const prevCargosSnapshot = cargos;
-    const prevRequestsSnapshot = requests;
 
     // ⚡ INSTANT OPTIMISTIC STATE UPDATE: Immediately attach cargoId to requests in memory
     setCargos(prev => [newCargo, ...prev]);
@@ -2719,31 +2800,31 @@ const cancelRequests = async (requestIds, reason = "") => {
       users
     });
 
-    // ⚡ ATOMIC SERVER TRANSACTION: Submit cargo WITH bundled requests together in a single request
-    try {
-      const res = await postData("/api/cargos", { ...newCargo, bundledRequests: allBatch });
-      if (!res || res.success === false) {
-        console.warn("Notice: Atomic /api/cargos with bundled requests returned non-success, attempting fallback batch upsert:", res?.error);
-        const batchRes = await postData("/api/requests/batch", allBatch);
-        if (!batchRes || batchRes.success === false) {
-          setCargos(prevCargosSnapshot);
-          setRequests(prevRequestsSnapshot);
-          throw new Error(res?.error || batchRes?.error || "Failed to save cargo to server");
-        }
-      }
-    } catch (err) {
-      console.error("Error saving cargo and bundled requests to server:", err);
-      setCargos(prevCargosSnapshot);
-      setRequests(prevRequestsSnapshot);
-      throw err;
-    }
-
     const otherPurchaserNames = Array.from(new Set(
       updatedItems.filter(r => !isRequestForUser(r, currentUser, users)).map(r => r.purchaserName || users.find(u => u.id === r.purchaserId)?.name || "Other Purchaser")
     ));
     const behalfText = otherPurchaserNames.length > 0 ? ` on behalf of ${otherPurchaserNames.join(", ")}` : "";
 
     logSystemActivity("CREATE_CARGO", `Created Cargo Shipment #${newCargoId} (${newCargo.cargoDetail || "Cargo"}) bundling ${targetIds.length} items${behalfText}`, "Cargo", newCargoId, null, newCargo);
+
+    // ⚡ RESILIENT ATOMIC SERVER SAVE: Try again and again till saved; NEVER move order back to old stage!
+    queueResilientSave({
+      taskName: `Create Cargo Shipment #${newCargoId}`,
+      successMessage: `✅ Cargo Shipment #${newCargoId} and ${targetIds.length} orders safely saved to database!`,
+      saveFn: async () => {
+        const res = await postData("/api/cargos", { ...newCargo, bundledRequests: allBatch });
+        if (res && res.success !== false) {
+          return { success: true };
+        }
+        console.warn("Notice: Atomic /api/cargos with bundled requests returned non-success, attempting fallback batch upsert:", res?.error);
+        const batchRes = await postData("/api/requests/batch", allBatch);
+        if (batchRes && batchRes.success !== false) {
+          return { success: true };
+        }
+        throw new Error(res?.error || batchRes?.error || "Failed to save cargo to server");
+      }
+    });
+
     return { success: true, cargoId: newCargoId };
   };
 
@@ -2828,8 +2909,22 @@ const cancelRequests = async (requestIds, reason = "") => {
       });
     }
 
-    // Atomic post with bundledRequests
-    await postData("/api/cargos", { ...cargoWithDate, bundledRequests: allBatch });
+    // ⚡ RESILIENT ATOMIC SERVER SAVE: Try again and again till saved; NEVER move order back to old stage!
+    queueResilientSave({
+      taskName: `Update Cargo #${cargoWithDate.id}`,
+      successMessage: `✅ Cargo #${cargoWithDate.id} changes saved to database!`,
+      saveFn: async () => {
+        const res = await postData("/api/cargos", { ...cargoWithDate, bundledRequests: allBatch });
+        if (res && res.success !== false) {
+          return { success: true };
+        }
+        if (allBatch.length > 0) {
+          const batchRes = await postData("/api/requests/batch", allBatch);
+          if (batchRes && batchRes.success !== false) return { success: true };
+        }
+        throw new Error(res?.error || "Failed to update cargo on server");
+      }
+    });
 
     const otherPurchaserNames = Array.from(new Set(
       updatedItems.filter(r => !isRequestForUser(r, currentUser, users)).map(r => r.purchaserName || users.find(u => u.id === r.purchaserId)?.name || "Other Purchaser")

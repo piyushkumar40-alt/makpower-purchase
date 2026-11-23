@@ -389,6 +389,73 @@ export default function RahulDashboard({
     await onUpdateCargo(updatedCargo);
   };
 
+  // Extract all vendors with active order quantities for Rahul Accounts
+  const allVendorsWithCounts = useMemo(() => {
+    const vMap = new Map();
+
+    // 1. Add all vendors from master vendors table
+    (vendors || []).forEach(v => {
+      if (v && v.id) {
+        vMap.set(v.id, { id: v.id, name: v.name || v.id });
+      }
+    });
+
+    // 2. Also include any vendors present in requests
+    (requests || []).forEach(r => {
+      if (r.vendorId && !vMap.has(r.vendorId)) {
+        vMap.set(r.vendorId, { id: r.vendorId, name: r.vendorName || r.vendorId });
+      }
+    });
+
+    // 3. Also include any vendors present in cargos
+    (cargos || []).forEach(c => {
+      if (c.vendorId && !vMap.has(c.vendorId)) {
+        vMap.set(c.vendorId, { id: c.vendorId, name: c.vendorName || c.vendorId });
+      }
+    });
+
+    // Guarantee Livi is present in Rahul Accounts vendor list
+    const hasLivi = Array.from(vMap.values()).some(v => v.name && v.name.trim().toLowerCase() === "livi");
+    if (!hasLivi) {
+      vMap.set("vend-livi", { id: "vend-livi", name: "Livi" });
+    }
+
+    const list = Array.from(vMap.values());
+    list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+    return list.map(v => {
+      const vNameLower = (v.name || "").trim().toLowerCase();
+      // Count active (non-cancelled) orders for this vendor
+      const activeCount = (requests || []).filter(r => {
+        if (isRequestCancelled(r)) return false;
+        const rVId = r.vendorId || "";
+        const rVName = (r.vendorName || "").trim().toLowerCase();
+        return rVId === v.id || (vNameLower && rVName === vNameLower) || (v.id && rVName === v.id.trim().toLowerCase());
+      }).length;
+
+      return {
+        value: v.id,
+        label: `${v.name} (${activeCount})`,
+        rawName: v.name,
+        count: activeCount,
+        sublabel: activeCount === 1 ? "1 active order" : `${activeCount} active orders`
+      };
+    });
+  }, [vendors, requests, cargos]);
+
+  const vendorOptions = useMemo(() => {
+    const totalActiveCount = (requests || []).filter(r => !isRequestCancelled(r)).length;
+    return [
+      { 
+        value: "", 
+        label: `All Vendors (${allVendorsWithCounts.length})`, 
+        count: totalActiveCount, 
+        sublabel: `${totalActiveCount} total active orders across all vendors` 
+      },
+      ...allVendorsWithCounts
+    ];
+  }, [allVendorsWithCounts, requests]);
+
   // Filtered cargos for Step 2 Bill Verification Board
   const filteredStep2Cargos = useMemo(() => {
     return billCargos.filter(c => {
@@ -931,60 +998,6 @@ export default function RahulDashboard({
 
   const { items: sortedGroupedOrders, RenderSortHeader: RenderGroupSortHeader } = useSortableData(groupedOrders);
 
-  // Extract all vendors with active order quantities for Rahul Accounts
-  const allVendorsWithCounts = useMemo(() => {
-    const vMap = new Map();
-
-    // 1. Add all vendors from master vendors table
-    (vendors || []).forEach(v => {
-      if (v && v.id) {
-        vMap.set(v.id, { id: v.id, name: v.name || v.id });
-      }
-    });
-
-    // 2. Also include any vendors present in requests
-    (requests || []).forEach(r => {
-      if (r.vendorId && !vMap.has(r.vendorId)) {
-        vMap.set(r.vendorId, { id: r.vendorId, name: r.vendorName || r.vendorId });
-      }
-    });
-
-    // 3. Also include any vendors present in cargos
-    (cargos || []).forEach(c => {
-      if (c.vendorId && !vMap.has(c.vendorId)) {
-        vMap.set(c.vendorId, { id: c.vendorId, name: c.vendorName || c.vendorId });
-      }
-    });
-
-    // Guarantee Livi is present in Rahul Accounts vendor list
-    const hasLivi = Array.from(vMap.values()).some(v => v.name && v.name.trim().toLowerCase() === "livi");
-    if (!hasLivi) {
-      vMap.set("vend-livi", { id: "vend-livi", name: "Livi" });
-    }
-
-    const list = Array.from(vMap.values());
-    list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-
-    return list.map(v => {
-      const vNameLower = (v.name || "").trim().toLowerCase();
-      // Count active (non-cancelled) orders for this vendor
-      const activeCount = (requests || []).filter(r => {
-        if (isRequestCancelled(r)) return false;
-        const rVId = r.vendorId || "";
-        const rVName = (r.vendorName || "").trim().toLowerCase();
-        return rVId === v.id || (vNameLower && rVName === vNameLower) || (v.id && rVName === v.id.trim().toLowerCase());
-      }).length;
-
-      return {
-        value: v.id,
-        label: `${v.name} (${activeCount})`,
-        rawName: v.name,
-        count: activeCount,
-        sublabel: activeCount === 1 ? "1 active order" : `${activeCount} active orders`
-      };
-    });
-  }, [vendors, requests, cargos]);
-
   const uniqueCategories = useMemo(() => {
     return Array.from(new Set(eligibleRequests.map(r => r.category).filter(Boolean)));
   }, [eligibleRequests]);
@@ -1009,19 +1022,6 @@ export default function RahulDashboard({
     { value: "received", label: "Step 5: Warehouse Received" },
     { value: "cancelled", label: "Cancelled" }
   ];
-
-  const vendorOptions = useMemo(() => {
-    const totalActiveCount = (requests || []).filter(r => !isRequestCancelled(r)).length;
-    return [
-      { 
-        value: "", 
-        label: `All Vendors (${allVendorsWithCounts.length})`, 
-        count: totalActiveCount, 
-        sublabel: `${totalActiveCount} total active orders across all vendors` 
-      },
-      ...allVendorsWithCounts
-    ];
-  }, [allVendorsWithCounts, requests]);
 
   const purchaserOptions = useMemo(() => [
     { value: "", label: "All Purchasers" },
