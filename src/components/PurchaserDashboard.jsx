@@ -1568,13 +1568,24 @@ export default function PurchaserDashboard({
     const lotMap = new Map();
 
     pendingOrders.forEach(r => {
-      const resV = resolveItemVendor(r, vendors, requests, cargos);
-      const vId = resV.id || r.vendorId || "unknown";
+      // 1. Direct match with vendors table:
+      const directVendor = (vendors || []).find(v => v && (v.id === r.vendorId || (v.name && v.name.trim().toLowerCase() === String(r.vendorName || '').trim().toLowerCase())));
+      let vId = directVendor ? directVendor.id : (r.vendorId || "unknown");
+      let vName = directVendor ? directVendor.name : (r.vendorName || "Unknown Vendor");
+
+      // 2. Only if vendor is genuinely unknown:
+      if (!directVendor || vName === "Unknown Vendor" || vName === "—" || vName === "Unassigned Vendor") {
+        const resV = resolveItemVendor(r, vendors, requests, cargos);
+        if (resV && resV.name && resV.name !== "Unknown Vendor") {
+          vId = resV.id || vId;
+          vName = resV.name;
+        }
+      }
+
       const lotDate = r.orderDate || "No Date";
       const lotKey = `${vId}__${lotDate}`;
 
       if (!lotMap.has(lotKey)) {
-        const vName = resV.name && resV.name !== "Unknown Vendor" ? resV.name : (r.vendorName || "Unknown Vendor");
         lotMap.set(lotKey, {
           lotKey,
           vendorId: vId,

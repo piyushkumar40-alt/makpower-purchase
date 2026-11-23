@@ -431,9 +431,13 @@ export default function RahulDashboard({
 
     return list.map(v => {
       const vNameLower = (v.name || "").trim().toLowerCase();
-      // Count active (non-cancelled) orders for this vendor with resilient vendor resolution
+      // Count active (non-cancelled) orders for this vendor with direct vendor priority
       const activeCount = (requests || []).filter(r => {
         if (isRequestCancelled(r)) return false;
+        const directVendor = (vendors || []).find(vObj => vObj && (vObj.id === r.vendorId || (vObj.name && vObj.name.trim().toLowerCase() === String(r.vendorName || '').trim().toLowerCase())));
+        if (directVendor) {
+          return directVendor.id === v.id || (vNameLower && directVendor.name && directVendor.name.trim().toLowerCase() === vNameLower);
+        }
         const resV = resolveItemVendor(r, vendors, requests, cargos);
         return resV.id === v.id || (vNameLower && resV.name && resV.name.trim().toLowerCase() === vNameLower);
       }).length;
@@ -560,9 +564,10 @@ export default function RahulDashboard({
         const selectedVendorObj = allVendorsWithCounts.find(v => v.value === filterVendor || v.rawName === filterVendor);
         const targetId = selectedVendorObj?.value || filterVendor;
         const targetName = (selectedVendorObj?.rawName || filterVendor).trim().toLowerCase();
-        const resV = resolveItemVendor(r, vendors, requests, cargos);
-        const rVId = resV.id || r.vendorId || "";
-        const rVName = (resV.name || r.vendorName || "").trim().toLowerCase();
+        const directVendor = (vendors || []).find(v => v && (v.id === r.vendorId || (v.name && v.name.trim().toLowerCase() === String(r.vendorName || '').trim().toLowerCase())));
+        const resV = directVendor || resolveItemVendor(r, vendors, requests, cargos);
+        const rVId = resV?.id || r.vendorId || "";
+        const rVName = (resV?.name || r.vendorName || "").trim().toLowerCase();
 
         const match = rVId === targetId || (targetName && rVName === targetName) || (targetId && rVName === targetId.trim().toLowerCase());
         if (!match) {
@@ -905,15 +910,27 @@ export default function RahulDashboard({
 
     // Otherwise: Group by Vendor + Order Date + Purchaser
     filteredRequests.forEach(r => {
-      const resV = resolveItemVendor(r, vendors, requests, cargos);
-      const vId = resV.id || r.vendorId || "unassigned";
+      // 1. Direct vendor match from vendors list:
+      const directVendor = (vendors || []).find(v => v && (v.id === r.vendorId || (v.name && v.name.trim().toLowerCase() === String(r.vendorName || '').trim().toLowerCase())));
+      let vId = directVendor ? directVendor.id : (r.vendorId || "unassigned");
+      let vendorName = directVendor ? directVendor.name : (r.vendorName || "");
+      
+      // If vendor is genuinely unknown, heal only unknown vendors on Rahul Kumar's dashboard to Lily:
+      if (!directVendor || !vendorName || vendorName === "Unknown Vendor" || vendorName === "—" || vendorName === "Unassigned Vendor") {
+        const resV = resolveItemVendor(r, vendors, requests, cargos);
+        if (resV && resV.name && resV.name !== "Unknown Vendor") {
+          vId = resV.id || vId;
+          vendorName = resV.name;
+        } else {
+          vendorName = vendorName || (vId === "unassigned" ? "Unassigned Vendor" : "Unknown Vendor");
+        }
+      }
+
       const oDate = r.orderDate || "No Date";
       const pName = getPurchaserName(r) || "Unassigned Purchaser";
       const groupKey = `${vId}__${oDate}__${pName}`;
 
       if (!map.has(groupKey)) {
-        const vendorName = resV.name && resV.name !== "Unknown Vendor" ? resV.name : (r.vendorName || (vId === "unassigned" ? "Unassigned Vendor" : vId));
-        
         map.set(groupKey, {
           groupKey,
           groupType: "vendor",
