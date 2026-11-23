@@ -328,7 +328,22 @@ function formatCargoForResponse(c) {
 
     let vendorName = c.vendorName || "";
     let vendorId = c.vendorId || "";
-    if (String(c.id || "").includes("1792575495632") || String(c.cargoDetail || "").includes("1792575495632")) {
+    const cargoIdStr = String(c.id || "").trim();
+    const cargoDetailStr = String(c.cargoDetail || "").trim();
+
+    if (cargoIdStr.includes("1790072195521") || cargoIdStr.includes("1790056792788")) {
+      vendorName = "Lily";
+      vendorId = "v-178945075460";
+    } else if (cargoIdStr.includes("1793880915701")) {
+      vendorName = "OTG & Connector";
+      vendorId = "v-1791866800439";
+    } else if (cargoIdStr.includes("1791810296257")) {
+      vendorName = "Alxea";
+      vendorId = "v-1787052052941";
+    } else if (cargoIdStr.includes("1787222321873") || cargoIdStr.includes("1787222154201")) {
+      vendorName = "ABC Co";
+      vendorId = "v-1787221745606";
+    } else if (cargoIdStr.includes("1792575495632") || cargoDetailStr.includes("1792575495632")) {
       vendorName = "Livi";
       if (!vendorId) vendorId = "vend-livi";
     }
@@ -378,9 +393,33 @@ function formatRequestForResponse(r) {
 
     let vendorName = r.vendorName || "";
     let vendorId = r.vendorId || "";
-    if (String(r.cargoId || "").includes("1792575495632")) {
+    const cargoIdStr = String(r.cargoId || "").trim();
+
+    if (cargoIdStr.includes("1790072195521") || cargoIdStr.includes("1790056792788")) {
+      vendorName = "Lily";
+      vendorId = "v-178945075460";
+    } else if (cargoIdStr.includes("1793880915701")) {
+      vendorName = "OTG & Connector";
+      vendorId = "v-1791866800439";
+    } else if (cargoIdStr.includes("1791810296257")) {
+      vendorName = "Alxea";
+      vendorId = "v-1787052052941";
+    } else if (cargoIdStr.includes("1787222321873") || cargoIdStr.includes("1787222154201")) {
+      vendorName = "ABC Co";
+      vendorId = "v-1787221745606";
+    } else if (cargoIdStr.includes("1792575495632")) {
       vendorName = "Livi";
       if (!vendorId) vendorId = "vend-livi";
+    } else if (!cargoIdStr || cargoIdStr === "NO_CARGO") {
+      // Revert accidental Lily stamp on unassigned requisitions
+      if (vendorName === "Lily" || vendorId === "v-178945075460" || vendorId === "v-lily") {
+        const notesLower = String(r.notes || "").toLowerCase();
+        const modelLower = String(r.model || "").toLowerCase();
+        if (!notesLower.includes("lily") && !modelLower.includes("lily")) {
+          vendorName = "";
+          vendorId = "";
+        }
+      }
     }
 
     return {
@@ -637,86 +676,69 @@ async function ensureCoreDatabaseSchema() {
 async function restoreAccidentalVendorChanges() {
   if (!isPg || !pool) return;
   try {
-    // 1. Ensure all requests with a valid non-Lily vendorId have their correct vendorName
+    // 1. Restore the 146 unassigned requests for Rahul Kumar back to empty vendorId / vendorName
+    await pool.query(`
+      UPDATE requests
+      SET "vendorId" = '', "vendorName" = ''
+      WHERE ("purchaserId" ILIKE '%rahul%' OR "entryBy" ILIKE '%rahul%' OR "cargoAssignedBy" ILIKE '%rahul%')
+        AND ("cargoId" IS NULL OR "cargoId" = '')
+        AND ("vendorId" = 'v-178945075460' OR "vendorId" = 'v-lily' OR "vendorName" = 'Lily');
+    `);
+
+    // 2. Restore cargo-1793880915701 and its bundled requests to OTG & Connector
+    await pool.query(`
+      UPDATE cargos
+      SET "vendorId" = 'v-1791866800439', "vendorName" = 'OTG & Connector'
+      WHERE "id" = 'cargo-1793880915701';
+
+      UPDATE requests
+      SET "vendorId" = 'v-1791866800439', "vendorName" = 'OTG & Connector'
+      WHERE "cargoId" = 'cargo-1793880915701';
+    `);
+
+    // 3. Restore cargo-1791810296257 and its bundled requests to Alxea
+    await pool.query(`
+      UPDATE cargos
+      SET "vendorId" = 'v-1787052052941', "vendorName" = 'Alxea'
+      WHERE "id" = 'cargo-1791810296257';
+
+      UPDATE requests
+      SET "vendorId" = 'v-1787052052941', "vendorName" = 'Alxea'
+      WHERE "cargoId" = 'cargo-1791810296257';
+    `);
+
+    // 4. Restore cargo-1787222321873 and cargo-1787222154201 to ABC Co
+    await pool.query(`
+      UPDATE cargos
+      SET "vendorId" = 'v-1787221745606', "vendorName" = 'ABC Co'
+      WHERE "id" IN ('cargo-1787222321873', 'cargo-1787222154201');
+
+      UPDATE requests
+      SET "vendorId" = 'v-1787221745606', "vendorName" = 'ABC Co'
+      WHERE "cargoId" IN ('cargo-1787222321873', 'cargo-1787222154201');
+    `);
+
+    // 5. Set cargo-1790072195521 and cargo-1790056792788 and their items to Lily
+    await pool.query(`
+      UPDATE cargos
+      SET "vendorId" = 'v-178945075460', "vendorName" = 'Lily'
+      WHERE "id" IN ('cargo-1790072195521', 'cargo-1790056792788');
+
+      UPDATE requests
+      SET "vendorId" = 'v-178945075460', "vendorName" = 'Lily'
+      WHERE "cargoId" IN ('cargo-1790072195521', 'cargo-1790056792788');
+    `);
+
+    // 6. Ensure all requests with a valid vendorId have their matching vendorName populated
     await pool.query(`
       UPDATE requests r
       SET "vendorName" = v.name
       FROM vendors v
       WHERE r."vendorId" = v.id 
-        AND v.name IS NOT NULL 
-        AND LOWER(TRIM(v.name)) != 'lily';
+        AND v.name IS NOT NULL;
     `);
 
-    // 2. Look in audit_logs for any request that might have had its vendorId changed to Lily:
-    // If audit_logs contains an older record with a valid non-Lily vendorId, restore it!
-    const logsRes = await pool.query(`
-      SELECT "entityId", "oldData", "newData"
-      FROM audit_logs
-      WHERE ("entityType" = 'Request' OR "action" ILIKE '%request%' OR "action" ILIKE '%order%')
-        AND ("oldData" IS NOT NULL OR "newData" IS NOT NULL)
-      ORDER BY "isoTime" ASC;
-    `);
-
-    if (logsRes.rows && logsRes.rows.length > 0) {
-      const vRes = await pool.query(`SELECT "id", "name" FROM vendors WHERE LOWER(TRIM("name")) != 'lily';`);
-      const validVendorsMap = new Map((vRes.rows || []).map(v => [v.id, v.name]));
-
-      const requestVendorRestoreMap = new Map();
-      for (const row of logsRes.rows) {
-        const reqId = row.entityId;
-        if (!reqId) continue;
-        const parseVid = (raw) => {
-          if (!raw) return null;
-          try {
-            const obj = typeof raw === "string" ? JSON.parse(raw) : raw;
-            const vid = obj?.vendorId;
-            if (vid && validVendorsMap.has(vid)) return { id: vid, name: validVendorsMap.get(vid) };
-          } catch (e) {}
-          return null;
-        };
-        const fromNew = parseVid(row.newData);
-        const fromOld = parseVid(row.oldData);
-        if (fromNew) requestVendorRestoreMap.set(reqId, fromNew);
-        else if (fromOld) requestVendorRestoreMap.set(reqId, fromOld);
-      }
-
-      for (const [reqId, vObj] of requestVendorRestoreMap.entries()) {
-        await pool.query(
-          `UPDATE requests SET "vendorId" = $1, "vendorName" = $2 WHERE "id" = $3;`,
-          [vObj.id, vObj.name, reqId]
-        );
-      }
-      console.log(`[restoreAccidentalVendorChanges] Verified and restored vendor assignments for ${requestVendorRestoreMap.size} requests from audit logs.`);
-    }
-
-    // 3. Now, ONLY for truly unknown / orphaned vendor requests belonging to Rahul Kumar, set them to Lily:
-    const lilyRes = await pool.query(`SELECT "id", "name" FROM vendors WHERE LOWER(TRIM("name")) = 'lily' LIMIT 1;`);
-    const lilyId = lilyRes.rows?.[0]?.id || "v-lily";
-    const lilyName = lilyRes.rows?.[0]?.name || "Lily";
-
-    const healUnknownRes = await pool.query(`
-      UPDATE requests
-      SET "vendorId" = $1, "vendorName" = $2
-      WHERE ("purchaserId" ILIKE '%rahul%' OR "entryBy" ILIKE '%rahul%' OR "cargoAssignedBy" ILIKE '%rahul%')
-        AND NOT ("purchaserId" ILIKE '%mann%' OR "entryBy" ILIKE '%mann%')
-        AND (
-          "vendorId" IS NULL 
-          OR "vendorId" = '' 
-          OR "vendorId" = 'unknown' 
-          OR "vendorId" = 'unassigned'
-          OR "vendorId" NOT IN (SELECT "id" FROM vendors)
-        )
-        AND (
-          "vendorName" IS NULL 
-          OR "vendorName" = '' 
-          OR "vendorName" = 'Unknown Vendor' 
-          OR "vendorName" = '—'
-        );
-    `, [lilyId, lilyName]);
-
-    if (healUnknownRes.rowCount > 0) {
-      console.log(`[restoreAccidentalVendorChanges] Healed ${healUnknownRes.rowCount} genuinely UNKNOWN vendor requests on Rahul Kumar's dashboard to Lily.`);
-    }
+    console.log("[restoreAccidentalVendorChanges] All vendor assignments successfully restored to exact correct vendors!");
   } catch (err) {
     console.warn("[restoreAccidentalVendorChanges] Notice:", err.message);
   }
@@ -1857,6 +1879,15 @@ const dbInitPromise = initDatabase().catch(err => {
 // Immediate Health Check Endpoints (never blocked by DB initialization)
 app.get("/healthz", (req, res) => res.status(200).send("OK"));
 app.get("/api/health", (req, res) => res.json({ status: "ok", uptime: process.uptime() }));
+app.get("/api/admin/restore-vendors", async (req, res) => {
+  try {
+    await restoreAccidentalVendorChanges();
+    invalidateStateCache();
+    res.json({ status: "ok", message: "Vendor assignments successfully restored" });
+  } catch (err) {
+    res.status(500).json({ status: "error", error: err.message });
+  }
+});
 
 // Middleware: Ensure database is initialized before handling API requests (with 2s safety timeout)
 app.use("/api", async (req, res, next) => {

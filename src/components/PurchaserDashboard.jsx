@@ -1569,12 +1569,16 @@ export default function PurchaserDashboard({
 
     pendingOrders.forEach(r => {
       // 1. Direct match with vendors table:
+      const cargoIdStr = String(r.cargoId || "").trim();
       const directVendor = (vendors || []).find(v => v && (v.id === r.vendorId || (v.name && v.name.trim().toLowerCase() === String(r.vendorName || '').trim().toLowerCase())));
-      let vId = directVendor ? directVendor.id : (r.vendorId || "unknown");
-      let vName = directVendor ? directVendor.name : (r.vendorName || "Unknown Vendor");
+      const isAccidentalLily = directVendor && directVendor.name.trim().toLowerCase() === "lily" && (!cargoIdStr || cargoIdStr === "NO_CARGO") && !String(r.notes || "").toLowerCase().includes("lily") && !String(r.model || "").toLowerCase().includes("lily");
+      const effectiveDirectVendor = isAccidentalLily ? null : directVendor;
+
+      let vId = effectiveDirectVendor ? effectiveDirectVendor.id : (isAccidentalLily ? "unknown" : (r.vendorId || "unknown"));
+      let vName = effectiveDirectVendor ? effectiveDirectVendor.name : (isAccidentalLily ? "Unassigned Vendor" : (r.vendorName || "Unknown Vendor"));
 
       // 2. Only if vendor is genuinely unknown:
-      if (!directVendor || vName === "Unknown Vendor" || vName === "—" || vName === "Unassigned Vendor") {
+      if (!effectiveDirectVendor || vName === "Unknown Vendor" || vName === "—" || vName === "Unassigned Vendor") {
         const resV = resolveItemVendor(r, vendors, requests, cargos);
         if (resV && resV.name && resV.name !== "Unknown Vendor") {
           vId = resV.id || vId;
