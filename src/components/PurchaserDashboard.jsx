@@ -10,7 +10,7 @@ import ItemCatalogPanel from "./ItemCatalogPanel";
 import AuditLogsPanel from "./AuditLogsPanel";
 import CapitalPipelineStudio from "./CapitalPipelineStudio";
 import { QuickCreateVendorModal, QuickCreateCargoCompanyModal } from "./QuickCreateModals";
-import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons, calculateDefaultCargoEta, formatCancelDate, formatCancelTime, parsePastedPriceLine, isModelMatch, isCargoMatch, reconcileCargosWithRequests, getOfficialPurchasersList, getCargoRates, resolveCargoVendorName } from "../utils/formatters";
+import { downloadCsv, downloadExcelOrCsv, parseFlexibleDate, getDateVariants, cleanCategoryName, isRequestForUser, isVendorForUser, getPurchaserDisplayName, downloadOrOpenBlob, calculateTotalCargoPrice, calculateCargoTotalCartons, calculateItemCartons, calculateDefaultCargoEta, formatCancelDate, formatCancelTime, parsePastedPriceLine, isModelMatch, isCargoMatch, reconcileCargosWithRequests, getOfficialPurchasersList, getCargoRates, resolveCargoVendorName, resolveItemVendor, resolveItemVendorName } from "../utils/formatters";
 import { useModalEscape, pushBackHandler } from "../utils/useModalEscape";
 import MasterOrderTracker from "./MasterOrderTracker";
 import VendorTransferModal from "./VendorTransferModal";
@@ -20,7 +20,7 @@ import CargoDocumentModal from "./CargoDocumentModal";
 import CustomSelect from "./CustomSelect";
 import CargoRatesBreakdown from "./CargoRatesBreakdown";
 
-export { isRequestForUser, isVendorForUser, getPurchaserDisplayName, isCargoMatch, reconcileCargosWithRequests, resolveCargoVendorName };
+export { isRequestForUser, isVendorForUser, getPurchaserDisplayName, isCargoMatch, reconcileCargosWithRequests, resolveCargoVendorName, resolveItemVendor, resolveItemVendorName };
 
 // ==================== TOP-LEVEL UTILITIES & METRIC CALCULATION HELPERS ====================
 export function MdbCustomDropdown({ label, icon: Icon, options, value, onChange, placeholder, accentColor = "var(--primary)", style }) {
@@ -1568,13 +1568,13 @@ export default function PurchaserDashboard({
     const lotMap = new Map();
 
     pendingOrders.forEach(r => {
-      const vId = r.vendorId || "unknown";
+      const resV = resolveItemVendor(r, vendors, requests, cargos);
+      const vId = resV.id || r.vendorId || "unknown";
       const lotDate = r.orderDate || "No Date";
       const lotKey = `${vId}__${lotDate}`;
 
       if (!lotMap.has(lotKey)) {
-        const vendorObj = (vendors || []).find(v => v.id === vId);
-        const vName = vendorObj ? vendorObj.name : r.vendorName || "Unknown Vendor";
+        const vName = resV.name && resV.name !== "Unknown Vendor" ? resV.name : (r.vendorName || "Unknown Vendor");
         lotMap.set(lotKey, {
           lotKey,
           vendorId: vId,
@@ -2174,7 +2174,7 @@ export default function PurchaserDashboard({
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                     {/* Vendor EDD alerts */}
                     {overdueRequests.map(({ req, alert }) => {
-                      const vName = vendors.find(v => v.id === req.vendorId)?.name || "Unknown Vendor";
+                      const vName = resolveItemVendorName(req, vendors, requests, cargos);
                       return (
                         <div 
                           key={req.id} 
@@ -3267,7 +3267,7 @@ export default function PurchaserDashboard({
                           const totalCalc = !isNaN(priceNum) ? priceNum * qty : 0;
 
                           if (step1Mode === "standard") {
-                            const vName = accessibleVendors.find(v => v.id === r.vendorId)?.name || vendors.find(v => v.id === r.vendorId)?.name || "Unknown";
+                            const vName = resolveItemVendorName(r, accessibleVendors, requests, cargos);
                             return (
                               <tr key={r.id} className={isChecked ? "planner-row-selected" : ""}>
                                 <td style={{ textAlign: "center" }}>
@@ -5630,7 +5630,7 @@ export default function PurchaserDashboard({
                           });
 
                           return itemsToRender.map(r => {
-                          const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
+                          const vName = resolveItemVendorName(r, vendors, requests, cargos);
                           const isLate = vrDate && r.vendorEdd && vrDate > r.vendorEdd;
                           const isChecked = vrChecked.includes(r.id);
                           const origQty = parseInt(r.vendorOrderQuantity || r.orderQuantity || 0, 10);
@@ -5902,7 +5902,7 @@ export default function PurchaserDashboard({
                   <h4 style={{ fontSize: "0.95rem", color: "var(--text-muted)", marginBottom: "10px" }}>✓ Already Marked Ready — Awaiting Cargo Assignment ({readyDone.length})</h4>
                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                     {readyDone.map(r => {
-                      const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
+                      const vName = resolveItemVendorName(r, vendors, requests, cargos);
                       const isLate = r.vendorEdd && r.vendorReadyDate > r.vendorEdd;
                       return (
                         <div key={r.id} className="glass-panel" style={{ padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", opacity: 0.85 }}>
@@ -6002,7 +6002,7 @@ export default function PurchaserDashboard({
                           </th>
                           <RenderStep4SortHeader colKey="model" title="Item / Model" />
                           <RenderStep4SortHeader colKey="vendorOrderQuantity" title="Qty" getValue={r => Number(r.vendorOrderQuantity || r.orderQuantity)} />
-                          <RenderStep4SortHeader colKey="vendorId" title="Vendor" getValue={r => vendors.find(v => v.id === r.vendorId)?.name || ""} />
+                          <RenderStep4SortHeader colKey="vendorId" title="Vendor" getValue={r => resolveItemVendorName(r, vendors, requests, cargos)} />
                           <RenderStep4SortHeader colKey="cargoId" title="Cargo" />
                           <RenderStep4SortHeader colKey="vendorReadyDate" title="Vendor Ready" />
                           <RenderStep4SortHeader colKey="cargoAssignedAt" title="Cargo Assigned" getValue={r => r.cargoAssignedAt ? r.cargoAssignedAt.split("T")[0] : ""} />
@@ -6010,7 +6010,7 @@ export default function PurchaserDashboard({
                       </thead>
                       <tbody>
                         {cpItems.map(r => {
-                          const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
+                          const vName = resolveItemVendorName(r, vendors, requests, cargos);
                           return (
                             <tr key={r.id} className={cpChecked.includes(r.id) ? "planner-row-selected" : ""}>
                               <td>
@@ -6824,7 +6824,7 @@ export default function PurchaserDashboard({
                       <RenderReceivedSortHeader colKey="orderDate" title="Order Date" />
                       <RenderReceivedSortHeader colKey="model" title="Model / Description" />
                       <RenderReceivedSortHeader colKey="receivedQuantity" title="Qty" getValue={r => Number(r.receivedQuantity || r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity)} />
-                      <RenderReceivedSortHeader colKey="vendorId" title="Vendor" getValue={r => vendors.find(v => v.id === r.vendorId)?.name || ""} />
+                      <RenderReceivedSortHeader colKey="vendorId" title="Vendor" getValue={r => resolveItemVendorName(r, vendors, requests, cargos)} />
                       <RenderReceivedSortHeader colKey="totalRmb" title="Total Spend" getValue={r => Number(r.totalRmb || 0)} />
                       <RenderReceivedSortHeader colKey="cargoId" title="Cargo Code" />
                       <RenderReceivedSortHeader colKey="actualReceivedDate" title="Lead Time" />
@@ -6841,7 +6841,7 @@ export default function PurchaserDashboard({
                         </tr>
                       ) : (
                         sortedReceivedRequests.map(r => {
-                          const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
+                          const vName = resolveItemVendorName(r, vendors, requests, cargos);
                           const leadTimeDays = (() => {
                             if (!r.actualReceivedDate || !r.orderDate) return "—";
                             const start = new Date(r.orderDate);
@@ -7662,6 +7662,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
       orderDate: orderDate || request.orderDate,
       orderQuantity: origQty,
       vendorOrderQuantity: vOrderQty,
+      cargoPickedQty: (isInTransit && isSuperAdmin) ? vOrderQty : (request.cargoPickedQty || vOrderQty),
       itemType: itemType,
       type: type,
       itemNature: itemNature,
@@ -7754,7 +7755,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
           isSuperAdmin ? (
             <div style={{ background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.35)", borderRadius: "8px", padding: "12px 16px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "10px", color: "#38bdf8", fontSize: "0.88rem", fontWeight: 600 }}>
               <ShieldCheck size={18} />
-              <span>This order is currently In Transit in Cargo <strong>{request.cargoId}</strong>. As Super Admin, you are permitted to edit the <strong>Vendor</strong> and <strong>Commercial Price</strong> after dispatch.</span>
+              <span>This order is currently In Transit in Cargo <strong>{request.cargoId}</strong>. As Super Admin, you are permitted to edit the <strong>Vendor</strong>, <strong>Confirmed Vendor Qty</strong> and <strong>Commercial Price</strong> after dispatch.</span>
             </div>
           ) : (
             <div style={{ background: "rgba(245, 158, 11, 0.12)", border: "1px solid rgba(245, 158, 11, 0.35)", borderRadius: "8px", padding: "12px 16px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "10px", color: "#f59e0b", fontSize: "0.88rem", fontWeight: 600 }}>
@@ -7957,7 +7958,7 @@ function EditRequestModal({ request, requests, vendors, cargos = [], currentUser
                   placeholder={`Req: ${orderQuantity || request.orderQuantity}`}
                   value={vendorOrderQuantity}
                   onChange={e => setVendorOrderQuantity(e.target.value)}
-                  disabled={isInTransit}
+                  disabled={isInTransit && !isSuperAdmin}
                   min="1"
                 />
               </div>
@@ -8582,7 +8583,7 @@ function ReceiveCargoModal({ cargo, requests, purchasers = [], onClose, onConfir
   const [itemReceiptMap, setItemReceiptMap] = useState(() => {
     const map = {};
     activeItems.forEach(r => {
-      const expected = parseInt(r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity || 0);
+      const expected = parseInt(r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity || 0, 10);
       map[r.id] = {
         receivedQty: expected,
         shortageAction: "reorder" // 'reorder' (back to vendor) or 'cancel'
@@ -8591,34 +8592,85 @@ function ReceiveCargoModal({ cargo, requests, purchasers = [], onClose, onConfir
     return map;
   });
 
+  const handleSetAllFull = () => {
+    setItemReceiptMap(prev => {
+      const updated = { ...prev };
+      activeItems.forEach(r => {
+        const expected = parseInt(r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+        updated[r.id] = { ...(updated[r.id] || {}), receivedQty: expected, shortageAction: "reorder" };
+      });
+      return updated;
+    });
+  };
+
+  const handleConfirm = () => {
+    if (!receiveDate) return;
+    const sanitizedMap = {};
+    activeItems.forEach(r => {
+      const expected = parseInt(r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity || 0, 10);
+      const info = itemReceiptMap[r.id] || {};
+      const parsed = (info.receivedQty === "" || info.receivedQty == null)
+        ? expected
+        : (isNaN(parseInt(info.receivedQty, 10)) ? 0 : Math.max(0, parseInt(info.receivedQty, 10)));
+      sanitizedMap[r.id] = {
+        receivedQty: parsed,
+        shortageAction: info.shortageAction || "reorder"
+      };
+    });
+    onConfirm(receiveDate, sanitizedMap);
+  };
+
   return (
     <div className="modal-overlay">
-      <div className="glass-panel modal-content" style={{ maxWidth: "560px" }}>
+      <div className="glass-panel modal-content" style={{ maxWidth: "620px", width: "95%" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
           <div style={{ background: "rgba(16,185,129,0.15)", borderRadius: "50%", padding: "10px", display: "flex" }}>
             <Check size={24} style={{ color: "var(--success)" }} />
           </div>
-          <div>
-            <h3 style={{ fontSize: "1.3rem", fontWeight: 700 }}>Confirm Cargo Receipt & Delivery Quantities</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-              Cargo: {cargo.id} — {activeItems.length} item(s) &bull; <strong style={{ color: "#f59e0b" }}>📦 {calculateCargoTotalCartons(cargo, requests)} Cartons</strong>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ fontSize: "1.25rem", fontWeight: 700, margin: 0 }}>Confirm Cargo Receipt & Delivery Quantities</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: "4px 0 0 0" }}>
+              Cargo: <strong>{cargo.id}</strong> — {activeItems.length} item(s) &bull; <strong style={{ color: "#f59e0b" }}>📦 {calculateCargoTotalCartons(cargo, requests)} Cartons</strong>
             </p>
           </div>
         </div>
 
         <div className="glass-panel" style={{ padding: "14px", marginBottom: "18px", background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.2)" }}>
-          <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: "10px", fontWeight: 600, textTransform: "uppercase" }}>Actual Delivery Quantities per Item</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxHeight: "220px", overflowY: "auto" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
+            <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+              Item-Wise Delivery Quantities
+            </div>
+            <button
+              type="button"
+              onClick={handleSetAllFull}
+              style={{
+                background: "rgba(16, 185, 129, 0.15)",
+                border: "1px solid rgba(16, 185, 129, 0.35)",
+                color: "var(--success, #10b981)",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "0.75rem",
+                fontWeight: 600,
+                cursor: "pointer"
+              }}
+            >
+              ✓ Set All Full Qty
+            </button>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxHeight: "280px", overflowY: "auto", paddingRight: "4px" }}>
             {activeItems.map(r => {
-              const expected = parseInt(r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity || 0);
+              const expected = parseInt(r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity || 0, 10);
               const info = itemReceiptMap[r.id] || { receivedQty: expected, shortageAction: "reorder" };
               const currentRec = info.receivedQty;
-              const shortage = Math.max(0, expected - currentRec);
+              const recNum = currentRec === "" ? 0 : (parseInt(currentRec, 10) || 0);
+              const shortage = Math.max(0, expected - recNum);
+              const surplus = Math.max(0, recNum - expected);
 
               return (
                 <div key={r.id} style={{ background: "var(--bg-input, #ffffff)", padding: "12px 14px", borderRadius: "8px", border: "1px solid var(--border-glass, #e2e8f0)" }}>
-                  <div style={{ display: "flex", school: "relative", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                    <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
+                    <div style={{ flex: 1 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                         <strong style={{ color: "var(--text-main)", fontSize: "0.92rem" }}>{r.model}</strong>
                         {(r.purchaserId || r.purchaserName) && (
@@ -8628,7 +8680,7 @@ function ReceiveCargoModal({ cargo, requests, purchasers = [], onClose, onConfir
                         )}
                       </div>
                       <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                        Cargo Picked Qty: <strong>{expected} Pcs</strong>
+                        Expected Cargo Qty: <strong style={{ color: "var(--text-main)" }}>{expected} Pcs</strong>
                         {calculateItemCartons(r) ? (
                           <span style={{ marginLeft: "6px", color: "#f59e0b", fontWeight: 700 }}>
                             &bull; 📦 {calculateItemCartons(r)} ctns ({r.itemsPerCarton || "—"} pcs/ctn)
@@ -8636,33 +8688,71 @@ function ReceiveCargoModal({ cargo, requests, purchasers = [], onClose, onConfir
                         ) : null}
                       </div>
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                      <span style={{ fontSize: "0.72rem", color: "var(--success)", fontWeight: 600 }}>Actual Received Qty:</span>
-                      <input 
-                        type="number"
-                        min="0"
-                        max={expected}
-                        style={{ width: "95px", padding: "4px 8px", fontSize: "0.82rem", fontWeight: 700 }}
-                        className="form-control"
-                        value={currentRec}
-                        onChange={e => {
-                          const val = parseInt(e.target.value || 0);
-                          setItemReceiptMap(prev => ({
-                            ...prev,
-                            [r.id]: { ...prev[r.id], receivedQty: val }
-                          }));
-                        }}
-                      />
+
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
+                      <span style={{ fontSize: "0.72rem", color: "var(--success, #10b981)", fontWeight: 700 }}>Actual Received Qty:</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        <input 
+                          type="number"
+                          min="0"
+                          style={{ width: "95px", padding: "4px 8px", fontSize: "0.85rem", fontWeight: 700, textAlign: "right" }}
+                          className="form-control"
+                          value={currentRec !== undefined ? currentRec : expected}
+                          onChange={e => {
+                            const val = e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value, 10) || 0);
+                            setItemReceiptMap(prev => ({
+                              ...prev,
+                              [r.id]: { ...(prev[r.id] || {}), receivedQty: val }
+                            }));
+                          }}
+                          placeholder={String(expected)}
+                        />
+                        <button
+                          type="button"
+                          title="Set to full expected quantity"
+                          onClick={() => setItemReceiptMap(prev => ({ ...prev, [r.id]: { ...(prev[r.id] || {}), receivedQty: expected } }))}
+                          style={{
+                            padding: "3px 6px",
+                            fontSize: "0.7rem",
+                            borderRadius: "4px",
+                            border: "1px solid var(--border-glass, #cbd5e1)",
+                            background: "var(--bg-card, #f8fafc)",
+                            color: "var(--text-main)",
+                            cursor: "pointer",
+                            fontWeight: 600
+                          }}
+                        >
+                          Full
+                        </button>
+                        <button
+                          type="button"
+                          title="Set to 0 (Not received)"
+                          onClick={() => setItemReceiptMap(prev => ({ ...prev, [r.id]: { ...(prev[r.id] || {}), receivedQty: 0 } }))}
+                          style={{
+                            padding: "3px 6px",
+                            fontSize: "0.7rem",
+                            borderRadius: "4px",
+                            border: "1px solid rgba(239, 68, 68, 0.3)",
+                            background: "rgba(239, 68, 68, 0.08)",
+                            color: "#ef4444",
+                            cursor: "pointer",
+                            fontWeight: 600
+                          }}
+                        >
+                          0
+                        </button>
+                      </div>
                     </div>
                   </div>
 
+                  {/* Shortage or Surplus indicators */}
                   {shortage > 0 && (
-                    <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px dashed rgba(239,68,68,0.3)", display: "flex", flexDirection: "column", gap: "6px" }}>
-                      <div style={{ fontSize: "0.78rem", color: "#f87171", fontWeight: 600 }}>
-                        ⚠️ Shortage Detected: <strong>{shortage} Pcs missing</strong>
+                    <div style={{ marginTop: "10px", paddingTop: "8px", borderTop: "1px dashed rgba(239,68,68,0.3)", display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <div style={{ fontSize: "0.78rem", color: "#f87171", fontWeight: 700 }}>
+                        ⚠️ Shortage Detected: <strong>{shortage} Pcs missing</strong> ({recNum} of {expected} received)
                       </div>
-                      <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                        <label style={{ fontSize: "0.75rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", color: "var(--text-main)" }}>
+                      <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+                        <label style={{ fontSize: "0.75rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", color: "var(--text-main)", fontWeight: 600 }}>
                           <input 
                             type="radio" 
                             name={`shortage_${r.id}`} 
@@ -8683,6 +8773,18 @@ function ReceiveCargoModal({ cargo, requests, purchasers = [], onClose, onConfir
                       </div>
                     </div>
                   )}
+
+                  {surplus > 0 && (
+                    <div style={{ marginTop: "8px", paddingTop: "6px", borderTop: "1px dashed rgba(16,185,129,0.3)", fontSize: "0.78rem", color: "#10b981", fontWeight: 600 }}>
+                      ✨ Surplus/Excess Detected: <strong>+{surplus} Pcs extra</strong> ({recNum} received vs {expected} expected)
+                    </div>
+                  )}
+
+                  {recNum === expected && (
+                    <div style={{ marginTop: "6px", fontSize: "0.74rem", color: "#10b981", fontWeight: 500, display: "flex", alignItems: "center", gap: "4px" }}>
+                      ✓ Full quantity received ({expected} Pcs)
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -8690,7 +8792,7 @@ function ReceiveCargoModal({ cargo, requests, purchasers = [], onClose, onConfir
         </div>
 
         <div className="form-group" style={{ marginBottom: "20px" }}>
-          <label className="form-label">Date Received at Warehouse</label>
+          <label className="form-label" style={{ fontWeight: 600 }}>Date Received at Warehouse</label>
           <input
             type="date"
             className="form-control"
@@ -8703,9 +8805,10 @@ function ReceiveCargoModal({ cargo, requests, purchasers = [], onClose, onConfir
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
           <button onClick={onClose} className="btn btn-secondary">Cancel</button>
           <button
-            onClick={() => receiveDate && onConfirm(receiveDate, itemReceiptMap)}
+            onClick={handleConfirm}
             disabled={!receiveDate}
             className="btn btn-success"
+            style={{ fontWeight: 700 }}
           >
             <Check size={16} /> Confirm Receipt
           </button>

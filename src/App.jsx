@@ -25,7 +25,7 @@ import {
   TRACKABLE_MODULES 
 } from "./utils/userIntentionTracker";
 import { isDateInBetween } from "./components/DateRangeFilter";
-import { cleanCategoryName, isRequestForUser, getOfficialPurchasersList, reconcileRequestsWithCargos, isCargoMatch } from "./utils/formatters";
+import { cleanCategoryName, isRequestForUser, getOfficialPurchasersList, reconcileRequestsWithCargos, isCargoMatch, resolveItemVendor } from "./utils/formatters";
 import { useLoading } from "./context/LoadingContext";
 import { useSaveStatus } from "./context/SaveStatusContext";
 import { closeTopModal, executeTopBackHandler } from "./utils/useModalEscape";
@@ -375,7 +375,17 @@ export default function App() {
         } else if (moduleKey === TRACKABLE_MODULES.REQUESTS) {
           const res = await fetch("/api/requests");
           const data = await res.json();
-          if (Array.isArray(data)) setRequests(data.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
+          if (Array.isArray(data)) {
+            setRequests(data.map(r => {
+              const resV = resolveItemVendor(r, vendors, data, cargos);
+              return {
+                ...r,
+                purchaseUpdated: r.purchaseUpdated || "No",
+                vendorId: resV.id || r.vendorId || "",
+                vendorName: resV.name && resV.name !== "Unknown Vendor" ? resV.name : (r.vendorName || "")
+              };
+            }));
+          }
         } else if (moduleKey === TRACKABLE_MODULES.ITEMS) {
           const res = await fetch("/api/items");
           const data = await res.json();
@@ -1981,16 +1991,30 @@ export default function App() {
         fetch(`/api/users?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => []),
         fetch(`/api/items?_t=${cacheBuster}`).then(r => r.ok ? r.json() : []).catch(() => [])
       ]);
-      if (Array.isArray(rRes) && rRes.length > 0) setRequests(rRes.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
+      const safeVendors = Array.isArray(vRes) && vRes.length > 0 ? vRes : vendors;
+      const safeCargos = Array.isArray(cRes) && cRes.length > 0 ? cRes : cargos;
+      let finalRequests = rRes;
+      if (Array.isArray(rRes) && rRes.length > 0) {
+        finalRequests = rRes.map(r => {
+          const resV = resolveItemVendor(r, safeVendors, rRes, safeCargos);
+          return {
+            ...r,
+            purchaseUpdated: r.purchaseUpdated || "No",
+            vendorId: resV.id || r.vendorId || "",
+            vendorName: resV.name && resV.name !== "Unknown Vendor" ? resV.name : (r.vendorName || "")
+          };
+        });
+        setRequests(finalRequests);
+      }
       if (Array.isArray(cRes) && cRes.length > 0) setCargos(cRes);
       if (Array.isArray(vRes) && vRes.length > 0) setVendors(vRes);
       if (Array.isArray(ccRes) && ccRes.length > 0) setCargoCompanies(ccRes);
       if (Array.isArray(uRes) && uRes.length > 0) setUsers(uRes.map(normalizeUserData));
       if (Array.isArray(iRes) && iRes.length > 0) setItems(iRes);
 
-      if (rRes.length > 0 || cRes.length > 0) {
+      if (finalRequests.length > 0 || cRes.length > 0) {
         saveDashboardCache(currentUser || "rahul", {
-          requests: rRes,
+          requests: finalRequests,
           cargos: cRes,
           vendors: vRes,
           cargoCompanies: ccRes,
@@ -2040,7 +2064,16 @@ export default function App() {
           setVendors(data.vendors);
         }
         if (Array.isArray(data.requests)) {
-          setRequests(data.requests.map(r => ({ ...r, purchaseUpdated: r.purchaseUpdated || "No" })));
+          const reqs = data.requests.map(r => {
+            const resV = resolveItemVendor(r, data.vendors || vendors, data.requests, data.cargos || cargos);
+            return {
+              ...r,
+              purchaseUpdated: r.purchaseUpdated || "No",
+              vendorId: resV.id || r.vendorId || "",
+              vendorName: resV.name && resV.name !== "Unknown Vendor" ? resV.name : (r.vendorName || "")
+            };
+          });
+          setRequests(reqs);
         }
         if (Array.isArray(data.cargos)) {
           setCargos(data.cargos);
@@ -2842,9 +2875,9 @@ const cancelRequests = async (requestIds, reason = "") => {
     const newShortageItems = [];
 
     requests.filter(r => isCargoMatch(r.cargoId, cargoWithDate)).forEach(r => {
-      const expectedQty = parseInt(r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity || 0);
+      const expectedQty = parseInt(r.cargoPickedQty || r.vendorOrderQuantity || r.orderQuantity || 0, 10);
       const recInfo = itemReceiptMap[r.id];
-      const receivedQty = (recInfo && recInfo.receivedQty != null) ? parseInt(recInfo.receivedQty) : (isNowReceived ? expectedQty : (r.receivedQuantity || expectedQty));
+      const receivedQty = (recInfo && recInfo.receivedQty != null && recInfo.receivedQty !== "") ? parseInt(recInfo.receivedQty, 10) : (isNowReceived ? expectedQty : (r.receivedQuantity || expectedQty));
       const shortageAction = recInfo?.shortageAction || "cancel";
       const shortageQty = expectedQty > receivedQty ? expectedQty - receivedQty : 0;
 

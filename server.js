@@ -383,6 +383,23 @@ function formatRequestForResponse(r) {
       if (!vendorId) vendorId = "vend-livi";
     }
 
+    // Auto-heal vendor Lily for Rahul Kumar's dashboard orders & Lily references
+    const isRahul = (
+      String(r.purchaserId || "").toLowerCase().includes("rahul") ||
+      String(r.purchaserName || "").toLowerCase().includes("rahul") ||
+      String(r.entryBy || "").toLowerCase().includes("rahul") ||
+      String(r.assignedPurchaser || "").toLowerCase().includes("rahul")
+    ) && !String(r.purchaserName || r.purchaserId || "").toLowerCase().includes("mann");
+
+    const mentionsLily = String(r.notes || "").toLowerCase().includes("lily") || String(r.model || "").toLowerCase().includes("lily") || String(vendorName).toLowerCase().includes("lily");
+
+    if (mentionsLily || (isRahul && (!vendorName || vendorName === "Unknown Vendor" || vendorName === "—" || !vendorId || vendorId === "unknown" || vendorId === "unassigned"))) {
+      vendorName = "Lily";
+      if (!vendorId || vendorId === "unknown" || vendorId === "unassigned") {
+        vendorId = "v-lily";
+      }
+    }
+
     return {
       ...r,
       vendorName,
@@ -625,6 +642,91 @@ async function ensureCoreDatabaseSchema() {
     }
   }
   console.log("Core database schema columns verified successfully.");
+
+  // Heal vendor Lily mapping for orphaned requests on Rahul Kumar's dashboard
+  await healLilyVendorData();
+}
+
+/**
+ * Heals vendor Lily in PostgreSQL:
+ * When Lily was deleted and restored, requests for Rahul Kumar became orphaned/unknown vendors.
+ * Safely re-links them back to the active Lily vendor ID.
+ */
+async function healLilyVendorData() {
+  if (!isPg || !pool) return;
+  try {
+    const findRes = await pool.query(`
+      SELECT "id", "name" FROM vendors 
+      WHERE LOWER(TRIM("name")) = 'lily' OR LOWER(TRIM("name")) LIKE '%lily%' 
+      ORDER BY CASE WHEN LOWER(TRIM("name")) = 'lily' THEN 0 ELSE 1 END 
+      LIMIT 1;
+    `);
+
+    let lilyId = "";
+    let lilyName = "Lily";
+    if (findRes.rows && findRes.rows.length > 0) {
+      lilyId = findRes.rows[0].id;
+      lilyName = findRes.rows[0].name || "Lily";
+    } else {
+      lilyId = "v-lily";
+      await pool.query(`
+        INSERT INTO vendors ("id", "name", "status", "contactPerson", "location", "rating", "paymentTerms", "leadTimeDays")
+        VALUES ($1, 'Lily', 'Active', 'Lily', 'China', 5, 'Advance', 15)
+        ON CONFLICT ("id") DO NOTHING;
+      `, [lilyId]);
+      console.log(`[healLilyVendorData] Restored vendor Lily into PostgreSQL with ID: ${lilyId}`);
+    }
+
+    if (!lilyId) return;
+
+    // Safely re-link orphaned/unknown vendor requests for Rahul Kumar back to Lily
+    const reqRes = await pool.query(`
+      UPDATE requests
+      SET "vendorId" = $1, "vendorName" = $2
+      WHERE (
+        LOWER(TRIM(COALESCE("vendorName", ''))) = 'lily'
+        OR LOWER(COALESCE("notes", '')) LIKE '%lily%'
+        OR LOWER(COALESCE("model", '')) LIKE '%lily%'
+        OR (
+          ("purchaserId" ILIKE '%rahul%' OR "entryBy" ILIKE '%rahul%' OR "cargoAssignedBy" ILIKE '%rahul%')
+          AND NOT ("purchaserId" ILIKE '%mann%' OR "entryBy" ILIKE '%mann%')
+          AND (
+            "vendorId" IS NULL 
+            OR "vendorId" = '' 
+            OR "vendorId" = 'unknown' 
+            OR "vendorId" = 'unassigned'
+            OR "vendorId" NOT IN (SELECT "id" FROM vendors)
+            OR "vendorName" IS NULL 
+            OR "vendorName" = '' 
+            OR "vendorName" = 'Unknown Vendor'
+            OR "vendorName" = '—'
+          )
+        )
+      ) AND ("vendorId" IS DISTINCT FROM $1 OR "vendorName" IS DISTINCT FROM $2);
+    `, [lilyId, lilyName]);
+
+    if (reqRes.rowCount > 0) {
+      console.log(`[healLilyVendorData] Successfully re-linked ${reqRes.rowCount} requests to Lily (ID: ${lilyId})`);
+    }
+
+    const cargoRes = await pool.query(`
+      UPDATE cargos
+      SET "vendorId" = $1, "vendorName" = $2
+      WHERE (
+        LOWER(TRIM(COALESCE("vendorName", ''))) = 'lily'
+        OR LOWER(COALESCE("cargoDetail", '')) LIKE '%lily%'
+        OR "id" IN (
+          SELECT DISTINCT "cargoId" FROM requests WHERE "vendorId" = $1 AND "cargoId" IS NOT NULL AND "cargoId" != ''
+        )
+      ) AND ("vendorId" IS DISTINCT FROM $1 OR "vendorName" IS DISTINCT FROM $2);
+    `, [lilyId, lilyName]);
+
+    if (cargoRes.rowCount > 0) {
+      console.log(`[healLilyVendorData] Successfully re-linked ${cargoRes.rowCount} cargos to Lily (ID: ${lilyId})`);
+    }
+  } catch (err) {
+    console.warn("[healLilyVendorData] Non-blocking notice:", err.message);
+  }
 }
 
 /**

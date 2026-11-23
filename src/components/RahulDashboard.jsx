@@ -46,7 +46,7 @@ import { EditCargoModal } from "./PurchaserDashboard";
 import CargoRatesBreakdown from "./CargoRatesBreakdown";
 import RahulDashboardLoading from "./RahulDashboardLoading";
 import { useSortableData } from "../utils/useSortableData";
-import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, formatPunchDateTime, isCargoMatch, resolveCargoVendorName } from "../utils/formatters";
+import { getPurchaserDisplayName, downloadOrOpenBlob, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, formatPunchDateTime, isCargoMatch, resolveCargoVendorName, resolveItemVendor, resolveItemVendorName } from "../utils/formatters";
 
 export default function RahulDashboard({ 
   currentUser = {}, 
@@ -420,17 +420,22 @@ export default function RahulDashboard({
       vMap.set("vend-livi", { id: "vend-livi", name: "Livi" });
     }
 
+    // Guarantee Lily is present in Rahul Accounts vendor list
+    const hasLily = Array.from(vMap.values()).some(v => v.name && v.name.trim().toLowerCase() === "lily");
+    if (!hasLily) {
+      vMap.set("v-lily", { id: "v-lily", name: "Lily" });
+    }
+
     const list = Array.from(vMap.values());
     list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
     return list.map(v => {
       const vNameLower = (v.name || "").trim().toLowerCase();
-      // Count active (non-cancelled) orders for this vendor
+      // Count active (non-cancelled) orders for this vendor with resilient vendor resolution
       const activeCount = (requests || []).filter(r => {
         if (isRequestCancelled(r)) return false;
-        const rVId = r.vendorId || "";
-        const rVName = (r.vendorName || "").trim().toLowerCase();
-        return rVId === v.id || (vNameLower && rVName === vNameLower) || (v.id && rVName === v.id.trim().toLowerCase());
+        const resV = resolveItemVendor(r, vendors, requests, cargos);
+        return resV.id === v.id || (vNameLower && resV.name && resV.name.trim().toLowerCase() === vNameLower);
       }).length;
 
       return {
@@ -555,8 +560,9 @@ export default function RahulDashboard({
         const selectedVendorObj = allVendorsWithCounts.find(v => v.value === filterVendor || v.rawName === filterVendor);
         const targetId = selectedVendorObj?.value || filterVendor;
         const targetName = (selectedVendorObj?.rawName || filterVendor).trim().toLowerCase();
-        const rVId = r.vendorId || "";
-        const rVName = (r.vendorName || "").trim().toLowerCase();
+        const resV = resolveItemVendor(r, vendors, requests, cargos);
+        const rVId = resV.id || r.vendorId || "";
+        const rVName = (resV.name || r.vendorName || "").trim().toLowerCase();
 
         const match = rVId === targetId || (targetName && rVName === targetName) || (targetId && rVName === targetId.trim().toLowerCase());
         if (!match) {
@@ -833,8 +839,14 @@ export default function RahulDashboard({
 
         // Distinct Vendors Summary
         let distinctVendorNames = Array.from(grp.vendorIds).map(id => {
-          return vendors.find(v => v.id === id)?.name || id;
-        }).filter(Boolean);
+          const directMatch = vendors.find(v => v.id === id);
+          if (directMatch && directMatch.name) return directMatch.name;
+          const foundItem = grp.items.find(it => it.vendorId === id);
+          if (foundItem) {
+            return resolveItemVendorName(foundItem, vendors, requests, cargos);
+          }
+          return id;
+        }).filter(name => Boolean(name) && name !== "Unknown Vendor");
         if (distinctVendorNames.length === 0 && grp.cargoObj) {
           const resolved = resolveCargoVendorName(grp.cargoObj, vendors, requests);
           if (resolved && resolved !== "Unknown Vendor") {
@@ -893,14 +905,14 @@ export default function RahulDashboard({
 
     // Otherwise: Group by Vendor + Order Date + Purchaser
     filteredRequests.forEach(r => {
-      const vId = r.vendorId || "unassigned";
+      const resV = resolveItemVendor(r, vendors, requests, cargos);
+      const vId = resV.id || r.vendorId || "unassigned";
       const oDate = r.orderDate || "No Date";
       const pName = getPurchaserName(r) || "Unassigned Purchaser";
       const groupKey = `${vId}__${oDate}__${pName}`;
 
       if (!map.has(groupKey)) {
-        const vendorObj = vendors.find(v => v.id === vId);
-        const vendorName = vendorObj ? vendorObj.name : (r.vendorName || (vId === "unassigned" ? "Unassigned Vendor" : vId));
+        const vendorName = resV.name && resV.name !== "Unknown Vendor" ? resV.name : (r.vendorName || (vId === "unassigned" ? "Unassigned Vendor" : vId));
         
         map.set(groupKey, {
           groupKey,
@@ -2951,7 +2963,7 @@ export default function RahulDashboard({
                                         const itMarked = isItemMarked(it);
                                         const itCargo = cargos.find(c => isCargoMatch(it.cargoId, c));
                                         const itStage = getOrderStage(it, itCargo);
-                                        const vName = vendors.find(v => v.id === it.vendorId)?.name || it.vendorName || "—";
+                                        const vName = resolveItemVendorName(it, vendors, requests, cargos);
 
                                         return (
                                           <tr key={it.id}>
@@ -3394,7 +3406,7 @@ export default function RahulDashboard({
                       <RenderSortHeader colKey="stage" title="Where Item Is Now" getValue={r => getOrderStage(r, cargos.find(c => isCargoMatch(r.cargoId, c))).label} />
                       <RenderSortHeader colKey="purchaser" title="Purchaser" getValue={r => getPurchaserName(r)} />
                       <RenderSortHeader colKey="entryBy" title="Required By" getValue={r => r.entryBy || r.requestedBy || "Requester"} />
-                      <RenderSortHeader colKey="vendor" title="Vendor" getValue={r => vendors.find(v => v.id === r.vendorId)?.name || ""} />
+                      <RenderSortHeader colKey="vendor" title="Vendor" getValue={r => resolveItemVendorName(r, vendors, requests, cargos)} />
                       <RenderSortHeader colKey="orderDate" title="Order Date" />
                       <RenderSortHeader colKey="type" title="Type" />
                       <RenderSortHeader colKey="model" title="Model / Item" />
@@ -3431,7 +3443,7 @@ export default function RahulDashboard({
                   </thead>
                   <tbody>
                     {sortedDisplayRequests.map(r => {
-                      const vName = vendors.find(v => v.id === r.vendorId)?.name || "—";
+                      const vName = resolveItemVendorName(r, vendors, requests, cargos);
                       const cargo = cargos.find(c => isCargoMatch(r.cargoId, c));
                       const isChecked = checkedIds.includes(r.id);
                       const stage = getOrderStage(r, cargo);

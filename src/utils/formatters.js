@@ -1282,6 +1282,13 @@ export const resolveCargoVendorName = (cargo, vendors = [], requests = []) => {
     return "Livi";
   }
 
+  // 0b. Explicit healing for Lily cargo
+  if (cargoDetailStr.toLowerCase().includes("lily") || String(cargo.vendorName || "").toLowerCase().includes("lily")) {
+    const lilyVendor = (vendors || []).find(v => v && v.name && v.name.trim().toLowerCase() === "lily");
+    if (lilyVendor && lilyVendor.name) return lilyVendor.name;
+    return "Lily";
+  }
+
   // 1. Direct ID match in vendors list
   if (cargo.vendorId) {
     const vById = (vendors || []).find(v => v && v.id === cargo.vendorId);
@@ -1313,12 +1320,20 @@ export const resolveCargoVendorName = (cargo, vendors = [], requests = []) => {
       if (item.notes && item.notes.toLowerCase().includes("livi")) {
         return "Livi";
       }
+      if (item.notes && item.notes.toLowerCase().includes("lily")) {
+        return "Lily";
+      }
+      if (item.vendorName && item.vendorName.toLowerCase().includes("lily")) {
+        return "Lily";
+      }
     }
   }
 
-  // 4. Check if cargo detail or filename mentions Livi or another vendor
+  // 4. Check if cargo detail or filename mentions Livi, Lily, or another vendor
   if (cargoDetailStr && cargoDetailStr.toLowerCase().includes("livi")) return "Livi";
   if (cargo.packingListFile && cargo.packingListFile.toLowerCase().includes("livi")) return "Livi";
+  if (cargoDetailStr && cargoDetailStr.toLowerCase().includes("lily")) return "Lily";
+  if (cargo.packingListFile && cargo.packingListFile.toLowerCase().includes("lily")) return "Lily";
 
   // 5. If cargo.vendorId is a human name string (not an opaque ID like "v-123" or UUID or pure number)
   if (cargo.vendorId && typeof cargo.vendorId === "string") {
@@ -1330,6 +1345,81 @@ export const resolveCargoVendorName = (cargo, vendors = [], requests = []) => {
 
   return "Unknown Vendor";
 };
+
+/**
+ * Resolves the true vendor for an individual item request.
+ * Specially heals items belonging to Rahul Kumar where vendor was previously "Lily",
+ * which was deleted earlier and restored later with an orphaned/empty/unknown vendor link.
+ */
+export const resolveItemVendor = (r, vendors = [], requests = [], cargos = []) => {
+  if (!r) return { id: "", name: "—" };
+  const lilyVendor = (vendors || []).find(v => v && v.name && v.name.trim().toLowerCase() === "lily");
+
+  // 1. Direct ID match in active vendors
+  if (r.vendorId) {
+    const v = (vendors || []).find(x => x && x.id === r.vendorId);
+    if (v && v.name) return v;
+  }
+
+  // 2. Direct Name match in active vendors
+  if (r.vendorName && r.vendorName !== "Unknown Vendor" && r.vendorName !== "—") {
+    const v = (vendors || []).find(x => x && x.name && x.name.trim().toLowerCase() === String(r.vendorName).trim().toLowerCase());
+    if (v && v.name) return v;
+  }
+
+  // 3. Lily detection from item notes, model name, or legacy vendorName
+  const notesLower = String(r.notes || "").toLowerCase();
+  const modelLower = String(r.model || "").toLowerCase();
+  const vNameLower = String(r.vendorName || "").toLowerCase();
+  const vIdLower = String(r.vendorId || "").toLowerCase();
+
+  if (vNameLower.includes("lily") || notesLower.includes("lily") || modelLower.includes("lily") || vIdLower.includes("lily")) {
+    if (lilyVendor) return lilyVendor;
+    return { id: lilyVendor?.id || r.vendorId || "v-lily", name: "Lily" };
+  }
+
+  // 4. Check if order is assigned to Rahul Kumar:
+  // User confirmed: all unknown vendors on Rahul Kumar's dashboard were Lily!
+  const isRahul = (
+    String(r.purchaserId || "").toLowerCase().includes("rahul") ||
+    String(r.purchaserName || "").toLowerCase().includes("rahul") ||
+    String(r.entryBy || "").toLowerCase().includes("rahul") ||
+    String(r.assignedPurchaser || "").toLowerCase().includes("rahul")
+  ) && !String(r.purchaserName || r.purchaserId || "").toLowerCase().includes("mann");
+
+  if (isRahul) {
+    const isOrphaned = !r.vendorId || r.vendorId === "unknown" || r.vendorId === "unassigned" || !(vendors || []).some(x => x && x.id === r.vendorId);
+    const isUnknownName = !r.vendorName || r.vendorName === "Unknown Vendor" || r.vendorName === "—";
+    if (isOrphaned || isUnknownName) {
+      if (lilyVendor) return lilyVendor;
+      return { id: lilyVendor?.id || "v-lily", name: "Lily" };
+    }
+  }
+
+  // 5. Cargo fallback
+  if (r.cargoId && cargos && cargos.length > 0) {
+    const cObj = cargos.find(c => isCargoMatch(r.cargoId, c));
+    if (cObj) {
+      const cResolved = resolveCargoVendorName(cObj, vendors, requests);
+      if (cResolved && cResolved !== "Unknown Vendor" && cResolved !== "—") {
+        const cVendorObj = (vendors || []).find(v => v && v.name && v.name.trim().toLowerCase() === cResolved.trim().toLowerCase());
+        return cVendorObj || { id: cObj.vendorId || r.vendorId || "", name: cResolved };
+      }
+    }
+  }
+
+  // 6. Fallback
+  if (r.vendorName && r.vendorName !== "Unknown Vendor") {
+    return { id: r.vendorId || "", name: r.vendorName };
+  }
+  return { id: r.vendorId || "", name: "Unknown Vendor" };
+};
+
+export const resolveItemVendorName = (r, vendors = [], requests = [], cargos = []) => {
+  const v = resolveItemVendor(r, vendors, requests, cargos);
+  return v?.name || "Unknown Vendor";
+};
+
 
 
 
