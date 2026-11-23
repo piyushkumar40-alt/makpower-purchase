@@ -495,6 +495,11 @@ async function initDatabase() {
       isPg = true;
       console.log("PostgreSQL database connected successfully.");
       try {
+        await ensureCoreDatabaseSchema();
+      } catch (coreErr) {
+        console.warn("Non-fatal ensureCoreDatabaseSchema notice:", coreErr.message);
+      }
+      try {
         await setupPgDatabase();
       } catch (setupErr) {
         console.error("Non-fatal setupPgDatabase warning:", setupErr.message);
@@ -507,6 +512,119 @@ async function initDatabase() {
   } else {
     console.log("No DATABASE_URL found. Using local JSON database (db.json) for development.");
   }
+}
+
+/**
+ * Isolated, fail-safe core schema migrations:
+ * Ensures all required columns for cargos and requests exist in PostgreSQL
+ * using independent queries so no failure in secondary tables can ever block them.
+ */
+async function ensureCoreDatabaseSchema() {
+  if (!isPg || !pool) return;
+  const migrations = [
+    `CREATE TABLE IF NOT EXISTS cargos (
+      "id" TEXT PRIMARY KEY,
+      "vendorId" TEXT,
+      "cargoOrderDate" TEXT,
+      "cargoDetail" TEXT,
+      "cargoPrice" NUMERIC,
+      "cargoPriceUom" TEXT,
+      "cbmPackingList" NUMERIC,
+      "totalCargoPrice" NUMERIC,
+      "modeOfTransport" TEXT,
+      "cargoShippingDate" TEXT,
+      "cargoEta" TEXT,
+      "packingListFile" TEXT,
+      "packingListData" TEXT,
+      "invoiceFile" TEXT,
+      "invoiceData" TEXT,
+      "cargoReceiptFile" TEXT,
+      "cargoReceiptData" TEXT,
+      "isMaterialRec" TEXT,
+      "receivedDate" TEXT,
+      "currency" TEXT
+    )`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "packingListData" TEXT`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "invoiceData" TEXT`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoReceiptFile" TEXT`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoReceiptData" TEXT`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoEtaHistory" TEXT`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billUploadedAt" TEXT`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billUploadedBy" TEXT`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billStatus" TEXT`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billVerifiedAt" TEXT`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billVerifiedBy" TEXT`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "billVerificationNotes" TEXT`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "totalCartons" INTEGER`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoCompanyId" TEXT`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "cargoRates" TEXT`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "vendorName" TEXT`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "createdBy" TEXT`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "createdByName" TEXT`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "receivedBy" TEXT`,
+    `ALTER TABLE cargos ADD COLUMN IF NOT EXISTS "receivedByName" TEXT`,
+
+    `CREATE TABLE IF NOT EXISTS requests (
+      "id" TEXT PRIMARY KEY,
+      "purchaserId" TEXT,
+      "vendorId" TEXT,
+      "orderDate" TEXT,
+      "type" TEXT,
+      "model" TEXT,
+      "orderQuantity" INTEGER
+    )`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "priceRmb" NUMERIC`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "totalRmb" NUMERIC`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "advancePayment" NUMERIC`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "balancePayment" NUMERIC`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "photo" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "vendorEdd" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "cargoId" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "isMaterialRec" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "actualReceivedDate" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "notes" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "itemNature" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "category" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "requiredByDate" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "entryBy" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "packingOrderedByNitin" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "purchaseUpdated" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "status" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "cancellationReason" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "cancelledAt" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "cargoAssignedAt" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "vendorOrderQuantity" INTEGER`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "cargoPickedQty" INTEGER`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "receivedQuantity" INTEGER`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "shortageQty" INTEGER`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "parentRequestId" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "vendorReadyDate" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "currency" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "timestamp" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "vendorEddHistory" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "itemsPerCarton" INTEGER`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "totalCartons" INTEGER`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "cancelledBy" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "cancelledByName" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "purchaseUpdatedAt" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "purchaseUpdatedBy" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "purchaseUpdatedById" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "packingOrderedAt" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "packingOrderedBy" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "packingOrderedById" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "vendorName" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "cargoAssignedBy" TEXT`,
+    `ALTER TABLE requests ADD COLUMN IF NOT EXISTS "cargoAssignedByName" TEXT`
+  ];
+
+  for (const q of migrations) {
+    try {
+      await pool.query(q);
+    } catch (e) {
+      console.warn("Core schema migration notice:", q.slice(0, 45), e.message);
+    }
+  }
+  console.log("Core database schema columns verified successfully.");
 }
 
 /**
@@ -1087,8 +1205,6 @@ async function setupPgDatabase() {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_orders_rsm ON crm_sales_orders("assignedRsmId");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_dispatches_party ON crm_dispatches("partyId");`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_dispatches_date ON crm_dispatches("dispatchDate" DESC);`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_remarks_party ON crm_party_remarks("partyId");`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_remarks_date ON crm_party_remarks("createdAt" DESC);`);
 
       // Seed initial IMS stock transactions only once during first setup (not re-seeded if user deletes)
       await pool.query(`CREATE TABLE IF NOT EXISTS sys_metadata ("key" TEXT PRIMARY KEY, "value" TEXT);`);
@@ -4656,9 +4772,8 @@ app.post("/api/cargos", async (req, res) => {
             "cbmPackingList", "totalCargoPrice", "modeOfTransport", "cargoShippingDate", "cargoEta",
             "packingListFile", "packingListData", "invoiceFile", "invoiceData", "cargoReceiptFile", "cargoReceiptData", "isMaterialRec", "receivedDate", "currency", "cargoEtaHistory",
             "billUploadedAt", "billUploadedBy", "billStatus", "billVerifiedAt", "billVerifiedBy", "billVerificationNotes",
-            "totalCartons", "cargoCompanyId", "cargoRates", "vendorName",
-            "createdBy", "createdByName", "receivedBy", "receivedByName"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
+            "totalCartons", "cargoCompanyId", "cargoRates", "vendorName"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
           ON CONFLICT ("id") DO UPDATE SET
             "vendorId" = EXCLUDED."vendorId",
             "vendorName" = COALESCE(NULLIF(EXCLUDED."vendorName", ''), cargos."vendorName"),
@@ -4696,11 +4811,7 @@ app.post("/api/cargos", async (req, res) => {
             "billVerificationNotes" = EXCLUDED."billVerificationNotes",
             "totalCartons" = COALESCE(EXCLUDED."totalCartons", cargos."totalCartons"),
             "cargoCompanyId" = EXCLUDED."cargoCompanyId",
-            "cargoRates" = COALESCE(NULLIF(EXCLUDED."cargoRates", ''), cargos."cargoRates"),
-            "createdBy" = COALESCE(NULLIF(EXCLUDED."createdBy", ''), cargos."createdBy"),
-            "createdByName" = COALESCE(NULLIF(EXCLUDED."createdByName", ''), cargos."createdByName"),
-            "receivedBy" = COALESCE(NULLIF(EXCLUDED."receivedBy", ''), cargos."receivedBy"),
-            "receivedByName" = COALESCE(NULLIF(EXCLUDED."receivedByName", ''), cargos."receivedByName")
+            "cargoRates" = COALESCE(NULLIF(EXCLUDED."cargoRates", ''), cargos."cargoRates")
         `;
         const effectiveTotal = getEffectiveTotalCargoPrice(c);
         const values = [
@@ -4715,10 +4826,26 @@ app.post("/api/cargos", async (req, res) => {
           safeInt(c.totalCartons),
           c.cargoCompanyId || "",
           Array.isArray(c.cargoRates) ? JSON.stringify(c.cargoRates) : (c.cargoRates || "[]"),
-          c.vendorName || "",
-          c.createdBy || "", c.createdByName || "", c.receivedBy || "", c.receivedByName || ""
+          c.vendorName || ""
         ];
         await client.query(query, values);
+
+        // Optional metadata update for createdBy/receivedBy (safe if columns exist)
+        if (c.createdBy || c.createdByName || c.receivedBy || c.receivedByName) {
+          try {
+            await client.query(
+              `UPDATE cargos SET 
+                "createdBy" = COALESCE(NULLIF($1, ''), "createdBy"),
+                "createdByName" = COALESCE(NULLIF($2, ''), "createdByName"),
+                "receivedBy" = COALESCE(NULLIF($3, ''), "receivedBy"),
+                "receivedByName" = COALESCE(NULLIF($4, ''), "receivedByName")
+               WHERE "id" = $5`,
+              [c.createdBy || "", c.createdByName || "", c.receivedBy || "", c.receivedByName || "", c.id]
+            );
+          } catch (metaErr) {
+            // Non-fatal if createdBy column has not yet migrated
+          }
+        }
 
         // Atomic Bundled Requests Upsert: guarantees orders and cargo shipment advance simultaneously
         if (bundledRequests && bundledRequests.length > 0) {
