@@ -1935,7 +1935,7 @@ export default function RahulDashboard({
                                   <span style={{ color: "#10b981", fontWeight: 700 }}>Total: ¥{totalVal.toLocaleString()}</span>
                                   <span 
                                     style={{ fontSize: "0.72rem", padding: "1px 6px", borderRadius: "4px", background: item.purchaseUpdated === "Yes" ? "rgba(16, 185, 129, 0.15)" : "rgba(236, 72, 153, 0.15)", color: item.purchaseUpdated === "Yes" ? "#10b981" : "#ec4899" }}
-                                    title={item.purchaseUpdated === "Yes" ? `Punched by ${item.purchaseUpdatedBy || "Mr. Rahul Mann"}${item.purchaseUpdatedAt ? ` on ${formatPunchDateTime(item.purchaseUpdatedAt)}` : ""}` : "Pending mark purchase in ledger"}
+                                    title={item.purchaseUpdated === "Yes" ? (item.purchaseUpdatedAt ? `Punched by ${item.purchaseUpdatedBy || "Mr. Rahul Mann"} on ${formatPunchDateTime(item.purchaseUpdatedAt)}` : (item.purchaseUpdatedBy ? `Punched by ${item.purchaseUpdatedBy}` : "Pre-audit Legacy Record")) : "Pending mark purchase in ledger"}
                                   >
                                     {item.purchaseUpdated === "Yes" ? `✓ Purchase Marked${item.purchaseUpdatedAt ? ` (${formatPunchDateTime(item.purchaseUpdatedAt)})` : ""}` : "⏳ Pending Purchase"}
                                   </span>
@@ -3770,12 +3770,12 @@ export default function RahulDashboard({
                               <td style={{ fontSize: "0.78rem", whiteSpace: "nowrap", color: "var(--text-main)" }}>
                                 {isNitin 
                                   ? (r.packingOrderedAt ? formatPunchDateTime(r.packingOrderedAt) : "—")
-                                  : (r.purchaseUpdatedAt ? formatPunchDateTime(r.purchaseUpdatedAt) : "—")}
+                                  : (r.purchaseUpdatedAt ? formatPunchDateTime(r.purchaseUpdatedAt) : "Pre-audit Legacy")}
                               </td>
                               <td style={{ fontSize: "0.82rem", fontWeight: 700, color: isNitin ? "#ec4899" : "#10b981", whiteSpace: "nowrap" }}>
                                 👤 {isNitin 
                                   ? (r.packingOrderedBy || (r.packingOrderedAt ? "Mr. Nitin (Packing)" : "Nitin (Packing)"))
-                                  : (r.purchaseUpdatedBy || (r.purchaseUpdatedAt ? "Mr. Rahul Mann" : "Rahul Accounts"))}
+                                  : (r.purchaseUpdatedBy || (r.purchaseUpdatedAt ? "Mr. Rahul Mann" : "Pre-audit Legacy"))}
                               </td>
                             </>
                           )}

@@ -280,6 +280,7 @@ export default function BundledUpcomingShipments({
 
   // Action: Mark purchase for all items in a cargo lot
   const handleMarkAllInCargo = async (cargoObj, status = "Yes") => {
+    if (isViewOnly) return;
     if (!onBatchUpdateRequests) return;
     const targetItems = status === "Yes"
       ? (cargoObj.items || []).filter(it => it.purchaseUpdated !== "Yes")
@@ -300,6 +301,7 @@ export default function BundledUpcomingShipments({
 
   // Action: Toggle mark purchase for a single item (item-wise)
   const handleToggleItemPurchase = async (itemObj, status = "Yes") => {
+    if (isViewOnly) return;
     if (!onBatchUpdateRequests) return;
     const now = new Date().toISOString();
     const punchByName = currentUser?.name || "Mr. Rahul Mann";
@@ -774,7 +776,7 @@ export default function BundledUpcomingShipments({
                   {/* Quick actions for cargo */}
                   <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
                     {/* Mark All Purchase at top of lot (works for all items, even received) */}
-                    {cargo.items && cargo.items.length > 0 && (() => {
+                    {!isViewOnly && cargo.items && cargo.items.length > 0 && (() => {
                       const unmarkedItems = cargo.items.filter(it => it.purchaseUpdated !== "Yes");
                       const allMarked = unmarkedItems.length === 0;
 
@@ -1303,7 +1305,7 @@ export default function BundledUpcomingShipments({
                                     alignItems: "center",
                                     gap: "4px"
                                   }}
-                                  title={item.purchaseUpdatedAt ? `Punched by ${item.purchaseUpdatedBy || "Mr. Rahul Mann"} on ${formatPunchDateTime(item.purchaseUpdatedAt)}` : `Punched by ${item.purchaseUpdatedBy || "Mr. Rahul Mann"}`}
+                                  title={item.purchaseUpdatedAt ? `Punched by ${item.purchaseUpdatedBy || "Mr. Rahul Mann"} on ${formatPunchDateTime(item.purchaseUpdatedAt)}` : (item.purchaseUpdatedBy ? `Punched by ${item.purchaseUpdatedBy}` : "Pre-audit Legacy Record")}
                                   >
                                     <CheckCircle2 size={12} /> Purchase Marked
                                   </span>
@@ -1312,26 +1314,30 @@ export default function BundledUpcomingShipments({
                                       ({formatPunchDateTime(item.purchaseUpdatedAt)})
                                     </span>
                                   )}
-                                  <button 
-                                    type="button" 
-                                    onClick={() => handleToggleItemPurchase(item, "No")}
-                                    className="btn btn-secondary btn-sm"
-                                    style={{ padding: "2px 6px", fontSize: "0.72rem", height: "24px" }}
-                                    title="Undo Purchase Marked"
-                                  >
-                                    <RotateCcw size={11} /> Unmark
-                                  </button>
+                                  {!isViewOnly && (
+                                    <button 
+                                      type="button" 
+                                      onClick={() => handleToggleItemPurchase(item, "No")}
+                                      className="btn btn-secondary btn-sm"
+                                      style={{ padding: "2px 6px", fontSize: "0.72rem", height: "24px" }}
+                                      title="Undo Purchase Marked"
+                                    >
+                                      <RotateCcw size={11} /> Unmark
+                                    </button>
+                                  )}
                                 </div>
                               ) : (
-                                <button 
-                                  type="button" 
-                                  onClick={() => handleToggleItemPurchase(item, "Yes")}
-                                  className="btn btn-primary btn-sm"
-                                  style={{ padding: "3px 10px", fontSize: "0.76rem", display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 600 }}
-                                  title="Mark this item as Purchase Confirmed"
-                                >
-                                  <CheckSquare size={13} /> Mark Purchase
-                                </button>
+                                !isViewOnly && (
+                                  <button 
+                                    type="button" 
+                                    onClick={() => handleToggleItemPurchase(item, "Yes")}
+                                    className="btn btn-primary btn-sm"
+                                    style={{ padding: "3px 10px", fontSize: "0.76rem", display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 600 }}
+                                    title="Mark this item as Purchase Confirmed"
+                                  >
+                                    <CheckSquare size={13} /> Mark Purchase
+                                  </button>
+                                )
                               )}
                             </div>
                           </div>
@@ -1638,13 +1644,13 @@ export function OrderInspectionModal({ order: initialOrder, cargos = [], vendors
                 <div>
                   <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Punch By</div>
                   <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#10b981", marginTop: "2px" }}>
-                    👤 {order.purchaseUpdatedBy || (order.purchaseUpdatedAt ? "Mr. Rahul Mann" : "Rahul Accounts")}
+                    👤 {order.purchaseUpdatedBy || (order.purchaseUpdatedAt ? "Mr. Rahul Mann" : "Pre-audit Legacy (Unrecorded)")}
                   </div>
                 </div>
                 <div>
                   <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Punch Timestamp</div>
                   <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-main)", marginTop: "2px" }}>
-                    ⏰ {order.purchaseUpdatedAt ? formatPunchDateTime(order.purchaseUpdatedAt) : "—"}
+                    ⏰ {order.purchaseUpdatedAt ? formatPunchDateTime(order.purchaseUpdatedAt) : "Pre-audit Record"}
                   </div>
                 </div>
               </>
@@ -1683,10 +1689,18 @@ export function OrderInspectionModal({ order: initialOrder, cargos = [], vendors
             }}>
               <CheckCircle2 size={16} style={{ color: "#10b981", flexShrink: 0 }} />
               <span style={{ color: "var(--text-main)" }}>
-                Purchase updated & punched in ledger by <strong style={{ color: "#10b981" }}>{order.purchaseUpdatedBy || "Mr. Rahul Mann"}</strong>
-                {order.purchaseUpdatedAt ? (
-                  <> on <strong style={{ color: "#38bdf8" }}>{formatPunchDateTime(order.purchaseUpdatedAt)}</strong></>
-                ) : ""}
+                {order.purchaseUpdatedAt || order.purchaseUpdatedBy ? (
+                  <>
+                    Purchase updated & punched in ledger by <strong style={{ color: "#10b981" }}>{order.purchaseUpdatedBy || "Mr. Rahul Mann"}</strong>
+                    {order.purchaseUpdatedAt ? (
+                      <> on <strong style={{ color: "#38bdf8" }}>{formatPunchDateTime(order.purchaseUpdatedAt)}</strong></>
+                    ) : ""}
+                  </>
+                ) : (
+                  <>
+                    Purchase marked in ledger <strong style={{ color: "var(--text-muted)" }}>(Pre-audit Legacy Record — No individual punch timestamp)</strong>
+                  </>
+                )}
               </span>
             </div>
           )}

@@ -2777,7 +2777,16 @@ const cancelRequests = async (requestIds, reason = "") => {
           status: "Active",
           notes: `${r.notes ? r.notes + " | " : ""}Partial cargo pickup: ${pickedQty} Pcs loaded to Cargo #${newCargoId}, ${remainingQty} Pcs balance left at vendor`,
           itemsPerCarton: ipcNum > 0 ? ipcNum : (r.itemsPerCarton || null),
-          totalCartons: remainingCartons
+          totalCartons: remainingCartons,
+          // CRITICAL SAFETY GUARD: Split order must NEVER inherit punch/packing confirmation!
+          purchaseUpdated: "No",
+          purchaseUpdatedAt: "",
+          purchaseUpdatedBy: "",
+          purchaseUpdatedById: "",
+          packingOrderedByNitin: "No",
+          packingOrderedAt: "",
+          packingOrderedBy: "",
+          packingOrderedById: ""
         };
         newRemainingItems.push(remReq);
       }
@@ -2880,7 +2889,16 @@ const cancelRequests = async (requestIds, reason = "") => {
           actualReceivedDate: "",
           parentRequestId: r.id,
           status: "Active",
-          notes: `${r.notes ? r.notes + " | " : ""}Shortage re-order: ${shortageQty} Pcs short from Cargo #${updatedCargo.id}`
+          notes: `${r.notes ? r.notes + " | " : ""}Shortage re-order: ${shortageQty} Pcs short from Cargo #${updatedCargo.id}`,
+          // CRITICAL SAFETY GUARD: Shortage re-order must NEVER inherit punch/packing confirmation!
+          purchaseUpdated: "No",
+          purchaseUpdatedAt: "",
+          purchaseUpdatedBy: "",
+          purchaseUpdatedById: "",
+          packingOrderedByNitin: "No",
+          packingOrderedAt: "",
+          packingOrderedBy: "",
+          packingOrderedById: ""
         };
         newShortageItems.push(shortageReq);
       }

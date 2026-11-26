@@ -4548,6 +4548,19 @@ function buildRequestUpsert(r) {
   if (r.cargoId && (!r.vendorReadyDate || !String(r.vendorReadyDate).trim())) {
     r.vendorReadyDate = r.cargoShippingDate || (typeof r.cargoAssignedAt === "string" ? r.cargoAssignedAt.split("T")[0] : new Date().toISOString().split("T")[0]);
   }
+
+  // STRICT SAFETY GUARD: Prevent orders from ever being auto-punched or punched by themselves.
+  // Any split order or shortage balance (parentRequestId exists) must start unpunched on creation.
+  if (r.parentRequestId && !r.purchaseUpdatedAt && !r.purchaseUpdatedBy) {
+    r.purchaseUpdated = "No";
+    r.purchaseUpdatedAt = "";
+    r.purchaseUpdatedBy = "";
+    r.purchaseUpdatedById = "";
+    r.packingOrderedByNitin = "No";
+    r.packingOrderedAt = "";
+    r.packingOrderedBy = "";
+    r.packingOrderedById = "";
+  }
   const query = `
     INSERT INTO requests (
       "id", "purchaserId", "vendorId", "orderDate", "type", "model", "orderQuantity",
@@ -4671,6 +4684,17 @@ function upsertRequestsLocalJson(data, reqs) {
       r.vendorReadyDate = r.cargoShippingDate || (r.cargoAssignedAt ? r.cargoAssignedAt.split("T")[0] : new Date().toISOString().split("T")[0]);
     }
     r.vendorEddHistory = safeJsonParse(r.vendorEddHistory, []);
+    // STRICT SAFETY GUARD: Prevent split orders from inheriting parent punch status
+    if (r.parentRequestId && !r.purchaseUpdatedAt && !r.purchaseUpdatedBy) {
+      r.purchaseUpdated = "No";
+      r.purchaseUpdatedAt = "";
+      r.purchaseUpdatedBy = "";
+      r.purchaseUpdatedById = "";
+      r.packingOrderedByNitin = "No";
+      r.packingOrderedAt = "";
+      r.packingOrderedBy = "";
+      r.packingOrderedById = "";
+    }
     const idx = data.requests.findIndex(x => x.id === r.id);
     if (idx !== -1) {
       data.requests[idx] = { ...data.requests[idx], ...r };
