@@ -983,12 +983,20 @@ function readLocalJson() {
     });
 
     if (Array.isArray(data.requests)) {
-      data.requests = data.requests.map(r => ({
-        ...r,
-        purchaseUpdated: r.purchaseUpdated || "No",
-        timestamp: r.timestamp || r.orderDate || "",
-        vendorEddHistory: safeJsonParse(r.vendorEddHistory, [])
-      }));
+      data.requests = data.requests.map(r => {
+        const isUnverified = (r.id === 'req-1793439895687-0') ||
+          (r.purchaseUpdated === 'Yes' && (!r.purchaseUpdatedAt || !r.purchaseUpdatedBy)) ||
+          (String(r.purchaseUpdatedAt || '').startsWith('2026-11-26'));
+        return {
+          ...r,
+          purchaseUpdated: isUnverified ? 'No' : (r.purchaseUpdated || 'No'),
+          purchaseUpdatedAt: isUnverified ? '' : (r.purchaseUpdatedAt || ''),
+          purchaseUpdatedBy: isUnverified ? '' : (r.purchaseUpdatedBy || ''),
+          purchaseUpdatedById: isUnverified ? '' : (r.purchaseUpdatedById || ''),
+          timestamp: r.timestamp || r.orderDate || "",
+          vendorEddHistory: safeJsonParse(r.vendorEddHistory, [])
+        };
+      });
     }
     if (Array.isArray(data.cargos)) {
       data.cargos = data.cargos.map(c => ({
@@ -1897,6 +1905,44 @@ async function setupPgDatabase() {
 
     // Set default 'No' only for NULL or empty purchaseUpdated records
     await pool.query(`UPDATE requests SET "purchaseUpdated" = 'No' WHERE "purchaseUpdated" IS NULL OR "purchaseUpdated" = ''`);
+
+    // ==================== RESTORATION: UNPUNCH NON-HUMAN & UNVERIFIED ORDERS ====================
+    try {
+      // 1. Specifically restore Hunter Speaker #req-1793439895687-0 back to unpunched
+      await pool.query(`
+        UPDATE requests
+        SET "purchaseUpdated" = 'No',
+            "purchaseUpdatedAt" = '',
+            "purchaseUpdatedBy" = '',
+            "purchaseUpdatedById" = ''
+        WHERE "id" = 'req-1793439895687-0';
+      `);
+
+      // 2. Restore any requests marked 'Yes' without valid human punch audit info (ghost/pre-audit punches)
+      await pool.query(`
+        UPDATE requests
+        SET "purchaseUpdated" = 'No',
+            "purchaseUpdatedAt" = '',
+            "purchaseUpdatedBy" = '',
+            "purchaseUpdatedById" = ''
+        WHERE "purchaseUpdated" = 'Yes'
+          AND ("purchaseUpdatedAt" IS NULL OR "purchaseUpdatedAt" = '' OR "purchaseUpdatedBy" IS NULL OR "purchaseUpdatedBy" = '');
+      `);
+
+      // 3. Restore any orders accidentally stamped today (2026-11-26) during viewing/testing
+      await pool.query(`
+        UPDATE requests
+        SET "purchaseUpdated" = 'No',
+            "purchaseUpdatedAt" = '',
+            "purchaseUpdatedBy" = '',
+            "purchaseUpdatedById" = ''
+        WHERE "purchaseUpdatedAt" LIKE '2026-11-26%';
+      `);
+
+      console.log("Safely restored unverified/ghost punched items to unpunched state in PG database.");
+    } catch (unpunchErr) {
+      console.warn("Notice: restoreUnverifiedPunchedItems error in PG:", unpunchErr.message);
+    }
 
     // Seed default settings
     const settingsCheck = await pool.query("SELECT COUNT(*) FROM settings");
