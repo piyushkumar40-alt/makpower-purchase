@@ -167,16 +167,22 @@ export default function App() {
   });
   const [vendors, setVendors] = useState(() => {
     let list = initialCacheSnapshot?.vendors || [];
-    if (!list.some(v => v.name && v.name.toLowerCase().trim() === "livi")) {
-      list = [...list, { id: "vend-livi", name: "Livi", location: "China", purchaserIds: ["u-rahul"] }];
+    list = list.map(v => {
+      if (v && v.name && v.name.trim().toLowerCase() === "livi") {
+        return { ...v, name: "Lily" };
+      }
+      return v;
+    });
+    if (!list.some(v => v.name && v.name.toLowerCase().trim() === "lily")) {
+      list = [...list, { id: "v-lily", name: "Lily", location: "China", purchaserIds: ["u-rahul"] }];
     }
     return list;
   });
   const [requests, setRequests] = useState(() => {
     let list = initialCacheSnapshot?.requests || [];
     return list.map(r => {
-      if (String(r.cargoId || "").includes("1792575495632")) {
-        return { ...r, vendorId: r.vendorId || "vend-livi", vendorName: "Livi" };
+      if (String(r.cargoId || "").includes("1792575495632") || (r.vendorName && r.vendorName.trim().toLowerCase() === "livi")) {
+        return { ...r, vendorId: (r.vendorId && r.vendorId !== "vend-livi") ? r.vendorId : "v-lily", vendorName: "Lily" };
       }
       return r;
     });
@@ -184,8 +190,8 @@ export default function App() {
   const [cargos, setCargos] = useState(() => {
     let list = initialCacheSnapshot?.cargos || [];
     return list.map(c => {
-      if (String(c.id || "").includes("1792575495632")) {
-        return { ...c, vendorId: c.vendorId || "vend-livi", vendorName: "Livi" };
+      if (String(c.id || "").includes("1792575495632") || String(c.cargoDetail || "").includes("1792575495632") || (c.vendorName && c.vendorName.trim().toLowerCase() === "livi")) {
+        return { ...c, vendorId: (c.vendorId && c.vendorId !== "vend-livi") ? c.vendorId : "v-lily", vendorName: "Lily" };
       }
       return c;
     });
@@ -1543,16 +1549,22 @@ export default function App() {
         if (effectiveUsers && effectiveUsers.length > 0) setUsers(effectiveUsers);
         setVendors(prev => {
           let list = effectiveVendors.length > 0 ? effectiveVendors : (prev.length > 0 ? prev : []);
-          if (!list.some(v => v.name && v.name.toLowerCase().trim() === "livi")) {
-            list = [...list, { id: "vend-livi", name: "Livi", location: "China", purchaserIds: ["u-rahul"] }];
+          list = list.map(v => {
+            if (v && v.name && v.name.trim().toLowerCase() === "livi") {
+              return { ...v, name: "Lily" };
+            }
+            return v;
+          });
+          if (!list.some(v => v.name && v.name.toLowerCase().trim() === "lily")) {
+            list = [...list, { id: "v-lily", name: "Lily", location: "China", purchaserIds: ["u-rahul"] }];
           }
           return list;
         });
         setRequests(prev => {
           let list = effectiveRequests.length > 0 ? effectiveRequests : (prev.length > 0 ? prev : []);
           return list.map(r => {
-            if (String(r.cargoId || "").includes("1792575495632")) {
-              return { ...r, vendorId: r.vendorId || "vend-livi", vendorName: "Livi" };
+            if (String(r.cargoId || "").includes("1792575495632") || (r.vendorName && r.vendorName.trim().toLowerCase() === "livi")) {
+              return { ...r, vendorId: (r.vendorId && r.vendorId !== "vend-livi") ? r.vendorId : "v-lily", vendorName: "Lily" };
             }
             return r;
           });
@@ -1560,8 +1572,8 @@ export default function App() {
         setCargos(prev => {
           let list = effectiveCargos.length > 0 ? effectiveCargos : (prev.length > 0 ? prev : []);
           return list.map(c => {
-            if (String(c.id || "").includes("1792575495632") || String(c.cargoDetail || "").includes("1792575495632")) {
-              return { ...c, vendorId: c.vendorId || "vend-livi", vendorName: "Livi" };
+            if (String(c.id || "").includes("1792575495632") || String(c.cargoDetail || "").includes("1792575495632") || (c.vendorName && c.vendorName.trim().toLowerCase() === "livi")) {
+              return { ...c, vendorId: (c.vendorId && c.vendorId !== "vend-livi") ? c.vendorId : "v-lily", vendorName: "Lily" };
             }
             return c;
           });

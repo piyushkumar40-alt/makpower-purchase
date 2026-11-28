@@ -414,13 +414,12 @@ export default function RahulDashboard({
       }
     });
 
-    // Guarantee Livi is present in Rahul Accounts vendor list
-    const hasLivi = Array.from(vMap.values()).some(v => v.name && v.name.trim().toLowerCase() === "livi");
-    if (!hasLivi) {
-      vMap.set("vend-livi", { id: "vend-livi", name: "Livi" });
+    // Normalize any legacy Livi to Lily and guarantee Lily is present
+    for (const [key, val] of vMap.entries()) {
+      if (val.name && val.name.trim().toLowerCase() === "livi") {
+        vMap.delete(key);
+      }
     }
-
-    // Guarantee Lily is present in Rahul Accounts vendor list
     const hasLily = Array.from(vMap.values()).some(v => v.name && v.name.trim().toLowerCase() === "lily");
     if (!hasLily) {
       vMap.set("v-lily", { id: "v-lily", name: "Lily" });
@@ -756,10 +755,12 @@ export default function RahulDashboard({
         const isPartiallyMarked = markedCount > 0 && markedCount < grp.items.length;
         const isNoneMarked = markedCount === 0;
 
-        // Total Cartons (prefer cargo object's totalCartons if available)
-        const totalCartons = grp.cargoObj?.totalCartons != null && grp.cargoObj.totalCartons !== "" 
-          ? parseInt(grp.cargoObj.totalCartons, 10) 
-          : grp.calcCartons;
+        // Total Cartons (prefer calculateCargoTotalCartons if available)
+        const totalCartons = (grp.cargoObj ? calculateCargoTotalCartons(grp.cargoObj, requests) : 0) || (
+          grp.cargoObj?.totalCartons != null && grp.cargoObj.totalCartons !== "" 
+            ? parseInt(grp.cargoObj.totalCartons, 10) 
+            : grp.calcCartons
+        );
 
         // Cargo Freight Price & Rate per Piece
         let cargoFreightPrice = 0;
@@ -916,8 +917,8 @@ export default function RahulDashboard({
       let vId = directVendor ? directVendor.id : (r.vendorId || "unassigned");
       let vendorName = directVendor ? directVendor.name : (r.vendorName || "");
       
-      // If vendor is genuinely unknown, resolve true vendor:
-      if (!directVendor || !vendorName || vendorName === "Unknown Vendor" || vendorName === "—" || vendorName === "Unassigned Vendor") {
+      // If vendor is genuinely unknown or legacy Livi, resolve true vendor:
+      if (!directVendor || !vendorName || vendorName === "Unknown Vendor" || vendorName === "—" || vendorName === "Unassigned Vendor" || vendorName.toLowerCase() === "livi" || String(r.vendorName || "").toLowerCase() === "livi" || cargoIdStr.includes("1792575495632")) {
         const resV = resolveItemVendor(r, vendors, requests, cargos);
         if (resV && resV.name && resV.name !== "Unknown Vendor") {
           vId = resV.id || vId;
@@ -925,6 +926,12 @@ export default function RahulDashboard({
         } else {
           vendorName = vendorName || (vId === "unassigned" ? "Unassigned Vendor" : "Unknown Vendor");
         }
+      }
+
+      if (vendorName.toLowerCase() === "livi") {
+        const lilyV = (vendors || []).find(v => v && v.name && v.name.trim().toLowerCase() === "lily");
+        vendorName = lilyV?.name || "Lily";
+        if (lilyV?.id) vId = lilyV.id;
       }
 
       const oDate = r.orderDate || "No Date";
@@ -985,8 +992,29 @@ export default function RahulDashboard({
       const isPartiallyMarked = markedCount > 0 && markedCount < grp.items.length;
       const isNoneMarked = markedCount === 0;
 
+      let finalTotalCartons = grp.totalCartons;
+      if (finalTotalCartons === 0 && grp.cargoIds && grp.cargoIds.size > 0) {
+        Array.from(grp.cargoIds).forEach(cId => {
+          if (!cId) return;
+          const cargo = cargos.find(c => isCargoMatch(cId, c));
+          if (!cargo) return;
+          const cargoCtns = calculateCargoTotalCartons(cargo, requests);
+          if (cargoCtns > 0) {
+            const allCargoItems = (requests || []).filter(req => isCargoMatch(req.cargoId, cargo) && !isRequestCancelled(req));
+            const totalCargoPcs = allCargoItems.reduce((s, req) => s + (parseInt(req.vendorOrderQuantity || req.orderQuantity, 10) || 0), 0);
+            const grpCargoItems = grp.items.filter(it => isCargoMatch(it.cargoId, cargo));
+            const grpCargoPcs = grpCargoItems.reduce((s, it) => s + (parseInt(it.vendorOrderQuantity || it.orderQuantity, 10) || 0), 0);
+            if (totalCargoPcs > 0 && grpCargoPcs < totalCargoPcs) {
+              finalTotalCartons += Math.round(cargoCtns * (grpCargoPcs / totalCargoPcs));
+            } else {
+              finalTotalCartons += cargoCtns;
+            }
+          }
+        });
+      }
+
       const allActiveLotItems = (requests || []).filter(req => 
-        req.vendorId === grp.vendorId && 
+        (req.vendorId === grp.vendorId || (grp.vendorName && req.vendorName && req.vendorName.trim().toLowerCase() === grp.vendorName.trim().toLowerCase())) && 
         req.orderDate === grp.orderDate && 
         !isRequestCancelled(req) &&
         (grp.purchaserId ? (req.purchaserId === grp.purchaserId || req.entryBy === grp.purchaserName) : true)
@@ -1011,6 +1039,7 @@ export default function RahulDashboard({
 
       return {
         ...grp,
+        totalCartons: finalTotalCartons,
         markedCount,
         pendingCount,
         isAllMarked,
@@ -2381,7 +2410,17 @@ export default function RahulDashboard({
                     <span>(Total Goods: <strong style={{ color: "var(--warning, #b45309)" }}>¥{Math.round(pendingRequests.filter(r => checkedIds.includes(r.id)).reduce((sum, r) => sum + ((r.orderQuantity || 0) * (r.priceRmb || 0)), 0)).toLocaleString()}</strong></span>
                     {(() => {
                       const selectedReqs = pendingRequests.filter(r => checkedIds.includes(r.id));
-                      const totalCartons = selectedReqs.reduce((sum, r) => sum + (r.totalCartons || (r.itemsPerCarton ? Math.ceil((r.orderQuantity || 0) / r.itemsPerCarton) : 0)), 0);
+                      let totalCartons = selectedReqs.reduce((sum, r) => sum + (r.totalCartons || (r.itemsPerCarton ? Math.ceil((r.orderQuantity || 0) / r.itemsPerCarton) : 0)), 0);
+                      if (totalCartons === 0) {
+                        const seenCargoIds = new Set();
+                        selectedReqs.forEach(r => {
+                          if (r.cargoId && !seenCargoIds.has(r.cargoId)) {
+                            seenCargoIds.add(r.cargoId);
+                            const c = cargos.find(x => isCargoMatch(r.cargoId, x));
+                            if (c) totalCartons += calculateCargoTotalCartons(c, requests);
+                          }
+                        });
+                      }
                       return totalCartons > 0 ? (
                         <span>| Cartons: <strong style={{ color: "#a855f7" }}>📦 {totalCartons.toLocaleString()} Ctns</strong></span>
                       ) : null;
@@ -3555,7 +3594,18 @@ export default function RahulDashboard({
                             <div>{qty.toLocaleString()} Pcs</div>
                             {(() => {
                               const ipc = parseInt(r.itemsPerCarton, 10);
-                              const ctns = r.totalCartons || (ipc > 0 ? Math.ceil(qty / ipc) : 0);
+                              let ctns = r.totalCartons || (ipc > 0 ? Math.ceil(qty / ipc) : 0);
+                              if (ctns === 0 && r.cargoId) {
+                                const c = cargos.find(x => isCargoMatch(r.cargoId, x));
+                                if (c) {
+                                  const cCartons = calculateCargoTotalCartons(c, requests);
+                                  const allCargoItems = (requests || []).filter(x => isCargoMatch(x.cargoId, c) && !isRequestCancelled(x));
+                                  const cTotalPcs = allCargoItems.reduce((sum, x) => sum + (parseInt(x.vendorOrderQuantity || x.orderQuantity, 10) || 0), 0);
+                                  if (cTotalPcs > 0 && qty > 0 && cCartons > 0) {
+                                    ctns = Math.max(1, Math.round(cCartons * (qty / cTotalPcs)));
+                                  }
+                                }
+                              }
                               if (ipc > 0 || ctns > 0) {
                                 return (
                                   <div style={{ fontSize: "0.72rem", color: "#a855f7", fontWeight: 600, marginTop: "2px" }}>

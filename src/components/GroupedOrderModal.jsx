@@ -22,7 +22,7 @@ import {
   Edit3
 } from "lucide-react";
 import { useModalEscape } from "../utils/useModalEscape";
-import { getPurchaserDisplayName, formatPunchDateTime, calculateTotalCargoPrice, isCargoMatch } from "../utils/formatters";
+import { getPurchaserDisplayName, formatPunchDateTime, calculateTotalCargoPrice, isCargoMatch, calculateCargoTotalCartons, resolveItemVendorName } from "../utils/formatters";
 import { getOrderStage } from "./MasterOrderTracker";
 import CargoRatesBreakdown from "./CargoRatesBreakdown";
 
@@ -68,8 +68,12 @@ export default function GroupedOrderModal({
   }, [requests, orderGroup, isCargoGroup]);
 
   // Vendor & Purchaser Details
-  const vendorObj = vendors.find(v => v.id === orderGroup.vendorId);
-  const vendorName = vendorObj?.name || orderGroup.vendorName || "Unassigned Vendor";
+  let vendorObj = vendors.find(v => v.id === orderGroup.vendorId);
+  let vendorName = vendorObj?.name || orderGroup.vendorName || "Unassigned Vendor";
+  if (vendorName.toLowerCase() === "livi" || orderGroup.vendorName?.toLowerCase() === "livi") {
+    const lilyVendor = (vendors || []).find(v => v && v.name && v.name.trim().toLowerCase() === "lily");
+    vendorName = lilyVendor?.name || "Lily";
+  }
   const purchaserName = orderGroup.purchaserName || "Unassigned Purchaser";
   const orderDate = orderGroup.orderDate || "No Date";
 
@@ -87,13 +91,43 @@ export default function GroupedOrderModal({
   }, [liveItems]);
 
   const totalCartons = useMemo(() => {
-    return liveItems.reduce((sum, r) => {
+    const itemLevelSum = liveItems.reduce((sum, r) => {
       const q = parseInt(r.vendorOrderQuantity || r.orderQuantity, 10) || 0;
       const ipc = parseInt(r.itemsPerCarton, 10);
-      const ctns = r.totalCartons || (ipc > 0 ? Math.ceil(q / ipc) : 0);
+      const ctns = (r.totalCartons != null && r.totalCartons !== "" && !isNaN(parseInt(r.totalCartons, 10)))
+        ? parseInt(r.totalCartons, 10)
+        : (ipc > 0 ? Math.ceil(q / ipc) : 0);
       return sum + ctns;
     }, 0);
-  }, [liveItems]);
+    if (itemLevelSum > 0) return itemLevelSum;
+
+    if (orderGroup.totalCartons > 0) return orderGroup.totalCartons;
+
+    // Resolve from attached cargos
+    const seenCargos = new Set();
+    let cargoCartonsSum = 0;
+    liveItems.forEach(r => {
+      if (!r.cargoId || seenCargos.has(r.cargoId)) return;
+      seenCargos.add(r.cargoId);
+      const cObj = (cargos || []).find(c => isCargoMatch(r.cargoId, c));
+      if (cObj) {
+        const cCartons = calculateCargoTotalCartons(cObj, requests);
+        if (cCartons > 0) {
+          const allCargoItems = (requests || []).filter(req => isCargoMatch(req.cargoId, cObj) && req.status !== "Cancelled");
+          const totalCargoPcs = allCargoItems.reduce((s, req) => s + (parseInt(req.vendorOrderQuantity || req.orderQuantity, 10) || 0), 0);
+          const grpCargoItems = liveItems.filter(it => isCargoMatch(it.cargoId, cObj));
+          const grpCargoPcs = grpCargoItems.reduce((s, it) => s + (parseInt(it.vendorOrderQuantity || it.orderQuantity, 10) || 0), 0);
+          if (totalCargoPcs > 0 && grpCargoPcs < totalCargoPcs) {
+            cargoCartonsSum += Math.round(cCartons * (grpCargoPcs / totalCargoPcs));
+          } else {
+            cargoCartonsSum += cCartons;
+          }
+        }
+      }
+    });
+
+    return cargoCartonsSum;
+  }, [liveItems, orderGroup, cargos, requests]);
 
   // Cargo Freight Price and Per-Piece Calculation
   const modalCargoFreightPrice = useMemo(() => {
@@ -418,7 +452,7 @@ export default function GroupedOrderModal({
               {totalPcs.toLocaleString()} <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>Pcs</span>
             </div>
             <div style={{ fontSize: "0.72rem", color: "#a855f7", fontWeight: 600, marginTop: "2px" }}>
-              📦 {(isCargoGroup && orderGroup.totalCartons ? orderGroup.totalCartons : totalCartons).toLocaleString()} Cartons
+              📦 {(orderGroup.totalCartons || totalCartons || 0).toLocaleString()} Cartons
             </div>
           </div>
 
@@ -649,7 +683,19 @@ export default function GroupedOrderModal({
                 const price = parseFloat(r.priceRmb) || 0;
                 const totalRmbVal = qty * price;
                 const ipc = parseInt(r.itemsPerCarton, 10);
-                const ctns = r.totalCartons || (ipc > 0 ? Math.ceil(qty / ipc) : 0);
+                let ctns = (r.totalCartons != null && r.totalCartons !== "" && !isNaN(parseInt(r.totalCartons, 10)))
+                  ? parseInt(r.totalCartons, 10)
+                  : (ipc > 0 ? Math.ceil(qty / ipc) : 0);
+                if (ctns === 0 && cargo) {
+                  const cCartons = calculateCargoTotalCartons(cargo, requests);
+                  if (cCartons > 0) {
+                    const allCargoItems = (requests || []).filter(x => isCargoMatch(x.cargoId, cargo) && x.status !== "Cancelled");
+                    const cTotalPcs = allCargoItems.reduce((sum, x) => sum + (parseInt(x.vendorOrderQuantity || x.orderQuantity, 10) || 0), 0);
+                    if (cTotalPcs > 0 && qty > 0) {
+                      ctns = Math.max(1, Math.round(cCartons * (qty / cTotalPcs)));
+                    }
+                  }
+                }
 
                 let itemCargoPerPc = 0;
                 let itemTotalCargo = 0;
@@ -708,7 +754,7 @@ export default function GroupedOrderModal({
                       <td style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
                           <Building2 size={13} style={{ color: "var(--primary)", flexShrink: 0 }} />
-                          <span>{vendors.find(v => v.id === r.vendorId)?.name || r.vendorName || "—"}</span>
+                          <span>{resolveItemVendorName(r, vendors, requests, cargos) || vendors.find(v => v.id === r.vendorId)?.name || r.vendorName || "—"}</span>
                         </div>
                       </td>
                     )}

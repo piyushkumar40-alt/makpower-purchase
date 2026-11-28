@@ -27,7 +27,7 @@ import {
   CheckSquare,
   RotateCcw
 } from "lucide-react";
-import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, isCargoMatch, reconcileCargosWithRequests, formatCancelDate, formatCancelTime, formatPunchDateTime, resolveCargoVendorName } from "../utils/formatters";
+import { downloadOrOpenBlob, getPurchaserDisplayName, getCurrencySymbol, calculateTotalCargoPrice, calculateBillSlaStatus, calculateCargoTotalCartons, calculateItemCartons, isCargoMatch, reconcileCargosWithRequests, formatCancelDate, formatCancelTime, formatPunchDateTime, resolveCargoVendorName, resolveItemVendorName } from "../utils/formatters";
 import { uploadToCloudinary } from "../utils/upload";
 import CustomSelect from "./CustomSelect";
 import CargoDocumentModal from "./CargoDocumentModal";
@@ -382,9 +382,14 @@ export default function BundledUpcomingShipments({
         vMap.set(c.vendorId, { id: c.vendorId, name: c.vendorName || c.vendorId });
       }
     });
-    const hasLivi = Array.from(vMap.values()).some(v => v.name && v.name.trim().toLowerCase() === "livi");
-    if (!hasLivi) {
-      vMap.set("vend-livi", { id: "vend-livi", name: "Livi" });
+    for (const [key, val] of vMap.entries()) {
+      if (val.name && val.name.trim().toLowerCase() === "livi") {
+        vMap.delete(key);
+      }
+    }
+    const hasLily = Array.from(vMap.values()).some(v => v.name && v.name.trim().toLowerCase() === "lily");
+    if (!hasLily) {
+      vMap.set("v-lily", { id: "v-lily", name: "Lily" });
     }
     const list = Array.from(vMap.values()).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     return list.map(v => {
@@ -1714,7 +1719,7 @@ export function OrderInspectionModal({ order: initialOrder, cargos = [], vendors
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px", padding: "14px", borderRadius: "10px", background: "rgba(255, 255, 255, 0.02)", border: "1px solid var(--border-glass)" }}>
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Vendor Name</div>
-              <div style={{ fontSize: "0.9rem", fontWeight: 700, marginTop: "2px" }}>{vendor?.name || "—"}</div>
+              <div style={{ fontSize: "0.9rem", fontWeight: 700, marginTop: "2px" }}>{resolveItemVendorName(order, vendors, requests, cargos) || vendor?.name || order.vendorName || "—"}</div>
             </div>
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Vendor EDD</div>
@@ -1824,7 +1829,10 @@ export function OrderInspectionModal({ order: initialOrder, cargos = [], vendors
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Total Cartons</div>
               <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--primary)", marginTop: "2px" }}>
-                📦 {(cargo?.totalCartons ? `${cargo.totalCartons} Cartons` : null) || (order.totalCartons ? `${order.totalCartons} Cartons` : "—")}
+                📦 {(() => {
+                  const cargoCartons = cargo ? calculateCargoTotalCartons(cargo, requests) : 0;
+                  return (cargoCartons ? `${cargoCartons} Cartons` : null) || (cargo?.totalCartons ? `${cargo.totalCartons} Cartons` : null) || (order.totalCartons ? `${order.totalCartons} Cartons` : "—");
+                })()}
               </div>
             </div>
             <div>

@@ -1184,11 +1184,12 @@ export const isCargoMatch = (reqCargoId, cargo) => {
 export const reconcileCargosWithRequests = (cargos = [], requests = []) => {
   const base = Array.isArray(cargos) ? cargos.map(c => {
     let patched = c;
-    if (String(c.id || "").includes("1792575495632") || String(c.cargoDetail || "").includes("1792575495632")) {
+    if (String(c.id || "").includes("1792575495632") || String(c.cargoDetail || "").includes("1792575495632") || (c.vendorName && c.vendorName.trim().toLowerCase() === "livi")) {
+      const lilyVendor = (vendors || []).find(v => v && v.name && v.name.trim().toLowerCase() === "lily");
       patched = {
         ...patched,
-        vendorId: patched.vendorId || "vend-livi",
-        vendorName: "Livi"
+        vendorId: (patched.vendorId && patched.vendorId !== "vend-livi") ? patched.vendorId : (lilyVendor?.id || "v-lily"),
+        vendorName: "Lily"
       };
     }
     // If all active requests for this cargo are received in warehouse, guarantee cargo status reflects Received
@@ -1273,7 +1274,7 @@ export const resolveCargoVendorName = (cargo, vendors = [], requests = []) => {
   const cargoDetailStr = String(cargo.cargoDetail || "").trim();
 
   // 0. Explicit cargo mappings for known consignments
-  if (cargoIdStr.includes("1790072195521") || cargoIdStr.includes("1790056792788")) {
+  if (cargoIdStr.includes("1790072195521") || cargoIdStr.includes("1790056792788") || cargoIdStr.includes("1792575495632") || cargoDetailStr.includes("1792575495632")) {
     const lilyVendor = (vendors || []).find(v => v && v.name && v.name.trim().toLowerCase() === "lily");
     if (lilyVendor && lilyVendor.name) return lilyVendor.name;
     return "Lily";
@@ -1295,15 +1296,6 @@ export const resolveCargoVendorName = (cargo, vendors = [], requests = []) => {
     const abcVendor = (vendors || []).find(v => v && (v.id === "v-1787221745606" || (v.name && v.name.trim().toLowerCase() === "abc co")));
     if (abcVendor && abcVendor.name) return abcVendor.name;
     return "ABC Co";
-  }
-
-  if (cargoIdStr.includes("1792575495632") || cargoDetailStr.includes("1792575495632")) {
-    const liviVendor = (vendors || []).find(v => v && v.name && v.name.trim().toLowerCase() === "livi");
-    if (liviVendor && liviVendor.name) return liviVendor.name;
-    if (cargo.vendorName && String(cargo.vendorName).trim() && cargo.vendorName !== "Unknown Vendor") {
-      return String(cargo.vendorName).trim();
-    }
-    return "Livi";
   }
 
   // 1. Direct ID match in vendors list
@@ -1334,18 +1326,15 @@ export const resolveCargoVendorName = (cargo, vendors = [], requests = []) => {
       if (item.vendorName && String(item.vendorName).trim() && item.vendorName !== "Unknown Vendor") {
         return String(item.vendorName).trim();
       }
-      if (item.notes && item.notes.toLowerCase().includes("livi")) {
-        return "Livi";
-      }
-      if (item.notes && item.notes.toLowerCase().includes("lily")) {
+      if (item.notes && (item.notes.toLowerCase().includes("livi") || item.notes.toLowerCase().includes("lily"))) {
         return "Lily";
       }
     }
   }
 
-  // 4. Check if cargo detail or filename mentions Livi or another vendor
-  if (cargoDetailStr && cargoDetailStr.toLowerCase().includes("livi")) return "Livi";
-  if (cargo.packingListFile && cargo.packingListFile.toLowerCase().includes("livi")) return "Livi";
+  // 4. Check if cargo detail or filename mentions Lily or Livi
+  if (cargoDetailStr && (cargoDetailStr.toLowerCase().includes("livi") || cargoDetailStr.toLowerCase().includes("lily"))) return "Lily";
+  if (cargo.packingListFile && (cargo.packingListFile.toLowerCase().includes("livi") || cargo.packingListFile.toLowerCase().includes("lily"))) return "Lily";
 
   // 5. If cargo.vendorId is a human name string (not an opaque ID like "v-123" or UUID or pure number)
   if (cargo.vendorId && typeof cargo.vendorId === "string") {
@@ -1369,7 +1358,7 @@ export const resolveItemVendor = (r, vendors = [], requests = [], cargos = []) =
   const cargoIdStr = String(r.cargoId || "").trim();
 
   // 0. Explicit cargo mappings for known consignments
-  if (cargoIdStr.includes("1790072195521") || cargoIdStr.includes("1790056792788")) {
+  if (cargoIdStr.includes("1790072195521") || cargoIdStr.includes("1790056792788") || cargoIdStr.includes("1792575495632")) {
     const lilyVendor = (vendors || []).find(v => v && v.name && v.name.trim().toLowerCase() === "lily");
     return { id: lilyVendor?.id || "v-178945075460", name: lilyVendor?.name || "Lily" };
   }
@@ -1387,11 +1376,6 @@ export const resolveItemVendor = (r, vendors = [], requests = [], cargos = []) =
   if (cargoIdStr.includes("1787222321873") || cargoIdStr.includes("1787222154201")) {
     const abcVendor = (vendors || []).find(v => v && (v.id === "v-1787221745606" || (v.name && v.name.trim().toLowerCase() === "abc co")));
     return { id: abcVendor?.id || "v-1787221745606", name: abcVendor?.name || "ABC Co" };
-  }
-
-  if (cargoIdStr.includes("1792575495632")) {
-    const liviVendor = (vendors || []).find(v => v && (v.id === "vend-livi" || (v.name && v.name.trim().toLowerCase() === "livi")));
-    return { id: liviVendor?.id || "vend-livi", name: liviVendor?.name || "Livi" };
   }
 
   // 1. Specific Category and Model mappings for known product lines
@@ -1441,7 +1425,7 @@ export const resolveItemVendor = (r, vendors = [], requests = [], cargos = []) =
   const modelLower = String(r.model || "").toLowerCase();
   const lilyVendor = (vendors || []).find(v => v && v.name && v.name.trim().toLowerCase() === "lily");
 
-  if (notesLower.includes("lily") || modelLower.includes("lily")) {
+  if (notesLower.includes("lily") || modelLower.includes("lily") || notesLower.includes("livi") || modelLower.includes("livi") || String(r.vendorName || "").toLowerCase() === "livi") {
     if (lilyVendor) return lilyVendor;
     return { id: lilyVendor?.id || "v-178945075460", name: "Lily" };
   }
